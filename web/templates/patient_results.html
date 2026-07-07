@@ -28,6 +28,7 @@
   </div>
   {% endif %}
 
+  {% if results %}<div class="pr-grid">{% endif %}
   {% for r in results %}
   {% set t = r.trial %}{% set m = r.match %}
   {% set lab = labels.get(m.verdict, ('You might qualify','maybe')) %}
@@ -83,6 +84,7 @@
     </details>
   </article>
   {% endfor %}
+  {% if results %}</div>{% endif %}
 
   <p class="pr-foot-note">TrialBridge shows public information from ClinicalTrials.gov and an
     automated read of eligibility. It isn't medical advice - the study team makes the final
