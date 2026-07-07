@@ -1,0 +1,12 @@
+# Patient data + generated outputs — never commit (may contain PHI)
+patient_case.txt
+matches_output.md
+referrals.csv
+referral_events.csv
+referrals/
+
+# Web app: local DB (contains patient notes + accounts), secret, venv
+web/trialbridge.db
+web/.secret
+.venv/
+__pycache__/

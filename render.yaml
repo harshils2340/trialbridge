@@ -1,0 +1,23 @@
+# Render Blueprint — one-click deploy for TrialBridge.
+# In Render: New +  ->  Blueprint  ->  pick this repo. It reads this file.
+# After the first deploy, set LLM_API_KEY in the service's Environment tab so the
+# AI eligibility matching turns on (the demo is much better with it).
+services:
+  - type: web
+    name: trialbridge
+    runtime: python
+    plan: free
+    rootDir: web
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --workers 2 --timeout 120 --bind 0.0.0.0:$PORT
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true      # Render generates a stable random secret
+      - key: BEHIND_PROXY
+        value: "1"               # trust Render's HTTPS proxy
+      - key: WEB_MAX_MATCH
+        value: "6"               # LLM calls per search
+      - key: LLM_API_KEY
+        sync: false              # set this yourself in the dashboard (kept secret)
+      - key: PYTHON_VERSION
+        value: "3.11.9"

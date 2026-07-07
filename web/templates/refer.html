@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% import "_icons.html" as ic %}
+{% block title %}Confirm referral · TrialBridge{% endblock %}
+{% block body %}
+<div class="page-head">
+  <a href="{{ url_for('dashboard') }}" class="tag">← Back to search</a>
+  <h1 style="margin-top:8px;">Confirm referral</h1>
+  <p>Record consent and contact details so the site can reach the patient and confirm status.</p>
+</div>
+
+<div class="grid-2">
+  <div class="card">
+    <div class="section-title"><h2>Referral details</h2></div>
+    <form method="post" action="{{ url_for('refer_confirm') }}">
+      {% for k in ['nct','title','condition','country','site','coordinator','verdict','score','rationale','note','patient_label'] %}
+      <input type="hidden" name="{{ k }}" value="{{ d.get(k, '') }}">
+      {% endfor %}
+
+      <div class="field">
+        <label for="patient_label">Patient reference tag</label>
+        <input id="patient_label" type="text" value="{{ d.get('patient_label','') }}" disabled>
+        <p class="hint" style="margin:6px 0 0;">A non-identifying label only you can resolve (e.g. 61M-T2D).</p>
+      </div>
+
+      <div class="row">
+        <div class="field">
+          <label for="patient_name">Patient name <span class="hint">(only with consent)</span></label>
+          <input id="patient_name" name="patient_name" type="text" value="{{ d.get('patient_name','') }}" placeholder="First + last">
+        </div>
+        <div class="field">
+          <label for="patient_contact">Patient phone / email <span class="hint">(only with consent)</span></label>
+          <input id="patient_contact" name="patient_contact" type="text" value="{{ d.get('patient_contact','') }}" placeholder="So the coordinator can call/email">
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="coordinator_email">Coordinator email <span class="hint">(where to send the referral)</span></label>
+        <input id="coordinator_email" name="coordinator_email" type="email" value="{{ d.get('coordinator_email','') }}" placeholder="coordinator@site.org">
+      </div>
+
+      <div class="consent-box">
+        <label class="check">
+          <input type="checkbox" name="consent" value="1" required {{ 'checked' if d.get('consent') }}>
+          <span>I confirm the patient <b>consented</b> to being contacted about this study and to sharing the information above with the study site.</span>
+        </label>
+      </div>
+
+      <button class="btn btn-primary" type="submit" style="margin-top:18px;">{{ ic.icon('user-plus') }}Save referral</button>
+    </form>
+  </div>
+
+  <div>
+    <div class="card">
+      <div class="section-title"><h2>Trial</h2></div>
+      <dl class="kv">
+        <dt>Study</dt><dd>{{ d.get('title') }}</dd>
+        <dt>NCT</dt><dd><a class="ctlink mono" href="https://clinicaltrials.gov/study/{{ d.get('nct') }}" target="_blank" rel="noopener">{{ d.get('nct') }} {{ ic.icon('external') }}</a></dd>
+        <dt>Site</dt><dd>{{ d.get('site') or '—' }}</dd>
+        {% if d.get('verdict') %}<dt>Screen</dt><dd><span class="pill {{ d.get('verdict') }}">{{ d.get('verdict').replace('_',' ') }}{% if d.get('score') %}<span class="score">{{ d.get('score') }}</span>{% endif %}</span></dd>{% endif %}
+      </dl>
+    </div>
+    {% if d.get('note') %}
+    <div class="card">
+      <div class="section-title"><h2>De-identified note</h2></div>
+      <div class="summary-box">{{ d.get('note') }}</div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

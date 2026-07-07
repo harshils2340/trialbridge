@@ -1,0 +1,17 @@
+{% extends "public_base.html" %}
+{% block title %}Request sent · TrialBridge{% endblock %}
+
+{% block body %}
+<section class="thanks">
+  <div class="thanks-mark">{{ ic.icon('check') }}</div>
+  <h1>You're all set.</h1>
+  <p>We've logged your interest{% if title %} in <b>{{ title }}</b>{% endif %}. A member of the
+     study team can now reach out to walk you through the next steps and confirm whether you qualify.</p>
+  <p class="thanks-sub">Nothing is final — you can ask questions, take your time, and speak with your
+     own doctor before deciding. There's no cost and no obligation.</p>
+  <div class="thanks-actions">
+    <a class="btn btn-primary btn-lg" href="{{ url_for('find') }}">{{ ic.icon('search') }} Find more trials</a>
+    <a class="btn btn-ghost" href="{{ url_for('home') }}">Back to home</a>
+  </div>
+</section>
+{% endblock %}

@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% import "_icons.html" as ic %}
+{% block title %}Referrals · TrialBridge{% endblock %}
+{% block body %}
+<div class="page-head">
+  <h1>Your referrals</h1>
+  <p>Every patient you referred, with live status for commission and follow-up.</p>
+</div>
+
+<div class="stats">
+  <div class="stat"><div class="l">{{ ic.icon('list', 'ico stat-ico') }}Total</div><div class="n">{{ referrals|length }}</div></div>
+  <div class="stat"><div class="l">{{ ic.icon('activity', 'ico stat-ico') }}In pipeline</div><div class="n">{{ counts.get('referred',0) + counts.get('contacted',0) + counts.get('screened',0) }}</div></div>
+  <div class="stat accent"><div class="l">{{ ic.icon('check', 'ico stat-ico') }}Enrolled</div><div class="n">{{ enrolled }}</div></div>
+  <div class="stat accent"><div class="l">{{ ic.icon('award', 'ico stat-ico') }}Commission</div><div class="n">{{ earned | money }}</div></div>
+</div>
+
+{% if referrals %}
+<div class="list-toolbar">
+  <div class="search-field">
+    {{ ic.icon('search') }}
+    <input id="refSearch" type="text" placeholder="Search patient, trial, or NCT…">
+  </div>
+  <select id="refStatus">
+    <option value="">All statuses</option>
+    {% for s in statuses %}<option value="{{ s }}">{{ s.replace('_',' ') }}</option>{% endfor %}
+  </select>
+  <div class="spacer"></div>
+  <a class="btn btn-ghost btn-sm" href="{{ url_for('referrals_csv') }}">{{ ic.icon('upload') }}Export CSV</a>
+</div>
+
+<div class="card">
+  <table id="refTable">
+    <thead><tr><th>Patient</th><th>Trial</th><th>Site</th><th>Status</th><th>Sent</th><th class="num">Commission</th><th>Updated</th></tr></thead>
+    <tbody>
+      {% for r in referrals %}
+      <tr data-status="{{ r['status'] }}"
+          data-text="{{ (r['patient_label'] ~ ' ' ~ r['title'] ~ ' ' ~ r['nct'])|lower }}"
+          onclick="location.href='{{ url_for('referral_detail', ref_id=r['id']) }}'" style="cursor:pointer;">
+        <td><b>{{ r['patient_label'] }}</b>{% if r['consent'] %} <span class="mini-tag">consent</span>{% endif %}</td>
+        <td>{{ r['title'][:56] }}<div class="tag mono">{{ r['nct'] }}</div></td>
+        <td class="tag">{{ r['site'][:40] or '—' }}</td>
+        <td><span class="status {{ r['status'] }}">{{ r['status'].replace('_',' ') }}</span></td>
+        <td>{% if r['notified_at'] %}<span class="sent-dot" title="Sent {{ r['notified_at'] }}">{{ ic.icon('check', 'ico') }}</span>{% else %}<span class="tag">—</span>{% endif %}</td>
+        <td class="num tag">{{ (r['commission_cents'] or 0) | money if r['status'] == 'enrolled' else '—' }}</td>
+        <td class="tag">{{ r['updated_at'] }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <div id="refEmpty" class="empty" style="display:none;"><p>No referrals match your filter.</p></div>
+</div>
+
+<script>
+(function () {
+  var q = document.getElementById('refSearch'), st = document.getElementById('refStatus');
+  var rows = Array.prototype.slice.call(document.querySelectorAll('#refTable tbody tr'));
+  var empty = document.getElementById('refEmpty');
+  function apply() {
+    var term = (q.value || '').toLowerCase().trim(), s = st.value, shown = 0;
+    rows.forEach(function (r) {
+      var ok = (!term || r.dataset.text.indexOf(term) >= 0) && (!s || r.dataset.status === s);
+      r.style.display = ok ? '' : 'none'; if (ok) shown++;
+    });
+    empty.style.display = shown ? 'none' : 'block';
+  }
+  q.addEventListener('input', apply); st.addEventListener('change', apply);
+})();
+</script>
+{% else %}
+<div class="card">
+  <div class="empty">
+    <h3>No referrals yet</h3>
+    <p>Find a trial and refer a patient to start tracking here.</p>
+    <a class="btn btn-primary" href="{{ url_for('search') }}" style="margin-top:8px;">{{ ic.icon('search') }}Find trials</a>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

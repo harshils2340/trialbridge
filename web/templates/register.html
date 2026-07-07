@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% import "_icons.html" as ic %}
+{% block title %}Create account · TrialBridge{% endblock %}
+{% block container %}auth{% endblock %}
+{% block auth_body %}
+<div class="card">
+  <div class="auth-hero"><img class="hero-mark" src="{{ url_for('static', filename='logo.svg') }}" width="46" height="46" alt="TrialBridge"></div>
+  <h1>Create your account</h1>
+  <p class="sub">For clinicians who refer patients to clinical trials.</p>
+  <form method="post" action="{{ url_for('register') }}">
+    <div class="field">
+      <label for="name">Full name</label>
+      <input id="name" name="name" type="text" required autofocus>
+    </div>
+    <div class="row">
+      <div class="field">
+        <label for="specialty">Specialty <span class="hint">(optional)</span></label>
+        <input id="specialty" name="specialty" type="text" placeholder="e.g. Rheumatology">
+      </div>
+      <div class="field">
+        <label for="institution">Clinic / institution <span class="hint">(optional)</span></label>
+        <input id="institution" name="institution" type="text">
+      </div>
+    </div>
+    <div class="field">
+      <label for="email">Email</label>
+      <input id="email" name="email" type="email" autocomplete="email" required>
+    </div>
+    <div class="field">
+      <label for="password">Password <span class="hint">(8+ characters)</span></label>
+      <input id="password" name="password" type="password" autocomplete="new-password" required>
+    </div>
+    <button class="btn btn-primary btn-block" type="submit">Create account{{ ic.icon('arrow-right') }}</button>
+  </form>
+  <p class="foot">Already have an account? <a href="{{ url_for('login') }}">Sign in</a></p>
+</div>
+{% endblock %}

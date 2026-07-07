@@ -1,0 +1,62 @@
+{% extends "public_base.html" %}
+{% block title %}{{ drug }} clinical trials near you · TrialBridge{% endblock %}
+{% block description %}Recruiting {{ drug }} clinical trials. See studies you may qualify for near you and request contact — free and private.{% endblock %}
+
+{% block body %}
+<section class="cond-hero">
+  <nav class="crumbs"><a href="{{ url_for('home') }}">Home</a> ›
+    <span>{{ drug }}</span>
+  </nav>
+  <span class="hero-eyebrow">{{ ic.icon('activity') }} GLP-1 / weight-loss trend</span>
+  <h1>{{ drug }} clinical trials near you</h1>
+  <p class="cond-lead">
+    Interested in a study involving {{ drug }}? Enter your location to see recruiting
+    trials near you that you may qualify for — free, private, and in plain English.
+    Talk with your own doctor before joining any trial.
+  </p>
+  <form class="cond-search" method="post" action="{{ url_for('find') }}">
+    <input type="hidden" name="intervention" value="{{ drug }}">
+    <div class="hero-field">{{ ic.icon('pin') }}
+      <input name="location" type="text" placeholder="Your city or postal code" required></div>
+    <button class="btn btn-primary btn-lg" type="submit">Find trials near me{{ ic.icon('arrow-right') }}</button>
+  </form>
+</section>
+
+{% if trials %}
+<section class="cond-list">
+  <h2>Recruiting {{ drug }} studies right now</h2>
+  {% for t in trials %}
+  <div class="cond-item">
+    <div class="cond-item-main">
+      <h3>{{ t.title }}</h3>
+      {% if t.briefSummary %}<p>{{ t.briefSummary[:180] }}{{ '…' if t.briefSummary|length > 180 }}</p>{% endif %}
+      <a class="cond-item-link" href="https://clinicaltrials.gov/study/{{ t.nctId }}" target="_blank" rel="noopener">{{ ic.icon('external') }} {{ t.nctId }} on ClinicalTrials.gov</a>
+    </div>
+    <div class="cond-item-meta">
+      {% if t.phase %}<span class="pr-phase">{{ t.phase }}</span>{% endif %}
+      <span class="status-tag">Recruiting</span>
+    </div>
+  </div>
+  {% endfor %}
+  <p class="cond-note">Enter your location above to see which of these are near you and whether you may qualify.</p>
+</section>
+{% endif %}
+
+<section class="cond-cities">
+  <h2>Other GLP-1 &amp; weight-loss trials</h2>
+  <div class="chip-grid">
+    {% for d in drugs %}{% if d != drug %}
+    <a class="chip chip-hot" href="{{ url_for('drug_page', slug=slugify(d)) }}">{{ d }}</a>
+    {% endif %}{% endfor %}
+  </div>
+</section>
+
+<section class="cond-cities">
+  <h2>Browse by condition</h2>
+  <div class="chip-grid">
+    {% for c in conditions %}
+    <a class="chip" href="{{ url_for('condition_page', slug=slugify(c)) }}">{{ c }}</a>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}

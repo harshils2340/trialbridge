@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32" role="img" aria-label="TrialBridge">
+  <rect width="32" height="32" rx="8" fill="#141417"/>
+  <g fill="none" stroke="#ffffff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+    <!-- bridge deck -->
+    <line x1="7" y1="22" x2="25" y2="22"/>
+    <!-- mast + medical cross -->
+    <line x1="16" y1="22" x2="16" y2="6"/>
+    <line x1="12" y1="10" x2="20" y2="10"/>
+    <!-- suspension cables -->
+    <line x1="16" y1="6" x2="7.5" y2="22"/>
+    <line x1="16" y1="6" x2="24.5" y2="22"/>
+  </g>
+</svg>

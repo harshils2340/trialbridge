@@ -1,0 +1,274 @@
+{% import "_icons.html" as ic %}
+<div class="import-bar">
+  <form id="importForm" class="import-seg" method="post" action="{{ url_for('extract') }}" enctype="multipart/form-data">
+    <span class="import-label">Have a note already?</span>
+    <label class="file-btn">
+      <input id="fileInput" type="file" name="file" accept=".pdf,.docx,.txt,.md,.csv,.rtf,.png,.jpg,.jpeg,.webp">
+      {{ ic.icon('upload') }}Upload PDF, Word, image, or text
+    </label>
+    <span class="import-hint">Extracted &amp; de-identified for you.</span>
+  </form>
+
+  <div class="import-divider"><span>or</span></div>
+
+  {% if user.ehr_connected %}
+  <form id="ehrForm" class="import-seg" method="post" action="{{ url_for('ehr_import') }}">
+    <span class="import-label">Pull from your EHR
+      <span class="ehr-conn">{{ ic.icon('check') }}{{ user.ehr_provider or 'Connected' }}</span>
+    </span>
+    <input id="ehrId" name="patient_id" type="text" class="ehr-input" placeholder="Patient FHIR ID">
+    <button class="file-btn as-btn" type="submit">{{ ic.icon('activity') }}Load patient</button>
+    <button type="button" id="ehrSample" class="link-btn">try a sample patient</button>
+    <button type="submit" form="ehrDisconnect" class="link-btn ehr-disc">Disconnect</button>
+  </form>
+  <form id="ehrDisconnect" method="post" action="{{ url_for('ehr_disconnect') }}" hidden></form>
+  {% else %}
+  <form class="import-seg" method="post" action="{{ url_for('ehr_connect') }}">
+    <span class="import-label">Pull from your EHR</span>
+    <button class="file-btn as-btn" type="submit">{{ ic.icon('activity') }}Connect your EHR</button>
+    <span class="import-hint">Connect once, then load a patient by ID — no copy-paste.</span>
+  </form>
+  {% endif %}
+</div>
+
+<form id="searchForm" class="tool-form" method="post" action="{{ url_for('search') }}">
+  <div class="loc-strip">
+    <div class="field loc-field">
+      <label for="location">{{ ic.icon('pin') }} Patient location <span class="req">required</span>
+        <button type="button" id="useLoc" class="link-btn loc-use">{{ ic.icon('pin') }} Use my current location</button>
+      </label>
+      <input id="location" name="location" type="text" required autofocus
+             placeholder="City or postal code — e.g. Toronto, ON or M5G 2C4"
+             value="{{ request.form.get('location','') }}">
+      <input type="hidden" id="locLat" name="lat" value="{{ request.form.get('lat','') }}">
+      <input type="hidden" id="locLon" name="lon" value="{{ request.form.get('lon','') }}">
+      <input type="hidden" id="locCc" name="cc" value="{{ request.form.get('cc','') }}">
+      <div id="locConfirm" class="loc-confirm" style="display:none;"></div>
+    </div>
+    <div class="field">
+      <label for="radius">Within</label>
+      <select id="radius" name="radius">
+        {% set rad = request.form.get('radius','50') %}
+        <option value="10"  {{ 'selected' if rad=='10' }}>10 km</option>
+        <option value="25"  {{ 'selected' if rad=='25' }}>25 km</option>
+        <option value="50"  {{ 'selected' if rad=='50' }}>50 km</option>
+        <option value="100" {{ 'selected' if rad=='100' }}>100 km</option>
+        <option value="200" {{ 'selected' if rad=='200' }}>200 km</option>
+        <option value=""    {{ 'selected' if rad=='' }}>Any distance</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="country">Country</label>
+      <input id="country" name="country" type="text" value="{{ request.form.get('country','Canada') }}">
+    </div>
+  </div>
+
+  <label for="note">Patient note <span class="hint">(de-identified — no names or identifiers)</span></label>
+  <div class="drop-wrap" id="dropWrap">
+    <textarea id="note" name="note" class="note-big" placeholder="Type or paste the patient summary — or drag a PDF / image right onto this box. e.g. 34F, biopsy-proven lupus nephritis (class IV), eGFR 55, on mycophenolate + prednisone, UPCR 1.8..." required>{{ note_value if note_value is defined and note_value else request.form.get('note','') }}</textarea>
+    <div class="drop-hint">Drop a file to import &amp; de-identify</div>
+  </div>
+  <div class="toolbar">
+    <div class="field">
+      <label for="condition">Condition <span class="hint">(auto-detected — override if needed)</span></label>
+      <input id="condition" name="condition" type="text" placeholder="e.g. lupus nephritis" value="{{ condition_value if condition_value is defined and condition_value else request.form.get('condition','') }}">
+    </div>
+    <div class="spacer"></div>
+    <button class="btn btn-primary" type="submit">{{ ic.icon('search') }}Search trials</button>
+  </div>
+  <div class="tool-foot">
+    <label class="tb-check">
+      <input type="checkbox" name="include_observational" {{ 'checked' if request.form.get('include_observational') }}>
+      Include registries &amp; observational studies
+    </label>
+    <span class="tag" style="color:var(--faint);">
+      Showing recruiting treatment trials near you · ranked by fit, then distance · <b>⌘/Ctrl + Enter</b> to search</span>
+  </div>
+</form>
+
+<div class="loading-overlay" id="loadingOverlay" aria-hidden="true">
+  <div class="loading-card">
+    <div class="loading-spark"></div>
+    <div class="loading-title" id="loadingTitle">Searching ClinicalTrials.gov…</div>
+    <div class="loading-sub" id="loadingSub">Fetching recruiting trials</div>
+    <div class="progress"><div class="progress-bar" id="progressBar"></div></div>
+    <div class="loading-foot" id="loadingFoot">This usually takes 15–30 seconds</div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var ta = document.getElementById('note');
+  var wrap = document.getElementById('dropWrap');
+  var fileInput = document.getElementById('fileInput');
+  var importForm = document.getElementById('importForm');
+  var searchForm = document.getElementById('searchForm');
+  var ov = document.getElementById('loadingOverlay');
+  var bar = document.getElementById('progressBar');
+  var sub = document.getElementById('loadingSub');
+  var title = document.getElementById('loadingTitle');
+  var foot = document.getElementById('loadingFoot');
+  var timers = [];
+
+  function startLoading(titleText, footText, steps) {
+    title.textContent = titleText;
+    foot.textContent = footText;
+    sub.textContent = steps[0];
+    ov.classList.add('show');
+    ov.setAttribute('aria-hidden', 'false');
+    var pct = 0, i = 0;
+    timers.push(setInterval(function () {
+      i++; if (i < steps.length) sub.textContent = steps[i];
+    }, 4200));
+    timers.push(setInterval(function () {
+      pct += Math.max(0.4, (92 - pct) * 0.05);   // ease toward 92%
+      if (pct > 92) pct = 92;
+      bar.style.width = pct.toFixed(1) + '%';
+    }, 220));
+  }
+  // When the results page starts loading, snap the bar to 100%.
+  window.addEventListener('pagehide', function () {
+    if (bar) bar.style.width = '100%';
+    timers.forEach(clearInterval);
+  });
+
+  // Distance units follow the location: US -> miles, elsewhere (incl Canada) -> km.
+  var loc = document.getElementById('location');
+  var radius = document.getElementById('radius');
+  var locLat = document.getElementById('locLat');
+  var locLon = document.getElementById('locLon');
+  var locCc = document.getElementById('locCc');
+  var confirmEl = document.getElementById('locConfirm');
+  function setUnit(u) {
+    Array.prototype.forEach.call(radius.options, function (o) {
+      o.text = o.value === '' ? 'Any distance' : (o.value + ' ' + u);
+    });
+  }
+  function updateUnit() {
+    if (locCc && locCc.value) { setUnit(locCc.value.toUpperCase() === 'US' ? 'mi' : 'km'); return; }
+    var v = (loc.value || '').trim().toUpperCase();
+    var mi = /^\d{5}$/.test(v) || v.indexOf('USA') >= 0 || v.indexOf('UNITED STATES') >= 0;
+    setUnit(mi ? 'mi' : 'km');
+  }
+  if (loc && radius) { loc.addEventListener('input', updateUnit); updateUnit(); }
+
+  // "Use my current location": browser geolocation -> reverse geocode -> confirm.
+  var useLoc = document.getElementById('useLoc');
+  function clearCoords() {
+    if (locLat) locLat.value = ''; if (locLon) locLon.value = ''; if (locCc) locCc.value = '';
+    if (confirmEl) confirmEl.style.display = 'none';
+  }
+  // Typing a location by hand overrides the pinned GPS coordinates.
+  if (loc) loc.addEventListener('input', function () {
+    if (locLat && locLat.value) clearCoords();
+  });
+  if (useLoc) useLoc.addEventListener('click', function () {
+    if (!navigator.geolocation) {
+      confirmEl.style.display = 'block';
+      confirmEl.className = 'loc-confirm err';
+      confirmEl.textContent = 'Your browser can’t share location — type a city or postal code.';
+      return;
+    }
+    useLoc.disabled = true;
+    var original = useLoc.innerHTML;
+    useLoc.textContent = 'Locating…';
+    navigator.geolocation.getCurrentPosition(function (pos) {
+      var la = pos.coords.latitude.toFixed(6), lo = pos.coords.longitude.toFixed(6);
+      locLat.value = la; locLon.value = lo;
+      fetch('{{ url_for("geo_reverse") }}?lat=' + la + '&lon=' + lo)
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          if (d && d.ok) {
+            loc.value = d.label; locCc.value = d.cc || '';
+            setUnit(d.unit || 'km');
+            confirmEl.className = 'loc-confirm ok';
+            confirmEl.innerHTML = '📍 Using your location: <b>' + d.label + '</b> — edit above to change.';
+          } else {
+            locCc.value = '';
+            loc.value = loc.value || 'Current location';
+            confirmEl.className = 'loc-confirm ok';
+            confirmEl.innerHTML = '📍 Using your current location (couldn’t resolve a name).';
+          }
+          confirmEl.style.display = 'block';
+          useLoc.disabled = false; useLoc.innerHTML = original;
+        })
+        .catch(function () {
+          confirmEl.className = 'loc-confirm ok';
+          confirmEl.innerHTML = '📍 Using your current location.';
+          confirmEl.style.display = 'block';
+          useLoc.disabled = false; useLoc.innerHTML = original;
+        });
+    }, function (err) {
+      confirmEl.style.display = 'block';
+      confirmEl.className = 'loc-confirm err';
+      confirmEl.textContent = err.code === 1
+        ? 'Location permission denied — type a city or postal code instead.'
+        : 'Couldn’t get your location — type a city or postal code instead.';
+      useLoc.disabled = false; useLoc.innerHTML = original;
+    }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 });
+  });
+
+  if (ta) ta.addEventListener('keydown', function (e) {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+      e.preventDefault();
+      if (searchForm.requestSubmit) searchForm.requestSubmit();
+      else searchForm.submit();
+    }
+  });
+
+  if (searchForm) searchForm.addEventListener('submit', function () {
+    startLoading('Searching ClinicalTrials.gov…', 'This usually takes 15–30 seconds',
+      ['Fetching recruiting trials', 'Screening age & sex',
+       'Reading eligibility criteria with AI', 'Ranking by fit, then distance']);
+  });
+
+  // EHR import: pull a patient chart from the connected FHIR server.
+  var ehrForm = document.getElementById('ehrForm');
+  var ehrSample = document.getElementById('ehrSample');
+  var ehrId = document.getElementById('ehrId');
+  function startEhr() {
+    startLoading('Loading from the EHR…', 'Reading the patient chart securely',
+      ['Fetching demographics', 'Pulling active problems & medications',
+       'Reading recent labs & vitals', 'De-identifying the summary']);
+  }
+  if (ehrForm) ehrForm.addEventListener('submit', startEhr);
+  if (ehrSample) ehrSample.addEventListener('click', function () {
+    var h = document.createElement('input');
+    h.type = 'hidden'; h.name = 'sample'; h.value = '1';
+    ehrForm.appendChild(h);
+    startEhr();
+    if (ehrForm.requestSubmit) ehrForm.requestSubmit(); else ehrForm.submit();
+  });
+
+  function submitImport() {
+    if (!fileInput.files.length) return;
+    startLoading('Reading your note…', 'Extracting and de-identifying',
+      ['Extracting the text', 'Removing identifiers', 'Structuring the summary']);
+    if (importForm.requestSubmit) importForm.requestSubmit();
+    else importForm.submit();
+  }
+  if (fileInput) fileInput.addEventListener('change', submitImport);
+
+  if (wrap && fileInput) {
+    ['dragenter', 'dragover'].forEach(function (ev) {
+      wrap.addEventListener(ev, function (e) {
+        e.preventDefault(); e.stopPropagation(); wrap.classList.add('dragging');
+      });
+    });
+    ['dragleave', 'dragend', 'drop'].forEach(function (ev) {
+      wrap.addEventListener(ev, function (e) {
+        e.preventDefault(); e.stopPropagation(); wrap.classList.remove('dragging');
+      });
+    });
+    wrap.addEventListener('drop', function (e) {
+      var files = e.dataTransfer && e.dataTransfer.files;
+      if (files && files.length) {
+        var dt = new DataTransfer();
+        dt.items.add(files[0]);
+        fileInput.files = dt.files;
+        submitImport();
+      }
+    });
+  }
+})();
+</script>

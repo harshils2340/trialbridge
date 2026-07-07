@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Patient leads · TrialBridge{% endblock %}
+
+{% block body %}
+<div class="page-head">
+  <h1>Patient leads</h1>
+  <p>Consented, patient-initiated interest from the public site — the qualified referrals sponsors and sites pay for.</p>
+</div>
+
+<div class="stats">
+  <div class="stat"><div class="l">{{ ic.icon('list', 'ico stat-ico') }}Total</div><div class="n">{{ leads|length }}</div></div>
+  <div class="stat accent"><div class="l">{{ ic.icon('activity', 'ico stat-ico') }}New</div><div class="n">{{ counts.get('new', 0) }}</div></div>
+</div>
+
+<div class="card">
+  {% if not leads %}
+  <div class="empty">
+    <h3>No leads yet</h3>
+    <p>Share your public site — <span class="mono">{{ url_for('home', _external=True) }}</span> — and consented patient requests land here.</p>
+  </div>
+  {% else %}
+  <table>
+    <thead><tr><th>When</th><th>Patient</th><th>Contact</th><th>Condition</th><th>Trial</th><th>Location</th></tr></thead>
+    <tbody>
+      {% for l in leads %}
+      <tr>
+        <td class="tag">{{ l['created_at'] }}</td>
+        <td><b>{{ l['name'] }}</b>{% if l['age'] %} <span class="tag">· {{ l['age'] }}</span>{% endif %}{% if l['sex'] %} <span class="tag">· {{ l['sex'] }}</span>{% endif %}</td>
+        <td class="tag">{% if l['email'] %}{{ l['email'] }}{% endif %}{% if l['phone'] %}<div class="mono">{{ l['phone'] }}</div>{% endif %}</td>
+        <td>{{ l['condition'] }}</td>
+        <td>{% if l['nct'] %}<a href="https://clinicaltrials.gov/study/{{ l['nct'] }}" target="_blank" rel="noopener">{{ l['nct'] }}</a>{% endif %}<div class="tag">{{ l['title'][:52] }}</div></td>
+        <td class="tag">{{ l['location'] }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>
+{% endblock %}

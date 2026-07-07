@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Referral {{ ref['nct'] }} · TrialBridge</title>
+  <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='logo.svg') }}">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+{% import "_icons.html" as ic %}
+<div class="coord-wrap">
+  <div class="coord-brand">
+    <img class="brand-mark" src="{{ url_for('static', filename='logo.svg') }}" width="24" height="24" alt="">
+    <span>TrialBridge</span>
+    <span class="coord-tag">Study coordinator</span>
+  </div>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for cat, msg in messages %}<div class="flash {{ cat }}">{{ msg }}</div>{% endfor %}
+  {% endwith %}
+
+  <div class="card">
+    <span class="status {{ ref['status'] }}">{{ ref['status'].replace('_',' ') }}</span>
+    <h1 style="margin:12px 0 4px; font-size:22px; letter-spacing:-.02em;">Patient referral</h1>
+    <p style="color:var(--muted); margin:0;">A physician referred a patient who may be eligible for your study.</p>
+
+    <dl class="kv" style="margin-top:20px;">
+      <dt>Study</dt><dd>{{ ref['title'] }}</dd>
+      <dt>NCT</dt><dd><a class="ctlink mono" href="https://clinicaltrials.gov/study/{{ ref['nct'] }}" target="_blank" rel="noopener">{{ ref['nct'] }} {{ ic.icon('external') }}</a></dd>
+      <dt>Site</dt><dd>{{ ref['site'] or '—' }}</dd>
+      <dt>Patient ref</dt><dd>{{ ref['patient_label'] }}</dd>
+      {% if ref['verdict'] %}<dt>Physician screen</dt><dd><span class="pill {{ ref['verdict'] }}">{{ ref['verdict'].replace('_',' ') }}{% if ref['score'] %}<span class="score">{{ ref['score'] }}</span>{% endif %}</span></dd>{% endif %}
+    </dl>
+  </div>
+
+  {% if ref['consent'] and (ref['patient_name'] or ref['patient_contact']) %}
+  <div class="card">
+    <div class="section-title"><h2>Patient contact (consented)</h2></div>
+    <dl class="kv">
+      {% if ref['patient_name'] %}<dt>Name</dt><dd>{{ ref['patient_name'] }}</dd>{% endif %}
+      {% if ref['patient_contact'] %}<dt>Contact</dt><dd>{{ ref['patient_contact'] }}</dd>{% endif %}
+    </dl>
+  </div>
+  {% else %}
+  <div class="banner">The patient's contact details were not released. Please coordinate through the referring physician.</div>
+  {% endif %}
+
+  {% if ref['patient_summary'] %}
+  <div class="card">
+    <div class="section-title"><h2>De-identified summary</h2></div>
+    <div class="summary-box">{{ ref['patient_summary'] }}</div>
+  </div>
+  {% endif %}
+
+  <div class="card">
+    <div class="section-title"><h2>Update referral status</h2></div>
+    <form method="post" action="{{ url_for('coordinator_status', token=ref['token']) }}">
+      <div class="field">
+        <label for="status">Status</label>
+        <select id="status" name="status">
+          {% for s in statuses %}
+          <option value="{{ s }}" {{ 'selected' if s == ref['status'] }}>{{ s.replace('_',' ') }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label for="note">Note <span class="hint">(optional)</span></label>
+        <input id="note" name="note" type="text" placeholder="e.g. left voicemail, screening booked for Fri">
+      </div>
+      <button class="btn btn-primary" type="submit">{{ ic.icon('check') }}Save update</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <div class="section-title"><h2>History</h2></div>
+    <ul class="timeline">
+      {% for e in events %}
+      <li>
+        <div><span class="status {{ e['status'] }}">{{ e['status'].replace('_',' ') }}</span>
+          <span class="actor-tag">{{ 'site' if e['actor'] == 'site' else 'physician' }}</span></div>
+        {% if e['note'] %}<div style="font-size:14px;margin-top:4px;">{{ e['note'] }}</div>{% endif %}
+        <div class="t">{{ e['created_at'] }}</div>
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+
+  <p class="coord-foot">Secure referral link · TrialBridge</p>
+</div>
+</body>
+</html>

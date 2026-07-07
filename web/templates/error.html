@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}{{ code }} · TrialBridge{% endblock %}
+{% block body %}
+<div class="empty">
+  <h3>{{ code }}</h3>
+  <p>{{ msg }}</p>
+  <a class="btn btn-primary" href="{{ url_for('dashboard') }}" style="margin-top:8px;">Back to search</a>
+</div>
+{% endblock %}
+{% block auth_body %}
+<div class="card"><div class="empty">
+  <h3>{{ code }}</h3>
+  <p>{{ msg }}</p>
+  <a class="btn btn-primary" href="{{ url_for('login') }}" style="margin-top:8px;">Sign in</a>
+</div></div>
+{% endblock %}

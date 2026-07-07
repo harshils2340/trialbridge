@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}TrialBridge{% endblock %}</title>
+  <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='logo.svg') }}">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+{% import "_icons.html" as ic %}
+{% if user %}
+<div class="layout">
+  <aside class="sidebar">
+    <a class="brand" href="{{ url_for('dashboard') }}"><img class="brand-mark" src="{{ url_for('static', filename='logo.svg') }}" width="24" height="24" alt="">TrialBridge</a>
+    <nav class="side-nav">
+      <a href="{{ url_for('dashboard') }}" class="side-link {{ 'active' if request.endpoint in ['dashboard','search','results'] }}">{{ ic.icon('search') }}Find trials</a>
+      <a href="{{ url_for('referrals') }}" class="side-link {{ 'active' if request.endpoint in ['referrals','referral_detail'] }}">{{ ic.icon('list') }}Referrals</a>
+      <a href="{{ url_for('leads') }}" class="side-link {{ 'active' if request.endpoint == 'leads' }}">{{ ic.icon('user-plus') }}Patient leads</a>
+    </nav>
+    <div class="side-foot">
+      <div class="who">{{ user['name'] }}{% if user['specialty'] %}<span>{{ user['specialty'] }}</span>{% endif %}</div>
+      <a href="{{ url_for('logout') }}" class="side-link">{{ ic.icon('logout') }}Sign out</a>
+    </div>
+  </aside>
+  <main class="content">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for cat, msg in messages %}
+        <div class="flash {{ cat }}">{{ msg }}</div>
+      {% endfor %}
+    {% endwith %}
+    {% block body %}{% endblock %}
+  </main>
+</div>
+{% else %}
+<div class="{% block container %}wrap{% endblock %}">
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for cat, msg in messages %}
+      <div class="flash {{ cat }}">{{ msg }}</div>
+    {% endfor %}
+  {% endwith %}
+  {% block auth_body %}{% endblock %}
+</div>
+{% endif %}
+</body>
+</html>

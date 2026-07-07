@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Find trials · TrialBridge{% endblock %}
+{% block body %}
+{% if not llm_on %}
+<div class="banner">Eligibility reasoning is off — set <span class="mono">LLM_API_KEY</span> and restart. Search + age/sex screening still work.</div>
+{% endif %}
+
+<div class="tool-head">
+  <h1>Find a trial</h1>
+  <div class="stat-strip">
+    <span class="s"><b>{{ total }}</b> referrals</span>
+    <span class="s"><b>{{ counts.get('referred',0) + counts.get('contacted',0) + counts.get('screened',0) }}</b> in pipeline</span>
+    <span class="s accent"><b>{{ enrolled }}</b> enrolled</span>
+    <span class="s accent"><b>{{ earned | money }}</b> commission</span>
+    <a href="{{ url_for('referrals') }}" class="strip-link">Referrals →</a>
+  </div>
+</div>
+
+{% include "_search_form.html" %}
+{% endblock %}

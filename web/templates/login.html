@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% import "_icons.html" as ic %}
+{% block title %}Sign in · TrialBridge{% endblock %}
+{% block container %}auth{% endblock %}
+{% block auth_body %}
+<div class="card">
+  <div class="auth-hero"><img class="hero-mark" src="{{ url_for('static', filename='logo.svg') }}" width="46" height="46" alt="TrialBridge"></div>
+  <h1>Welcome back</h1>
+  <p class="sub">Sign in to find trials and track your referrals.</p>
+  <form method="post" action="{{ url_for('login') }}{{ '?next=' + request.args.get('next') if request.args.get('next') }}">
+    <div class="field">
+      <label for="email">Email</label>
+      <input id="email" name="email" type="email" autocomplete="email" required autofocus>
+    </div>
+    <div class="field">
+      <label for="password">Password</label>
+      <input id="password" name="password" type="password" autocomplete="current-password" required>
+    </div>
+    <button class="btn btn-primary btn-block" type="submit">Sign in{{ ic.icon('arrow-right') }}</button>
+  </form>
+  <p class="foot">No account? <a href="{{ url_for('register') }}">Create one</a></p>
+</div>
+{% endblock %}

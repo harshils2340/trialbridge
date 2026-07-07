@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+{% import "_icons.html" as ic %}
+{% block title %}Results · TrialBridge{% endblock %}
+{% block body %}
+<div class="page-head" style="display:flex;justify-content:space-between;align-items:flex-end;">
+  <div>
+    <h1>{{ results|length }} {{ 'trial' if include_obs else 'treatment trial' }}{{ '' if results|length == 1 else 's' }} for “{{ condition or 'your patient' }}”</h1>
+    <p>
+      {% if located %}Near {{ location }}{{ ' (within ' ~ radius ~ ' ' ~ unit ~ ')' if radius }} · ranked by fit, then distance{% else %}Sites in {{ country or 'any country' }} · ranked by fit{% endif %}
+      · patient age {{ profile['age'] or '?' }} {{ profile['sex'] or '' }}
+    </p>
+  </div>
+  <a class="btn btn-ghost" href="{{ url_for('search') }}">{{ ic.icon('plus') }}New search</a>
+</div>
+
+{% if not llm_on %}
+<div class="banner">Showing trials that pass age/sex screening. Set
+  <span class="mono">LLM_API_KEY</span> for per-trial eligibility reasoning.</div>
+{% endif %}
+
+{% if located %}
+<div class="loc-note">Showing only trials with a site within {{ radius }} {{ unit }} of {{ location }}, nearest first.</div>
+{% else %}
+<div class="loc-note warn">Showing trials across {{ country or 'the country' }}. Add a <b>location</b> and radius to see only nearby trials.</div>
+{% endif %}
+
+{% if not results %}
+<div class="card"><div class="empty">
+  <h3>No matching recruiting trials{{ ' nearby' if located }}</h3>
+  {% if located %}
+  <p>Nothing within {{ radius }} {{ unit }} of {{ location }}. Try a larger radius, broaden the condition{{ ', or tick “Include registries & observational studies”' if not include_obs }}.</p>
+  {% else %}
+  <p>Try broadening the condition{{ ', or tick “Include registries & observational studies”' if not include_obs }}.</p>
+  {% endif %}
+  <a class="btn btn-ghost" href="{{ url_for('search') }}" style="margin-top:8px;">New search</a>
+</div></div>
+{% endif %}
+
+{% for r in results %}
+{% set t = r.trial %}{% set m = r.match %}
+{% set obs = (t.studyType or '')|upper == 'OBSERVATIONAL' %}
+<details class="result">
+  <summary class="rhead">
+    <div class="rh-main">
+      <div class="rh-title">{{ t.title }}</div>
+      <div class="rh-meta">
+        <span class="mono">{{ t.nctId }}</span>
+        {% if obs %}· <span class="type-badge obs">Registry</span>{% else %}· phase {{ t.phase or 'NA' }}{% endif %}
+        · <span class="status-tag">Recruiting</span>
+        {% if r.distance is not none %}· <span class="dist">{{ r.distance | round | int }} {{ r.unit }} away</span>{% endif %}
+      </div>
+      {% if m.rationale %}<div class="rh-why">{{ m.rationale }}</div>{% endif %}
+    </div>
+    <div class="rh-side">
+      <span class="pill {{ m.verdict }}">{{ m.verdict.replace('_',' ') }}{% if m.score %}<span class="score">{{ m.score }}</span>{% endif %}</span>
+      <span class="chev" aria-hidden="true">Details {{ ic.icon('chevron-down', 'ico chev-ico') }}</span>
+    </div>
+  </summary>
+
+  <div class="rbody">
+    {% if m.met or m.not_met or m.unknown %}
+    <div class="rsec">
+      {% if m.met %}<div class="crit met"><span class="lab">Meets</span> {{ m.met[:6] | join('; ') }}</div>{% endif %}
+      {% if m.not_met %}<div class="crit fail"><span class="lab">Potential blockers</span> {{ m.not_met[:6] | join('; ') }}</div>{% endif %}
+      {% if m.unknown %}<div class="crit ask"><span class="lab">Confirm with patient</span> {{ m.unknown[:6] | join('; ') }}</div>{% endif %}
+    </div>
+    {% endif %}
+
+    <div class="facts">
+      {% if t.phase and not obs %}<div><dt>Phase</dt><dd>{{ t.phase }}</dd></div>{% endif %}
+      {% if t.leadSponsor %}<div><dt>Sponsor</dt><dd>{{ t.leadSponsor }}</dd></div>{% endif %}
+      {% if t.officials %}<div><dt>Investigator</dt><dd>{{ t.officials[0].name }}{% if t.officials[0].affiliation %} · {{ t.officials[0].affiliation }}{% endif %}</dd></div>{% endif %}
+      {% if t.enrollment %}<div><dt>Enrollment</dt><dd>{{ t.enrollment }}</dd></div>{% endif %}
+      <div><dt>Ages</dt><dd>{{ t.minAge or 'N/A' }} – {{ t.maxAge or 'N/A' }}</dd></div>
+      <div><dt>Sex</dt><dd>{{ (t.sex or 'All')|capitalize }}</dd></div>
+      {% if t.startDate %}<div><dt>Started</dt><dd>{{ t.startDate }}</dd></div>{% endif %}
+      {% if t.completionDate %}<div><dt>Primary completion</dt><dd>{{ t.completionDate }}</dd></div>{% endif %}
+    </div>
+
+    {% if t.briefSummary %}
+    <div class="rsec"><h4>Study summary</h4><p class="rsum">{{ t.briefSummary }}</p></div>
+    {% endif %}
+
+    {% if t.criteria %}
+    <div class="rsec"><h4>Eligibility criteria</h4><div class="crit-box">{{ t.criteria }}</div></div>
+    {% endif %}
+
+    <div class="rsec">
+      <h4 class="ico-h4">{{ ic.icon('pin') }}{% if r.nearby %}Recruiting sites near {{ location }}
+        <span class="count">{{ r.nearby_total }} within {{ radius }} {{ r.unit }}</span>{% else %}Study site{% endif %}</h4>
+      {% if r.nearby %}
+      <ul class="sites">
+        {% for s in r.nearby %}
+        <li>
+          <div class="s-main">
+            <b>{{ s.facility or 'Study site' }}</b>
+            <span class="s-loc">{{ [s.city, s.state, s.country] | select | join(', ') }}</span>
+            {% if s.contact %}<span class="s-contact">{{ s.contact }}</span>{% endif %}
+          </div>
+          <div class="s-side">
+            <span class="dist">{{ s.distance | round | int }} {{ r.unit }}</span>
+            <span class="site-status">Recruiting</span>
+          </div>
+        </li>
+        {% endfor %}
+      </ul>
+      {% if r.other_count %}
+      <p class="other-sites">Also recruiting at {{ r.other_count }} other
+        site{{ '' if r.other_count == 1 else 's' }}{% if r.other_regions %} —
+        {{ r.other_regions | join(' · ') }}{% if r.other_count > r.other_regions|length %} · and more{% endif %}{% endif %}.</p>
+      {% endif %}
+      {% else %}
+      <p class="rsum">{{ r.site_str or 'No sites listed.' }}{% if r.coordinator %}<br>{{ r.coordinator }}{% endif %}</p>
+      {% endif %}
+    </div>
+
+    <div class="refer-panel">
+      <a class="ctlink" href="https://clinicaltrials.gov/study/{{ t.nctId }}" target="_blank" rel="noopener">Full record on ClinicalTrials.gov {{ ic.icon('external') }}</a>
+      <form method="post" action="{{ url_for('refer') }}" class="refer-form">
+        <input type="hidden" name="nct" value="{{ t.nctId }}">
+        <input type="hidden" name="title" value="{{ t.title }}">
+        <input type="hidden" name="note" value="{{ note }}">
+        <input type="hidden" name="condition" value="{{ condition }}">
+        <input type="hidden" name="country" value="{{ country }}">
+        <input type="hidden" name="site" value="{{ r.site_str }}">
+        <input type="hidden" name="coordinator" value="{{ r.coordinator }}">
+        <input type="hidden" name="verdict" value="{{ m.verdict }}">
+        <input type="hidden" name="score" value="{{ m.score }}">
+        <input type="hidden" name="rationale" value="{{ m.rationale }}">
+        <input type="text" name="patient_label" placeholder="Patient tag (e.g. 61M-T2D)" style="max-width:200px;">
+        <button class="btn btn-primary btn-sm" type="submit">{{ ic.icon('user-plus') }}Refer this patient</button>
+      </form>
+    </div>
+  </div>
+</details>
+{% endfor %}
+{% endblock %}

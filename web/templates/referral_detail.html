@@ -1,0 +1,159 @@
+{% extends "base.html" %}
+{% import "_icons.html" as ic %}
+{% block title %}{{ ref['patient_label'] }} · Referral · TrialBridge{% endblock %}
+{% block body %}
+<div class="page-head">
+  <a href="{{ url_for('referrals') }}" class="tag">← All referrals</a>
+  <h1 style="margin-top:8px;">Referral · {{ ref['patient_label'] }}</h1>
+  <p><span class="status {{ ref['status'] }}">{{ ref['status'].replace('_',' ') }}</span>
+     &nbsp; Created {{ ref['created_at'] }}</p>
+</div>
+
+<div class="grid-2">
+  <div>
+    <div class="card">
+      <div class="section-title"><h2>Trial</h2></div>
+      <dl class="kv">
+        <dt>Study</dt><dd>{{ ref['title'] }}</dd>
+        <dt>NCT</dt><dd><a class="ctlink mono" href="https://clinicaltrials.gov/study/{{ ref['nct'] }}" target="_blank" rel="noopener">{{ ref['nct'] }} {{ ic.icon('external') }}</a></dd>
+        <dt>Site</dt><dd>{{ ref['site'] or '—' }}</dd>
+        {% if ref['coordinator'] %}<dt>Coordinator</dt><dd>{{ ref['coordinator'] }}</dd>{% endif %}
+        {% if ref['verdict'] %}<dt>Screen verdict</dt><dd><span class="pill {{ ref['verdict'] }}">{{ ref['verdict'].replace('_',' ') }}{% if ref['score'] %}<span class="score">{{ ref['score'] }}</span>{% endif %}</span></dd>{% endif %}
+        {% if ref['rationale'] %}<dt>Why</dt><dd>{{ ref['rationale'] }}</dd>{% endif %}
+      </dl>
+    </div>
+
+    <div class="card">
+      <div class="section-title"><h2>Patient & consent</h2></div>
+      <dl class="kv">
+        <dt>Reference</dt><dd>{{ ref['patient_label'] }}</dd>
+        <dt>Consent</dt><dd>
+          {% if ref['consent'] %}<span class="status enrolled">consented</span> {{ ref['consent_at'] }}
+          {% else %}<span class="status declined">not recorded</span>{% endif %}</dd>
+        {% if ref['patient_name'] %}<dt>Name</dt><dd>{{ ref['patient_name'] }}</dd>{% endif %}
+        {% if ref['patient_contact'] %}<dt>Contact</dt><dd>{{ ref['patient_contact'] }}</dd>{% endif %}
+      </dl>
+    </div>
+
+    {% if ref['patient_summary'] %}
+    <div class="card">
+      <div class="section-title"><h2>Patient note (de-identified)</h2></div>
+      <div class="summary-box">{{ ref['patient_summary'] }}</div>
+    </div>
+    {% endif %}
+
+    <div class="card">
+      <div class="section-title"><h2>Status history</h2></div>
+      <ul class="timeline">
+        {% for e in events %}
+        <li>
+          <div><span class="status {{ e['status'] }}">{{ e['status'].replace('_',' ') }}</span>
+            <span class="actor-tag">{{ 'site' if e['actor'] == 'site' else 'you' }}</span></div>
+          {% if e['note'] %}<div style="font-size:14px;margin-top:4px;">{{ e['note'] }}</div>{% endif %}
+          <div class="t">{{ e['created_at'] }}</div>
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+
+  <div>
+    <div class="card">
+      <div class="section-title"><h2>Send to coordinator</h2>
+        {% if ref['notified_at'] %}<span class="status received">sent</span>{% endif %}
+      </div>
+      <p class="tag" style="margin-top:0;">
+        {% if ref['notified_at'] %}Sent {{ ref['notified_at'] }}. Resend or copy the link anytime.
+        {% else %}Email the study site and share the secure link so they can confirm receipt and update status.{% endif %}</p>
+
+      <div class="field" style="margin-top:10px;">
+        <label for="coordEmail">Coordinator email</label>
+        <input id="coordEmail" name="coordinator_email" type="email" value="{{ ref['coordinator_email'] }}" placeholder="coordinator@site.org">
+      </div>
+
+      {% if smtp_on %}
+      <form method="post" action="{{ url_for('referral_notify', ref_id=ref['id']) }}">
+        <input type="hidden" name="coordinator_email" id="notifyEmail" value="{{ ref['coordinator_email'] }}">
+        <button class="btn btn-primary btn-block" type="submit">{{ ic.icon('arrow-right') }}{{ 'Resend referral email' if ref['notified_at'] else 'Send referral email' }}</button>
+      </form>
+      <div class="or-line"><span>or send from your own mail app</span></div>
+      {% endif %}
+
+      <div style="display:flex; gap:10px; flex-wrap:wrap;">
+        <a class="btn {{ 'btn-ghost' if smtp_on else 'btn-primary' }} btn-sm" id="composeBtn" href="{{ mailto }}">{{ ic.icon('arrow-right') }}Compose email</a>
+        <form method="post" action="{{ url_for('referral_mark_sent', ref_id=ref['id']) }}" id="markSentForm">
+          <input type="hidden" name="coordinator_email" id="markSentEmail" value="{{ ref['coordinator_email'] }}">
+          <button class="btn btn-ghost btn-sm" type="submit">{{ ic.icon('check') }}Mark as sent</button>
+        </form>
+      </div>
+
+      <label style="margin-top:16px;">Secure status link for the site</label>
+      <div class="copy-row">
+        <input id="shareUrl" type="text" readonly value="{{ share_url }}">
+        <button type="button" class="btn btn-ghost btn-sm" id="copyBtn" data-copy="#shareUrl">Copy</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="section-title"><h2>Update status</h2></div>
+      <form method="post" action="{{ url_for('referral_status', ref_id=ref['id']) }}">
+        <div class="field">
+          <label for="status">New status</label>
+          <select id="status" name="status">
+            {% for s in statuses %}
+            <option value="{{ s }}" {{ 'selected' if s == ref['status'] }}>{{ s.replace('_',' ') }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="field">
+          <label for="note">Note <span class="hint">(optional)</span></label>
+          <input id="note" name="note" type="text" placeholder="e.g. coordinator called patient">
+        </div>
+        <button class="btn btn-primary btn-block" type="submit">{{ ic.icon('check') }}Save update</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <div class="section-title"><h2>Commission</h2></div>
+      <p class="tag" style="margin-top:0;">Recorded when this referral reaches <b>enrolled</b>.</p>
+      <form method="post" action="{{ url_for('referral_commission', ref_id=ref['id']) }}">
+        <div class="field">
+          <label for="amount">Expected commission ($)</label>
+          <input id="amount" name="amount" type="number" min="0" step="1"
+                 value="{{ '%.0f'|format((ref['commission_cents'] or 0) / 100) }}">
+        </div>
+        <button class="btn btn-ghost btn-block" type="submit">{{ ic.icon('check') }}Save amount</button>
+      </form>
+    </div>
+  </div>
+</div>
+<script>
+(function () {
+  var btn = document.getElementById('copyBtn');
+  if (btn) btn.addEventListener('click', function () {
+    var el = document.querySelector(btn.dataset.copy);
+    el.select(); el.setSelectionRange(0, 99999);
+    var done = function () { btn.textContent = 'Copied'; setTimeout(function () { btn.textContent = 'Copy'; }, 1500); };
+    if (navigator.clipboard) navigator.clipboard.writeText(el.value).then(done, function () { document.execCommand('copy'); done(); });
+    else { document.execCommand('copy'); done(); }
+  });
+
+  // Keep the compose link + hidden email fields in sync with the editable box,
+  // so the doctor can fix the address and send in one click.
+  var subject = {{ email_subject | tojson }};
+  var body = {{ email_body | tojson }};
+  var emailBox = document.getElementById('coordEmail');
+  var compose = document.getElementById('composeBtn');
+  var markSent = document.getElementById('markSentEmail');
+  var notify = document.getElementById('notifyEmail');
+  function sync() {
+    var e = (emailBox.value || '').trim();
+    if (compose) compose.href = 'mailto:' + encodeURIComponent(e) +
+      '?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(body);
+    if (markSent) markSent.value = e;
+    if (notify) notify.value = e;
+  }
+  if (emailBox) { emailBox.addEventListener('input', sync); sync(); }
+})();
+</script>
+{% endblock %}

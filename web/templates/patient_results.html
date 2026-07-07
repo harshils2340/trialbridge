@@ -1,0 +1,91 @@
+{% extends "public_base.html" %}
+{% block title %}Trials for {{ condition }} near {{ location }} · TrialBridge{% endblock %}
+
+{% set labels = {
+  'likely_eligible': ('You may be a good fit', 'good'),
+  'possible': ('You might qualify', 'maybe'),
+  'likely_ineligible': ('Probably not a fit', 'no'),
+  'ineligible': ('Not a fit', 'no'),
+  'error': ('Couldn’t assess', 'maybe')
+} %}
+
+{% block body %}
+<section class="pr-wrap">
+  <div class="pr-head">
+    <div>
+      <h1>Trials for {{ condition }}</h1>
+      <p class="pr-sub">{{ ic.icon('pin') }} Near {{ location }} · {{ results|length }} recruiting match{{ '' if results|length == 1 else 'es' }}</p>
+    </div>
+    <a class="btn btn-ghost" href="{{ url_for('find') }}">{{ ic.icon('search') }} New search</a>
+  </div>
+
+  {% if not results %}
+  <div class="pr-empty">
+    <h2>No recruiting trials matched right now</h2>
+    <p>Try widening the distance, checking a nearby city, or a broader condition name.
+       New trials open all the time — it's worth checking back.</p>
+    <a class="btn btn-primary" href="{{ url_for('find') }}">Try another search</a>
+  </div>
+  {% endif %}
+
+  {% for r in results %}
+  {% set t = r.trial %}{% set m = r.match %}
+  {% set lab = labels.get(m.verdict, ('You might qualify','maybe')) %}
+  <article class="pr-card">
+    <div class="pr-card-top">
+      <span class="fit fit-{{ lab[1] }}">{{ ic.icon('check') if lab[1]=='good' else ic.icon('sparkle') }}{{ lab[0] }}</span>
+      {% if r.distance is not none %}<span class="pr-dist">{{ ic.icon('pin') }}{{ '%.0f'|format(r.distance) }} {{ r.unit }} away</span>{% endif %}
+      {% if t.phase %}<span class="pr-phase">{{ t.phase }}</span>{% endif %}
+    </div>
+    <h2 class="pr-card-title">{{ t.title }}</h2>
+    {% if t.briefSummary %}<p class="pr-summary">{{ t.briefSummary[:280] }}{{ '…' if t.briefSummary|length > 280 }}</p>{% endif %}
+
+    {% if m.rationale %}
+    <div class="pr-why"><b>Why this match:</b> {{ m.rationale }}</div>
+    {% endif %}
+
+    <div class="pr-facts">
+      {% if r.site_str %}<span>{{ ic.icon('pin') }} {{ r.site_str }}</span>{% endif %}
+      {% if t.leadSponsor %}<span>{{ ic.icon('award') }} {{ t.leadSponsor }}</span>{% endif %}
+      <span><a href="https://clinicaltrials.gov/study/{{ t.nctId }}" target="_blank" rel="noopener">{{ ic.icon('external') }} {{ t.nctId }} on ClinicalTrials.gov</a></span>
+    </div>
+
+    {% if m.met or m.unknown %}
+    <details class="pr-elig">
+      <summary>{{ ic.icon('chevron-down') }} See eligibility details</summary>
+      {% if m.met %}<div class="pr-elig-b good"><b>Looks like you meet:</b><ul>{% for x in m.met[:6] %}<li>{{ x }}</li>{% endfor %}</ul></div>{% endif %}
+      {% if m.unknown %}<div class="pr-elig-b maybe"><b>The team will need to check:</b><ul>{% for x in m.unknown[:6] %}<li>{{ x }}</li>{% endfor %}</ul></div>{% endif %}
+      {% if m.not_met %}<div class="pr-elig-b no"><b>May be a barrier:</b><ul>{% for x in m.not_met[:6] %}<li>{{ x }}</li>{% endfor %}</ul></div>{% endif %}
+    </details>
+    {% endif %}
+
+    <details class="pr-interest">
+      <summary class="btn btn-primary btn-block">{{ ic.icon('user-plus') }} I'm interested — have the study team contact me</summary>
+      <form class="interest-form" method="post" action="{{ url_for('interest') }}">
+        <input type="hidden" name="nct" value="{{ t.nctId }}">
+        <input type="hidden" name="title" value="{{ t.title }}">
+        <input type="hidden" name="condition" value="{{ condition }}">
+        <input type="hidden" name="location" value="{{ location }}">
+        <input type="hidden" name="site" value="{{ r.site_str }}">
+        <div class="if-row two">
+          <label>Your name<input name="name" type="text" required></label>
+          <label>Phone <span class="opt">(optional)</span><input name="phone" type="tel"></label>
+        </div>
+        <label>Email<input name="email" type="email" required></label>
+        <label class="if-consent">
+          <input type="checkbox" name="consent" required>
+          I agree that TrialBridge may share my contact details with this study's team so
+          they can reach out about my eligibility. I understand this isn't medical advice
+          and I can talk to my own doctor first.
+        </label>
+        <button class="btn btn-primary" type="submit">{{ ic.icon('arrow-right') }} Request contact</button>
+      </form>
+    </details>
+  </article>
+  {% endfor %}
+
+  <p class="pr-foot-note">TrialBridge shows public information from ClinicalTrials.gov and an
+    automated read of eligibility. It isn't medical advice — the study team makes the final
+    eligibility decision, and you should talk with your own doctor.</p>
+</section>
+{% endblock %}
