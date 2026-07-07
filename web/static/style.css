@@ -570,6 +570,10 @@ body.pub { background: var(--surface); }
 .hero-field input { border: 0; outline: 0; width: 100%; font-size: 15px;
   font-family: var(--sans); background: transparent; padding: 12px 0; color: var(--ink); }
 .hero-search .btn { flex-shrink: 0; }
+.hero-loc-actions { display: flex; flex-wrap: wrap; justify-content: center; align-items: center;
+  gap: 12px; max-width: 760px; margin: 12px auto 0; }
+.hero-loc-actions .loc-use { margin-left: 0; font-size: 14px; }
+.hero-loc-actions .loc-confirm { margin-top: 0; }
 .hero-chips { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center;
   align-items: center; margin-top: 24px; }
 .hero-chips span { color: var(--faint); font-size: 13px; }
