@@ -26,7 +26,7 @@
   <form class="import-seg" method="post" action="{{ url_for('ehr_connect') }}">
     <span class="import-label">Pull from your EHR</span>
     <button class="file-btn as-btn" type="submit">{{ ic.icon('activity') }}Connect your EHR</button>
-    <span class="import-hint">Connect once, then load a patient by ID — no copy-paste.</span>
+    <span class="import-hint">Connect once, then load a patient by ID - no copy-paste.</span>
   </form>
   {% endif %}
 </div>
@@ -38,7 +38,7 @@
         <button type="button" id="useLoc" class="link-btn loc-use">{{ ic.icon('pin') }} Use my current location</button>
       </label>
       <input id="location" name="location" type="text" required autofocus
-             placeholder="City or postal code — e.g. Toronto, ON or M5G 2C4"
+             placeholder="City or postal code - e.g. Toronto, ON or M5G 2C4"
              value="{{ request.form.get('location','') }}">
       <input type="hidden" id="locLat" name="lat" value="{{ request.form.get('lat','') }}">
       <input type="hidden" id="locLon" name="lon" value="{{ request.form.get('lon','') }}">
@@ -63,14 +63,14 @@
     </div>
   </div>
 
-  <label for="note">Patient note <span class="hint">(de-identified — no names or identifiers)</span></label>
+  <label for="note">Patient note <span class="hint">(de-identified - no names or identifiers)</span></label>
   <div class="drop-wrap" id="dropWrap">
-    <textarea id="note" name="note" class="note-big" placeholder="Type or paste the patient summary — or drag a PDF / image right onto this box. e.g. 34F, biopsy-proven lupus nephritis (class IV), eGFR 55, on mycophenolate + prednisone, UPCR 1.8..." required>{{ note_value if note_value is defined and note_value else request.form.get('note','') }}</textarea>
+    <textarea id="note" name="note" class="note-big" placeholder="Type or paste the patient summary - or drag a PDF / image right onto this box. e.g. 34F, biopsy-proven lupus nephritis (class IV), eGFR 55, on mycophenolate + prednisone, UPCR 1.8..." required>{{ note_value if note_value is defined and note_value else request.form.get('note','') }}</textarea>
     <div class="drop-hint">Drop a file to import &amp; de-identify</div>
   </div>
   <div class="toolbar">
     <div class="field">
-      <label for="condition">Condition <span class="hint">(auto-detected — override if needed)</span></label>
+      <label for="condition">Condition <span class="hint">(auto-detected - override if needed)</span></label>
       <input id="condition" name="condition" type="text" placeholder="e.g. lupus nephritis" value="{{ condition_value if condition_value is defined and condition_value else request.form.get('condition','') }}">
     </div>
     <div class="spacer"></div>
@@ -166,7 +166,7 @@
     if (!navigator.geolocation) {
       confirmEl.style.display = 'block';
       confirmEl.className = 'loc-confirm err';
-      confirmEl.textContent = 'Your browser can’t share location — type a city or postal code.';
+      confirmEl.textContent = 'Your browser can’t share location - type a city or postal code.';
       return;
     }
     useLoc.disabled = true;
@@ -182,7 +182,7 @@
             loc.value = d.label; locCc.value = d.cc || '';
             setUnit(d.unit || 'km');
             confirmEl.className = 'loc-confirm ok';
-            confirmEl.innerHTML = '📍 Using your location: <b>' + d.label + '</b> — edit above to change.';
+            confirmEl.innerHTML = '📍 Using your location: <b>' + d.label + '</b> - edit above to change.';
           } else {
             locCc.value = '';
             loc.value = loc.value || 'Current location';
@@ -202,8 +202,8 @@
       confirmEl.style.display = 'block';
       confirmEl.className = 'loc-confirm err';
       confirmEl.textContent = err.code === 1
-        ? 'Location permission denied — type a city or postal code instead.'
-        : 'Couldn’t get your location — type a city or postal code instead.';
+        ? 'Location permission denied - type a city or postal code instead.'
+        : 'Couldn’t get your location - type a city or postal code instead.';
       useLoc.disabled = false; useLoc.innerHTML = original;
     }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 });
   });

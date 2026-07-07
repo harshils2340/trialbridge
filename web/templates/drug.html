@@ -1,6 +1,6 @@
 {% extends "public_base.html" %}
 {% block title %}{{ drug }} clinical trials near you · TrialBridge{% endblock %}
-{% block description %}Recruiting {{ drug }} clinical trials. See studies you may qualify for near you and request contact — free and private.{% endblock %}
+{% block description %}Recruiting {{ drug }} clinical trials. See studies you may qualify for near you and request contact - free and private.{% endblock %}
 
 {% block body %}
 <section class="cond-hero">
@@ -11,7 +11,7 @@
   <h1>{{ drug }} clinical trials near you</h1>
   <p class="cond-lead">
     Interested in a study involving {{ drug }}? Enter your location to see recruiting
-    trials near you that you may qualify for — free, private, and in plain English.
+    trials near you that you may qualify for - free, private, and in plain English.
     Talk with your own doctor before joining any trial.
   </p>
   <form class="cond-search" method="post" action="{{ url_for('find') }}">

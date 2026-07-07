@@ -120,7 +120,7 @@ def gen_token():
     return secrets.token_urlsafe(16)
 
 
-# New columns added after the first release — applied idempotently so existing
+# New columns added after the first release - applied idempotently so existing
 # databases upgrade without a manual migration step.
 _MIGRATIONS = {
     "referrals": {

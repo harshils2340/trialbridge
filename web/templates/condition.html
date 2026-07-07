@@ -1,6 +1,6 @@
 {% extends "public_base.html" %}
 {% block title %}{{ condition }} clinical trials{% if city %} in {{ city }}{% endif %} · TrialBridge{% endblock %}
-{% block description %}Recruiting {{ condition }} clinical trials{% if city %} near {{ city }}{% endif %}. See studies you may qualify for and request contact — free and private.{% endblock %}
+{% block description %}Recruiting {{ condition }} clinical trials{% if city %} near {{ city }}{% endif %}. See studies you may qualify for and request contact - free and private.{% endblock %}
 
 {% block body %}
 <section class="cond-hero">
@@ -12,10 +12,10 @@
   <p class="cond-lead">
     {% if city %}
       Looking for a {{ condition|lower }} study near {{ city }}? Search recruiting trials and
-      see which ones you may qualify for — in plain English, free, and private.
+      see which ones you may qualify for - in plain English, free, and private.
     {% else %}
       Explore recruiting {{ condition|lower }} clinical trials. We read each study's
-      eligibility so you can quickly see what fits — then request contact when you're ready.
+      eligibility so you can quickly see what fits - then request contact when you're ready.
     {% endif %}
   </p>
   <form class="cond-search" method="get" action="{{ url_for('find') }}">

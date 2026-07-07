@@ -23,7 +23,7 @@
   <div class="pr-empty">
     <h2>No recruiting trials matched right now</h2>
     <p>Try widening the distance, checking a nearby city, or a broader condition name.
-       New trials open all the time — it's worth checking back.</p>
+       New trials open all the time - it's worth checking back.</p>
     <a class="btn btn-primary" href="{{ url_for('find') }}">Try another search</a>
   </div>
   {% endif %}
@@ -60,7 +60,7 @@
     {% endif %}
 
     <details class="pr-interest">
-      <summary class="btn btn-primary btn-block">{{ ic.icon('user-plus') }} I'm interested — have the study team contact me</summary>
+      <summary class="btn btn-primary btn-block">{{ ic.icon('user-plus') }} I'm interested - have the study team contact me</summary>
       <form class="interest-form" method="post" action="{{ url_for('interest') }}">
         <input type="hidden" name="nct" value="{{ t.nctId }}">
         <input type="hidden" name="title" value="{{ t.title }}">
@@ -85,7 +85,7 @@
   {% endfor %}
 
   <p class="pr-foot-note">TrialBridge shows public information from ClinicalTrials.gov and an
-    automated read of eligibility. It isn't medical advice — the study team makes the final
+    automated read of eligibility. It isn't medical advice - the study team makes the final
     eligibility decision, and you should talk with your own doctor.</p>
 </section>
 {% endblock %}

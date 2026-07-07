@@ -137,7 +137,7 @@ def build_packet(ref_id, trial, site, match, patient, physician, country):
         out.append("\n_(Run with LLM_API_KEY set to include the eligibility "
                    "rationale.)_")
     out += ["\n## Referral status log",
-            f"- {now()} — **referred**"]
+            f"- {now()} - **referred**"]
     return "\n".join(out) + "\n"
 
 
@@ -164,7 +164,7 @@ def cmd_create(args):
         except Exception as e:
             print(f"(match skipped: {e})", file=sys.stderr)
     else:
-        print("(no LLM_API_KEY — packet will omit eligibility rationale)",
+        print("(no LLM_API_KEY - packet will omit eligibility rationale)",
               file=sys.stderr)
 
     site = best_site(trial, args.country)
@@ -226,9 +226,9 @@ def cmd_update(args):
     # append to the packet's status log if present
     pkt = PACKETS / f"{args.id}.md"
     if pkt.exists():
-        note = f" — {args.note}" if args.note else ""
+        note = f" - {args.note}" if args.note else ""
         with open(pkt, "a") as f:
-            f.write(f"- {now()} — **{args.status}**{note}\n")
+            f.write(f"- {now()} - **{args.status}**{note}\n")
     print(f"{args.id}: {old} -> {args.status}"
           + (f"  ({args.note})" if args.note else ""))
 

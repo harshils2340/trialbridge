@@ -9,7 +9,7 @@ patient in one click, and track every referral through the pipeline
 > payments, "commission", trial advertising, or patient data.** Paying physicians
 > per referral/enrollment is illegal in the US (Anti-Kickback Statute/EKRA) and
 > Canada (secret commissions / College fee-splitting rules). The physician-facing
-> "commission" tracking in this app must be reframed as status-only or removed —
+> "commission" tracking in this app must be reframed as status-only or removed -
 > see COMPLIANCE.md §6.
 
 ## Run locally
@@ -34,12 +34,12 @@ skips the per-trial eligibility reasoning.
 ## Getting a patient in (three ways, so doctors don't retype)
 
 1. **Type/paste** the de-identified summary.
-2. **Upload** PDF, Word, image, or text — the app extracts the text (PDF via
+2. **Upload** PDF, Word, image, or text - the app extracts the text (PDF via
    `pypdf`, Word via the .docx XML, images via a vision model) and runs an AI
    pass to **de-identify + structure** it (`AGE:`/`SEX:` headers, strips
    names/MRNs/dates). If the AI step is unavailable, the extracted text is kept
    so you can redact it manually.
-3. **Import from EHR (FHIR)** — enter a patient's FHIR id (or click *try a
+3. **Import from EHR (FHIR)** - enter a patient's FHIR id (or click *try a
    sample patient*) and the app pulls their chart and builds a de-identified
    summary (age/sex + active problems + meds + recent labs/vitals). No names,
    DOB, or addresses are included. Defaults to the open SMART reference sandbox
@@ -53,7 +53,7 @@ Press **⌘/Ctrl + Enter** to search.
 Referring a patient captures **consent** and (optionally) patient contact +
 coordinator email, then gives you a one-click **Compose email** (prefilled) and
 a **secure tokenized link** for the study site. The site opens that link (no
-login) to confirm receipt and update status — and those updates flow back to
+login) to confirm receipt and update status - and those updates flow back to
 your referral timeline, tagged *site* vs *you*. Track everything under
 **Referrals** (search/filter, CSV export, commission).
 
@@ -63,12 +63,12 @@ link. To send directly, set `SMTP_HOST` (and `SMTP_PORT`, `SMTP_USER`,
 
 ## What's inside
 
-- `app.py` — Flask app: auth, search, EHR import, refer + consent, notify,
+- `app.py` - Flask app: auth, search, EHR import, refer + consent, notify,
   tracking, public coordinator page, CSV export.
-- `db.py` — SQLite schema + helpers with idempotent migrations
+- `db.py` - SQLite schema + helpers with idempotent migrations
   (`trialbridge.db`, created on first run).
-- `fhir.py` — EHR import via FHIR R4. `mailer.py` — optional SMTP email.
-- `templates/`, `static/` — polished UI.
+- `fhir.py` - EHR import via FHIR R4. `mailer.py` - optional SMTP email.
+- `templates/`, `static/` - polished UI.
 - Reuses `../match_trials.py` (fetch + gate + LLM scoring) and `../refer.py`
   (site/contact selection).
 

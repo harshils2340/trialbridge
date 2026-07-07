@@ -1,5 +1,5 @@
 {% extends "public_base.html" %}
-{% block title %}TrialBridge — find a clinical trial you may qualify for{% endblock %}
+{% block title %}TrialBridge - find a clinical trial you may qualify for{% endblock %}
 
 {% block body %}
 <section class="hero">
@@ -7,12 +7,12 @@
     <span class="hero-eyebrow">{{ ic.icon('sparkle') }} Free · Private · Two minutes</span>
     <h1>Find a clinical trial<br>you may qualify for.</h1>
     <p class="hero-sub">Tell us your condition and where you live. We search every recruiting
-      study on ClinicalTrials.gov and show the ones near you that fit — in plain English.</p>
+      study on ClinicalTrials.gov and show the ones near you that fit - in plain English.</p>
 
     <form class="hero-search" method="get" action="{{ url_for('find') }}">
       <div class="hero-field">
         {{ ic.icon('search') }}
-        <input name="condition" type="text" placeholder="Condition — e.g. type 2 diabetes, obesity" required>
+        <input name="condition" type="text" placeholder="Condition - e.g. type 2 diabetes, obesity" required>
       </div>
       <div class="hero-field">
         {{ ic.icon('pin') }}
@@ -29,7 +29,7 @@
     </div>
 
     <div class="hero-chips trending">
-      <span>{{ ic.icon('activity') }} Trending — GLP-1 &amp; weight-loss:</span>
+      <span>{{ ic.icon('activity') }} Trending - GLP-1 &amp; weight-loss:</span>
       {% for d in drugs[:6] %}
       <a class="chip chip-hot" href="{{ url_for('drug_page', slug=slugify(d)) }}">{{ d }}</a>
       {% endfor %}
@@ -59,9 +59,9 @@
   <div class="reassure-in">
     <h2>Why people use TrialBridge</h2>
     <ul>
-      <li>{{ ic.icon('check') }} <b>Access to new treatments</b> — trials can offer options before they're widely available.</li>
-      <li>{{ ic.icon('check') }} <b>Close to home</b> — we rank by distance so you're not driving across the country.</li>
-      <li>{{ ic.icon('check') }} <b>Private by design</b> — we only share your details with a study team when <i>you</i> ask us to.</li>
+      <li>{{ ic.icon('check') }} <b>Access to new treatments</b> - trials can offer options before they're widely available.</li>
+      <li>{{ ic.icon('check') }} <b>Close to home</b> - we rank by distance so you're not driving across the country.</li>
+      <li>{{ ic.icon('check') }} <b>Private by design</b> - we only share your details with a study team when <i>you</i> ask us to.</li>
     </ul>
     <a class="btn btn-primary btn-lg" href="{{ url_for('find') }}">Find a trial near me{{ ic.icon('arrow-right') }}</a>
   </div>

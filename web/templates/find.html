@@ -119,7 +119,7 @@
         }).catch(function () { useLoc.disabled = false; useLoc.innerHTML = orig; });
     }, function () {
       confirmEl.style.display = 'block'; confirmEl.className = 'loc-confirm err';
-      confirmEl.textContent = 'Couldn’t get your location — type a city or postal code.';
+      confirmEl.textContent = 'Couldn’t get your location - type a city or postal code.';
       useLoc.disabled = false; useLoc.innerHTML = orig;
     }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 });
   });

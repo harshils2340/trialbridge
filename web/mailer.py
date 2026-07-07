@@ -19,7 +19,7 @@ def smtp_configured():
 
 def build_message(ref, link):
     """Return (subject, body) for a coordinator notification email."""
-    subject = f"Trial referral — {ref['nct']} ({ref['patient_label']})"
+    subject = f"Trial referral - {ref['nct']} ({ref['patient_label']})"
     lines = [
         "Hello,",
         "",

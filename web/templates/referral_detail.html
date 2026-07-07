@@ -16,7 +16,7 @@
       <dl class="kv">
         <dt>Study</dt><dd>{{ ref['title'] }}</dd>
         <dt>NCT</dt><dd><a class="ctlink mono" href="https://clinicaltrials.gov/study/{{ ref['nct'] }}" target="_blank" rel="noopener">{{ ref['nct'] }} {{ ic.icon('external') }}</a></dd>
-        <dt>Site</dt><dd>{{ ref['site'] or '—' }}</dd>
+        <dt>Site</dt><dd>{{ ref['site'] or '-' }}</dd>
         {% if ref['coordinator'] %}<dt>Coordinator</dt><dd>{{ ref['coordinator'] }}</dd>{% endif %}
         {% if ref['verdict'] %}<dt>Screen verdict</dt><dd><span class="pill {{ ref['verdict'] }}">{{ ref['verdict'].replace('_',' ') }}{% if ref['score'] %}<span class="score">{{ ref['score'] }}</span>{% endif %}</span></dd>{% endif %}
         {% if ref['rationale'] %}<dt>Why</dt><dd>{{ ref['rationale'] }}</dd>{% endif %}

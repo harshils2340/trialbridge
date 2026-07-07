@@ -106,7 +106,7 @@
       </ul>
       {% if r.other_count %}
       <p class="other-sites">Also recruiting at {{ r.other_count }} other
-        site{{ '' if r.other_count == 1 else 's' }}{% if r.other_regions %} —
+        site{{ '' if r.other_count == 1 else 's' }}{% if r.other_regions %} -
         {{ r.other_regions | join(' · ') }}{% if r.other_count > r.other_regions|length %} · and more{% endif %}{% endif %}.</p>
       {% endif %}
       {% else %}

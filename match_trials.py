@@ -67,7 +67,7 @@ def fetch_trials(condition, max_n=300, geo=None, intervention=""):
     `geo`, if given, is a ClinicalTrials.gov geo filter like
     'distance(43.65,-79.38,100mi)' so the API only returns studies with a site
     within that radius. `intervention`, if given, searches by drug/intervention
-    (query.intr) — e.g. "semaglutide" — which is how people search the GLP-1 /
+    (query.intr) - e.g. "semaglutide" - which is how people search the GLP-1 /
     peptide trend.
     """
     trials, token = [], None
@@ -357,7 +357,7 @@ def llm_match(patient, trial, retries=3):
                 resp = json.load(r)
             return normalize_match(_extract_json(
                 resp["choices"][0]["message"]["content"]))
-        except Exception as e:  # network, rate-limit, JSON — back off and retry
+        except Exception as e:  # network, rate-limit, JSON - back off and retry
             last = e
             if attempt < retries - 1:
                 time.sleep(2 ** attempt)
@@ -380,7 +380,7 @@ def site_line(trial, country):
         return f"- **Site in {country}:** {_fmt_site(local[0])}{extra}"
     if country and trial["locations"]:
         s = trial["locations"][0]
-        return (f"- **No {country} site** — nearest listed: "
+        return (f"- **No {country} site** - nearest listed: "
                 f"{_fmt_site(s)}, {s.get('country')}")
     if trial["locations"]:
         s = trial["locations"][0]
@@ -390,7 +390,7 @@ def site_line(trial, country):
 
 def _type_tag(trial):
     if (trial.get("studyType") or "").upper() == "OBSERVATIONAL":
-        return "observational/registry — not a treatment"
+        return "observational/registry - not a treatment"
     return f"phase {trial['phase'] or 'NA'}"
 
 
@@ -522,7 +522,7 @@ def main():
 
 
 # --------------------------------------------------------------------------- #
-# Offline self-tests (no network, no LLM) — run with --selftest
+# Offline self-tests (no network, no LLM) - run with --selftest
 # --------------------------------------------------------------------------- #
 def selftest():
     ok = True

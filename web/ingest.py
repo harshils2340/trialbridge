@@ -5,7 +5,7 @@ Doctors shouldn't retype a note. They upload/paste it and we extract the text
 pass to strip identifiers and structure it for trial screening.
 
 Every function degrades gracefully: on any failure it raises IngestError with a
-short, human message the UI can show — it never crashes the request.
+short, human message the UI can show - it never crashes the request.
 """
 import base64
 import html
@@ -78,7 +78,7 @@ def extract_text(filename, data):
         except Exception:
             raise IngestError("Couldn't read that file as text.")
     if ext == "doc":
-        raise IngestError("Old .doc isn't supported — save as .docx or .txt.")
+        raise IngestError("Old .doc isn't supported - save as .docx or .txt.")
     raise IngestError(f"Unsupported file type: .{ext}")
 
 
@@ -102,12 +102,12 @@ def deidentify(text):
     """LLM pass to strip identifiers + structure. Falls back to raw text."""
     if not mt.LLM_API_KEY:
         raise IngestError("AI de-identification is off (set LLM_API_KEY). "
-                          "The raw text was imported — remove identifiers before searching.")
+                          "The raw text was imported - remove identifiers before searching.")
     try:
         out = mt.llm_chat(DEID_SYSTEM, text[:MAX_TEXT])
     except Exception:
         raise IngestError("The AI cleanup step failed. The raw text was imported "
-                          "— please review and remove identifiers before searching.")
+                          "- please review and remove identifiers before searching.")
     return (out or "").strip()
 
 

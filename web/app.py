@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""TrialBridge — a doctor-facing wrapper on ClinicalTrials.gov.
+"""TrialBridge - a doctor-facing wrapper on ClinicalTrials.gov.
 
 Paste a de-identified patient note, get ranked recruiting trials with a plain
 explanation of the fit, then refer a patient in one click and track that
@@ -72,7 +72,7 @@ def money(cents):
 
 
 # --------------------------------------------------------------------------- #
-# Error handlers — never show a raw stack trace to a doctor.
+# Error handlers - never show a raw stack trace to a doctor.
 # --------------------------------------------------------------------------- #
 @app.errorhandler(404)
 def not_found(_e):
@@ -102,6 +102,22 @@ def server_error(_e):
 # --------------------------------------------------------------------------- #
 # Auth
 # --------------------------------------------------------------------------- #
+# TEMP: no-login testing mode. When on, the clinician tool is open to everyone
+# (falls back to a shared demo account) so there's zero barrier to trying it.
+# Flip to "0" to re-enable real clinician logins.
+NO_LOGIN = os.environ.get("NO_LOGIN", "1") == "1"
+_DEMO_EMAIL = "demo@trialbridge.local"
+
+
+def _ensure_demo_user():
+    u = db.get_user_by_email(_DEMO_EMAIL)
+    if not u:
+        pw = generate_password_hash("demo-no-login", method="pbkdf2:sha256")
+        db.create_user(_DEMO_EMAIL, pw, "Demo Clinician", "", "")
+        u = db.get_user_by_email(_DEMO_EMAIL)
+    return u
+
+
 def login_required(view):
     @functools.wraps(view)
     def wrapped(*a, **k):
@@ -115,6 +131,8 @@ def login_required(view):
 def load_user():
     uid = session.get("user_id")
     g.user = db.get_user(uid) if uid else None
+    if g.user is None and NO_LOGIN:
+        g.user = _ensure_demo_user()
 
 
 @app.context_processor
@@ -189,7 +207,7 @@ def dashboard():
 
 
 # --------------------------------------------------------------------------- #
-# Public consumer site ("/") — the patient front door + programmatic SEO.
+# Public consumer site ("/") - the patient front door + programmatic SEO.
 # The clinician tool lives under /app; sponsors/sites are the paying side.
 # --------------------------------------------------------------------------- #
 import re as _re2
@@ -199,7 +217,7 @@ def slugify(s):
     return _re2.sub(r"[^a-z0-9]+", "-", (s or "").lower()).strip("-")
 
 
-# Beachhead vertical: metabolic / cardiometabolic — huge self-motivated consumer
+# Beachhead vertical: metabolic / cardiometabolic - huge self-motivated consumer
 # search demand and heavy sponsor spend. These seed the programmatic SEO pages.
 VERTICAL = "Metabolic & weight"
 SEED_CONDITIONS = [
@@ -564,7 +582,7 @@ def run_search(note, condition, country, require_site, coords=None, radius=50,
                unit="km", interventional_only=True, intervention=""):
     """Fetch -> hard-gate -> LLM-score, ranked by relevance then distance.
     `radius`/`unit` define the geographic limit. By default only interventional
-    (treatment) trials are kept — a doctor refers for therapy, not to a registry.
+    (treatment) trials are kept - a doctor refers for therapy, not to a registry.
     `intervention` searches by drug name (e.g. "semaglutide") instead of/along
     with a condition. Returns (search_label, results)."""
     profile = mt.patient_profile(note)
@@ -608,7 +626,7 @@ def run_search(note, condition, country, require_site, coords=None, radius=50,
     gated = [t for t in trials if mt.hard_gate(t, profile)[0]]
 
     # Pick which trials to screen. With a location, keep only trials with a
-    # RECRUITING site inside the radius, screen the closest first — so we never
+    # RECRUITING site inside the radius, screen the closest first - so we never
     # surface something across the country or a site that isn't enrolling.
     picks = []  # list of (trial, sites_nearby)
     if coords:
@@ -764,7 +782,7 @@ def search():
             coords = (geo[0], geo[1])
             unit = units_for(geo[2])
         else:
-            flash(f"Couldn't find “{location}” — showing results by relevance "
+            flash(f"Couldn't find “{location}” - showing results by relevance "
                   "instead. Try a city, e.g. “Toronto, ON” or a postal code.",
                   "error")
 
@@ -781,7 +799,7 @@ def search():
         return render_template("search.html", note_value=note)
 
     if not detected:
-        flash("Couldn't auto-detect a condition — type one in and search again.",
+        flash("Couldn't auto-detect a condition - type one in and search again.",
               "error")
         return render_template("search.html", note_value=note)
 
@@ -811,7 +829,7 @@ def extract():
             data = f.read()
             if ingest._ext(f.filename) in ingest.IMAGE_EXTS:
                 text = ingest.vision_extract(data, ingest._ext(f.filename))
-                flash("Read the image and de-identified it — review, then search.", "ok")
+                flash("Read the image and de-identified it - review, then search.", "ok")
                 return render_template("search.html", note_value=text)
             raw_text = ingest.extract_text(f.filename, data)
         elif raw:
@@ -829,15 +847,15 @@ def extract():
 
     # 2) De-identify with the LLM if available; otherwise keep text + warn.
     if not mt.LLM_API_KEY:
-        flash("Imported. AI de-identification is off — remove any names/identifiers "
+        flash("Imported. AI de-identification is off - remove any names/identifiers "
               "before searching.", "error")
         return render_template("search.html", note_value=raw_text)
     try:
         cleaned = ingest.deidentify(raw_text)
-        flash("Imported and de-identified — review the note, then search.", "ok")
+        flash("Imported and de-identified - review the note, then search.", "ok")
         return render_template("search.html", note_value=cleaned)
     except ingest.IngestError:
-        flash("Imported, but AI cleanup failed — please remove identifiers "
+        flash("Imported, but AI cleanup failed - please remove identifiers "
               "manually before searching.", "error")
         return render_template("search.html", note_value=raw_text)
 
@@ -845,7 +863,7 @@ def extract():
 # --------------------------------------------------------------------------- #
 # Import a patient from a connected EHR (FHIR) -> de-identified note
 # --------------------------------------------------------------------------- #
-# Label shown once an EHR is linked. No real OAuth handshake yet — this connects
+# Label shown once an EHR is linked. No real OAuth handshake yet - this connects
 # to the public SMART/HAPI FHIR sandbox so the pull-by-ID flow can be used.
 EHR_PROVIDER = os.environ.get("EHR_PROVIDER", "SMART Health IT (sandbox)")
 
@@ -885,7 +903,7 @@ def ehr_import():
         app.logger.exception("ehr import failed")
         flash("EHR import failed unexpectedly. Please try again.", "error")
         return render_template("search.html")
-    flash("Loaded the patient from the EHR and de-identified it — review the "
+    flash("Loaded the patient from the EHR and de-identified it - review the "
           "note, then search.", "ok")
     return render_template("search.html", note_value=summary, condition_value=cond)
 
@@ -904,7 +922,7 @@ def _extract_email(s):
 @app.route("/refer", methods=["POST"])
 @login_required
 def refer():
-    """Step 1: confirm the referral — capture consent + contact details before
+    """Step 1: confirm the referral - capture consent + contact details before
     anything is saved or sent."""
     f = request.form
     nct = f.get("nct", "").strip()
@@ -1026,7 +1044,7 @@ def referral_notify(ref_id):
 @app.route("/referral/<int:ref_id>/mark-sent", methods=["POST"])
 @login_required
 def referral_mark_sent(ref_id):
-    """Doctor sent the referral out-of-band (mailto/copy) — record it."""
+    """Doctor sent the referral out-of-band (mailto/copy) - record it."""
     if not db.mark_notified(ref_id, g.user["id"],
                             request.form.get("coordinator_email", "").strip()):
         abort(404)
@@ -1035,7 +1053,7 @@ def referral_mark_sent(ref_id):
 
 
 # --------------------------------------------------------------------------- #
-# Public coordinator page (tokenized, no login) — closes the referral loop.
+# Public coordinator page (tokenized, no login) - closes the referral loop.
 # --------------------------------------------------------------------------- #
 @app.route("/r/<token>")
 def coordinator_page(token):
@@ -1057,7 +1075,7 @@ def coordinator_status(token):
     if status not in db.SITE_STATUSES:
         flash("Please choose a valid status.", "error")
     elif db.update_status_by_token(token, status, note, actor="site"):
-        flash(f"Thanks — marked as {status.replace('_', ' ')}.", "ok")
+        flash(f"Thanks - marked as {status.replace('_', ' ')}.", "ok")
     return redirect(url_for("coordinator_page", token=token))
 
 
@@ -1092,6 +1110,6 @@ if __name__ == "__main__":
     port = int(os.environ.get("PORT", "5000"))
     debug = os.environ.get("FLASK_DEBUG", "0") == "1"
     print(f"TrialBridge on http://127.0.0.1:{port}  (LLM: "
-          f"{'on' if mt.LLM_API_KEY else 'OFF — set LLM_API_KEY'})")
+          f"{'on' if mt.LLM_API_KEY else 'OFF - set LLM_API_KEY'})")
     app.run(host="127.0.0.1", port=port, debug=debug, threaded=True,
             use_reloader=False)

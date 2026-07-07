@@ -55,7 +55,7 @@
       <dl class="kv">
         <dt>Study</dt><dd>{{ d.get('title') }}</dd>
         <dt>NCT</dt><dd><a class="ctlink mono" href="https://clinicaltrials.gov/study/{{ d.get('nct') }}" target="_blank" rel="noopener">{{ d.get('nct') }} {{ ic.icon('external') }}</a></dd>
-        <dt>Site</dt><dd>{{ d.get('site') or '—' }}</dd>
+        <dt>Site</dt><dd>{{ d.get('site') or '-' }}</dd>
         {% if d.get('verdict') %}<dt>Screen</dt><dd><span class="pill {{ d.get('verdict') }}">{{ d.get('verdict').replace('_',' ') }}{% if d.get('score') %}<span class="score">{{ d.get('score') }}</span>{% endif %}</span></dd>{% endif %}
       </dl>
     </div>
