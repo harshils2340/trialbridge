@@ -4,14 +4,13 @@
 {% block body %}
 <div class="page-head">
   <h1>Your referrals</h1>
-  <p>Every patient you referred, with live status for commission and follow-up.</p>
+  <p>Every patient you referred, with live status for follow-up.</p>
 </div>
 
 <div class="stats">
   <div class="stat"><div class="l">{{ ic.icon('list', 'ico stat-ico') }}Total</div><div class="n">{{ referrals|length }}</div></div>
   <div class="stat"><div class="l">{{ ic.icon('activity', 'ico stat-ico') }}In pipeline</div><div class="n">{{ counts.get('referred',0) + counts.get('contacted',0) + counts.get('screened',0) }}</div></div>
   <div class="stat accent"><div class="l">{{ ic.icon('check', 'ico stat-ico') }}Enrolled</div><div class="n">{{ enrolled }}</div></div>
-  <div class="stat accent"><div class="l">{{ ic.icon('award', 'ico stat-ico') }}Commission</div><div class="n">{{ earned | money }}</div></div>
 </div>
 
 {% if referrals %}
@@ -30,7 +29,7 @@
 
 <div class="card">
   <table id="refTable">
-    <thead><tr><th>Patient</th><th>Trial</th><th>Site</th><th>Status</th><th>Sent</th><th class="num">Commission</th><th>Updated</th></tr></thead>
+    <thead><tr><th>Patient</th><th>Trial</th><th>Site</th><th>Status</th><th>Sent</th><th>Updated</th></tr></thead>
     <tbody>
       {% for r in referrals %}
       <tr data-status="{{ r['status'] }}"
@@ -41,7 +40,6 @@
         <td class="tag">{{ r['site'][:40] or '-' }}</td>
         <td><span class="status {{ r['status'] }}">{{ r['status'].replace('_',' ') }}</span></td>
         <td>{% if r['notified_at'] %}<span class="sent-dot" title="Sent {{ r['notified_at'] }}">{{ ic.icon('check', 'ico') }}</span>{% else %}<span class="tag">-</span>{% endif %}</td>
-        <td class="num tag">{{ (r['commission_cents'] or 0) | money if r['status'] == 'enrolled' else '-' }}</td>
         <td class="tag">{{ r['updated_at'] }}</td>
       </tr>
       {% endfor %}

@@ -61,6 +61,36 @@ Email sending is optional: with no config it falls back to a `mailto:` compose
 link. To send directly, set `SMTP_HOST` (and `SMTP_PORT`, `SMTP_USER`,
 `SMTP_PASS`, `SMTP_FROM`, `SMTP_TLS`).
 
+## Closing the patient loop (consumer side)
+
+A patient applies to a trial from the public site (`/find` -> "I'm interested").
+That creates a **de-identified candidate** in the study-team review board
+(`/app/leads`). Each candidate has a **secure tokenized link** (`/c/<token>`) a
+real site coordinator can open with **no login** to review eligibility and
+**accept/decline**. Contact details unlock **only on accept** (mutual consent).
+The patient tracks status any time at `/applications` (cookie-based, no login).
+
+**Delivery is wired but OFF by default** so nothing is emailed while testing.
+Going live is a ~2 minute env change (no code):
+
+1. `NOTIFY_LIVE=1`
+2. `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` / `SMTP_FROM`
+3. `SITE_NOTIFY_EMAIL` - inbox that receives new blinded candidates (with the
+   `/c/<token>` link)
+4. `PUBLIC_BASE_URL` - e.g. `https://trialbridge.onrender.com` so email links
+   are absolute
+
+While OFF, the loop still works end to end: the operator copies the secure link
+from `/app/leads` and hands it to the site. On accept/decline/screening/enrolled
+the applicant is emailed (only when `NOTIFY_LIVE=1`). Site emails are always
+de-identified - no patient name/contact is ever in them.
+
+## Persistence
+
+SQLite lives at `DB_PATH` (defaults to `web/trialbridge.db`). For a real pilot,
+point `DB_PATH` at a mounted disk so applications survive redeploys (see the
+commented `disk:` block in `render.yaml`).
+
 ## What's inside
 
 - `app.py` - Flask app: auth, search, EHR import, refer + consent, notify,
@@ -78,7 +108,12 @@ link. To send directly, set `SMTP_HOST` (and `SMTP_PORT`, `SMTP_USER`,
 | --- | --- |
 | `LLM_API_KEY` (+ `LLM_MODEL`, `LLM_BASE_URL`) | Eligibility reasoning + de-identification |
 | `FHIR_BASE` | FHIR R4 server for EHR import (default: SMART open sandbox) |
-| `SMTP_HOST` (+ `SMTP_PORT`/`USER`/`PASS`/`FROM`/`TLS`) | Send coordinator emails directly |
+| `SMTP_HOST` (+ `SMTP_PORT`/`USER`/`PASS`/`FROM`/`TLS`) | Send emails directly |
+| `NOTIFY_LIVE` | `1` turns on real email delivery for the patient loop (default off) |
+| `SITE_NOTIFY_EMAIL` | Coordinator inbox that receives new blinded candidates |
+| `PUBLIC_BASE_URL` | Base URL used for links inside emails |
+| `DB_PATH` | SQLite file location (point at a persistent disk in prod) |
+| `NO_LOGIN` | `1` opens the clinician tool with no login (default on for testing) |
 | `PORT`, `FLASK_DEBUG`, `WEB_MAX_MATCH` | Server port, debug, LLM calls per search |
 
 ## Privacy

@@ -46,7 +46,7 @@
           <option value="{{ v }}" {{ 'selected' if q_radius == v else '' }}>{{ lbl }}</option>
           {% endfor %}
         </select>
-        <p class="filt-hint">Changing distance re-runs the search.</p>
+        <p class="filt-hint">Narrowing filters instantly; widening fetches more trials.</p>
       </div>
     </form>
 
@@ -127,75 +127,23 @@
         {% if t.phase %}<span class="pr-phase">{{ t.phase.replace('_',' ')|title if t.phase != 'NA' else 'N/A' }}</span>{% endif %}
         <span class="pr-recruiting">{{ ic.icon('check') }} Recruiting</span>
       </div>
-      <h2 class="pr-card-title">{{ t.title }}</h2>
-      {% if t.briefSummary %}<p class="pr-summary">{{ t.briefSummary[:320] }}{{ '…' if t.briefSummary|length > 320 }}</p>{% endif %}
-
-      {% if m.rationale %}
-      <div class="pr-why"><b>Why this match:</b> {{ m.rationale }}</div>
-      {% endif %}
+      <h2 class="pr-card-title">
+        <a class="pr-card-link" href="{{ url_for('trial_detail', search_id=search_id, nct=t.nctId) }}">{{ t.title }}</a>
+      </h2>
+      {% if t.briefSummary %}<p class="pr-summary">{{ t.briefSummary[:240] }}{{ '…' if t.briefSummary|length > 240 }}</p>{% endif %}
 
       <div class="pr-facts">
-        {% if r.site_str %}<span>{{ ic.icon('pin') }} {{ r.site_str }}</span>{% endif %}
-        {% if t.leadSponsor %}<span>{{ ic.icon('award') }} {{ t.leadSponsor }}</span>{% endif %}
-        <span><a href="https://clinicaltrials.gov/study/{{ t.nctId }}" target="_blank" rel="noopener">{{ ic.icon('external') }} {{ t.nctId }} on ClinicalTrials.gov</a></span>
+        {% if r.site_str %}<span><a href="https://www.google.com/maps/search/?api=1&query={{ r.site_str | urlencode }}" target="_blank" rel="noopener" title="Open in Google Maps">{{ ic.icon('pin') }} {{ r.site_str }}</a></span>{% endif %}
+        {% if t.leadSponsor %}<span><a href="https://www.google.com/search?q={{ t.leadSponsor | urlencode }}" target="_blank" rel="noopener" title="Look up this sponsor">{{ ic.icon('award') }} {{ t.leadSponsor }}</a></span>{% endif %}
       </div>
 
-      {% if m.met or m.unknown %}
-      <details class="pr-elig">
-        <summary>{{ ic.icon('chevron-down') }} See eligibility details</summary>
-        {% if m.met %}<div class="pr-elig-b good"><b>Looks like you meet:</b><ul>{% for x in m.met[:6] %}<li>{{ x }}</li>{% endfor %}</ul></div>{% endif %}
-        {% if m.unknown %}<div class="pr-elig-b maybe"><b>The team will need to check:</b><ul>{% for x in m.unknown[:6] %}<li>{{ x }}</li>{% endfor %}</ul></div>{% endif %}
-        {% if m.not_met %}<div class="pr-elig-b no"><b>May be a barrier:</b><ul>{% for x in m.not_met[:6] %}<li>{{ x }}</li>{% endfor %}</ul></div>{% endif %}
-      </details>
-      {% endif %}
-
-      {% if applied and t.nctId in applied %}
-      <div class="pr-applied">
-        {{ ic.icon('check') }} <b>Application submitted</b>
-        <a href="{{ url_for('applications') }}">Track it in My applications →</a>
+      <div class="pr-card-foot">
+        {% if applied and t.nctId in applied %}
+        <span class="pr-applied-tag">{{ ic.icon('check') }} Application submitted</span>
+        {% endif %}
+        <a class="btn btn-primary pr-view" href="{{ url_for('trial_detail', search_id=search_id, nct=t.nctId) }}">
+          View details &amp; apply{{ ic.icon('arrow-right') }}</a>
       </div>
-      {% else %}
-      <details class="pr-interest">
-        <summary class="btn btn-primary btn-block">{{ ic.icon('user-plus') }} I'm interested - apply in 30 seconds</summary>
-        <form class="interest-form" method="post" action="{{ url_for('interest') }}">
-          <input type="hidden" name="nct" value="{{ t.nctId }}">
-          <input type="hidden" name="title" value="{{ t.title }}">
-          <input type="hidden" name="condition" value="{{ condition }}">
-          <input type="hidden" name="location" value="{{ location }}">
-          <input type="hidden" name="site" value="{{ r.site_str }}">
-          <input type="hidden" name="age" value="{{ q_age }}">
-          <input type="hidden" name="sex" value="{{ q_sex }}">
-          <input type="hidden" name="eligibility" value='{{ {"verdict": m.verdict, "rationale": m.rationale, "met": m.met, "unknown": m.unknown, "not_met": m.not_met}|tojson }}'>
-          <p class="if-intro">Answer 4 quick questions - we fill the rest from your record, so you
-            don't fill out endless forms. The study team first reviews you <b>de-identified</b>;
-            they only see your contact details <b>if they accept you</b>.</p>
-
-          <div class="if-screener">
-            <label>Can you travel to the study site for visits?
-              <select name="travel"><option value="yes">Yes</option><option value="maybe">Not sure</option><option value="no">No</option></select></label>
-            <label>Are you currently in another clinical trial?
-              <select name="other_trial"><option value="no">No</option><option value="yes">Yes</option></select></label>
-            <label>Are you pregnant or planning to become pregnant?
-              <select name="pregnancy"><option value="no">No</option><option value="yes">Yes</option><option value="na">Not applicable</option></select></label>
-            <label>Can you give your own informed consent?
-              <select name="consent_capable"><option value="yes">Yes</option><option value="no">No</option></select></label>
-          </div>
-
-          <div class="if-row two">
-            <label>Your name<input name="name" type="text" required></label>
-            <label>Phone <span class="opt">(optional)</span><input name="phone" type="tel"></label>
-          </div>
-          <label>Email<input name="email" type="email" required></label>
-          <label class="if-consent">
-            <input type="checkbox" name="consent" required>
-            I agree that TrialBridge may share a <b>de-identified</b> summary with this study's
-            team, and my <b>contact details only if they accept me</b>. This isn't medical
-            advice and I can talk to my own doctor first.
-          </label>
-          <button class="btn btn-primary" type="submit">{{ ic.icon('arrow-right') }} Submit application</button>
-        </form>
-      </details>
-      {% endif %}
     </article>
     {% endfor %}
     </div>
@@ -228,6 +176,10 @@
   var count = document.getElementById('prCount');
   var noRes = document.getElementById('prNoResults');
   var sortSel = document.getElementById('fSort');
+  var fRadius = document.getElementById('fRadius');
+  // Radius the current results were fetched at (0 = any distance). Shrinking to
+  // a smaller radius is just a subset, so we filter client-side instantly.
+  var fetchedRadius = parseInt('{{ q_radius }}', 10) || 0;
 
   function checkedValues(cls) {
     var out = [];
@@ -239,11 +191,13 @@
     var phases = checkedValues('f-phase');
     var hasFit = document.querySelector('.f-fit');
     var hasPhase = document.querySelector('.f-phase');
+    var radius = fRadius ? (parseInt(fRadius.value, 10) || 0) : 0;
     var shown = 0;
     cards.forEach(function (c) {
       var ok = true;
       if (hasFit && fits.indexOf(c.getAttribute('data-fit')) === -1) ok = false;
       if (hasPhase && phases.indexOf(c.getAttribute('data-phase')) === -1) ok = false;
+      if (radius > 0 && parseFloat(c.getAttribute('data-dist')) > radius) ok = false;
       c.style.display = ok ? '' : 'none';
       if (ok) shown++;
     });
@@ -276,15 +230,23 @@
   if (r1) r1.addEventListener('click', reset);
   if (r2) r2.addEventListener('click', reset);
 
-  // Distance change re-runs the server search (with loading overlay)
+  // Distance change: shrinking is instant (client-side subset filter); only a
+  // wider radius (or "any distance") needs a fresh fetch from ClinicalTrials.gov.
   var refine = document.getElementById('refineForm');
-  var fRadius = document.getElementById('fRadius');
   var ov = document.getElementById('loadingOverlay');
   var bar = document.getElementById('progressBar');
   var sub = document.getElementById('loadingSub');
   var steps = ['Fetching recruiting studies', 'Checking which are near you',
                'Reading eligibility for each', 'Ranking your best matches'];
+  function needsRefetch(newR) {
+    // We already have everything within fetchedRadius (0 = everything).
+    if (fetchedRadius === 0) return false;         // have all distances
+    if (newR === 0) return true;                   // want all -> need fetch
+    return newR > fetchedRadius;                   // wider -> need fetch
+  }
   if (fRadius && refine) fRadius.addEventListener('change', function () {
+    var newR = parseInt(fRadius.value, 10) || 0;
+    if (!needsRefetch(newR)) { apply(); sortCards(); return; }  // instant
     ov.classList.add('show'); ov.setAttribute('aria-hidden', 'false');
     var pct = 0, i = 0;
     setInterval(function () { i++; if (i < steps.length) sub.textContent = steps[i]; }, 4200);

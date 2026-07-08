@@ -4,25 +4,45 @@
 {% block body %}
 <section class="hero">
   <div class="hero-in">
-    <span class="hero-eyebrow">{{ ic.icon('sparkle') }} Free · Private · Two minutes</span>
-    <h1>Find a clinical trial<br>you may qualify for.</h1>
-    <p class="hero-sub">Tell us your condition and where you live. We search every recruiting
-      study on ClinicalTrials.gov and show the ones near you that fit - in plain English.</p>
+    <h1>Find a clinical trial near you.</h1>
+    <p class="hero-sub">Enter your condition and location. We search recruiting studies on
+      ClinicalTrials.gov and show the ones near you that you may qualify for.</p>
 
-    <form id="heroForm" class="hero-search" method="post" action="{{ url_for('find') }}">
-      <div class="hero-field">
-        {{ ic.icon('search') }}
-        <input name="condition" type="text" placeholder="Condition - e.g. type 2 diabetes, obesity" required>
-      </div>
-      <div class="hero-field">
-        {{ ic.icon('pin') }}
-        <input id="location" name="location" type="text" placeholder="City or postal code" required>
+    <form id="heroForm" method="post" action="{{ url_for('find') }}">
+      <div class="hero-search">
+        <div class="hero-field">
+          {{ ic.icon('search') }}
+          <input name="condition" type="text" placeholder="Condition - e.g. type 2 diabetes"
+                 value="{{ condition_value|default('') }}" required>
+        </div>
+        <div class="hero-field">
+          {{ ic.icon('pin') }}
+          <input id="location" name="location" type="text" placeholder="City or postal code"
+                 value="{{ location_value|default('') }}" required>
+        </div>
+        <button class="btn btn-primary btn-lg" type="submit">Find trials{{ ic.icon('arrow-right') }}</button>
       </div>
       <input type="hidden" id="locLat" name="lat">
       <input type="hidden" id="locLon" name="lon">
       <input type="hidden" id="locCc" name="cc">
+      <input type="hidden" id="heroIntervention" name="intervention" value="">
       <input type="hidden" name="radius" value="50">
-      <button class="btn btn-primary btn-lg" type="submit">Find trials{{ ic.icon('arrow-right') }}</button>
+
+      <details class="hero-more">
+        <summary>{{ ic.icon('user-plus') }} Add details for better matches (optional)</summary>
+        <div class="hero-more-grid">
+          <label>Age <span>(optional)</span>
+            <input name="age" type="number" min="0" max="120" placeholder="e.g. 54"></label>
+          <label>Sex <span>(optional)</span>
+            <select name="sex">
+              <option value="">Prefer not to say</option>
+              <option value="female">Female</option>
+              <option value="male">Male</option>
+            </select></label>
+        </div>
+        <label class="hero-more-about">Anything else about your situation? <span>(optional)</span>
+          <textarea name="about" rows="2" placeholder="e.g. diagnosed 3 years ago, on metformin, A1c around 8.1"></textarea></label>
+      </details>
     </form>
     <div class="hero-loc-actions">
       <button type="button" id="useLoc" class="link-btn loc-use">{{ ic.icon('pin') }} Use my current location</button>
@@ -36,46 +56,29 @@
       {% endfor %}
     </div>
 
+    {% if drugs %}
     <div class="hero-chips trending">
-      <span>{{ ic.icon('activity') }} Trending - GLP-1 &amp; weight-loss:</span>
+      <span>{{ ic.icon('activity') }} Trending</span>
       {% for d in drugs[:6] %}
-      <a class="chip chip-hot" href="{{ url_for('drug_page', slug=slugify(d)) }}">{{ d }}</a>
+      <a class="chip drug-chip" href="{{ url_for('find', condition=d) }}" data-drug="{{ d }}">{{ d }}</a>
       {% endfor %}
     </div>
+    {% endif %}
   </div>
 </section>
 
 <section class="steps">
   <div class="step">
-    <div class="step-ic">{{ ic.icon('search') }}</div>
     <h3>1. Search</h3>
     <p>Enter your condition and location. No account, no cost.</p>
   </div>
   <div class="step">
-    <div class="step-ic">{{ ic.icon('sparkle') }}</div>
     <h3>2. See your matches</h3>
-    <p>We read each study's eligibility and show why you may or may not fit.</p>
+    <p>We check each study's eligibility and show which ones may fit.</p>
   </div>
   <div class="step">
-    <div class="step-ic">{{ ic.icon('user-plus') }}</div>
     <h3>3. Get connected</h3>
-    <p>Ask to be contacted, and the study team reaches out. You're in control.</p>
-  </div>
-</section>
-
-<div class="steps-more">
-  <a href="{{ url_for('how_it_works') }}">See the full flow, end to end {{ ic.icon('arrow-right') }}</a>
-</div>
-
-<section class="reassure">
-  <div class="reassure-in">
-    <h2>Why people use TrialBridge</h2>
-    <ul>
-      <li>{{ ic.icon('check') }} <b>Access to new treatments</b> - trials can offer options before they're widely available.</li>
-      <li>{{ ic.icon('check') }} <b>Close to home</b> - we rank by distance so you're not driving across the country.</li>
-      <li>{{ ic.icon('check') }} <b>Private by design</b> - we only share your details with a study team when <i>you</i> ask us to.</li>
-    </ul>
-    <a class="btn btn-primary btn-lg" href="{{ url_for('find') }}">Find a trial near me{{ ic.icon('arrow-right') }}</a>
+    <p>Ask to be contacted, and the study team reaches out to you.</p>
   </div>
 </section>
 
@@ -108,15 +111,39 @@
   });
   window.addEventListener('pagehide', function () { if (bar) bar.style.width = '100%'; });
 
-  // Popular chips prefill the condition input instead of navigating away
+  // Chips prefill the search box instead of navigating away. If a location is
+  // already set, run the search immediately; otherwise focus the location field.
   var condInput = form.querySelector('input[name="condition"]');
+  var interv = document.getElementById('heroIntervention');
+  var locInput = document.getElementById('location');
+
+  // Manual typing means a condition search, so drop any drug intervention.
+  if (condInput && interv) {
+    condInput.addEventListener('input', function () { interv.value = ''; });
+  }
+
+  function prefillAndMaybeSearch(term, isDrug) {
+    if (condInput) { condInput.value = term; }
+    if (interv) { interv.value = isDrug ? term : ''; }
+    if (locInput && locInput.value.trim()) {
+      if (typeof form.requestSubmit === 'function') { form.requestSubmit(); }
+      else { form.submit(); }
+    } else {
+      form.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      if (locInput) { locInput.focus(); }
+    }
+  }
+
   document.querySelectorAll('.cond-chip').forEach(function (chip) {
     chip.addEventListener('click', function (e) {
       e.preventDefault();
-      if (condInput) { condInput.value = chip.getAttribute('data-cond'); }
-      form.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      var locInput = document.getElementById('location');
-      if (locInput && !locInput.value) { locInput.focus(); }
+      prefillAndMaybeSearch(chip.getAttribute('data-cond'), false);
+    });
+  });
+  document.querySelectorAll('.drug-chip').forEach(function (chip) {
+    chip.addEventListener('click', function (e) {
+      e.preventDefault();
+      prefillAndMaybeSearch(chip.getAttribute('data-drug'), true);
     });
   });
 

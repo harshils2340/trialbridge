@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ it.code }} · TrialBridge</title>
+  <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='logo.svg') }}">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+{% import "_icons.html" as ic %}
+<div class="coord-wrap">
+  <div class="coord-brand">
+    <img class="brand-mark" src="{{ url_for('static', filename='logo.svg') }}" width="24" height="24" alt="">
+    <span>TrialBridge</span>
+    <span class="coord-tag">Study coordinator</span>
+  </div>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for cat, msg in messages %}<div class="flash {{ cat }}">{{ msg }}</div>{% endfor %}
+  {% endwith %}
+
+  <div class="card">
+    <span class="pill pill-{{ lead['status'] }}">{{ labels.get(lead['status'], lead['status']) }}</span>
+    <h1 style="margin:12px 0 4px; font-size:22px; letter-spacing:-.02em;">{{ it.code }}</h1>
+    <p style="color:var(--muted); margin:0;">A consented applicant who may be eligible for your study. They're
+      <b>de-identified</b> until you accept - review the fit below and decide.</p>
+
+    <dl class="kv" style="margin-top:20px;">
+      <dt>Study</dt><dd>{{ lead['title'] or '-' }}</dd>
+      {% if lead['nct'] %}<dt>NCT</dt><dd><a class="ctlink mono" href="https://clinicaltrials.gov/study/{{ lead['nct'] }}" target="_blank" rel="noopener">{{ lead['nct'] }} {{ ic.icon('external') }}</a></dd>{% endif %}
+      <dt>Applicant</dt><dd>{{ it.age_band }}{% if lead['sex'] %} · {{ lead['sex']|capitalize }}{% endif %}</dd>
+      {% if lead['condition'] %}<dt>Condition</dt><dd>{{ lead['condition'] }}</dd>{% endif %}
+      {% if lead['location'] %}<dt>Region</dt><dd>{{ lead['location'] }}</dd>{% endif %}
+      <dt>Record</dt><dd>{{ 'Connected (de-identified)' if lead['records_connected'] else 'Not connected' }}</dd>
+    </dl>
+  </div>
+
+  <div class="card">
+    <div class="section-title"><h2>Eligibility read</h2></div>
+    <div class="cand-elig" style="margin-bottom:12px;">
+      <span class="ec ec-met">{{ it.elig.get('met', [])|length }} met</span>
+      <span class="ec ec-unk">{{ it.elig.get('unknown', [])|length }} to confirm</span>
+      <span class="ec ec-no">{{ it.elig.get('not_met', [])|length }} not met</span>
+    </div>
+    {% if it.elig.get('rationale') %}<p style="color:var(--muted); font-size:14px; margin:0 0 12px;">{{ it.elig.rationale }}</p>{% endif %}
+    {% if it.elig.get('met') %}<div class="eb eb-met"><b>Meets</b><ul>{% for x in it.elig.met[:10] %}<li>{{ x }}</li>{% endfor %}</ul></div>{% endif %}
+    {% if it.elig.get('unknown') %}<div class="eb eb-unk"><b>To confirm at screening</b><ul>{% for x in it.elig.unknown[:10] %}<li>{{ x }}</li>{% endfor %}</ul></div>{% endif %}
+    {% if it.elig.get('not_met') %}<div class="eb eb-no"><b>Possible barriers</b><ul>{% for x in it.elig.not_met[:10] %}<li>{{ x }}</li>{% endfor %}</ul></div>{% endif %}
+    {% if it.flags %}<div class="cand-flags" style="margin-top:12px;">{{ ic.icon('activity') }} {{ it.flags|join(' · ') }}</div>{% endif %}
+  </div>
+
+  {% if it.screener %}
+  <div class="card">
+    <div class="section-title"><h2>Screener answers</h2></div>
+    <ul class="cand-screener">
+      {% for k, v in it.screener.items() %}
+      <li><span>{{ screener_labels.get(k, k) }}</span><b>{{ v|capitalize }}</b></li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  {% if lead['records_connected'] and lead['record_summary'] %}
+  <div class="card">
+    <div class="section-title"><h2>Connected record (de-identified)</h2></div>
+    <div class="summary-box">{{ lead['record_summary'] }}</div>
+  </div>
+  {% endif %}
+
+  {% if lead['status'] == 'prescreen' and not lead['decision'] %}
+  <div class="card">
+    <div class="section-title"><h2>Your decision</h2></div>
+    <p style="color:var(--muted); font-size:14px; margin:0 0 14px;">Accepting unlocks the applicant's
+      contact details (they consented to this) so you can invite them to a screening visit.</p>
+    <div class="cand-actions">
+      <form method="post" action="{{ url_for('candidate_accept', token=lead['token']) }}">
+        <button class="btn btn-ok" type="submit">{{ ic.icon('check') }} Accept &amp; unlock contact</button>
+      </form>
+      <details class="decline-pop">
+        <summary class="btn btn-ghost">Decline</summary>
+        <form method="post" action="{{ url_for('candidate_decline', token=lead['token']) }}">
+          <input type="text" name="reason" placeholder="Reason (optional)">
+          <button class="btn btn-sm" type="submit">Confirm decline</button>
+        </form>
+      </details>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if lead['revealed'] %}
+  <div class="card">
+    <div class="section-title"><h2>Applicant contact (consented)</h2></div>
+    <dl class="kv">
+      <dt>Name</dt><dd>{{ lead['name'] or '-' }}</dd>
+      {% if lead['email'] %}<dt>Email</dt><dd>{{ lead['email'] }}</dd>{% endif %}
+      {% if lead['phone'] %}<dt>Phone</dt><dd class="mono">{{ lead['phone'] }}</dd>{% endif %}
+    </dl>
+  </div>
+  <div class="card">
+    <div class="section-title"><h2>Move forward</h2></div>
+    <form method="post" action="{{ url_for('candidate_advance', token=lead['token']) }}">
+      <div class="field">
+        <label for="status">Status</label>
+        <select id="status" name="status">
+          <option value="screening" {{ 'selected' if lead['status']=='screening' }}>Screening visit</option>
+          <option value="enrolled" {{ 'selected' if lead['status']=='enrolled' }}>Enrolled</option>
+          <option value="closed">Not a match / closed</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="note">Note <span class="hint">(optional)</span></label>
+        <input id="note" name="note" type="text" placeholder="e.g. screening visit booked Fri 10am">
+      </div>
+      <button class="btn btn-primary" type="submit">{{ ic.icon('check') }} Save update</button>
+    </form>
+  </div>
+  {% endif %}
+
+  {% if lead['decision'] == 'declined' %}
+  <div class="banner">You marked this applicant as not a match{% if lead['decision_reason'] %} ({{ lead['decision_reason'] }}){% endif %}. Their contact details were never revealed.</div>
+  {% endif %}
+
+  <div class="card">
+    <div class="section-title"><h2>History</h2></div>
+    <ul class="timeline">
+      {% for e in it.events %}
+      <li>
+        <div><span class="pill pill-{{ e['status'] }}">{{ labels.get(e['status'], e['status']) }}</span>
+          <span class="actor-tag">{{ 'site' if e['actor'] == 'site' else 'TrialBridge' }}</span></div>
+        {% if e['note'] %}<div style="font-size:14px;margin-top:4px;">{{ e['note'] }}</div>{% endif %}
+        <div class="t">{{ e['created_at'] }}</div>
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+
+  <p class="coord-foot">Secure candidate link · consent-first, de-identified until accepted · TrialBridge</p>
+</div>
+</body>
+</html>

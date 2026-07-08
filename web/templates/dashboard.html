@@ -11,7 +11,6 @@
     <span class="s"><b>{{ total }}</b> referrals</span>
     <span class="s"><b>{{ counts.get('referred',0) + counts.get('contacted',0) + counts.get('screened',0) }}</b> in pipeline</span>
     <span class="s accent"><b>{{ enrolled }}</b> enrolled</span>
-    <span class="s accent"><b>{{ earned | money }}</b> commission</span>
     <a href="{{ url_for('referrals') }}" class="strip-link">Referrals →</a>
   </div>
 </div>

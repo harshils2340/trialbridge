@@ -1,0 +1,119 @@
+{% extends "public_base.html" %}
+{% set t = r.trial %}{% set m = r.match %}
+{% block title %}{{ t.title }} · TrialBridge{% endblock %}
+
+{% set labels = {
+  'likely_eligible': ('You may be a good fit', 'good'),
+  'possible': ('You might qualify', 'maybe'),
+  'likely_ineligible': ('Probably not a fit', 'no'),
+  'ineligible': ('Not a fit', 'no'),
+  'error': ('Couldn’t assess', 'maybe')
+} %}
+{% set lab = labels.get(m.verdict, ('You might qualify', 'maybe')) %}
+
+{% block body %}
+<div class="td-back">
+  <a href="{{ url_for('find') }}" onclick="if(document.referrer){history.back();return false;}">&larr; Back to results</a>
+</div>
+
+<section class="td-layout">
+  <div class="td-main">
+    <div class="td-badges">
+      <span class="fit fit-{{ lab[1] }}">{{ ic.icon('check') if lab[1]=='good' else ic.icon('sparkle') }}{{ lab[0] }}</span>
+      {% if r.distance is not none %}<span class="pr-dist">{{ ic.icon('pin') }}{{ '%.0f'|format(r.distance) }} {{ r.unit }} away</span>{% endif %}
+      {% if t.phase %}<span class="pr-phase">{{ t.phase.replace('_',' ')|title if t.phase != 'NA' else 'N/A' }}</span>{% endif %}
+      <span class="pr-recruiting">{{ ic.icon('check') }} Recruiting</span>
+    </div>
+
+    <h1 class="td-title">{{ t.title }}</h1>
+
+    {% if m.rationale %}
+    <div class="td-why"><b>Why this could be a match for you:</b> {{ m.rationale }}</div>
+    {% endif %}
+
+    {% if t.briefSummary %}
+    <div class="td-section">
+      <h2>About this study</h2>
+      <p class="td-summary">{{ t.briefSummary }}</p>
+    </div>
+    {% endif %}
+
+    {% if m.met or m.unknown or m.not_met %}
+    <div class="td-section">
+      <h2>How you line up with the eligibility</h2>
+      {% if m.met %}<div class="pr-elig-b good"><b>Looks like you meet:</b><ul>{% for x in m.met %}<li>{{ x }}</li>{% endfor %}</ul></div>{% endif %}
+      {% if m.unknown %}<div class="pr-elig-b maybe"><b>The team will need to check:</b><ul>{% for x in m.unknown %}<li>{{ x }}</li>{% endfor %}</ul></div>{% endif %}
+      {% if m.not_met %}<div class="pr-elig-b no"><b>May be a barrier:</b><ul>{% for x in m.not_met %}<li>{{ x }}</li>{% endfor %}</ul></div>{% endif %}
+    </div>
+    {% endif %}
+
+    <div class="td-section">
+      <h2>Where it runs</h2>
+      {% if r.site_str %}<p class="td-site">{{ ic.icon('pin') }} <b>Nearest site:</b> {{ r.site_str }}{% if r.distance is not none %} · {{ '%.0f'|format(r.distance) }} {{ r.unit }} away{% endif %}</p>{% endif %}
+      {% if r.other_regions %}
+      <p class="td-other">Also recruiting in: {{ r.other_regions|join(' · ') }}{% if r.other_count > r.other_regions|length %} and more{% endif %}</p>
+      {% endif %}
+    </div>
+
+    <div class="td-facts">
+      {% if t.leadSponsor %}<span>{{ ic.icon('award') }} Sponsor: {{ t.leadSponsor }}</span>{% endif %}
+      <span><a href="https://clinicaltrials.gov/study/{{ t.nctId }}" target="_blank" rel="noopener">{{ ic.icon('external') }} {{ t.nctId }} on ClinicalTrials.gov</a></span>
+    </div>
+
+    <p class="pr-foot-note">TrialBridge shows public information from ClinicalTrials.gov and an
+      automated read of eligibility. It isn't medical advice - the study team makes the final
+      eligibility decision, and you should talk with your own doctor.</p>
+  </div>
+
+  <aside class="td-aside">
+    <div class="td-apply">
+      {% if applied and t.nctId in applied %}
+      <div class="td-applied">
+        <div class="td-applied-ic">{{ ic.icon('check') }}</div>
+        <h3>Application submitted</h3>
+        <p>The study team will reach out if you're a fit.</p>
+        <a class="btn btn-primary btn-block" href="{{ url_for('applications') }}">Track it in My applications{{ ic.icon('arrow-right') }}</a>
+      </div>
+      {% else %}
+      <h3 class="td-apply-title">{{ ic.icon('user-plus') }} Ask to be contacted</h3>
+      <p class="td-apply-sub">Answer 4 quick questions and leave your contact info. The study team
+        first reviews you <b>de-identified</b> - they only see your details <b>if they accept you</b>.</p>
+      <form class="interest-form" method="post" action="{{ url_for('interest') }}">
+        <input type="hidden" name="nct" value="{{ t.nctId }}">
+        <input type="hidden" name="title" value="{{ t.title }}">
+        <input type="hidden" name="condition" value="{{ condition }}">
+        <input type="hidden" name="location" value="{{ location }}">
+        <input type="hidden" name="site" value="{{ r.site_str }}">
+        <input type="hidden" name="age" value="{{ q_age }}">
+        <input type="hidden" name="sex" value="{{ q_sex }}">
+        <input type="hidden" name="eligibility" value='{{ {"verdict": m.verdict, "rationale": m.rationale, "met": m.met, "unknown": m.unknown, "not_met": m.not_met}|tojson }}'>
+
+        <div class="if-screener">
+          <label><span>Can you travel to the study site for visits?</span>
+            <select name="travel"><option value="yes">Yes</option><option value="maybe">Not sure</option><option value="no">No</option></select></label>
+          <label><span>Are you currently in another clinical trial?</span>
+            <select name="other_trial"><option value="no">No</option><option value="yes">Yes</option></select></label>
+          <label><span>Are you pregnant or planning to become pregnant?</span>
+            <select name="pregnancy"><option value="no">No</option><option value="yes">Yes</option><option value="na">Not applicable</option></select></label>
+          <label><span>Can you give your own informed consent?</span>
+            <select name="consent_capable"><option value="yes">Yes</option><option value="no">No</option></select></label>
+        </div>
+
+        <div class="if-row two">
+          <label>Your name<input name="name" type="text" required></label>
+          <label>Phone <span class="opt">(optional)</span><input name="phone" type="tel"></label>
+        </div>
+        <label>Email<input name="email" type="email" required></label>
+        <label class="if-consent">
+          <input type="checkbox" name="consent" required>
+          <span>I agree that TrialBridge may share a <b>de-identified</b> summary with this study's
+          team, and my <b>contact details only if they accept me</b>. This isn't medical
+          advice and I can talk to my own doctor first.</span>
+        </label>
+        <button class="btn btn-primary btn-block" type="submit">{{ ic.icon('arrow-right') }} Submit application</button>
+      </form>
+      {% endif %}
+    </div>
+  </aside>
+</section>
+{% endblock %}

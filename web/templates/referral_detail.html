@@ -112,19 +112,6 @@
         <button class="btn btn-primary btn-block" type="submit">{{ ic.icon('check') }}Save update</button>
       </form>
     </div>
-
-    <div class="card">
-      <div class="section-title"><h2>Commission</h2></div>
-      <p class="tag" style="margin-top:0;">Recorded when this referral reaches <b>enrolled</b>.</p>
-      <form method="post" action="{{ url_for('referral_commission', ref_id=ref['id']) }}">
-        <div class="field">
-          <label for="amount">Expected commission ($)</label>
-          <input id="amount" name="amount" type="number" min="0" step="1"
-                 value="{{ '%.0f'|format((ref['commission_cents'] or 0) / 100) }}">
-        </div>
-        <button class="btn btn-ghost btn-block" type="submit">{{ ic.icon('check') }}Save amount</button>
-      </form>
-    </div>
   </div>
 </div>
 <script>

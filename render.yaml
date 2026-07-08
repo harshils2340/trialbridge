@@ -21,3 +21,34 @@ services:
         sync: false              # set this yourself in the dashboard (kept secret)
       - key: PYTHON_VERSION
         value: "3.11.9"
+      # --- Go-live notifications (OFF by default; ~2 min to enable) ------------
+      # The full loop works without these (operator copies the /c/<token> link by
+      # hand). To turn on real email delivery, set NOTIFY_LIVE=1 and the SMTP_*
+      # vars, then SITE_NOTIFY_EMAIL (where new blinded candidates are sent).
+      - key: NOTIFY_LIVE
+        value: "0"               # flip to "1" to send email
+      - key: SITE_NOTIFY_EMAIL
+        sync: false              # coordinator inbox for new candidates
+      - key: PUBLIC_BASE_URL
+        sync: false              # e.g. https://trialbridge.onrender.com (email links)
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: SMTP_FROM
+        sync: false
+      # For a real pilot, persist the SQLite DB so applications survive redeploys.
+      # Render disks need a paid instance (change `plan: free` -> `plan: starter`),
+      # then uncomment the DB_PATH env below and the `disk:` block. On the free
+      # plan the DB lives on the ephemeral filesystem and resets on each deploy
+      # (fine for a demo, not for collecting real applicants).
+      # - key: DB_PATH
+      #   value: /var/data/trialbridge.db
+    # disk:
+    #   name: trialbridge-data
+    #   mountPath: /var/data
+    #   sizeGB: 1

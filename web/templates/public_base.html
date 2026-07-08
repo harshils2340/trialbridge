@@ -17,7 +17,7 @@
 <header class="pub-nav">
   <a class="brand" href="{{ url_for('home') }}"><img class="brand-mark" src="{{ url_for('static', filename='logo.svg') }}" width="24" height="24" alt="">TrialBridge</a>
   <nav class="pub-nav-links">
-    <a href="{{ url_for('find') }}">Find a trial</a>
+    <a href="{{ url_for('home') }}">Find a trial</a>
     <a href="{{ url_for('how_it_works') }}">How it works</a>
     <a href="{{ url_for('applications') }}" class="pub-apps">My applications{% if applications_count %} <span class="nav-badge">{{ applications_count }}</span>{% endif %}</a>
     <a href="{{ url_for('login') }}" class="pub-clin">For clinicians</a>
@@ -37,6 +37,7 @@
   <div class="pub-foot-in">
     <span><img class="brand-mark" src="{{ url_for('static', filename='logo.svg') }}" width="18" height="18" alt="">TrialBridge</span>
     <span class="pub-foot-note">Not medical advice. TrialBridge helps you discover research studies - always talk to your doctor before joining a trial. We never sell your information.</span>
+    <a href="{{ url_for('leads') }}">Study team view</a>
     <a href="{{ url_for('login') }}">Clinician sign in</a>
   </div>
 </footer>

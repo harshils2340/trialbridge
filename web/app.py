@@ -3,8 +3,9 @@
 
 Paste a de-identified patient note, get ranked recruiting trials with a plain
 explanation of the fit, then refer a patient in one click and track that
-referral through the pipeline (referred -> contacted -> screened -> enrolled)
-for commission/attribution.
+referral through the pipeline (referred -> contacted -> screened -> enrolled).
+TrialBridge never pays clinicians for referrals or enrollments - status is
+tracked for follow-up only (anti-kickback / fee-splitting compliance).
 
 Run:
     cd matcher
@@ -21,8 +22,10 @@ import os
 import pathlib
 import secrets
 import sys
+import time
 import urllib.parse
 import urllib.request
+from collections import OrderedDict
 
 from flask import (Flask, abort, flash, g, jsonify, make_response, redirect,
                    render_template, request, session, url_for)
@@ -38,8 +41,10 @@ import db  # noqa: E402
 import fhir  # noqa: E402
 import ingest  # noqa: E402
 import mailer  # noqa: E402
+import trends  # noqa: E402
 
 app = Flask(__name__)
+trends.configure(app)
 
 # Stable secret so sessions survive restarts. Prefer an env var (set this on any
 # host so logins survive redeploys); otherwise generate + store one locally.
@@ -64,11 +69,6 @@ app.teardown_appcontext(db.close_db)
 
 # Create tables on import so the app is safe under any launcher (flask run, wsgi).
 db.init_db()
-
-
-@app.template_filter("money")
-def money(cents):
-    return f"${(cents or 0) / 100:,.0f}"
 
 
 # --------------------------------------------------------------------------- #
@@ -151,14 +151,86 @@ def _set_applicant_cookie(resp, token):
     return resp
 
 
+# --------------------------------------------------------------------------- #
+# Delivery / notifications for the consumer loop. Fully wired but OFF by default
+# so nothing is emailed during testing. Go-live is ~2 min: set these env vars.
+#   NOTIFY_LIVE=1
+#   SMTP_HOST / SMTP_PORT / SMTP_USER / SMTP_PASS / SMTP_FROM
+#   SITE_NOTIFY_EMAIL=coordinator@site          (where new candidates are sent)
+#   PUBLIC_BASE_URL=https://yourdomain.com      (optional, for correct email links)
+# While OFF, the loop still works end to end: the operator copies the secure
+# /c/<token> link from the dashboard and hands it to the site by hand.
+# --------------------------------------------------------------------------- #
+NOTIFY_LIVE = os.environ.get("NOTIFY_LIVE", "0") == "1"
+SITE_NOTIFY_EMAIL = os.environ.get("SITE_NOTIFY_EMAIL", "").strip()
+PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL", "").strip().rstrip("/")
+
+
+def _abs_url(endpoint, **kw):
+    """Absolute URL for links placed inside emails."""
+    if PUBLIC_BASE_URL:
+        return PUBLIC_BASE_URL + url_for(endpoint, **kw)
+    return url_for(endpoint, _external=True, **kw)
+
+
+def notifications_ready():
+    return NOTIFY_LIVE and mailer.smtp_configured()
+
+
+def _notify(to_addr, subject, body):
+    """Single switch for every consumer-loop email. No-op (never errors) unless
+    go-live is on AND SMTP is configured AND there's a recipient."""
+    if not (notifications_ready() and to_addr):
+        return False
+    ok, _ = mailer.send_email(to_addr, subject, body)
+    return ok
+
+
+def _notify_site_new_candidate(token):
+    """Tell the study site a new de-identified candidate is waiting (with the
+    secure review link). Recipient: the lead's site email, else SITE_NOTIFY_EMAIL."""
+    lead = db.get_lead_by_token(token)
+    if not lead:
+        return False
+    to_addr = SITE_NOTIFY_EMAIL
+    link = _abs_url("candidate_page", token=token)
+    subject, body = mailer.build_candidate_message(lead, link)
+    return _notify(to_addr, subject, body)
+
+
+def _notify_applicant(token, kind):
+    """Tell the applicant their status changed. kind in {accepted, declined,
+    screening, enrolled}."""
+    lead = db.get_lead_by_token(token)
+    if not lead or not lead["email"]:
+        return False
+    link = _abs_url("applications")
+    subject, body = mailer.build_applicant_message(lead, kind, link)
+    return _notify(lead["email"], subject, body)
+
+
+def _notify_applicant_by_id(lead_id, kind):
+    lead = db.get_lead(lead_id)
+    return _notify_applicant(lead["token"], kind) if lead else False
+
+
 @app.context_processor
 def inject_globals():
     try:
         apps_n = db.count_applications(get_applicant_token())
     except Exception:
         apps_n = 0
+    # In no-login testing mode we show a small switcher so you can preview all
+    # three POVs (patient / clinician / study team) without signing in.
+    path = request.path or "/"
+    if path.startswith("/app/leads"):
+        pov = "study"
+    elif path.startswith("/app") or path.startswith("/referral"):
+        pov = "clinician"
+    else:
+        pov = "patient"
     return {"user": g.user, "llm_on": bool(mt.LLM_API_KEY),
-            "applications_count": apps_n}
+            "applications_count": apps_n, "pov_demo": NO_LOGIN, "pov": pov}
 
 
 @app.route("/register", methods=["GET", "POST"])
@@ -220,11 +292,10 @@ def logout():
 def dashboard():
     referrals = db.list_referrals(g.user["id"])
     counts = db.status_counts(g.user["id"])
-    enrolled, earned, pipeline = db.commission_summary(g.user["id"])
+    enrolled = db.enrolled_count(g.user["id"])
     return render_template(
         "dashboard.html", referrals=referrals[:8], counts=counts,
-        total=len(referrals), enrolled=enrolled, earned=earned,
-        pipeline=pipeline, statuses=db.STATUSES)
+        total=len(referrals), enrolled=enrolled, statuses=db.STATUSES)
 
 
 # --------------------------------------------------------------------------- #
@@ -259,7 +330,41 @@ SEED_DRUGS = [
 ]
 _COND_BY_SLUG = {slugify(c): c for c in SEED_CONDITIONS}
 _CITY_BY_SLUG = {slugify(c): c for c in SEED_CITIES}
-_DRUG_BY_SLUG = {slugify(d): d for d in SEED_DRUGS}
+
+
+def _titleize(slug):
+    """Turn a slug back into a readable term for pages built from live traffic."""
+    return " ".join(w.capitalize() for w in (slug or "").split("-") if w)
+
+
+def _merge_terms(live, seed, limit):
+    """Live (most-trafficked) terms first, then seeds to fill, deduped by
+    lowercase. Guarantees the chips are never empty even with no traffic yet."""
+    out, seen = [], set()
+    for t in list(live) + list(seed):
+        k = " ".join((t or "").lower().split())
+        if k and k not in seen:
+            seen.add(k)
+            out.append(t)
+        if len(out) >= limit:
+            break
+    return out
+
+
+def trending_conditions(limit=8):
+    """Live trending conditions from an external source (GPT + CT.gov
+    validation, see trends.py), backfilled with seeds so it's never empty."""
+    try:
+        return _merge_terms(trends.get_trending("condition"), SEED_CONDITIONS, limit)
+    except Exception:
+        return SEED_CONDITIONS[:limit]
+
+
+def trending_drugs(limit=6):
+    try:
+        return _merge_terms(trends.get_trending("drug"), SEED_DRUGS, limit)
+    except Exception:
+        return SEED_DRUGS[:limit]
 
 
 def build_patient_note(condition, age="", sex="", about=""):
@@ -278,18 +383,50 @@ def build_patient_note(condition, age="", sex="", about=""):
 @app.route("/")
 def home():
     return render_template("landing.html", vertical=VERTICAL,
-                           conditions=SEED_CONDITIONS[:8], drugs=SEED_DRUGS,
-                           slugify=slugify)
+                           conditions=trending_conditions(8),
+                           drugs=trending_drugs(6), slugify=slugify,
+                           condition_value=request.args.get("condition", ""),
+                           location_value=request.args.get("location", ""))
+
+
+# --------------------------------------------------------------------------- #
+# Search result cache. A search is expensive (CT.gov fetch + per-trial LLM), so
+# we keep the ranked results in memory keyed by a short id. That lets each trial
+# open on its own detail page (like an Airbnb listing) without re-running the
+# search or losing the eligibility read computed at search time.
+# --------------------------------------------------------------------------- #
+_SEARCH_CACHE = OrderedDict()
+_SEARCH_CACHE_MAX = 80
+
+
+def _cache_search(results, ctx):
+    sid = secrets.token_urlsafe(9)
+    _SEARCH_CACHE[sid] = {"results": results, "ctx": ctx, "ts": time.time()}
+    while len(_SEARCH_CACHE) > _SEARCH_CACHE_MAX:
+        _SEARCH_CACHE.popitem(last=False)
+    return sid
+
+
+def _get_cached_trial(sid, nct):
+    """Return (result_dict, ctx) for one trial in a cached search, or (None, ctx)."""
+    entry = _SEARCH_CACHE.get(sid)
+    if not entry:
+        return None, None
+    for r in entry["results"]:
+        if (r.get("trial") or {}).get("nctId") == nct:
+            return r, entry["ctx"]
+    return None, entry["ctx"]
 
 
 @app.route("/find", methods=["GET", "POST"])
 def find():
-    """Public, no-login patient search. Reuses the clinician matching engine but
-    renders patient-friendly results."""
+    """Public, no-login patient search. The search form lives on the homepage;
+    this endpoint handles the POST and renders patient-friendly results. A GET
+    just bounces back to the homepage (carrying any prefill)."""
     if request.method == "GET":
-        return render_template(
-            "find.html", condition_value=request.args.get("condition", ""),
-            location_value=request.args.get("location", ""))
+        args = {k: request.args[k] for k in ("condition", "location")
+                if request.args.get(k)}
+        return redirect(url_for("home", **args))
 
     condition = request.form.get("condition", "").strip()
     intervention = request.form.get("intervention", "").strip()
@@ -305,11 +442,11 @@ def find():
     label = condition or intervention
     if not label:
         flash("Tell us the condition or treatment you're looking for.", "error")
-        return render_template("find.html", location_value=location)
+        return redirect(url_for("home", location=location))
     if not location:
         flash("Enter your city or postal code so we only show trials near you.",
               "error")
-        return render_template("find.html", condition_value=condition)
+        return redirect(url_for("home", condition=condition))
 
     coords, unit = None, "km"
     lat_in = request.form.get("lat", "").strip()
@@ -337,21 +474,44 @@ def find():
                                        intervention=intervention)
     except RuntimeError as e:
         flash(str(e), "error")
-        return render_template("find.html", condition_value=label,
-                               location_value=location)
+        return redirect(url_for("home", condition=condition, location=location))
     except Exception:
         app.logger.exception("public find failed")
         flash("Search failed unexpectedly. Please try again.", "error")
-        return render_template("find.html", condition_value=label,
-                               location_value=location)
+        return redirect(url_for("home", condition=condition, location=location))
 
+    # Record the search so "trending" reflects real site traffic. Drug-name
+    # queries go through the intervention field; everything else is a condition.
+    try:
+        if intervention:
+            db.log_search_term(intervention, "drug")
+        if condition:
+            db.log_search_term(condition, "condition")
+    except Exception:
+        app.logger.exception("search stat logging failed")
+
+    ctx = {"condition": label, "location": location, "unit": unit,
+           "q_condition": condition, "q_intervention": intervention,
+           "q_age": age, "q_sex": sex, "q_about": about, "q_radius": radius,
+           "q_lat": lat_in, "q_lon": lon_in, "q_cc": cc_in}
+    search_id = _cache_search(results, ctx)
     applied = db.applied_ncts(get_applicant_token())
     return render_template("patient_results.html", results=results,
-                           condition=label, location=location, unit=unit,
-                           q_condition=condition, q_intervention=intervention,
-                           q_age=age, q_sex=sex, q_about=about, q_radius=radius,
-                           q_lat=lat_in, q_lon=lon_in, q_cc=cc_in,
-                           applied=applied)
+                           search_id=search_id, applied=applied, **ctx)
+
+
+@app.route("/trial/<search_id>/<nct>")
+def trial_detail(search_id, nct):
+    """Airbnb-style listing page for one trial: full info on the left, an apply
+    panel on the right. Reads from the cached search so the eligibility breakdown
+    matches what the patient saw in the results list."""
+    r, ctx = _get_cached_trial(search_id, nct)
+    if not r:
+        flash("That trial result expired - please run your search again.", "error")
+        return redirect(url_for("find"))
+    applied = db.applied_ncts(get_applicant_token())
+    return render_template("trial_detail.html", r=r, search_id=search_id,
+                           applied=applied, **ctx)
 
 
 @app.route("/interest", methods=["POST"])
@@ -389,7 +549,7 @@ def interest():
     except (ValueError, TypeError):
         elig = ""
 
-    db.create_lead({
+    token = db.create_lead({
         "applicant_token": applicant,
         "nct": f.get("nct", "").strip(), "title": f.get("title", "").strip(),
         "condition": f.get("condition", "").strip(),
@@ -401,6 +561,9 @@ def interest():
         "screener": json.dumps(screener) if screener else "",
         "eligibility": elig,
     })
+    # Go-live hook: tell the site a new blinded candidate is waiting. No-op while
+    # NOTIFY_LIVE is off, so nothing is emailed during testing.
+    _notify_site_new_candidate(token)
     resp = make_response(render_template("thanks.html", title=f.get("title", ""),
                                          nct=f.get("nct", "")))
     if new_cookie:
@@ -472,9 +635,13 @@ def connect_records(token):
 
 @app.route("/trials/<slug>")
 def condition_page(slug):
-    condition = _COND_BY_SLUG.get(slug)
+    condition = _COND_BY_SLUG.get(slug) or _titleize(slug)
     if not condition:
         abort(404)
+    try:
+        db.log_search_term(condition, "condition")
+    except Exception:
+        pass
     trials = []
     try:
         raw = mt.fetch_trials(condition, max_n=40)
@@ -568,6 +735,7 @@ def leads():
 def accept_lead(lead_id):
     note = request.form.get("note", "").strip()
     if db.accept_candidate(lead_id, note):
+        _notify_applicant_by_id(lead_id, "accepted")
         flash("Candidate accepted - contact details unlocked so you can invite "
               "them to a screening visit.", "success")
     else:
@@ -580,6 +748,7 @@ def accept_lead(lead_id):
 def decline_lead(lead_id):
     reason = request.form.get("reason", "").strip()
     if db.decline_candidate(lead_id, reason):
+        _notify_applicant_by_id(lead_id, "declined")
         flash("Candidate declined. They stay de-identified - no contact details "
               "were revealed.", "success")
     else:
@@ -593,30 +762,13 @@ def update_lead(lead_id):
     status = request.form.get("status", "").strip()
     note = request.form.get("note", "").strip()
     if db.update_lead_status(lead_id, status, note, actor="you"):
+        if status in ("screening", "enrolled"):
+            _notify_applicant_by_id(lead_id, status)
         flash(f"Application moved to \"{db.LEAD_LABELS.get(status, status)}\".",
               "success")
     else:
         flash("Couldn't update that application.", "error")
     return redirect(url_for("leads"))
-
-
-@app.route("/trials/drug/<slug>")
-def drug_page(slug):
-    drug = _DRUG_BY_SLUG.get(slug)
-    if not drug:
-        abort(404)
-    trials = []
-    try:
-        raw = mt.fetch_trials("", max_n=40, intervention=drug)
-        raw = [t for t in raw
-               if (t.get("overallStatus") or "RECRUITING").upper() == "RECRUITING"
-               and (t.get("studyType") or "").upper() != "OBSERVATIONAL"]
-        trials = raw[:12]
-    except Exception:
-        app.logger.exception("drug page fetch failed")
-    return render_template("drug.html", drug=drug, trials=trials,
-                           drugs=SEED_DRUGS, conditions=SEED_CONDITIONS,
-                           slugify=slugify)
 
 
 @app.route("/robots.txt")
@@ -634,8 +786,6 @@ def sitemap():
         for city in SEED_CITIES:
             urls.append(url_for("condition_city_page", slug=slugify(c),
                                 city_slug=slugify(city), _external=True))
-    for d in SEED_DRUGS:
-        urls.append(url_for("drug_page", slug=slugify(d), _external=True))
     items = "".join(f"<url><loc>{u}</loc></url>" for u in urls)
     xml = ('<?xml version="1.0" encoding="UTF-8"?>'
            '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
@@ -1187,10 +1337,9 @@ def refer_confirm():
 def referrals():
     rows = db.list_referrals(g.user["id"])
     counts = db.status_counts(g.user["id"])
-    enrolled, earned, pipeline = db.commission_summary(g.user["id"])
+    enrolled = db.enrolled_count(g.user["id"])
     return render_template("referrals.html", referrals=rows, counts=counts,
-                           statuses=db.STATUSES, enrolled=enrolled,
-                           earned=earned, pipeline=pipeline)
+                           statuses=db.STATUSES, enrolled=enrolled)
 
 
 @app.route("/referrals.csv")
@@ -1202,12 +1351,11 @@ def referrals_csv():
     buf = io.StringIO()
     w = csv.writer(buf)
     w.writerow(["patient", "nct", "trial", "site", "coordinator_email", "status",
-                "consent", "sent_at", "commission", "created", "updated"])
+                "consent", "sent_at", "created", "updated"])
     for r in rows:
         w.writerow([r["patient_label"], r["nct"], r["title"], r["site"],
                     r["coordinator_email"], r["status"],
                     "yes" if r["consent"] else "no", r["notified_at"],
-                    f"{(r['commission_cents'] or 0) / 100:.2f}",
                     r["created_at"], r["updated_at"]])
     from flask import Response
     return Response(buf.getvalue(), mimetype="text/csv", headers={
@@ -1262,6 +1410,57 @@ def referral_mark_sent(ref_id):
 
 
 # --------------------------------------------------------------------------- #
+# Public candidate page (tokenized, no login) - lets a real study coordinator
+# review a de-identified applicant and accept/decline. This is what closes the
+# consumer loop without any cold email: you share the link with the site.
+# --------------------------------------------------------------------------- #
+@app.route("/c/<token>")
+def candidate_page(token):
+    lead = db.get_lead_by_token(token)
+    if not lead:
+        abort(404)
+    return render_template("candidate_public.html", it=_decode_lead(lead),
+                           lead=lead, labels=db.LEAD_LABELS,
+                           screener_labels=SCREENER_LABELS,
+                           post_accept=db.LEAD_PIPELINE[3:])  # screening, enrolled
+
+
+@app.route("/c/<token>/accept", methods=["POST"])
+def candidate_accept(token):
+    if db.accept_candidate_by_token(token, request.form.get("note", "").strip()):
+        _notify_applicant(token, "accepted")
+        flash("Accepted. The applicant's contact details are now unlocked below "
+              "so you can invite them to a screening visit.", "ok")
+    else:
+        flash("Couldn't accept this candidate.", "error")
+    return redirect(url_for("candidate_page", token=token))
+
+
+@app.route("/c/<token>/decline", methods=["POST"])
+def candidate_decline(token):
+    if db.decline_candidate_by_token(token, request.form.get("reason", "").strip()):
+        _notify_applicant(token, "declined")
+        flash("Marked as not a match. No contact details were revealed.", "ok")
+    else:
+        flash("Couldn't update this candidate.", "error")
+    return redirect(url_for("candidate_page", token=token))
+
+
+@app.route("/c/<token>/status", methods=["POST"])
+def candidate_advance(token):
+    status = request.form.get("status", "").strip()
+    note = request.form.get("note", "").strip()
+    if status in ("screening", "enrolled", "closed") and \
+            db.advance_by_token(token, status, note):
+        if status in ("screening", "enrolled"):
+            _notify_applicant(token, status)
+        flash(f"Updated to \"{db.LEAD_LABELS.get(status, status)}\".", "ok")
+    else:
+        flash("Couldn't update status.", "error")
+    return redirect(url_for("candidate_page", token=token))
+
+
+# --------------------------------------------------------------------------- #
 # Public coordinator page (tokenized, no login) - closes the referral loop.
 # --------------------------------------------------------------------------- #
 @app.route("/r/<token>")
@@ -1302,23 +1501,17 @@ def referral_status(ref_id):
     return redirect(url_for("referral_detail", ref_id=ref_id))
 
 
-@app.route("/referral/<int:ref_id>/commission", methods=["POST"])
-@login_required
-def referral_commission(ref_id):
-    try:
-        cents = int(round(float(request.form.get("amount", "0")) * 100))
-    except ValueError:
-        cents = 0
-    db.set_commission(ref_id, g.user["id"], max(0, cents))
-    flash("Commission updated.", "ok")
-    return redirect(url_for("referral_detail", ref_id=ref_id))
-
-
 if __name__ == "__main__":
     db.init_db()
     port = int(os.environ.get("PORT", "5000"))
     debug = os.environ.get("FLASK_DEBUG", "0") == "1"
+    # Hot-reload templates when developing so edits show up on refresh without a
+    # restart. This is decoupled from Flask's debugger (which needs OS semaphores
+    # some sandboxes block), so we get live templates without the crash.
+    if debug:
+        app.config["TEMPLATES_AUTO_RELOAD"] = True
+        app.jinja_env.auto_reload = True
     print(f"TrialBridge on http://127.0.0.1:{port}  (LLM: "
           f"{'on' if mt.LLM_API_KEY else 'OFF - set LLM_API_KEY'})")
-    app.run(host="127.0.0.1", port=port, debug=debug, threaded=True,
+    app.run(host="127.0.0.1", port=port, debug=False, threaded=True,
             use_reloader=False)

@@ -4,13 +4,19 @@ One connection per request via Flask's `g`. Schema is created on first run
 (idempotent), so there is no separate migration step to run.
 """
 import datetime as dt
+import json
+import os
 import pathlib
 import secrets
 import sqlite3
 
 from flask import g
 
-DB_PATH = pathlib.Path(__file__).resolve().parent / "trialbridge.db"
+# DB_PATH is configurable so production can point at a persistent disk
+# (e.g. a Render mounted disk). Defaults to a file next to this module.
+DB_PATH = pathlib.Path(
+    os.environ.get("DB_PATH")
+    or (pathlib.Path(__file__).resolve().parent / "trialbridge.db"))
 
 # Referral pipeline. "received" = the site confirmed it got the referral.
 # "enrolled" is the commission-eligible terminal state.
@@ -145,10 +151,25 @@ CREATE TABLE IF NOT EXISTS lead_events (
     FOREIGN KEY (lead_id) REFERENCES leads(id)
 );
 
+CREATE TABLE IF NOT EXISTS search_stats (
+    term_key    TEXT PRIMARY KEY,
+    term        TEXT NOT NULL,
+    kind        TEXT NOT NULL,
+    hits        INTEGER DEFAULT 0,
+    last_at     TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS trend_cache (
+    kind        TEXT PRIMARY KEY,
+    terms       TEXT NOT NULL,
+    updated_at  TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_referrals_user ON referrals(user_id);
 CREATE INDEX IF NOT EXISTS idx_events_ref ON referral_events(referral_id);
 CREATE INDEX IF NOT EXISTS idx_leads_created ON leads(created_at);
 CREATE INDEX IF NOT EXISTS idx_lead_events_lead ON lead_events(lead_id);
+CREATE INDEX IF NOT EXISTS idx_search_stats_kind ON search_stats(kind, hits);
 """
 
 
@@ -383,16 +404,6 @@ def update_status(ref_id, user_id, status, note=""):
     return True
 
 
-def set_commission(ref_id, user_id, cents):
-    db = get_db()
-    if not get_referral(ref_id, user_id):
-        return False
-    db.execute("UPDATE referrals SET commission_cents = ? WHERE id = ?",
-               (int(cents), ref_id))
-    db.commit()
-    return True
-
-
 # --------------------------------------------------------------------------- #
 # Patient leads (consumer funnel)
 # --------------------------------------------------------------------------- #
@@ -461,6 +472,25 @@ def decline_candidate(lead_id, reason=""):
         "VALUES (?,?,?,?,?)", (lead_id, "closed", msg, "you", ts))
     db.commit()
     return True
+
+
+def accept_candidate_by_token(token, note=""):
+    lead = get_lead_by_token(token)
+    return accept_candidate(lead["id"], note) if lead else False
+
+
+def decline_candidate_by_token(token, reason=""):
+    lead = get_lead_by_token(token)
+    return decline_candidate(lead["id"], reason) if lead else False
+
+
+def advance_by_token(token, status, note=""):
+    """Coordinator moves an already-accepted candidate forward (screening,
+    enrolled) via their secure link."""
+    lead = get_lead_by_token(token)
+    if not lead:
+        return False
+    return update_lead_status(lead["id"], status, note, actor="site")
 
 
 def list_leads():
@@ -566,6 +596,62 @@ def lead_counts():
     return {r["status"]: r["n"] for r in rows}
 
 
+# --------------------------------------------------------------------------- #
+# Search traffic - powers the live "trending" chips on the landing page.
+# --------------------------------------------------------------------------- #
+def log_search_term(term, kind):
+    """Record one search/visit for a term so trending reflects real traffic.
+    kind is 'condition' or 'drug'. Safe to call on every request (best-effort)."""
+    term = (term or "").strip()
+    if not term or kind not in ("condition", "drug"):
+        return
+    key = kind + ":" + " ".join(term.lower().split())
+    db = get_db()
+    ts = now()
+    db.execute(
+        "INSERT INTO search_stats (term_key, term, kind, hits, last_at) "
+        "VALUES (?,?,?,1,?) "
+        "ON CONFLICT(term_key) DO UPDATE SET hits = hits + 1, "
+        "term = excluded.term, last_at = excluded.last_at",
+        (key, term, kind, ts))
+    db.commit()
+
+
+def top_terms(kind, limit=8):
+    """Most-searched terms for a kind, busiest first."""
+    rows = get_db().execute(
+        "SELECT term FROM search_stats WHERE kind = ? "
+        "ORDER BY hits DESC, last_at DESC LIMIT ?", (kind, limit)).fetchall()
+    return [r["term"] for r in rows]
+
+
+# --------------------------------------------------------------------------- #
+# Trending cache - externally-sourced trending terms (see web/trends.py).
+# --------------------------------------------------------------------------- #
+def get_trend_cache(kind):
+    """Return (terms:list, updated_at:str|None) for a trending kind."""
+    row = get_db().execute(
+        "SELECT terms, updated_at FROM trend_cache WHERE kind = ?",
+        (kind,)).fetchone()
+    if not row:
+        return [], None
+    try:
+        terms = json.loads(row["terms"])
+    except (ValueError, TypeError):
+        terms = []
+    return terms, row["updated_at"]
+
+
+def set_trend_cache(kind, terms):
+    db = get_db()
+    db.execute(
+        "INSERT INTO trend_cache (kind, terms, updated_at) VALUES (?,?,?) "
+        "ON CONFLICT(kind) DO UPDATE SET terms = excluded.terms, "
+        "updated_at = excluded.updated_at",
+        (kind, json.dumps(list(terms)), now()))
+    db.commit()
+
+
 def status_counts(user_id):
     rows = get_db().execute(
         "SELECT status, COUNT(*) n FROM referrals WHERE user_id = ? GROUP BY status",
@@ -573,16 +659,11 @@ def status_counts(user_id):
     return {r["status"]: r["n"] for r in rows}
 
 
-def commission_summary(user_id):
-    """Return (enrolled_count, earned_cents, pipeline_cents) for the user."""
-    rows = get_db().execute(
-        "SELECT status, commission_cents FROM referrals WHERE user_id = ?",
-        (user_id,)).fetchall()
-    enrolled = earned = pipeline = 0
-    for r in rows:
-        if r["status"] == "enrolled":
-            enrolled += 1
-            earned += r["commission_cents"] or 0
-        elif r["status"] in OPEN_STATUSES:
-            pipeline += r["commission_cents"] or 0
-    return enrolled, earned, pipeline
+def enrolled_count(user_id):
+    """Number of this user's referrals that reached the 'enrolled' state. Pure
+    outcome tracking - TrialBridge never pays clinicians per referral/enrollment
+    (anti-kickback / fee-splitting), so there is no money attached."""
+    row = get_db().execute(
+        "SELECT COUNT(*) AS n FROM referrals WHERE user_id = ? AND status = ?",
+        (user_id, "enrolled")).fetchone()
+    return row["n"] if row else 0

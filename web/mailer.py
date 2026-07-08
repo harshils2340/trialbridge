@@ -53,6 +53,77 @@ def build_message(ref, link):
     return subject, "\n".join(lines)
 
 
+def build_candidate_message(lead, link):
+    """Notify a study site that a new de-identified candidate is waiting.
+    Contains NO contact details - the site reveals those only after accepting
+    via the secure link."""
+    nct = lead["nct"] or "your study"
+    subject = f"New candidate for {nct} - TrialBridge"
+    lines = [
+        "Hello,",
+        "",
+        "A patient has applied and may be eligible for your study. They are "
+        "de-identified until you accept them.",
+        "",
+        f"Study: {lead['title'] or nct}",
+    ]
+    if lead["nct"]:
+        lines.append(f"NCT: {lead['nct']}")
+    if lead["condition"]:
+        lines.append(f"Condition: {lead['condition']}")
+    if lead["location"]:
+        lines.append(f"Region: {lead['location']}")
+    lines += [
+        "",
+        "Review the candidate and accept or decline (no login required):",
+        link,
+        "",
+        "If you accept, the patient's consented contact details are unlocked so "
+        "you can invite them to a screening visit.",
+        "",
+        "Sent via TrialBridge.",
+    ]
+    return subject, "\n".join(lines)
+
+
+_APPLICANT_COPY = {
+    "accepted": ("A study team wants to move forward with your application",
+                 "Good news - a study team reviewed your application and would "
+                 "like to move forward. They may reach out using the contact "
+                 "details you provided to arrange a screening visit."),
+    "declined": ("Update on your trial application",
+                 "Thanks for applying. This study wasn't a match this time. You "
+                 "can explore other trials that may fit you better."),
+    "screening": ("Your trial application: screening visit",
+                  "A study team is arranging a screening visit for your "
+                  "application. They'll confirm the details with you directly."),
+    "enrolled": ("Your trial application: enrolled",
+                 "Your application has advanced to enrolled. The study team will "
+                 "guide you through the next steps."),
+}
+
+
+def build_applicant_message(lead, kind, link):
+    """Notify the applicant that their application status changed."""
+    subj, body = _APPLICANT_COPY.get(kind, _APPLICANT_COPY["accepted"])
+    title = lead["title"] or lead["nct"] or "a clinical trial"
+    lines = [
+        f"Hi {lead['name'] or 'there'},",
+        "",
+        f"{body}",
+        "",
+        f"Trial: {title}",
+        "",
+        "See your applications and status any time here:",
+        link,
+        "",
+        "This isn't medical advice and you can talk to your own doctor first.",
+        "",
+        "Sent via TrialBridge.",
+    ]
+    return subj, "\n".join(lines)
+
+
 def send_email(to_addr, subject, body):
     """Send via SMTP. Returns (ok, message)."""
     if not smtp_configured():
