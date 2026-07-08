@@ -59,6 +59,17 @@
     </ol>
     {% endif %}
 
+    {% if not is_closed %}
+      {% if ld.records_connected %}
+      <div class="app-records ok">{{ ic.icon('check') }} <span>Health records connected - the study team can pre-screen you from your history.</span></div>
+      {% else %}
+      <form method="post" action="{{ url_for('connect_records', token=ld.token) }}" class="app-records-form">
+        <button class="btn btn-ghost btn-block" type="submit">{{ ic.icon('upload') }} Connect your health records to speed up pre-screening</button>
+        <span class="app-records-note">Prototype: links records (like your hospital portal or Apple Health) so the team can check eligibility from your history, with your consent. No data is sent anywhere yet.</span>
+      </form>
+      {% endif %}
+    {% endif %}
+
     <div class="app-foot">
       <span class="app-applied">Applied {{ ld.created_at }}</span>
       <div class="app-foot-actions">

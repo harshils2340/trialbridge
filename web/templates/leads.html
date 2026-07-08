@@ -31,7 +31,11 @@
           {% if l['condition'] %}<div class="tag">{{ l['condition'] }}</div>{% endif %}</td>
         <td class="tag">{% if l['email'] %}{{ l['email'] }}{% endif %}{% if l['phone'] %}<div class="mono">{{ l['phone'] }}</div>{% endif %}</td>
         <td>{% if l['nct'] %}<a href="https://clinicaltrials.gov/study/{{ l['nct'] }}" target="_blank" rel="noopener">{{ l['nct'] }}</a>{% endif %}<div class="tag">{{ l['title'][:48] }}</div>{% if l['location'] %}<div class="tag">{{ l['location'] }}</div>{% endif %}</td>
-        <td><span class="pill pill-{{ l['status'] }}">{{ labels.get(l['status'], l['status']) }}</span></td>
+        <td><span class="pill pill-{{ l['status'] }}">{{ labels.get(l['status'], l['status']) }}</span>
+          {% if l['records_connected'] %}
+          <details class="rec-sum"><summary>✓ records</summary><pre>{{ l['record_summary'] }}</pre></details>
+          {% endif %}
+        </td>
         <td>
           <form method="post" action="{{ url_for('update_lead', lead_id=l['id']) }}" class="lead-status-form">
             <select name="status">

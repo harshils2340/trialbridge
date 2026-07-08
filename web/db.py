@@ -20,15 +20,17 @@ OPEN_STATUSES = {"referred", "received", "contacted", "screened"}
 # Who can move a referral into each status (site = coordinator via token link).
 SITE_STATUSES = ["received", "contacted", "screened", "enrolled", "screen_failed"]
 
-# Patient "application" pipeline - Indeed-style stages, tuned for trials.
-LEAD_PIPELINE = ["submitted", "reviewing", "contacted", "screening", "enrolled"]
+# Patient "application" pipeline - the real clinical-trial funnel, Indeed-style.
+# applied -> pre-screen (records/questions) -> likely eligible (site confirms)
+# -> screening visit (forms + in-person checks) -> enrolled.
+LEAD_PIPELINE = ["submitted", "prescreen", "eligible", "screening", "enrolled"]
 LEAD_CLOSED = ["closed", "withdrawn"]
 LEAD_STATUSES = LEAD_PIPELINE + LEAD_CLOSED
 LEAD_LABELS = {
     "submitted": "Application submitted",
-    "reviewing": "Study team reviewing",
-    "contacted": "Study team reached out",
-    "screening": "Eligibility screening",
+    "prescreen": "Pre-screening",
+    "eligible": "Likely eligible",
+    "screening": "Screening visit",
     "enrolled": "Enrolled",
     "closed": "Not a match / closed",
     "withdrawn": "Withdrawn",
@@ -36,13 +38,19 @@ LEAD_LABELS = {
 # Plain one-liners shown to the patient under each stage.
 LEAD_BLURB = {
     "submitted": "We've saved your interest and shared it with the study team.",
-    "reviewing": "The study team is reviewing whether you might be a fit.",
-    "contacted": "The study team has reached out - check your phone and email.",
-    "screening": "You're being screened for eligibility (questions, maybe a visit).",
+    "prescreen": "The study team is checking your basic details - and any records "
+                 "you've connected - to see if you might fit.",
+    "eligible": "Good news: the study team thinks you're likely eligible and wants "
+                "to take the next step with you.",
+    "screening": "Next is the screening visit - some forms and in-person checks to "
+                 "confirm you qualify before you start.",
     "enrolled": "You've been enrolled in the study. Congratulations!",
-    "closed": "This study isn't moving forward with your application right now.",
+    "closed": "This study isn't moving forward with your application right now - it's "
+              "worth applying to other matching trials.",
     "withdrawn": "You withdrew this application.",
 }
+# Legacy status keys -> current pipeline (applied idempotently on startup).
+_LEAD_STATUS_REMAP = {"reviewing": "prescreen", "contacted": "eligible"}
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
@@ -114,6 +122,8 @@ CREATE TABLE IF NOT EXISTS leads (
     consent         INTEGER DEFAULT 0,
     source          TEXT DEFAULT 'web',
     status          TEXT NOT NULL DEFAULT 'submitted',
+    records_connected INTEGER DEFAULT 0,
+    record_summary  TEXT DEFAULT '',
     created_at      TEXT NOT NULL,
     updated_at      TEXT DEFAULT ''
 );
@@ -179,6 +189,8 @@ _MIGRATIONS = {
     "leads": {
         "applicant_token": "TEXT DEFAULT ''",
         "updated_at": "TEXT DEFAULT ''",
+        "records_connected": "INTEGER DEFAULT 0",
+        "record_summary": "TEXT DEFAULT ''",
     },
 }
 
@@ -195,6 +207,9 @@ def _migrate(con):
                     (gen_token(), row[0]))
     # Normalize legacy lead status and backfill updated_at + an initial event.
     con.execute("UPDATE leads SET status = 'submitted' WHERE status = 'new'")
+    for old, new in _LEAD_STATUS_REMAP.items():
+        con.execute("UPDATE leads SET status = ? WHERE status = ?", (new, old))
+        con.execute("UPDATE lead_events SET status = ? WHERE status = ?", (new, old))
     con.execute("UPDATE leads SET updated_at = created_at "
                 "WHERE updated_at IS NULL OR updated_at = ''")
     for row in con.execute(
@@ -467,6 +482,28 @@ def withdraw_lead(token, applicant_token):
         return False
     return update_lead_status(lead["id"], "withdrawn",
                               "withdrawn by applicant", actor="you")
+
+
+def connect_records(token, applicant_token, summary):
+    """Patient connects (prototype) health records to speed up pre-screening.
+    Attaches a de-identified summary and moves the application into pre-screen."""
+    lead = get_lead_by_token(token)
+    if not lead or lead["applicant_token"] != applicant_token:
+        return False
+    db = get_db()
+    ts = now()
+    db.execute("UPDATE leads SET records_connected = 1, record_summary = ?, "
+               "updated_at = ? WHERE id = ?", (summary, ts, lead["id"]))
+    db.execute(
+        "INSERT INTO lead_events (lead_id, status, note, actor, created_at) "
+        "VALUES (?,?,?,?,?)",
+        (lead["id"], lead["status"], "health records connected (prototype)",
+         "you", ts))
+    db.commit()
+    if lead["status"] == "submitted":
+        update_lead_status(lead["id"], "prescreen",
+                           "auto-advanced after records connected", actor="you")
+    return True
 
 
 def lead_counts():

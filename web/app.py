@@ -389,6 +389,12 @@ def interest():
     return resp
 
 
+@app.route("/how-it-works")
+def how_it_works():
+    return render_template("how.html", pipeline=db.LEAD_PIPELINE,
+                           labels=db.LEAD_LABELS, blurb=db.LEAD_BLURB)
+
+
 @app.route("/applications")
 def applications():
     """Patient-facing 'My applications' - Indeed-style tracker, no login."""
@@ -411,6 +417,37 @@ def withdraw_application(token):
         flash("Application withdrawn.", "success")
     else:
         flash("Couldn't withdraw that application.", "error")
+    return redirect(url_for("applications"))
+
+
+def build_demo_record_summary(lead):
+    """Prototype: stand-in for a real patient-mediated FHIR pull (SMART on FHIR /
+    1upHealth / Health Gorilla). Produces a de-identified summary the study team
+    would use to pre-screen. NOT real data - clearly labelled as a demo."""
+    cond = (lead["condition"] or "the condition").strip()
+    age = (lead["age"] or "").strip()
+    sex = (lead["sex"] or "").strip()
+    who = " ".join(x for x in [age and f"{age}yo", sex] if x) or "adult"
+    return (
+        f"DEMO de-identified record for a {who} patient.\n"
+        f"- Active problems: {cond}\n"
+        f"- Medications: (imported from connected record)\n"
+        f"- Recent labs / vitals: (imported from connected record)\n"
+        f"- No prior investigational-drug participation on file.\n"
+        f"This is sample data to demonstrate records-based pre-screening; in "
+        f"production it would be pulled from the patient's EHR with their consent.")
+
+
+@app.route("/applications/connect-records/<token>", methods=["POST"])
+def connect_records(token):
+    applicant = get_applicant_token()
+    lead = db.get_lead_by_token(token)
+    if not lead or lead["applicant_token"] != applicant:
+        flash("Couldn't connect records for that application.", "error")
+        return redirect(url_for("applications"))
+    db.connect_records(token, applicant, build_demo_record_summary(lead))
+    flash("Health records connected (prototype) - pre-screening has started.",
+          "success")
     return redirect(url_for("applications"))
 
 

@@ -1,0 +1,68 @@
+{% extends "public_base.html" %}
+{% block title %}How TrialBridge works · TrialBridge{% endblock %}
+{% block description %}The end-to-end flow: find a trial, apply, connect your records for pre-screening, and get taken through to a screening visit - all with your consent.{% endblock %}
+
+{% block body %}
+<section class="how-wrap">
+  <div class="how-head">
+    <span class="hero-eyebrow">{{ ic.icon('activity') }} The closed loop, end to end</span>
+    <h1>From "I'm interested" to enrolled - clearly.</h1>
+    <p class="how-lead">TrialBridge connects two sides: <b>you</b> (looking for a trial) and the
+      <b>study team</b> (looking for the right participants). Here's exactly how an application
+      moves between you, all the way through. Nothing happens without your consent.</p>
+  </div>
+
+  <div class="how-cols">
+    <div class="how-col">
+      <h2>{{ ic.icon('user-plus') }} Your side</h2>
+      <ol class="how-steps">
+        <li><b>Find a trial</b><span>Search by condition and location. We read each study's eligibility in plain English.</span></li>
+        <li><b>Apply</b><span>Tap "I'm interested" and leave your contact. You consent to share it with that study's team.</span></li>
+        <li><b>Connect your records (optional)</b><span>Link your health record (like your hospital portal or Apple Health) so the team can pre-screen you from your real history - no re-typing.</span></li>
+        <li><b>Get pre-screened</b><span>The team checks whether you likely fit, using your details and any records you connected.</span></li>
+        <li><b>Move to a screening visit</b><span>If you're likely eligible, you're invited to complete forms and in-person checks that confirm eligibility.</span></li>
+        <li><b>Enroll</b><span>Once confirmed, you're enrolled - you were in control the whole way.</span></li>
+      </ol>
+    </div>
+
+    <div class="how-loop">{{ ic.icon('activity') }}</div>
+
+    <div class="how-col how-col-alt">
+      <h2>{{ ic.icon('award') }} The study team's side</h2>
+      <ol class="how-steps">
+        <li><b>Receive a consented application</b><span>A real, interested person - not a cold lead - lands in their inbox.</span></li>
+        <li><b>Pre-screen from records</b><span>With consent, they review the connected de-identified record instead of chasing paperwork.</span></li>
+        <li><b>Confirm likely eligibility</b><span>They mark the person "likely eligible" (or not a match) - and you see that update.</span></li>
+        <li><b>Invite to the screening visit</b><span>They schedule the forms and in-person checks that officially confirm eligibility.</span></li>
+        <li><b>Enroll</b><span>Confirmed participants are enrolled and the loop is closed.</span></li>
+      </ol>
+    </div>
+  </div>
+
+  <div class="how-track">
+    <h2>You can see every step</h2>
+    <p>Each application has a live status in <a href="{{ url_for('applications') }}">My applications</a>, so you always know where you stand:</p>
+    <ol class="how-track-steps">
+      {% for st in pipeline %}
+      <li><span class="how-track-dot">{{ loop.index }}</span>
+        <b>{{ labels[st] }}</b>
+        <span class="how-track-blurb">{{ blurb[st] }}</span></li>
+      {% endfor %}
+    </ol>
+  </div>
+
+  <div class="how-privacy">
+    {{ ic.icon('check') }}
+    <div>
+      <b>Consent-first, and no spam.</b>
+      <p>We only share your details with a study team when you ask us to, and records are only
+         pulled with your explicit permission. This is an early prototype - no emails are sent
+         automatically; it demonstrates the full flow end to end.</p>
+    </div>
+  </div>
+
+  <div class="how-cta">
+    <a class="btn btn-primary btn-lg" href="{{ url_for('find') }}">{{ ic.icon('search') }} Find a trial near me</a>
+  </div>
+</section>
+{% endblock %}
