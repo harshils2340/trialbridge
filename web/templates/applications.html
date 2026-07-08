@@ -1,0 +1,92 @@
+{% extends "public_base.html" %}
+{% block title %}My applications · TrialBridge{% endblock %}
+
+{% block body %}
+<section class="apps-wrap">
+  <div class="apps-head">
+    <div>
+      <h1>My applications</h1>
+      <p class="apps-sub">Track every trial you've asked to be contacted about.</p>
+    </div>
+    <a class="btn btn-primary" href="{{ url_for('find') }}">{{ ic.icon('search') }} Find more trials</a>
+  </div>
+
+  {% if not apps %}
+  <div class="apps-empty">
+    <div class="apps-empty-mark">{{ ic.icon('user-plus') }}</div>
+    <h2>No applications yet</h2>
+    <p>When you find a trial and tap "I'm interested," it shows up here so you can
+       follow what happens next.</p>
+    <a class="btn btn-primary btn-lg" href="{{ url_for('find') }}">{{ ic.icon('search') }} Find a trial</a>
+  </div>
+  {% endif %}
+
+  {% for a in apps %}
+  {% set ld = a.lead %}
+  {% set is_closed = ld.status in closed %}
+  {% set cur = pipeline.index(ld.status) if ld.status in pipeline else -1 %}
+  <article class="app-card {{ 'app-closed' if is_closed else '' }}">
+    <div class="app-card-head">
+      <div>
+        <h2 class="app-title">{{ ld.title or 'Clinical trial' }}</h2>
+        <p class="app-meta">
+          {% if ld.condition %}{{ ld.condition }} · {% endif %}
+          {% if ld.site %}{{ ld.site }}{% elif ld.location %}Near {{ ld.location }}{% endif %}
+        </p>
+      </div>
+      <span class="app-status app-status-{{ 'closed' if is_closed else 'open' }}">
+        {{ labels.get(ld.status, ld.status) }}
+      </span>
+    </div>
+
+    <p class="app-blurb">{{ blurb.get(ld.status, '') }}</p>
+
+    {% if is_closed %}
+    <div class="app-closed-note">
+      {{ ic.icon('activity') }}
+      {% if ld.status == 'withdrawn' %}You withdrew this application.
+      {% else %}This study isn't moving forward with your application right now - it's worth
+        applying to other matching trials.{% endif %}
+    </div>
+    {% else %}
+    <ol class="app-steps">
+      {% for st in pipeline %}
+      <li class="app-step{{ ' done' if cur >= 0 and loop.index0 <= cur else '' }}{{ ' current' if loop.index0 == cur else '' }}">
+        <span class="app-step-dot">{% if cur >= 0 and loop.index0 < cur %}{{ ic.icon('check') }}{% else %}{{ loop.index }}{% endif %}</span>
+        <span class="app-step-label">{{ labels[st] }}</span>
+      </li>
+      {% endfor %}
+    </ol>
+    {% endif %}
+
+    <div class="app-foot">
+      <span class="app-applied">Applied {{ ld.created_at }}</span>
+      <div class="app-foot-actions">
+        {% if ld.nct %}<a class="app-link" href="https://clinicaltrials.gov/study/{{ ld.nct }}" target="_blank" rel="noopener">{{ ic.icon('external') }} {{ ld.nct }}</a>{% endif %}
+        {% if a.events|length > 1 %}
+        <details class="app-timeline">
+          <summary>{{ ic.icon('chevron-down') }} History</summary>
+          <ul>
+            {% for e in a.events %}
+            <li><b>{{ labels.get(e.status, e.status) }}</b> · {{ e.created_at }}{% if e.note %} - {{ e.note }}{% endif %}</li>
+            {% endfor %}
+          </ul>
+        </details>
+        {% endif %}
+        {% if not is_closed %}
+        <form method="post" action="{{ url_for('withdraw_application', token=ld.token) }}"
+              onsubmit="return confirm('Withdraw this application? The study team will no longer be able to contact you about it.');">
+          <button class="link-btn app-withdraw" type="submit">Withdraw</button>
+        </form>
+        {% endif %}
+      </div>
+    </div>
+  </article>
+  {% endfor %}
+
+  {% if apps %}
+  <p class="apps-foot-note">Statuses update as the study team reviews and responds to your
+    application. TrialBridge isn't the study sponsor and doesn't make eligibility decisions.</p>
+  {% endif %}
+</section>
+{% endblock %}

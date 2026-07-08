@@ -829,3 +829,101 @@ body.pub { background: var(--surface); }
   .find-field.narrow { flex: 1; }
   .pr-head { flex-direction: column; }
 }
+
+/* Applied state on a result card */
+.pr-applied { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 14px;
+  color: var(--green); background: var(--green-bg); border: 1px solid #c4e6d6;
+  border-radius: 10px; padding: 12px 14px; }
+.pr-applied .ico { width: 15px; height: 15px; }
+.pr-applied a { color: var(--accent); text-decoration: none; margin-left: auto; font-weight: 600; }
+
+/* Nav badge for application count */
+.nav-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 18px;
+  height: 18px; padding: 0 5px; border-radius: 999px; background: var(--accent); color: #fff;
+  font-size: 11px; font-weight: 700; }
+
+/* My applications (patient tracker) */
+.apps-wrap { max-width: 860px; margin: 0 auto; padding: 32px 24px 64px; }
+.apps-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;
+  margin-bottom: 24px; }
+.apps-head h1 { font-size: 28px; letter-spacing: -.03em; margin: 0 0 4px; }
+.apps-sub { color: var(--muted); margin: 0; font-size: 14px; }
+.apps-empty { text-align: center; padding: 56px 24px; border: 1px solid var(--border);
+  border-radius: var(--radius); background: var(--surface-2); }
+.apps-empty-mark { width: 56px; height: 56px; border-radius: 50%; background: var(--accent-soft);
+  color: var(--accent); display: flex; align-items: center; justify-content: center; margin: 0 auto 18px; }
+.apps-empty-mark .ico { width: 26px; height: 26px; }
+.apps-empty h2 { margin: 0 0 8px; font-size: 20px; }
+.apps-empty p { color: var(--muted); max-width: 400px; margin: 0 auto 22px; line-height: 1.55; }
+
+.app-card { border: 1px solid var(--border-strong); border-radius: var(--radius);
+  background: var(--surface); box-shadow: var(--shadow); padding: 22px; margin-bottom: 16px; }
+.app-card.app-closed { opacity: .9; }
+.app-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
+.app-title { font-size: 17px; letter-spacing: -.02em; margin: 0 0 4px; line-height: 1.35; }
+.app-meta { color: var(--muted); font-size: 13px; margin: 0; }
+.app-status { font-size: 12px; font-weight: 700; padding: 5px 12px; border-radius: 999px;
+  white-space: nowrap; flex-shrink: 0; }
+.app-status-open { background: var(--accent-soft); color: var(--accent); }
+.app-status-closed { background: var(--surface-2); color: var(--muted); border: 1px solid var(--border); }
+.app-blurb { color: var(--ink-soft); font-size: 14px; line-height: 1.55; margin: 12px 0 18px; }
+
+.app-steps { list-style: none; display: flex; margin: 0 0 18px; padding: 0; }
+.app-step { flex: 1; text-align: center; position: relative; font-size: 11.5px; color: var(--faint); }
+.app-step::before { content: ''; position: absolute; top: 13px; left: -50%; width: 100%; height: 2px;
+  background: var(--border); z-index: 0; }
+.app-step:first-child::before { display: none; }
+.app-step-dot { position: relative; z-index: 1; width: 26px; height: 26px; border-radius: 50%;
+  background: var(--surface); border: 2px solid var(--border); color: var(--faint); display: flex;
+  align-items: center; justify-content: center; margin: 0 auto 6px; font-size: 12px; font-weight: 700; }
+.app-step-dot .ico { width: 13px; height: 13px; }
+.app-step.done .app-step-dot { background: var(--green); border-color: var(--green); color: #fff; }
+.app-step.done::before { background: var(--green); }
+.app-step.done .app-step-label { color: var(--ink-soft); }
+.app-step.current .app-step-dot { background: var(--accent); border-color: var(--accent); color: #fff;
+  box-shadow: 0 0 0 4px var(--accent-soft); }
+.app-step.current .app-step-label { color: var(--accent); font-weight: 700; }
+
+.app-closed-note { display: flex; align-items: flex-start; gap: 8px; font-size: 13.5px;
+  color: var(--muted); background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: 10px; padding: 12px 14px; margin-bottom: 16px; line-height: 1.5; }
+.app-closed-note .ico { width: 15px; height: 15px; flex-shrink: 0; margin-top: 1px; }
+
+.app-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  flex-wrap: wrap; border-top: 1px solid var(--border); padding-top: 14px; }
+.app-applied { font-size: 12px; color: var(--faint); }
+.app-foot-actions { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.app-link { color: var(--accent); text-decoration: none; font-size: 13px; display: inline-flex;
+  align-items: center; gap: 5px; }
+.app-link .ico { width: 13px; height: 13px; }
+.app-withdraw { color: var(--red); }
+.app-timeline summary { cursor: pointer; font-size: 13px; color: var(--ink-soft); list-style: none;
+  display: inline-flex; align-items: center; gap: 5px; }
+.app-timeline summary::-webkit-details-marker { display: none; }
+.app-timeline summary .ico { width: 14px; height: 14px; transition: transform .2s; }
+.app-timeline[open] summary .ico { transform: rotate(180deg); }
+.app-timeline ul { margin: 10px 0 0; padding-left: 18px; font-size: 13px; color: var(--ink-soft);
+  line-height: 1.6; }
+.apps-foot-note { color: var(--faint); font-size: 12px; text-align: center; margin-top: 20px;
+  line-height: 1.5; }
+
+@media (max-width: 560px) {
+  .app-step-label { font-size: 10px; }
+  .apps-head { flex-direction: column; }
+}
+
+/* Operator: application status controls */
+.lead-status-form { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.lead-status-form select, .lead-status-form input { border: 1px solid var(--border-strong);
+  border-radius: 8px; padding: 6px 8px; font-size: 12.5px; font-family: var(--sans);
+  background: var(--surface); color: var(--ink); }
+.lead-status-form input { width: 120px; }
+.btn-sm { padding: 6px 12px; font-size: 12.5px; }
+.pill { display: inline-block; font-size: 11.5px; font-weight: 700; padding: 4px 10px;
+  border-radius: 999px; background: var(--surface-2); border: 1px solid var(--border);
+  color: var(--ink-soft); white-space: nowrap; }
+.pill-submitted { background: var(--accent-soft); color: var(--accent); border-color: transparent; }
+.pill-reviewing, .pill-contacted, .pill-screening { background: var(--amber-bg); color: var(--amber);
+  border-color: transparent; }
+.pill-enrolled { background: var(--green-bg); color: var(--green); border-color: transparent; }
+.pill-closed, .pill-withdrawn { background: var(--surface-2); color: var(--muted); }

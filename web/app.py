@@ -24,8 +24,8 @@ import sys
 import urllib.parse
 import urllib.request
 
-from flask import (Flask, abort, flash, g, jsonify, redirect, render_template,
-                   request, session, url_for)
+from flask import (Flask, abort, flash, g, jsonify, make_response, redirect,
+                   render_template, request, session, url_for)
 from werkzeug.security import check_password_hash, generate_password_hash
 
 # Reuse the matching engine + referral helpers from the parent package.
@@ -135,9 +135,30 @@ def load_user():
         g.user = _ensure_demo_user()
 
 
+APPLICANT_COOKIE = "tb_app"
+
+
+def get_applicant_token():
+    """Stable per-visitor id used to group a person's trial applications.
+    No login: we keep it in a long-lived cookie. Returns '' if not set yet."""
+    return request.cookies.get(APPLICANT_COOKIE, "")
+
+
+def _set_applicant_cookie(resp, token):
+    resp.set_cookie(APPLICANT_COOKIE, token, max_age=60 * 60 * 24 * 365,
+                    samesite="Lax", httponly=True,
+                    secure=bool(os.environ.get("BEHIND_PROXY")))
+    return resp
+
+
 @app.context_processor
 def inject_globals():
-    return {"user": g.user, "llm_on": bool(mt.LLM_API_KEY)}
+    try:
+        apps_n = db.count_applications(get_applicant_token())
+    except Exception:
+        apps_n = 0
+    return {"user": g.user, "llm_on": bool(mt.LLM_API_KEY),
+            "applications_count": apps_n}
 
 
 @app.route("/register", methods=["GET", "POST"])
@@ -324,11 +345,13 @@ def find():
         return render_template("find.html", condition_value=label,
                                location_value=location)
 
+    applied = db.applied_ncts(get_applicant_token())
     return render_template("patient_results.html", results=results,
                            condition=label, location=location, unit=unit,
                            q_condition=condition, q_intervention=intervention,
                            q_age=age, q_sex=sex, q_about=about, q_radius=radius,
-                           q_lat=lat_in, q_lon=lon_in, q_cc=cc_in)
+                           q_lat=lat_in, q_lon=lon_in, q_cc=cc_in,
+                           applied=applied)
 
 
 @app.route("/interest", methods=["POST"])
@@ -345,7 +368,12 @@ def interest():
         flash("Add your name and an email or phone so the site can reach you.",
               "error")
         return redirect(request.referrer or url_for("find"))
+    applicant = get_applicant_token()
+    new_cookie = not applicant
+    if new_cookie:
+        applicant = secrets.token_urlsafe(16)
     db.create_lead({
+        "applicant_token": applicant,
         "nct": f.get("nct", "").strip(), "title": f.get("title", "").strip(),
         "condition": f.get("condition", "").strip(),
         "location": f.get("location", "").strip(),
@@ -354,8 +382,36 @@ def interest():
         "age": f.get("age", "").strip(), "sex": f.get("sex", "").strip(),
         "notes": f.get("about", "").strip(), "consent": 1, "source": "web",
     })
-    return render_template("thanks.html", title=f.get("title", ""),
-                           nct=f.get("nct", ""))
+    resp = make_response(render_template("thanks.html", title=f.get("title", ""),
+                                         nct=f.get("nct", "")))
+    if new_cookie:
+        _set_applicant_cookie(resp, applicant)
+    return resp
+
+
+@app.route("/applications")
+def applications():
+    """Patient-facing 'My applications' - Indeed-style tracker, no login."""
+    token = get_applicant_token()
+    leads = db.list_leads_by_applicant(token)
+    apps = []
+    for ld in leads:
+        apps.append({
+            "lead": ld,
+            "events": db.get_lead_events(ld["id"]),
+        })
+    return render_template("applications.html", apps=apps,
+                           pipeline=db.LEAD_PIPELINE, labels=db.LEAD_LABELS,
+                           blurb=db.LEAD_BLURB, closed=db.LEAD_CLOSED)
+
+
+@app.route("/applications/withdraw/<token>", methods=["POST"])
+def withdraw_application(token):
+    if db.withdraw_lead(token, get_applicant_token()):
+        flash("Application withdrawn.", "success")
+    else:
+        flash("Couldn't withdraw that application.", "error")
+    return redirect(url_for("applications"))
 
 
 @app.route("/trials/<slug>")
@@ -391,8 +447,25 @@ def condition_city_page(slug, city_slug):
 @app.route("/app/leads")
 @login_required
 def leads():
-    return render_template("leads.html", leads=db.list_leads(),
-                           counts=db.lead_counts())
+    rows = db.list_leads()
+    leads_with_events = [{"lead": r, "events": db.get_lead_events(r["id"])}
+                         for r in rows]
+    return render_template("leads.html", leads=leads_with_events,
+                           counts=db.lead_counts(), pipeline=db.LEAD_PIPELINE,
+                           statuses=db.LEAD_STATUSES, labels=db.LEAD_LABELS)
+
+
+@app.route("/app/leads/<int:lead_id>/status", methods=["POST"])
+@login_required
+def update_lead(lead_id):
+    status = request.form.get("status", "").strip()
+    note = request.form.get("note", "").strip()
+    if db.update_lead_status(lead_id, status, note, actor="you"):
+        flash(f"Application moved to \"{db.LEAD_LABELS.get(status, status)}\".",
+              "success")
+    else:
+        flash("Couldn't update that application.", "error")
+    return redirect(url_for("leads"))
 
 
 @app.route("/trials/drug/<slug>")

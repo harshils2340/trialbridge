@@ -149,6 +149,12 @@
       </details>
       {% endif %}
 
+      {% if applied and t.nctId in applied %}
+      <div class="pr-applied">
+        {{ ic.icon('check') }} <b>Application submitted</b>
+        <a href="{{ url_for('applications') }}">Track it in My applications →</a>
+      </div>
+      {% else %}
       <details class="pr-interest">
         <summary class="btn btn-primary btn-block">{{ ic.icon('user-plus') }} I'm interested - ask them to contact me</summary>
         <form class="interest-form" method="post" action="{{ url_for('interest') }}">
@@ -174,6 +180,7 @@
           <button class="btn btn-primary" type="submit">{{ ic.icon('arrow-right') }} Request contact</button>
         </form>
       </details>
+      {% endif %}
     </article>
     {% endfor %}
     </div>

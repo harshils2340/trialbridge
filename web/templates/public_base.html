@@ -18,6 +18,7 @@
   <a class="brand" href="{{ url_for('home') }}"><img class="brand-mark" src="{{ url_for('static', filename='logo.svg') }}" width="24" height="24" alt="">TrialBridge</a>
   <nav class="pub-nav-links">
     <a href="{{ url_for('find') }}">Find a trial</a>
+    <a href="{{ url_for('applications') }}" class="pub-apps">My applications{% if applications_count %} <span class="nav-badge">{{ applications_count }}</span>{% endif %}</a>
     <a href="{{ url_for('login') }}" class="pub-clin">For clinicians</a>
   </nav>
 </header>

@@ -20,6 +20,30 @@ OPEN_STATUSES = {"referred", "received", "contacted", "screened"}
 # Who can move a referral into each status (site = coordinator via token link).
 SITE_STATUSES = ["received", "contacted", "screened", "enrolled", "screen_failed"]
 
+# Patient "application" pipeline - Indeed-style stages, tuned for trials.
+LEAD_PIPELINE = ["submitted", "reviewing", "contacted", "screening", "enrolled"]
+LEAD_CLOSED = ["closed", "withdrawn"]
+LEAD_STATUSES = LEAD_PIPELINE + LEAD_CLOSED
+LEAD_LABELS = {
+    "submitted": "Application submitted",
+    "reviewing": "Study team reviewing",
+    "contacted": "Study team reached out",
+    "screening": "Eligibility screening",
+    "enrolled": "Enrolled",
+    "closed": "Not a match / closed",
+    "withdrawn": "Withdrawn",
+}
+# Plain one-liners shown to the patient under each stage.
+LEAD_BLURB = {
+    "submitted": "We've saved your interest and shared it with the study team.",
+    "reviewing": "The study team is reviewing whether you might be a fit.",
+    "contacted": "The study team has reached out - check your phone and email.",
+    "screening": "You're being screened for eligibility (questions, maybe a visit).",
+    "enrolled": "You've been enrolled in the study. Congratulations!",
+    "closed": "This study isn't moving forward with your application right now.",
+    "withdrawn": "You withdrew this application.",
+}
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -73,28 +97,42 @@ CREATE TABLE IF NOT EXISTS referral_events (
 -- a normal person finds a trial and asks to be contacted. Consented leads are
 -- what sponsors/sites pay for. No PHI beyond what the patient volunteers.
 CREATE TABLE IF NOT EXISTS leads (
-    id            INTEGER PRIMARY KEY AUTOINCREMENT,
-    token         TEXT UNIQUE,
-    nct           TEXT DEFAULT '',
-    title         TEXT DEFAULT '',
-    condition     TEXT DEFAULT '',
-    location      TEXT DEFAULT '',
-    site          TEXT DEFAULT '',
-    name          TEXT DEFAULT '',
-    email         TEXT DEFAULT '',
-    phone         TEXT DEFAULT '',
-    age           TEXT DEFAULT '',
-    sex           TEXT DEFAULT '',
-    notes         TEXT DEFAULT '',
-    consent       INTEGER DEFAULT 0,
-    source        TEXT DEFAULT 'web',
-    status        TEXT NOT NULL DEFAULT 'new',
-    created_at    TEXT NOT NULL
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    token           TEXT UNIQUE,
+    applicant_token TEXT DEFAULT '',
+    nct             TEXT DEFAULT '',
+    title           TEXT DEFAULT '',
+    condition       TEXT DEFAULT '',
+    location        TEXT DEFAULT '',
+    site            TEXT DEFAULT '',
+    name            TEXT DEFAULT '',
+    email           TEXT DEFAULT '',
+    phone           TEXT DEFAULT '',
+    age             TEXT DEFAULT '',
+    sex             TEXT DEFAULT '',
+    notes           TEXT DEFAULT '',
+    consent         INTEGER DEFAULT 0,
+    source          TEXT DEFAULT 'web',
+    status          TEXT NOT NULL DEFAULT 'submitted',
+    created_at      TEXT NOT NULL,
+    updated_at      TEXT DEFAULT ''
+);
+
+-- Status history for a patient application (drives the "My applications" timeline).
+CREATE TABLE IF NOT EXISTS lead_events (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    lead_id     INTEGER NOT NULL,
+    status      TEXT NOT NULL,
+    note        TEXT DEFAULT '',
+    actor       TEXT DEFAULT 'you',
+    created_at  TEXT NOT NULL,
+    FOREIGN KEY (lead_id) REFERENCES leads(id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_referrals_user ON referrals(user_id);
 CREATE INDEX IF NOT EXISTS idx_events_ref ON referral_events(referral_id);
 CREATE INDEX IF NOT EXISTS idx_leads_created ON leads(created_at);
+CREATE INDEX IF NOT EXISTS idx_lead_events_lead ON lead_events(lead_id);
 """
 
 
@@ -138,6 +176,10 @@ _MIGRATIONS = {
         "ehr_provider": "TEXT DEFAULT ''",
         "ehr_connected_at": "TEXT DEFAULT ''",
     },
+    "leads": {
+        "applicant_token": "TEXT DEFAULT ''",
+        "updated_at": "TEXT DEFAULT ''",
+    },
 }
 
 
@@ -151,6 +193,21 @@ def _migrate(con):
     for row in con.execute("SELECT id FROM referrals WHERE token IS NULL").fetchall():
         con.execute("UPDATE referrals SET token = ? WHERE id = ?",
                     (gen_token(), row[0]))
+    # Normalize legacy lead status and backfill updated_at + an initial event.
+    con.execute("UPDATE leads SET status = 'submitted' WHERE status = 'new'")
+    con.execute("UPDATE leads SET updated_at = created_at "
+                "WHERE updated_at IS NULL OR updated_at = ''")
+    for row in con.execute(
+            "SELECT id, status, created_at FROM leads WHERE id NOT IN "
+            "(SELECT DISTINCT lead_id FROM lead_events)").fetchall():
+        con.execute(
+            "INSERT INTO lead_events (lead_id, status, note, actor, created_at) "
+            "VALUES (?,?,?,?,?)",
+            (row[0], row[1] or "submitted", "application submitted", "you",
+             row[2]))
+    # Index depends on a migrated column, so create it after the ALTERs above.
+    con.execute("CREATE INDEX IF NOT EXISTS idx_leads_applicant "
+                "ON leads(applicant_token)")
 
 
 def init_db():
@@ -315,24 +372,101 @@ def set_commission(ref_id, user_id, cents):
 def create_lead(data):
     db = get_db()
     token = gen_token()
-    db.execute(
+    ts = now()
+    cur = db.execute(
         """INSERT INTO leads
-           (token, nct, title, condition, location, site, name, email, phone,
-            age, sex, notes, consent, source, status, created_at)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-        (token, data.get("nct", ""), data.get("title", ""),
-         data.get("condition", ""), data.get("location", ""),
-         data.get("site", ""), data.get("name", ""), data.get("email", ""),
-         data.get("phone", ""), data.get("age", ""), data.get("sex", ""),
-         data.get("notes", ""), 1 if data.get("consent") else 0,
-         data.get("source", "web"), "new", now()))
+           (token, applicant_token, nct, title, condition, location, site, name,
+            email, phone, age, sex, notes, consent, source, status, created_at,
+            updated_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+        (token, data.get("applicant_token", ""), data.get("nct", ""),
+         data.get("title", ""), data.get("condition", ""),
+         data.get("location", ""), data.get("site", ""), data.get("name", ""),
+         data.get("email", ""), data.get("phone", ""), data.get("age", ""),
+         data.get("sex", ""), data.get("notes", ""),
+         1 if data.get("consent") else 0, data.get("source", "web"),
+         "submitted", ts, ts))
+    db.execute(
+        "INSERT INTO lead_events (lead_id, status, note, actor, created_at) "
+        "VALUES (?,?,?,?,?)",
+        (cur.lastrowid, "submitted", "application submitted", "you", ts))
     db.commit()
     return token
 
 
 def list_leads():
     return get_db().execute(
-        "SELECT * FROM leads ORDER BY created_at DESC, id DESC").fetchall()
+        "SELECT * FROM leads ORDER BY updated_at DESC, id DESC").fetchall()
+
+
+def list_leads_by_applicant(applicant_token):
+    if not applicant_token:
+        return []
+    return get_db().execute(
+        "SELECT * FROM leads WHERE applicant_token = ? "
+        "ORDER BY updated_at DESC, id DESC", (applicant_token,)).fetchall()
+
+
+def applied_ncts(applicant_token):
+    """NCT ids this visitor has active (non-withdrawn) applications for."""
+    if not applicant_token:
+        return set()
+    rows = get_db().execute(
+        "SELECT nct FROM leads WHERE applicant_token = ? AND status != 'withdrawn'",
+        (applicant_token,)).fetchall()
+    return {r["nct"] for r in rows if r["nct"]}
+
+
+def count_applications(applicant_token):
+    if not applicant_token:
+        return 0
+    r = get_db().execute(
+        "SELECT COUNT(*) n FROM leads WHERE applicant_token = ? "
+        "AND status != 'withdrawn'", (applicant_token,)).fetchone()
+    return r["n"] if r else 0
+
+
+def get_lead(lead_id):
+    return get_db().execute(
+        "SELECT * FROM leads WHERE id = ?", (lead_id,)).fetchone()
+
+
+def get_lead_by_token(token):
+    if not token:
+        return None
+    return get_db().execute(
+        "SELECT * FROM leads WHERE token = ?", (token,)).fetchone()
+
+
+def get_lead_events(lead_id):
+    return get_db().execute(
+        "SELECT * FROM lead_events WHERE lead_id = ? ORDER BY id ASC",
+        (lead_id,)).fetchall()
+
+
+def update_lead_status(lead_id, status, note="", actor="you"):
+    if status not in LEAD_STATUSES:
+        return False
+    db = get_db()
+    if not get_lead(lead_id):
+        return False
+    ts = now()
+    db.execute("UPDATE leads SET status = ?, updated_at = ? WHERE id = ?",
+               (status, ts, lead_id))
+    db.execute(
+        "INSERT INTO lead_events (lead_id, status, note, actor, created_at) "
+        "VALUES (?,?,?,?,?)", (lead_id, status, note, actor, ts))
+    db.commit()
+    return True
+
+
+def withdraw_lead(token, applicant_token):
+    """Patient withdraws their own application (must own the applicant token)."""
+    lead = get_lead_by_token(token)
+    if not lead or lead["applicant_token"] != applicant_token:
+        return False
+    return update_lead_status(lead["id"], "withdrawn",
+                              "withdrawn by applicant", actor="you")
 
 
 def lead_counts():
