@@ -96,6 +96,16 @@
       </div>
     </div>
 
+    {% if results %}
+    <div class="pr-how">
+      <span class="pr-how-step"><b>1</b> Pick a study that looks right for you</span>
+      <span class="pr-how-arrow">{{ ic.icon('arrow-right') }}</span>
+      <span class="pr-how-step"><b>2</b> Leave your name and how to reach you</span>
+      <span class="pr-how-arrow">{{ ic.icon('arrow-right') }}</span>
+      <span class="pr-how-step"><b>3</b> The people running the study call or email you to check if you qualify</span>
+    </div>
+    {% endif %}
+
     {% if not results %}
     <div class="pr-empty">
       <h2>No recruiting trials matched right now</h2>
@@ -140,13 +150,16 @@
       {% endif %}
 
       <details class="pr-interest">
-        <summary class="btn btn-primary btn-block">{{ ic.icon('user-plus') }} I'm interested - have the study team contact me</summary>
+        <summary class="btn btn-primary btn-block">{{ ic.icon('user-plus') }} I'm interested - ask them to contact me</summary>
         <form class="interest-form" method="post" action="{{ url_for('interest') }}">
           <input type="hidden" name="nct" value="{{ t.nctId }}">
           <input type="hidden" name="title" value="{{ t.title }}">
           <input type="hidden" name="condition" value="{{ condition }}">
           <input type="hidden" name="location" value="{{ location }}">
           <input type="hidden" name="site" value="{{ r.site_str }}">
+          <p class="if-intro">Leave your details and the team running this study will reach out
+            (usually within a few days) to see if you're a fit. It's <b>free</b>, and you're
+            <b>not signing up for anything</b> yet - you can ask questions and decide later.</p>
           <div class="if-row two">
             <label>Your name<input name="name" type="text" required></label>
             <label>Phone <span class="opt">(optional)</span><input name="phone" type="tel"></label>
