@@ -70,6 +70,14 @@ app.teardown_appcontext(db.close_db)
 # Create tables on import so the app is safe under any launcher (flask run, wsgi).
 db.init_db()
 
+# In no-login demo mode, seed a few realistic (clearly fake) candidates so the
+# study-team review board shows an end-to-end picture. No-op once real leads exist.
+if os.environ.get("NO_LOGIN", "1") == "1":
+    try:
+        db.seed_demo_leads()
+    except Exception:
+        app.logger.exception("demo lead seeding failed")
+
 
 # --------------------------------------------------------------------------- #
 # Error handlers - never show a raw stack trace to a doctor.

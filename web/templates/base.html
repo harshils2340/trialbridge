@@ -16,14 +16,24 @@
 {% if user %}
 <div class="layout">
   <aside class="sidebar">
-    <a class="brand" href="{{ url_for('dashboard') }}"><img class="brand-mark" src="{{ url_for('static', filename='logo.svg') }}" width="24" height="24" alt="">TrialBridge</a>
+    <a class="brand" href="{{ url_for('leads') if pov == 'study' else url_for('dashboard') }}"><img class="brand-mark" src="{{ url_for('static', filename='logo.svg') }}" width="24" height="24" alt="">TrialBridge</a>
     <nav class="side-nav">
+      {% if pov == 'study' %}
+      {# Study team = the site/sponsor running the trial and reviewing applicants. #}
+      <a href="{{ url_for('leads') }}" class="side-link {{ 'active' if request.endpoint == 'leads' }}">{{ ic.icon('user-plus') }}Candidate review</a>
+      {% else %}
+      {# Clinician = the referring physician. They refer their own patients; they
+         do NOT see the trial site's incoming applicants. #}
       <a href="{{ url_for('dashboard') }}" class="side-link {{ 'active' if request.endpoint in ['dashboard','search','results'] }}">{{ ic.icon('search') }}Find trials</a>
-      <a href="{{ url_for('referrals') }}" class="side-link {{ 'active' if request.endpoint in ['referrals','referral_detail'] }}">{{ ic.icon('list') }}Referrals</a>
-      <a href="{{ url_for('leads') }}" class="side-link {{ 'active' if request.endpoint == 'leads' }}">{{ ic.icon('user-plus') }}Patient leads</a>
+      <a href="{{ url_for('referrals') }}" class="side-link {{ 'active' if request.endpoint in ['referrals','referral_detail'] }}">{{ ic.icon('list') }}My referrals</a>
+      {% endif %}
     </nav>
     <div class="side-foot">
+      {% if pov == 'study' %}
+      <div class="who">Study team<span>Trial site coordinator</span></div>
+      {% else %}
       <div class="who">{{ user['name'] }}{% if user['specialty'] %}<span>{{ user['specialty'] }}</span>{% endif %}</div>
+      {% endif %}
       <a href="{{ url_for('logout') }}" class="side-link">{{ ic.icon('logout') }}Sign out</a>
     </div>
   </aside>

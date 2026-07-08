@@ -597,6 +597,204 @@ def lead_counts():
 
 
 # --------------------------------------------------------------------------- #
+# Demo data - realistic (but clearly fake) candidates for the study-team board.
+# --------------------------------------------------------------------------- #
+def _demo_record(cond, age, sex):
+    who = " ".join(x for x in [age and f"{age}yo", sex] if x) or "adult"
+    return (
+        f"DEMO de-identified record for a {who} patient.\n"
+        f"- Active problems: {cond}\n"
+        f"- Medications: metformin 1000mg BID; atorvastatin 20mg\n"
+        f"- Recent labs: BMI 34.2, HbA1c 7.8%, eGFR 88\n"
+        f"- No prior investigational-drug participation on file.\n"
+        f"Sample data to demonstrate records-based pre-screening.")
+
+
+def _demo_lead_specs():
+    """A small, staged set covering the whole funnel: several awaiting review,
+    plus accepted / declined / screening / enrolled so the board looks real."""
+    scr_ok = {"travel": "yes", "other_trial": "no",
+              "pregnancy": "no", "consent_capable": "yes"}
+    return [
+        # ---- Awaiting review (prescreen, no decision) ----------------------
+        {"days": 1, "status": "prescreen", "records": 1,
+         "nct": "NCT05869903",
+         "title": "Once-Weekly Semaglutide in Adults With Obesity",
+         "condition": "Obesity", "location": "Toronto, ON",
+         "site": "Toronto Metabolic Research Centre",
+         "name": "Priya N.", "email": "priya.n@example.com",
+         "phone": "+1 416 555 0148", "age": "44", "sex": "female",
+         "screener": scr_ok,
+         "elig": {"met": ["Age within 18-75", "BMI \u2265 30",
+                          "No diabetes required for this arm"],
+                  "unknown": ["Weight stable for 3 months (confirm at visit)",
+                              "No thyroid cancer history (confirm)"],
+                  "not_met": [],
+                  "rationale": "Meets the core obesity criteria; two items to "
+                               "confirm at the screening visit."}},
+        {"days": 2, "status": "prescreen", "records": 0,
+         "nct": "NCT06034262",
+         "title": "Tirzepatide vs Placebo for Type 2 Diabetes and Weight",
+         "condition": "Type 2 Diabetes", "location": "Mississauga, ON",
+         "site": "Trillium Clinical Trials",
+         "name": "Marcus L.", "email": "marcus.l@example.com",
+         "phone": "+1 905 555 0193", "age": "58", "sex": "male",
+         "screener": scr_ok,
+         "elig": {"met": ["Type 2 diabetes diagnosis", "Age within range"],
+                  "unknown": ["HbA1c 7-10% (not on file)",
+                              "Stable metformin \u2265 3 months",
+                              "eGFR \u2265 45 (not on file)"],
+                  "not_met": [],
+                  "rationale": "Likely fit but no records connected, so several "
+                               "labs need to be checked."}},
+        {"days": 3, "status": "prescreen", "records": 0,
+         "nct": "NCT05929066",
+         "title": "Investigational GLP-1/GIP Co-agonist for Weight Management",
+         "condition": "Obesity", "location": "Hamilton, ON",
+         "site": "Hamilton Health Research",
+         "name": "Dana K.", "email": "dana.k@example.com",
+         "phone": "+1 289 555 0170", "age": "36", "sex": "female",
+         "screener": {"travel": "yes", "other_trial": "yes",
+                      "pregnancy": "no", "consent_capable": "yes"},
+         "elig": {"met": ["Age within range", "BMI \u2265 30"],
+                  "unknown": ["Willing to stop current weight meds"],
+                  "not_met": ["Currently enrolled in another interventional "
+                              "trial (washout may be required)"],
+                  "rationale": "Screener flags an active trial - confirm washout "
+                               "period before proceeding."}},
+        {"days": 4, "status": "prescreen", "records": 1,
+         "nct": "NCT05442919",
+         "title": "Resmetirom for Nonalcoholic Steatohepatitis (NASH)",
+         "condition": "NASH (MASH)", "location": "Ottawa, ON",
+         "site": "Ottawa Liver Institute",
+         "name": "Robert P.", "email": "robert.p@example.com",
+         "phone": "+1 613 555 0125", "age": "61", "sex": "male",
+         "screener": scr_ok,
+         "elig": {"met": ["Biopsy-confirmed NASH on record", "Age within range",
+                          "F2-F3 fibrosis"],
+                  "unknown": ["No decompensated cirrhosis (confirm imaging)"],
+                  "not_met": [],
+                  "rationale": "Strong fit from the connected record; one imaging "
+                               "item to confirm."}},
+        # ---- Reviewed: accepted -> likely eligible (contact revealed) ------
+        {"days": 5, "status": "eligible", "decision": "accepted", "revealed": 1,
+         "records": 1, "nct": "NCT05869903",
+         "title": "Once-Weekly Semaglutide in Adults With Obesity",
+         "condition": "Obesity", "location": "London, ON",
+         "site": "Western Metabolic Clinic",
+         "name": "Sarah M.", "email": "sarah.m@example.com",
+         "phone": "+1 519 555 0132", "age": "52", "sex": "female",
+         "screener": scr_ok, "accepted_days": 2,
+         "elig": {"met": ["Age within range", "BMI \u2265 30", "No exclusionary "
+                          "conditions on record"],
+                  "unknown": [], "not_met": [],
+                  "rationale": "Clear fit - moved to likely eligible."}},
+        # ---- Reviewed: declined (no reveal) --------------------------------
+        {"days": 6, "status": "closed", "decision": "declined", "revealed": 0,
+         "records": 0, "nct": "NCT06034262",
+         "title": "Tirzepatide vs Placebo for Type 2 Diabetes and Weight",
+         "condition": "Type 2 Diabetes", "location": "Kitchener, ON",
+         "site": "Grand River Trials",
+         "name": "Emily R.", "email": "emily.r@example.com",
+         "phone": "+1 226 555 0188", "age": "29", "sex": "female",
+         "screener": {"travel": "yes", "other_trial": "no",
+                      "pregnancy": "yes", "consent_capable": "yes"},
+         "reason": "Screener flag: pregnancy - excluded per protocol",
+         "declined_days": 3,
+         "elig": {"met": ["Type 2 diabetes diagnosis"],
+                  "unknown": ["HbA1c on file"],
+                  "not_met": ["Pregnancy is an exclusion criterion"],
+                  "rationale": "Not eligible due to protocol exclusion."}},
+        # ---- Reviewed: at screening visit ----------------------------------
+        {"days": 7, "status": "screening", "decision": "accepted", "revealed": 1,
+         "records": 1, "nct": "NCT05869903",
+         "title": "Once-Weekly Semaglutide in Adults With Obesity",
+         "condition": "Obesity", "location": "Toronto, ON",
+         "site": "Toronto Metabolic Research Centre",
+         "name": "James T.", "email": "james.t@example.com",
+         "phone": "+1 416 555 0161", "age": "47", "sex": "male",
+         "screener": scr_ok, "accepted_days": 4, "screening_days": 1,
+         "elig": {"met": ["Age within range", "BMI \u2265 30"],
+                  "unknown": [], "not_met": [],
+                  "rationale": "Invited to screening visit."}},
+        # ---- Reviewed: enrolled --------------------------------------------
+        {"days": 9, "status": "enrolled", "decision": "accepted", "revealed": 1,
+         "records": 1, "nct": "NCT06034262",
+         "title": "Tirzepatide vs Placebo for Type 2 Diabetes and Weight",
+         "condition": "Type 2 Diabetes", "location": "Mississauga, ON",
+         "site": "Trillium Clinical Trials",
+         "name": "Linda C.", "email": "linda.c@example.com",
+         "phone": "+1 905 555 0117", "age": "55", "sex": "female",
+         "screener": scr_ok, "accepted_days": 6, "screening_days": 3,
+         "enrolled_days": 1,
+         "elig": {"met": ["Type 2 diabetes diagnosis", "Age within range",
+                          "HbA1c in range"],
+                  "unknown": [], "not_met": [],
+                  "rationale": "Completed screening and enrolled."}},
+    ]
+
+
+def seed_demo_leads():
+    """Populate clearly-labelled DEMO candidates so the study-team review board
+    shows a full end-to-end picture before any real applicants arrive.
+    No-op if any leads already exist (so real data is never mixed with demo)."""
+    con = sqlite3.connect(DB_PATH)
+    try:
+        if con.execute("SELECT COUNT(*) FROM leads").fetchone()[0]:
+            return
+        base = dt.datetime.now()
+
+        def at(days_ago):
+            return (base - dt.timedelta(days=days_ago)).strftime("%Y-%m-%d %H:%M")
+
+        for s in _demo_lead_specs():
+            created = at(s["days"])
+            decided = at(s.get("accepted_days") or s.get("declined_days") or 0) \
+                if (s.get("accepted_days") or s.get("declined_days")) else ""
+            rec = _demo_record(s["condition"], s["age"], s["sex"]) \
+                if s.get("records") else ""
+            cur = con.execute(
+                """INSERT INTO leads
+                   (token, applicant_token, nct, title, condition, location, site,
+                    name, email, phone, age, sex, notes, consent, source, status,
+                    records_connected, record_summary, screener, eligibility,
+                    decision, decision_reason, decided_at, revealed,
+                    created_at, updated_at)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (gen_token(), "demo-" + gen_token(), s["nct"], s["title"],
+                 s["condition"], s["location"], s["site"], s["name"], s["email"],
+                 s["phone"], s["age"], s["sex"], "", 1, "demo", s["status"],
+                 s.get("records", 0), rec, json.dumps(s["screener"]),
+                 json.dumps(s["elig"]), s.get("decision", ""),
+                 s.get("reason", ""), decided, s.get("revealed", 0),
+                 created, decided or created))
+            lid = cur.lastrowid
+            # Build a plausible event trail for the timeline.
+            evs = [("submitted", "application received", "you", s["days"]),
+                   ("prescreen", "ready for study-team review", "you", s["days"])]
+            if s.get("accepted_days"):
+                evs.append(("eligible", "accepted - likely eligible", "you",
+                            s["accepted_days"]))
+            if s.get("declined_days"):
+                evs.append(("closed", "not a match: " + s.get("reason", ""),
+                            "you", s["declined_days"]))
+            if s.get("screening_days"):
+                evs.append(("screening", "invited to screening visit", "site",
+                            s["screening_days"]))
+            if s.get("enrolled_days"):
+                evs.append(("enrolled", "enrolled in study", "site",
+                            s["enrolled_days"]))
+            for status, note, actor, days in evs:
+                con.execute(
+                    "INSERT INTO lead_events (lead_id, status, note, actor, "
+                    "created_at) VALUES (?,?,?,?,?)",
+                    (lid, status, note, actor, at(days)))
+        con.commit()
+    finally:
+        con.close()
+
+
+# --------------------------------------------------------------------------- #
 # Search traffic - powers the live "trending" chips on the landing page.
 # --------------------------------------------------------------------------- #
 def log_search_term(term, kind):
