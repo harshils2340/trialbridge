@@ -33,6 +33,7 @@
 
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
+[hidden] { display: none !important; }
 body {
   font-family: var(--sans);
   font-feature-settings: "cv11", "ss01";

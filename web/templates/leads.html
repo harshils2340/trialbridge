@@ -113,14 +113,16 @@
           <button class="btn btn-sm" type="submit">Confirm decline</button>
         </form>
       </details>
+      {% if pov_demo %}
       <details class="cand-share slim">
         <summary>{{ ic.icon('external') }} External handoff link</summary>
         <div class="cand-share-row">
           <input type="text" readonly value="{{ url_for('candidate_page', token=l['token'], _external=True) }}" onclick="this.select()">
           <button type="button" class="btn btn-sm" onclick="navigator.clipboard.writeText(this.previousElementSibling.value);this.textContent='Copied'">Copy</button>
         </div>
-        <span class="cand-share-hint">Use only when an external coordinator needs no-login access.</span>
+        <span class="cand-share-hint">Demo fallback when the site has no account yet.</span>
       </details>
+      {% endif %}
     </div>
   </div>
   {% endfor %}
