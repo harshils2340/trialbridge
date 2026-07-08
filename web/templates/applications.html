@@ -99,6 +99,12 @@
     {% if not is_closed and ld.records_connected %}
     <div class="app-records ok">{{ ic.icon('check') }} <span>Records attached - the study team can pre-screen you from your history.</span></div>
     {% endif %}
+    {% if not is_closed and not ld.schedule_url %}
+    <div class="app-next-step">
+      {{ ic.icon('activity') }}
+      <span><b>Next best step:</b> send one short message to the study team (for example: "Can we schedule screening this week?").</span>
+    </div>
+    {% endif %}
 
     <div class="thread">
       <div class="thread-head">{{ ic.icon('activity') }} Messages with the study team

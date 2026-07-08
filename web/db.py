@@ -313,7 +313,6 @@ CREATE INDEX IF NOT EXISTS idx_alert_matches_alert ON alert_matches(alert_id);
 CREATE INDEX IF NOT EXISTS idx_messages_lead ON messages(lead_id);
 CREATE INDEX IF NOT EXISTS idx_visits_lead ON lead_visits(lead_id);
 CREATE INDEX IF NOT EXISTS idx_invites_clinician ON invites(clinician_id);
-CREATE INDEX IF NOT EXISTS idx_leads_invite ON leads(invite_token);
 CREATE INDEX IF NOT EXISTS idx_claims_user ON study_claims(user_id);
 CREATE INDEX IF NOT EXISTS idx_claims_nct ON study_claims(nct);
 """
@@ -406,6 +405,8 @@ def _migrate(con):
     # Index depends on a migrated column, so create it after the ALTERs above.
     con.execute("CREATE INDEX IF NOT EXISTS idx_leads_applicant "
                 "ON leads(applicant_token)")
+    con.execute("CREATE INDEX IF NOT EXISTS idx_leads_invite "
+                "ON leads(invite_token)")
 
 
 def init_db():

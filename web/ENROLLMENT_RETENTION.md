@@ -31,6 +31,11 @@ enrollment**. Think "throughput minus leakage."
 and flag it explicitly if it does NOT advance Enrollment Velocity (or if it risks guardrail 1
 or 2). See `.cursor/rules/enrollment-velocity.mdc` (always on).
 
+## Founder execution preference (shipping)
+- After completing a requested implementation batch and validating it locally, **commit and push
+  immediately by default** (unless the founder explicitly says not to push yet).
+- Always report clearly whether the latest changes are pushed or only local.
+
 ## Why (evidence from the Rare Disease Day recruitment/retention panel)
 - 86% of trials miss recruitment deadlines.
 - ~$6K to recruit a patient; ~$19K to replace one lost to follow-up.
