@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}TrialBridge - find a clinical trial near you{% endblock %}</title>
-  <meta name="description" content="{% block description %}Find clinical trials you may qualify for, near you. Free, private, and takes two minutes.{% endblock %}">
+  <meta name="description" content="{% block description %}Find recruiting clinical trials and apply online.{% endblock %}">
   <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='logo.svg') }}">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -38,7 +38,7 @@
 <footer class="pub-foot">
   <div class="pub-foot-in">
     <span><img class="brand-mark" src="{{ url_for('static', filename='logo.svg') }}" width="18" height="18" alt="">TrialBridge</span>
-    <span class="pub-foot-note">Not medical advice. TrialBridge helps you discover research studies - always talk to your doctor before joining a trial. We never sell your information.</span>
+    <span class="pub-foot-note">Not medical advice.</span>
     <a href="{{ url_for('leads') }}">Study team view</a>
     <a href="{{ url_for('login') }}">Clinician sign in</a>
   </div>

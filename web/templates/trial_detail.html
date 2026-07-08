@@ -87,8 +87,7 @@
       </div>
       {% else %}
       <h3 class="td-apply-title">{{ ic.icon('user-plus') }} Ask to be contacted</h3>
-      <p class="td-apply-sub">Answer 4 quick questions and leave your contact info. The study team
-        first reviews you <b>de-identified</b> - they only see your details <b>if they accept you</b>.</p>
+      <p class="td-apply-sub">Answer 4 questions and submit contact info. Contact is shared after acceptance.</p>
 
       {% if records_profile %}
       <div class="rec-banner ok">{{ ic.icon('check') }}
@@ -98,7 +97,7 @@
       <form method="post" action="{{ url_for('records_connect') }}" class="rec-connect-form">
         <button class="rec-connect" type="submit">{{ ic.icon('activity') }}
           <span><b>Connect your health records</b> to auto-fill this and every future application</span></button>
-        <span class="rec-connect-hint">One-time, private. Your history is shared <b>de-identified</b>, only with study teams you apply to.</span>
+        <span class="rec-connect-hint">One-time connection for faster pre-screening.</span>
       </form>
       {% endif %}
 
@@ -130,9 +129,7 @@
         <label>Email<input name="email" type="email" required></label>
         <label class="if-consent">
           <input type="checkbox" name="consent" required>
-          <span>I agree that TrialBridge may share a <b>de-identified</b> summary with this study's
-          team, and my <b>contact details only if they accept me</b>. This isn't medical
-          advice and I can talk to my own doctor first.</span>
+          <span>I agree to share a blinded summary for review and contact details after acceptance.</span>
         </label>
         <button class="btn btn-primary btn-block" type="submit">{{ ic.icon('arrow-right') }} Submit application</button>
       </form>

@@ -4,17 +4,14 @@
 {% block body %}
 <div class="page-head">
   <h1>Recruitment dashboard</h1>
-  <p>Your live enrollment funnel - where candidates come in, how they convert, and where they stall.
-    Built from every application and status change automatically.</p>
+  <p>Live funnel and conversion metrics for your claimed studies.</p>
 </div>
-<div class="triage-note">{{ ic.icon('sparkle') }} Weekly rhythm: focus first on the biggest drop-off stage, then on longest time-in-stage, then on unanswered patient messages.</div>
 
 {% if not claims %}
 <div class="card">
   <div class="empty">
     <h3>Claim studies to activate analytics</h3>
-    <p>Set up your site and claim your active NCT IDs first. As applicants come in for those studies,
-      this dashboard populates automatically.</p>
+    <p>Claim at least one NCT to start tracking metrics.</p>
     <a class="btn btn-primary" href="{{ url_for('site_setup') }}">{{ ic.icon('award') }} Go to site setup</a>
   </div>
 </div>

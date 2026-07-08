@@ -20,8 +20,7 @@
   {% elif apps %}
   <form method="post" action="{{ url_for('records_connect') }}" class="rec-banner connect wide">
     {{ ic.icon('activity') }}
-    <span><b>Connect your health records once</b> and every application - now and later - auto-fills from
-      your medical history. Shared <b>de-identified</b>, only with study teams you apply to.</span>
+    <span><b>Connect records once.</b> Future applications auto-fill from your chart.</span>
     <button class="btn btn-primary" type="submit">Connect records</button>
   </form>
   {% endif %}
@@ -30,8 +29,7 @@
   <div class="apps-empty">
     <div class="apps-empty-mark">{{ ic.icon('user-plus') }}</div>
     <h2>No applications yet</h2>
-    <p>When you find a trial and tap "I'm interested," it shows up here so you can
-       follow what happens next.</p>
+    <p>Apply to a trial to start tracking status here.</p>
     <a class="btn btn-primary btn-lg" href="{{ url_for('find') }}">{{ ic.icon('search') }} Find a trial</a>
   </div>
   {% endif %}
@@ -98,12 +96,6 @@
 
     {% if not is_closed and ld.records_connected %}
     <div class="app-records ok">{{ ic.icon('check') }} <span>Records attached - the study team can pre-screen you from your history.</span></div>
-    {% endif %}
-    {% if not is_closed and not ld.schedule_url %}
-    <div class="app-next-step">
-      {{ ic.icon('activity') }}
-      <span><b>Next best step:</b> send one short message to the study team (for example: "Can we schedule screening this week?").</span>
-    </div>
     {% endif %}
 
     <div class="thread">

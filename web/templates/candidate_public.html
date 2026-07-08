@@ -27,8 +27,7 @@
     <span class="pill pill-{{ lead['status'] }}">{{ labels.get(lead['status'], lead['status']) }}</span>
     {% if lead['referred_by'] %}<span class="pill pill-ref">{{ ic.icon('award') }} Physician-referred</span>{% endif %}
     <h1 style="margin:12px 0 4px; font-size:22px; letter-spacing:-.02em;">{{ it.code }}</h1>
-    <p style="color:var(--muted); margin:0;">A consented applicant who may be eligible for your study. They're
-      <b>de-identified</b> until you accept - review the fit below and decide.</p>
+    <p style="color:var(--muted); margin:0;">Review fit, then accept or decline. Contact unlocks on accept.</p>
 
     <dl class="kv" style="margin-top:20px;">
       <dt>Study</dt><dd>{{ lead['title'] or '-' }}</dd>
@@ -103,8 +102,7 @@
   </div>
   <div class="card">
     <div class="section-title"><h2>Invite to book a screening call</h2></div>
-    <p class="hint">Paste your scheduling link (Calendly, Cal.com, Acuity...). We email it to the
-      applicant so they self-book - no phone tag.</p>
+    <p class="hint">Set a booking link. This updates status to <b>Screening</b>.</p>
     <form method="post" action="{{ url_for('candidate_schedule', token=lead['token']) }}">
       <div class="field">
         <input name="schedule_url" type="url" value="{{ lead['schedule_url'] }}"
@@ -198,7 +196,7 @@
     </ul>
   </div>
 
-  <p class="coord-foot">Secure candidate link · consent-first, de-identified until accepted · TrialBridge</p>
+  <p class="coord-foot">Secure candidate link · TrialBridge</p>
 </div>
 </body>
 </html>

@@ -1,35 +1,26 @@
 {% extends "public_base.html" %}
 {% block title %}How TrialBridge works · TrialBridge{% endblock %}
-{% block description %}TrialBridge is a free way to find clinical trials you may qualify for and apply in seconds. Search live from ClinicalTrials.gov, get a plain-English eligibility read, and track every application.{% endblock %}
+{% block description %}Search trials, apply, and track status.{% endblock %}
 
 {% block body %}
 <section class="how-wrap">
   <div class="how-head">
-    <h1>Find a trial. Apply in seconds. Stay in control.</h1>
-    <p class="how-lead">TrialBridge helps you find clinical trials you may qualify for - without
-      digging through medical jargon or filling endless forms. It's <b>completely free</b>,
-      private, and nothing is shared without your say-so.</p>
+    <h1>How TrialBridge works</h1>
+    <p class="how-lead">Search, apply, and track status in one place.</p>
   </div>
 
   <div class="how-col how-flow">
     <ol class="how-steps">
-      <li><b>Search</b><span>Enter your condition and location. We pull recruiting studies
-        <b>live from ClinicalTrials.gov</b> and read each one's eligibility, so you see in plain
-        English whether you may fit.</span></li>
-      <li><b>Apply in seconds</b><span>Found one that fits? Leave your name and how to reach you.
-        The study team first reviews you <b>de-identified</b> - they only get your contact details
-        <b>if they accept you</b>.</span></li>
-      <li><b>Connect your records (optional)</b><span>Link a health record so the team can
-        pre-screen you from your real history instead of making you re-type everything.</span></li>
-      <li><b>Get contacted</b><span>If you're likely eligible, the study team reaches out to set up a
-        screening visit - and you can follow every step in
-        <a href="{{ url_for('applications') }}">My applications</a>.</span></li>
+      <li><b>Search</b><span>Enter condition and location to see recruiting studies.</span></li>
+      <li><b>Apply</b><span>Submit contact details for a study you're interested in.</span></li>
+      <li><b>Optional records</b><span>Connect records once to speed up pre-screening.</span></li>
+      <li><b>Track status</b><span>View updates in <a href="{{ url_for('applications') }}">My applications</a>.</span></li>
     </ol>
   </div>
 
   <div class="how-track">
     <h2>Track every application</h2>
-    <p>Every application shows a live status, so you always know where you stand:</p>
+    <p>Each application has a live status:</p>
     <ol class="how-track-steps">
       {% for st in pipeline %}
       <li><span class="how-track-dot">{{ loop.index }}</span>
@@ -42,11 +33,8 @@
   <div class="how-privacy">
     {{ ic.icon('check') }}
     <div>
-      <b>Free, private, and consent-first.</b>
-      <p>TrialBridge is free for patients and we never sell your information. We only share your
-        details with a study team when you ask us to, and records are pulled only with your explicit
-        permission. (This is an early prototype - it walks through the full flow and doesn't send
-        automated emails yet.)</p>
+      <b>Privacy</b>
+      <p>Data is shared with study teams only after consent.</p>
     </div>
   </div>
 

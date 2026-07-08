@@ -1,6 +1,6 @@
 {% extends "public_base.html" %}
 {% block title %}{{ condition }} clinical trials{% if city %} in {{ city }}{% endif %} · TrialBridge{% endblock %}
-{% block description %}Recruiting {{ condition }} clinical trials{% if city %} near {{ city }}{% endif %}. See studies you may qualify for and request contact - free and private.{% endblock %}
+{% block description %}Recruiting {{ condition }} clinical trials{% if city %} near {{ city }}{% endif %}.{% endblock %}
 
 {% block body %}
 <section class="cond-hero">
@@ -11,11 +11,9 @@
   <h1>{{ condition }} clinical trials{% if city %} in {{ city }}{% endif %}</h1>
   <p class="cond-lead">
     {% if city %}
-      Looking for a {{ condition|lower }} study near {{ city }}? Search recruiting trials and
-      see which ones you may qualify for - in plain English, free, and private.
+      Search recruiting {{ condition|lower }} studies near {{ city }}.
     {% else %}
-      Explore recruiting {{ condition|lower }} clinical trials. We read each study's
-      eligibility so you can quickly see what fits - then request contact when you're ready.
+      Explore recruiting {{ condition|lower }} clinical trials.
     {% endif %}
   </p>
   <form id="condForm" class="cond-search" method="post" action="{{ url_for('find') }}">
@@ -42,7 +40,7 @@
     <div class="loading-title">Searching for trials near you…</div>
     <div class="loading-sub" id="loadingSub">Fetching recruiting studies</div>
     <div class="progress"><div class="progress-bar" id="progressBar"></div></div>
-    <div class="loading-foot">This usually takes 15-30 seconds</div>
+    <div class="loading-foot">Search in progress</div>
   </div>
 </div>
 

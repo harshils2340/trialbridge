@@ -6,7 +6,7 @@
       <input id="fileInput" type="file" name="file" accept=".pdf,.docx,.txt,.md,.csv,.rtf,.png,.jpg,.jpeg,.webp">
       {{ ic.icon('upload') }}Upload PDF, Word, image, or text
     </label>
-    <span class="import-hint">Extracted &amp; de-identified for you.</span>
+    <span class="import-hint">Auto-extract text.</span>
   </form>
 
   <div class="import-divider"><span>or</span></div>
@@ -63,7 +63,7 @@
     </div>
   </div>
 
-  <label for="note">Patient note <span class="hint">(de-identified - no names or identifiers)</span></label>
+  <label for="note">Patient note <span class="hint">(no names or identifiers)</span></label>
   <div class="drop-wrap" id="dropWrap">
     <textarea id="note" name="note" class="note-big" placeholder="Type or paste the patient summary - or drag a PDF / image right onto this box. e.g. 34F, biopsy-proven lupus nephritis (class IV), eGFR 55, on mycophenolate + prednisone, UPCR 1.8..." required>{{ note_value if note_value is defined and note_value else request.form.get('note','') }}</textarea>
     <div class="drop-hint">Drop a file to import &amp; de-identify</div>
@@ -92,7 +92,7 @@
     <div class="loading-title" id="loadingTitle">Searching ClinicalTrials.gov…</div>
     <div class="loading-sub" id="loadingSub">Fetching recruiting trials</div>
     <div class="progress"><div class="progress-bar" id="progressBar"></div></div>
-    <div class="loading-foot" id="loadingFoot">This usually takes 15–30 seconds</div>
+    <div class="loading-foot" id="loadingFoot">Search in progress</div>
   </div>
 </div>
 
@@ -217,7 +217,7 @@
   });
 
   if (searchForm) searchForm.addEventListener('submit', function () {
-    startLoading('Searching ClinicalTrials.gov…', 'This usually takes 15–30 seconds',
+    startLoading('Searching ClinicalTrials.gov…', 'Search in progress',
       ['Fetching recruiting trials', 'Screening age & sex',
        'Reading eligibility criteria with AI', 'Ranking by fit, then distance']);
   });

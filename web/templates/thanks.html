@@ -4,19 +4,16 @@
 {% block body %}
 <section class="thanks">
   <div class="thanks-mark">{{ ic.icon('check') }}</div>
-  <h1>You're all set.</h1>
-  <p>We've passed your interest{% if title %} in <b>{{ title }}</b>{% endif %} to the team running
-     the study.</p>
+  <h1>Request sent.</h1>
+  <p>Your application{% if title %} for <b>{{ title }}</b>{% endif %} was submitted.</p>
   <div class="thanks-next">
-    <h2>What happens next</h2>
+    <h2>Next</h2>
     <ol>
       <li>The study team reviews your details.</li>
-      <li>They contact you (usually within a few days) by phone or email.</li>
-      <li>They ask a few questions to check if you qualify - no cost, no commitment.</li>
+      <li>If accepted, they contact you by email or phone.</li>
+      <li>They schedule screening if you're a fit.</li>
     </ol>
   </div>
-  <p class="thanks-sub">Nothing is final - you can ask questions, take your time, and speak with your
-     own doctor before deciding. If you don't hear back, you can always request another trial.</p>
   <div class="thanks-actions">
     <a class="btn btn-primary btn-lg" href="{{ url_for('find') }}">{{ ic.icon('search') }} Find more trials</a>
     <a class="btn btn-ghost" href="{{ url_for('home') }}">Back to home</a>

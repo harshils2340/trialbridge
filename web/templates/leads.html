@@ -4,9 +4,8 @@
 {% block body %}
 <div class="page-head">
   <h1>Candidate review</h1>
-  <p>Patients apply <b>de-identified</b>. Review each candidate's eligibility, then accept or decline - contact details unlock only when you accept.</p>
+  <p>Review candidates. Accept to unlock contact. Decline to close.</p>
 </div>
-<div class="triage-note">{{ ic.icon('activity') }} Fastest workflow: review eligibility → accept/decline in under 2 minutes → send first message immediately after accept.</div>
 
 {% if claims %}
 <div class="claims-strip">
@@ -39,7 +38,7 @@
 
 <div class="rev-panel" data-panel="review">
   {% if not review %}
-  <div class="card"><div class="empty"><h3>All caught up</h3><p>New de-identified candidates will appear here as people apply.</p></div></div>
+  <div class="card"><div class="empty"><h3>All caught up</h3><p>New candidates will appear here.</p></div></div>
   {% endif %}
 
   {% for it in review %}

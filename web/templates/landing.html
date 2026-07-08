@@ -1,13 +1,12 @@
 {% extends "public_base.html" %}
-{% block title %}TrialBridge - find a clinical trial you may qualify for{% endblock %}
+{% block title %}TrialBridge - find recruiting clinical trials{% endblock %}
 
 {% block body %}
 <section class="hero">
   <div class="hero-in">
-    <span class="hero-eyebrow">{{ ic.icon('sparkle') }} Free &middot; Searches live ClinicalTrials.gov</span>
-    <h1>Find a clinical trial<br>you may qualify for.</h1>
-    <p class="hero-sub">Enter your condition and location. We search recruiting studies on
-      ClinicalTrials.gov and show the ones near you that you may qualify for.</p>
+    <span class="hero-eyebrow">{{ ic.icon('sparkle') }} Live ClinicalTrials.gov search</span>
+    <h1>Find recruiting trials near you.</h1>
+    <p class="hero-sub">Enter condition and location, then apply to the best matches.</p>
 
     <form id="heroForm" method="post" action="{{ url_for('find') }}">
       <div class="hero-search">
@@ -49,11 +48,6 @@
       <button type="button" id="useLoc" class="link-btn loc-use">{{ ic.icon('pin') }} Use my current location</button>
       <div id="locConfirm" class="loc-confirm" style="display:none;"></div>
     </div>
-    <div class="hero-trust">
-      <span>{{ ic.icon('check') }} Free for patients</span>
-      <span>{{ ic.icon('check') }} Private and consent-first</span>
-      <span>{{ ic.icon('check') }} Live trial data from ClinicalTrials.gov</span>
-    </div>
 
     <div class="chips-block">
       <div class="chip-row">
@@ -78,38 +72,13 @@
   </div>
 </section>
 
-<section class="steps-wrap">
-  <h2 class="steps-title">How it works</h2>
-  <div class="steps">
-    <div class="step">
-      <div class="step-ic">{{ ic.icon('search') }}</div>
-      <div class="step-num">Step 1</div>
-      <h3>Search</h3>
-      <p>Enter your condition and location. No account, no cost.</p>
-    </div>
-    <div class="step">
-      <div class="step-ic">{{ ic.icon('sparkle') }}</div>
-      <div class="step-num">Step 2</div>
-      <h3>See your matches</h3>
-      <p>We check each study's eligibility and show which ones may fit.</p>
-    </div>
-    <div class="step">
-      <div class="step-ic">{{ ic.icon('user-plus') }}</div>
-      <div class="step-num">Step 3</div>
-      <h3>Get connected</h3>
-      <p>Ask to be contacted, and the study team reaches out to you.</p>
-    </div>
-  </div>
-  <p class="steps-more"><a href="{{ url_for('how_it_works') }}">See the full process{{ ic.icon('arrow-right') }}</a></p>
-</section>
-
 <div class="loading-overlay" id="loadingOverlay" aria-hidden="true">
   <div class="loading-card">
     <div class="loading-spark"></div>
     <div class="loading-title">Searching for trials near you…</div>
     <div class="loading-sub" id="loadingSub">Fetching recruiting studies</div>
     <div class="progress"><div class="progress-bar" id="progressBar"></div></div>
-    <div class="loading-foot">This usually takes 15-30 seconds</div>
+    <div class="loading-foot">Search in progress</div>
   </div>
 </div>
 
