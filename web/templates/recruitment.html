@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block title %}Recruitment dashboard · TrialBridge{% endblock %}
+
+{% block body %}
+<div class="page-head">
+  <h1>Recruitment dashboard</h1>
+  <p>Your live enrollment funnel - where candidates come in, how they convert, and where they stall.
+    Built from every application and status change automatically.</p>
+</div>
+
+{% if not claims %}
+<div class="card">
+  <div class="empty">
+    <h3>Claim studies to activate analytics</h3>
+    <p>Set up your site and claim your active NCT IDs first. As applicants come in for those studies,
+      this dashboard populates automatically.</p>
+    <a class="btn btn-primary" href="{{ url_for('site_setup') }}">{{ ic.icon('award') }} Go to site setup</a>
+  </div>
+</div>
+{% endif %}
+
+<div class="stats">
+  <div class="stat"><div class="l">{{ ic.icon('list', 'ico stat-ico') }}Applicants</div><div class="n">{{ stats.totals.total }}</div></div>
+  <div class="stat"><div class="l">{{ ic.icon('activity', 'ico stat-ico') }}Active</div><div class="n">{{ stats.totals.active }}</div></div>
+  <div class="stat"><div class="l">{{ ic.icon('user-plus', 'ico stat-ico') }}Enrolled</div><div class="n">{{ stats.totals.enrolled }}</div></div>
+  <div class="stat accent"><div class="l">{{ ic.icon('award', 'ico stat-ico') }}Overall conversion</div><div class="n">{{ stats.overall_conv }}%</div></div>
+</div>
+
+{% if stats.dropoff and stats.dropoff.lost > 0 %}
+<div class="dash-leak">{{ ic.icon('activity') }}
+  <span><b>Biggest drop-off:</b> {{ stats.dropoff.pct|int }}% of candidates are lost between
+    <b>{{ stats.dropoff.from }}</b> and <b>{{ stats.dropoff.to }}</b>
+    ({{ stats.dropoff.lost }} {{ 'person' if stats.dropoff.lost == 1 else 'people' }}).
+    That's where a message or a nudge moves the needle most.</span></div>
+{% endif %}
+
+<div class="dash-grid">
+  <div class="card dash-card">
+    <div class="section-title"><h2>Enrollment funnel</h2></div>
+    <div class="funnel">
+      {% for s in stats.stages %}
+      <div class="funnel-row">
+        <div class="funnel-meta">
+          <span class="funnel-label">{{ s.label }}</span>
+          <span class="funnel-n">{{ s.reached }}</span>
+        </div>
+        <div class="funnel-bar-wrap">
+          <div class="funnel-bar" style="width: {{ s.pct_of_top if s.pct_of_top > 3 else 3 }}%"></div>
+          {% if not loop.first %}<span class="funnel-conv">{{ s.conv_from_prev|int }}% of prev</span>{% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="card dash-card">
+    <div class="section-title"><h2>Median time in each step</h2></div>
+    <p class="dash-hint">How long candidates wait between stages. Long waits are where people go quiet.</p>
+    <div class="tis">
+      {% set maxd = (stats.time_in_stage | map(attribute='median_days') | select | list | max) or 1 %}
+      {% for t in stats.time_in_stage %}
+      <div class="tis-row">
+        <span class="tis-label">{{ t.from }} <span class="tis-arrow">{{ ic.icon('arrow-right') }}</span> {{ t.to }}</span>
+        <div class="tis-bar-wrap">
+          {% if t.median_days is not none %}
+          <div class="tis-bar" style="width: {{ (t.median_days / maxd * 100)|int if maxd else 0 }}%"></div>
+          <span class="tis-val">{{ t.median_days }}d <span class="tis-n">(n={{ t.n }})</span></span>
+          {% else %}<span class="tis-val tis-none">no data yet</span>{% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+<div class="card dash-card">
+  <div class="section-title"><h2>By trial</h2></div>
+  {% if stats.per_trial %}
+  <table class="dash-table">
+    <thead><tr><th>Trial</th><th>Applicants</th><th>Enrolled</th><th>Conversion</th></tr></thead>
+    <tbody>
+      {% for t in stats.per_trial %}
+      <tr>
+        <td>{% if t.nct %}<a href="https://clinicaltrials.gov/study/{{ t.nct }}" target="_blank" rel="noopener">{{ t.nct }}</a> {% endif %}
+          <span class="dash-trial-title">{{ t.title[:60] }}</span></td>
+        <td>{{ t.total }}</td>
+        <td>{{ t.enrolled }}</td>
+        <td><span class="dash-conv">{{ t.conv|int }}%</span></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty"><p>No applicants yet. As people apply, this fills in per trial.</p></div>
+  {% endif %}
+</div>
+
+<div class="dash-eng">
+  <span>{{ ic.icon('activity') }} {{ stats.engagement.messages }} messages exchanged
+    ({{ stats.engagement.patient_messages }} from patients)</span>
+  <span>{{ ic.icon('check') }} {{ stats.engagement.visits }} visits booked</span>
+</div>
+{% endblock %}

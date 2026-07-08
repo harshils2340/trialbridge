@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Invite a patient · TrialBridge{% endblock %}
+
+{% block body %}
+<div class="page-head">
+  <h1>Invite a patient</h1>
+  <p>Create a link for a specific trial and text or email it to your patient. When they apply,
+    it shows up here - so you actually find out what happened, without touching their private details.</p>
+</div>
+
+{% if new_token %}
+<div class="card inv-new">
+  <div class="section-title"><h2>{{ ic.icon('check') }} Your invite link is ready</h2></div>
+  <div class="inv-link-row">
+    <input type="text" readonly value="{{ url_for('invite_landing', token=new_token, _external=True) }}"
+      onclick="this.select()">
+    <button type="button" class="btn btn-primary"
+      onclick="navigator.clipboard.writeText(this.previousElementSibling.value);this.textContent='Copied'">Copy</button>
+  </div>
+  <p class="inv-hint">Send this to your patient. They'll see "Referred by {{ user['name'] }}" and can apply in two minutes.</p>
+</div>
+{% endif %}
+
+<div class="card">
+  <div class="section-title"><h2>New invite</h2></div>
+  <form method="post" class="inv-form">
+    <label>Trial NCT number<input type="text" name="nct" placeholder="e.g. NCT05869903"></label>
+    <label>Trial title<input type="text" name="title" placeholder="e.g. Once-Weekly Semaglutide in Adults With Obesity"></label>
+    <label>Condition<input type="text" name="condition" placeholder="e.g. Obesity"></label>
+    <label>Personal note to your patient (optional)
+      <textarea name="note" rows="2" placeholder="I think this could be a good option for you - worth a look."></textarea></label>
+    <button class="btn btn-primary" type="submit">{{ ic.icon('external') }} Create invite link</button>
+  </form>
+</div>
+
+<div class="card">
+  <div class="section-title"><h2>Your invites</h2></div>
+  {% if not invites %}
+  <div class="empty"><p>No invites yet. Create one above to share a trial with a patient.</p></div>
+  {% else %}
+  <table class="inv-table">
+    <thead><tr><th>Trial</th><th>Opened</th><th>Applied</th><th>Active</th><th>Enrolled</th><th>Link</th></tr></thead>
+    <tbody>
+      {% for it in invites %}
+      {% set inv = it.invite %}
+      <tr>
+        <td><b>{{ inv['title'] or inv['nct'] or 'Trial' }}</b>
+          {% if inv['condition'] %}<div class="tag">{{ inv['condition'] }}</div>{% endif %}</td>
+        <td>{{ inv['clicks'] }}</td>
+        <td>{{ it.applied }}</td>
+        <td>{{ it.active }}</td>
+        <td><b class="{{ 'inv-enrolled' if it.enrolled }}">{{ it.enrolled }}</b></td>
+        <td>
+          <button type="button" class="btn btn-sm btn-ghost"
+            onclick="navigator.clipboard.writeText('{{ url_for('invite_landing', token=inv['token'], _external=True) }}');this.textContent='Copied'">Copy link</button>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>
+{% endblock %}

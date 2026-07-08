@@ -20,11 +20,14 @@
     <nav class="side-nav">
       {% if pov == 'study' %}
       {# Study team = the site/sponsor running the trial and reviewing applicants. #}
-      <a href="{{ url_for('leads') }}" class="side-link {{ 'active' if request.endpoint == 'leads' }}">{{ ic.icon('user-plus') }}Candidate review</a>
+      <a href="{{ url_for('leads') }}" class="side-link {{ 'active' if request.endpoint == 'leads' }}">{{ ic.icon('user-plus') }}Candidate review{% if site_unread %} <span class="nav-badge nav-badge-new">{{ site_unread }}</span>{% endif %}</a>
+      <a href="{{ url_for('recruitment_dashboard') }}" class="side-link {{ 'active' if request.endpoint == 'recruitment_dashboard' }}">{{ ic.icon('activity') }}Recruitment</a>
+      <a href="{{ url_for('site_setup') }}" class="side-link {{ 'active' if request.endpoint in ['site_setup','add_study_claim','remove_study_claim'] }}">{{ ic.icon('award') }}Site setup</a>
       {% else %}
       {# Clinician = the referring physician. They refer their own patients; they
          do NOT see the trial site's incoming applicants. #}
       <a href="{{ url_for('dashboard') }}" class="side-link {{ 'active' if request.endpoint in ['dashboard','search','results'] }}">{{ ic.icon('search') }}Find trials</a>
+      <a href="{{ url_for('invite_patient') }}" class="side-link {{ 'active' if request.endpoint == 'invite_patient' }}">{{ ic.icon('user-plus') }}Invite a patient</a>
       <a href="{{ url_for('referrals') }}" class="side-link {{ 'active' if request.endpoint in ['referrals','referral_detail'] }}">{{ ic.icon('list') }}My referrals</a>
       {% endif %}
     </nav>

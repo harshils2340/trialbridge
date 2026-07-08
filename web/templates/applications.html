@@ -40,7 +40,7 @@
   {% set ld = a.lead %}
   {% set is_closed = ld.status in closed %}
   {% set cur = pipeline.index(ld.status) if ld.status in pipeline else -1 %}
-  <article class="app-card {{ 'app-closed' if is_closed else '' }}">
+  <article class="app-card {{ 'app-closed' if is_closed else '' }}" id="app-{{ ld.id }}">
     <div class="app-card-head">
       <div>
         <h2 class="app-title">{{ ld.title or 'Clinical trial' }}</h2>
@@ -53,6 +53,9 @@
         {{ labels.get(ld.status, ld.status) }}
       </span>
     </div>
+    {% if ld.referred_by %}
+    <div class="app-referred">{{ ic.icon('award') }} Referred by {{ ld.referred_by }}</div>
+    {% endif %}
 
     <p class="app-blurb">{{ blurb.get(ld.status, '') }}</p>
 
@@ -83,9 +86,45 @@
     </div>
     {% endif %}
 
+    {% if a.visits %}
+    <div class="app-visits">
+      {% for v in a.visits %}
+      <div class="app-visit">{{ ic.icon('activity') }}
+        <span><b>{{ v.kind|capitalize }} visit</b> · {{ v.visit_at }}{% if v.location %} · {{ v.location }}{% endif %}
+          {% if v.note %}<span class="app-visit-note">{{ v.note }}</span>{% endif %}</span></div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
     {% if not is_closed and ld.records_connected %}
     <div class="app-records ok">{{ ic.icon('check') }} <span>Records attached - the study team can pre-screen you from your history.</span></div>
     {% endif %}
+
+    <div class="thread">
+      <div class="thread-head">{{ ic.icon('activity') }} Messages with the study team
+        {% set unread = a.messages | selectattr('sender','ne','patient') | selectattr('read_patient','equalto',0) | list %}
+      </div>
+      {% if a.messages %}
+      <ul class="thread-list">
+        {% for m in a.messages %}
+        <li class="msg msg-{{ m.sender }}">
+          <span class="msg-who">{% if m.sender == 'patient' %}You{% elif m.sender == 'system' %}TrialBridge{% else %}Study team{% endif %}</span>
+          <span class="msg-body">{{ m.body }}</span>
+          <span class="msg-time">{{ m.created_at }}</span>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="thread-empty">No messages yet. Ask the study team a question - what a visit involves,
+        travel help, timing - anything that would help you decide.</p>
+      {% endif %}
+      {% if not is_closed %}
+      <form class="thread-form" method="post" action="{{ url_for('application_message', token=ld.token) }}">
+        <input type="text" name="body" placeholder="Write a message..." required autocomplete="off">
+        <button class="btn btn-primary btn-sm" type="submit">Send</button>
+      </form>
+      {% endif %}
+    </div>
 
     <div class="app-foot">
       <span class="app-applied">Applied {{ ld.created_at }}</span>

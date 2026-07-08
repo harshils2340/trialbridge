@@ -7,10 +7,28 @@
   <p>Patients apply <b>de-identified</b>. Review each candidate's eligibility, then accept or decline - contact details unlock only when you accept.</p>
 </div>
 
+{% if claims %}
+<div class="claims-strip">
+  <span class="claims-label">{{ ic.icon('award') }} Claimed studies</span>
+  {% for c in claims %}<span class="claims-pill">{{ c.nct }}</span>{% endfor %}
+  <a href="{{ url_for('site_setup') }}" class="claims-link">Manage</a>
+</div>
+{% else %}
+<div class="card">
+  <div class="empty">
+    <h3>Claim your active studies first</h3>
+    <p>Once you claim your NCT IDs, new applicants for those studies route here automatically.</p>
+    <a class="btn btn-primary" href="{{ url_for('site_setup') }}">{{ ic.icon('award') }} Set up site and claim studies</a>
+  </div>
+</div>
+{% endif %}
+
+{% if claims %}
 <div class="stats">
   <div class="stat"><div class="l">{{ ic.icon('list', 'ico stat-ico') }}Total</div><div class="n">{{ (review|length) + (reviewed|length) }}</div></div>
   <div class="stat accent"><div class="l">{{ ic.icon('activity', 'ico stat-ico') }}Awaiting review</div><div class="n">{{ review|length }}</div></div>
   <div class="stat"><div class="l">{{ ic.icon('user-plus', 'ico stat-ico') }}Enrolled</div><div class="n">{{ counts.get('enrolled', 0) }}</div></div>
+  <div class="stat {{ 'accent' if site_unread }}"><div class="l">{{ ic.icon('activity', 'ico stat-ico') }}Unread messages</div><div class="n">{{ site_unread }}</div></div>
 </div>
 
 <div class="rev-tabs" role="tablist">
@@ -121,7 +139,9 @@
         {% set l = it.lead %}
         <tr>
           <td><b>{% if l['revealed'] %}{{ l['name'] }}{% else %}{{ it.code }}{% endif %}</b>
-            <div class="tag">{{ it.age_band }}{% if l['sex'] %} · {{ l['sex']|capitalize }}{% endif %}</div></td>
+            {% if it.unread %}<span class="msg-badge">{{ it.unread }} new</span>{% endif %}
+            <div class="tag">{{ it.age_band }}{% if l['sex'] %} · {{ l['sex']|capitalize }}{% endif %}</div>
+            <a class="cand-open" href="{{ url_for('candidate_page', token=l['token']) }}">{{ ic.icon('external') }} Open workspace</a></td>
           <td>{% if l['nct'] %}<a href="https://clinicaltrials.gov/study/{{ l['nct'] }}" target="_blank" rel="noopener">{{ l['nct'] }}</a>{% endif %}<div class="tag">{{ l['title'][:44] }}</div></td>
           <td><span class="pill pill-{{ l['status'] }}">{{ labels.get(l['status'], l['status']) }}</span>
             {% if l['decision'] == 'declined' and l['decision_reason'] %}<div class="tag">{{ l['decision_reason'] }}</div>{% endif %}</td>
@@ -172,4 +192,5 @@
   });
 })();
 </script>
+{% endif %}
 {% endblock %}

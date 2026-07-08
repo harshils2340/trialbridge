@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}Site setup · TrialBridge{% endblock %}
+
+{% block body %}
+<div class="page-head">
+  <h1>Site setup</h1>
+  <p>Claim your active ClinicalTrials.gov studies so applicants for those NCTs route to your board.</p>
+</div>
+
+<div class="site-grid">
+  <div class="card">
+    <div class="section-title"><h2>Organization profile</h2></div>
+    <form method="post" class="site-form">
+      <label>Organization name
+        <input type="text" name="org_name" value="{{ profile['org_name'] if profile else '' }}" placeholder="e.g. Johns Hopkins Diabetes Center">
+      </label>
+      <label>Contact person
+        <input type="text" name="contact_name" value="{{ profile['contact_name'] if profile else '' }}" placeholder="e.g. Will Krugman">
+      </label>
+      <label>Contact email
+        <input type="email" name="contact_email" value="{{ profile['contact_email'] if profile else (user['email'] if user else '') }}" placeholder="coordinator@site.org">
+      </label>
+      <label>Contact phone
+        <input type="text" name="contact_phone" value="{{ profile['contact_phone'] if profile else '' }}" placeholder="+1 615 555 0123">
+      </label>
+      <button class="btn btn-primary" type="submit">{{ ic.icon('check') }} Save profile</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <div class="section-title"><h2>Claim a study</h2></div>
+    <form method="post" action="{{ url_for('add_study_claim') }}" class="site-form">
+      <label>NCT number
+        <input type="text" name="nct" placeholder="NCT05869903" required>
+      </label>
+      <label>Study title (optional)
+        <input type="text" name="title" placeholder="Once-Weekly Semaglutide in Adults With Obesity">
+      </label>
+      <button class="btn btn-primary" type="submit">{{ ic.icon('award') }} Claim study</button>
+    </form>
+    <p class="site-hint">No trial recreation needed. We already pull live protocol data from ClinicalTrials.gov.</p>
+  </div>
+</div>
+
+<div class="card">
+  <div class="section-title"><h2>Your claimed studies</h2></div>
+  {% if not claims %}
+  <div class="empty"><p>No claimed NCTs yet. Claim one above to start receiving applicants.</p></div>
+  {% else %}
+  <table class="claim-table">
+    <thead><tr><th>NCT</th><th>Title</th><th>Added</th><th></th></tr></thead>
+    <tbody>
+      {% for c in claims %}
+      <tr>
+        <td><a href="https://clinicaltrials.gov/study/{{ c['nct'] }}" target="_blank" rel="noopener">{{ c['nct'] }}</a></td>
+        <td>{{ c['title'] or '-' }}</td>
+        <td>{{ c['created_at'] }}</td>
+        <td>
+          <form method="post" action="{{ url_for('remove_study_claim') }}">
+            <input type="hidden" name="nct" value="{{ c['nct'] }}">
+            <button class="btn btn-sm btn-ghost" type="submit">Remove</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>
+{% endblock %}
+

@@ -178,6 +178,93 @@ def build_schedule_message(lead, schedule_url, apps_link):
     return subject, "\n".join(lines)
 
 
+def build_dm_message(lead, body, link, to="patient"):
+    """A new chat message notification. `to` is who receives the email."""
+    title = lead["title"] or lead["nct"] or "your clinical trial application"
+    if to == "patient":
+        subject = f"New message from the study team - {lead['nct'] or 'your application'}"
+        opener = (f"Hi {lead['name'] or 'there'},\n\nThe study team sent you a "
+                  f"message about {title}:")
+    else:
+        subject = f"New message from an applicant - {lead['nct'] or 'application'}"
+        opener = f"An applicant sent a message about {title}:"
+    lines = [opener, "", f"  \"{body.strip()}\"", "",
+             "Reply here:", link, "", "Sent via TrialBridge."]
+    return subject, "\n".join(lines)
+
+
+def build_visit_message(lead, when, location, link):
+    """Confirmation that a screening/visit was booked."""
+    title = lead["title"] or lead["nct"] or "your clinical trial"
+    subject = f"Visit booked - {lead['nct'] or 'your trial application'}"
+    lines = [
+        f"Hi {lead['name'] or 'there'},",
+        "",
+        f"The study team booked a visit for {title}:",
+        "",
+        f"  When: {when}",
+    ]
+    if location:
+        lines.append(f"  Where: {location}")
+    lines += [
+        "",
+        "We'll remind you before it. See details any time here:",
+        link,
+        "",
+        "If the time doesn't work, reply to the study team from your applications "
+        "page and they'll reschedule.",
+        "",
+        "Sent via TrialBridge.",
+    ]
+    return subject, "\n".join(lines)
+
+
+def build_reminder_message(lead, when, location, link):
+    """Reminder sent shortly before an upcoming visit."""
+    title = lead["title"] or lead["nct"] or "your clinical trial"
+    subject = f"Reminder: your visit is coming up - {lead['nct'] or 'trial'}"
+    lines = [
+        f"Hi {lead['name'] or 'there'},",
+        "",
+        f"A quick reminder about your upcoming visit for {title}:",
+        "",
+        f"  When: {when}",
+    ]
+    if location:
+        lines.append(f"  Where: {location}")
+    lines += [
+        "",
+        "Showing up to this visit is the most important step - it's how the team "
+        "confirms you can join. See details or message the team here:",
+        link,
+        "",
+        "Sent via TrialBridge.",
+    ]
+    return subject, "\n".join(lines)
+
+
+def build_nudge_message(lead, link):
+    """Gentle check-in for an applicant who's gone quiet mid-process."""
+    title = lead["title"] or lead["nct"] or "your clinical trial application"
+    subject = f"Still interested? - {lead['nct'] or 'your trial application'}"
+    lines = [
+        f"Hi {lead['name'] or 'there'},",
+        "",
+        f"Just checking in on {title}. Your application is still active and the "
+        "study team can move it forward whenever you're ready.",
+        "",
+        "If you're still interested, open your application here - and message the "
+        "team with any questions:",
+        link,
+        "",
+        "If your situation changed, you can withdraw from the same page. No "
+        "pressure either way.",
+        "",
+        "Sent via TrialBridge.",
+    ]
+    return subject, "\n".join(lines)
+
+
 def send_email(to_addr, subject, body):
     """Send via SMTP. Returns (ok, message)."""
     if not smtp_configured():

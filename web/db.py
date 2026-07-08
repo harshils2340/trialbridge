@@ -70,6 +70,29 @@ CREATE TABLE IF NOT EXISTS users (
     created_at    TEXT NOT NULL
 );
 
+-- Study-team account profile (organization + contact info).
+CREATE TABLE IF NOT EXISTS site_profiles (
+    user_id       INTEGER PRIMARY KEY,
+    org_name      TEXT DEFAULT '',
+    contact_name  TEXT DEFAULT '',
+    contact_email TEXT DEFAULT '',
+    contact_phone TEXT DEFAULT '',
+    created_at    TEXT NOT NULL,
+    updated_at    TEXT NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
+-- A study team claims NCTs they manage. Leads are scoped by these claims.
+CREATE TABLE IF NOT EXISTS study_claims (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER NOT NULL,
+    nct         TEXT NOT NULL,
+    title       TEXT DEFAULT '',
+    created_at  TEXT NOT NULL,
+    UNIQUE (user_id, nct),
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
 CREATE TABLE IF NOT EXISTS referrals (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id         INTEGER NOT NULL,
@@ -138,8 +161,57 @@ CREATE TABLE IF NOT EXISTS leads (
     decided_at      TEXT DEFAULT '',
     revealed        INTEGER DEFAULT 0,
     schedule_url    TEXT DEFAULT '',
+    nudged_at       TEXT DEFAULT '',
+    referred_by     TEXT DEFAULT '',
+    invite_token    TEXT DEFAULT '',
     created_at      TEXT NOT NULL,
     updated_at      TEXT DEFAULT ''
+);
+
+-- Physician "invite a patient" links (the trusted-messenger channel). A clinician
+-- mints a link for a specific trial; a patient who opens it and applies is
+-- attributed back so the clinician can see what happened (closes the refer loop).
+CREATE TABLE IF NOT EXISTS invites (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    token          TEXT UNIQUE NOT NULL,
+    clinician_id   INTEGER,
+    clinician_name TEXT DEFAULT '',
+    nct            TEXT DEFAULT '',
+    title          TEXT DEFAULT '',
+    condition      TEXT DEFAULT '',
+    note           TEXT DEFAULT '',
+    clicks         INTEGER DEFAULT 0,
+    created_at     TEXT NOT NULL
+);
+
+-- Two-way messages between a patient and the study team for an application.
+-- 'system' messages are automated nudges/reminders. Retention lives or dies on
+-- this staying alive; every message also has an in-app surface so it works with
+-- email off. Blinded model: the site may only message once the candidate is
+-- revealed (accepted); the patient may message their own application anytime.
+CREATE TABLE IF NOT EXISTS messages (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    lead_id      INTEGER NOT NULL,
+    sender       TEXT NOT NULL,          -- 'patient' | 'site' | 'system'
+    body         TEXT NOT NULL,
+    read_patient INTEGER DEFAULT 0,
+    read_site    INTEGER DEFAULT 0,
+    created_at   TEXT NOT NULL,
+    FOREIGN KEY (lead_id) REFERENCES leads(id)
+);
+
+-- Scheduled visits (screening, follow-up) a site books for a candidate. Drives
+-- automatic reminders (see reminders.py) and the patient's "upcoming visit" view.
+CREATE TABLE IF NOT EXISTS lead_visits (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    lead_id     INTEGER NOT NULL,
+    kind        TEXT DEFAULT 'screening',
+    visit_at    TEXT NOT NULL,
+    location    TEXT DEFAULT '',
+    note        TEXT DEFAULT '',
+    reminded_at TEXT DEFAULT '',
+    created_at  TEXT NOT NULL,
+    FOREIGN KEY (lead_id) REFERENCES leads(id)
 );
 
 -- Status history for a patient application (drives the "My applications" timeline).
@@ -238,6 +310,12 @@ CREATE INDEX IF NOT EXISTS idx_search_stats_kind ON search_stats(kind, hits);
 CREATE INDEX IF NOT EXISTS idx_search_cache_created ON search_cache(created_at);
 CREATE INDEX IF NOT EXISTS idx_alerts_applicant ON alerts(applicant_token);
 CREATE INDEX IF NOT EXISTS idx_alert_matches_alert ON alert_matches(alert_id);
+CREATE INDEX IF NOT EXISTS idx_messages_lead ON messages(lead_id);
+CREATE INDEX IF NOT EXISTS idx_visits_lead ON lead_visits(lead_id);
+CREATE INDEX IF NOT EXISTS idx_invites_clinician ON invites(clinician_id);
+CREATE INDEX IF NOT EXISTS idx_leads_invite ON leads(invite_token);
+CREATE INDEX IF NOT EXISTS idx_claims_user ON study_claims(user_id);
+CREATE INDEX IF NOT EXISTS idx_claims_nct ON study_claims(nct);
 """
 
 
@@ -293,6 +371,9 @@ _MIGRATIONS = {
         "decided_at": "TEXT DEFAULT ''",
         "revealed": "INTEGER DEFAULT 0",
         "schedule_url": "TEXT DEFAULT ''",
+        "nudged_at": "TEXT DEFAULT ''",
+        "referred_by": "TEXT DEFAULT ''",
+        "invite_token": "TEXT DEFAULT ''",
     },
 }
 
@@ -367,6 +448,114 @@ def set_ehr_connection(user_id, connected, provider=""):
         (1 if connected else 0, provider if connected else "",
          now() if connected else "", user_id))
     db.commit()
+
+
+def _norm_nct(nct):
+    nct = (nct or "").strip().upper()
+    if not nct:
+        return ""
+    if not nct.startswith("NCT"):
+        nct = "NCT" + nct
+    return nct
+
+
+# --------------------------------------------------------------------------- #
+# Study-team setup (profile + claimed studies)
+# --------------------------------------------------------------------------- #
+def get_site_profile(user_id):
+    return get_db().execute(
+        "SELECT * FROM site_profiles WHERE user_id = ?", (user_id,)).fetchone()
+
+
+def upsert_site_profile(user_id, org_name, contact_name, contact_email, contact_phone):
+    ts = now()
+    db = get_db()
+    db.execute(
+        "INSERT INTO site_profiles (user_id, org_name, contact_name, contact_email, "
+        "contact_phone, created_at, updated_at) VALUES (?,?,?,?,?,?,?) "
+        "ON CONFLICT(user_id) DO UPDATE SET org_name=excluded.org_name, "
+        "contact_name=excluded.contact_name, contact_email=excluded.contact_email, "
+        "contact_phone=excluded.contact_phone, updated_at=excluded.updated_at",
+        (user_id, (org_name or "").strip(), (contact_name or "").strip(),
+         (contact_email or "").strip(), (contact_phone or "").strip(), ts, ts))
+    db.commit()
+
+
+def list_study_claims(user_id):
+    return get_db().execute(
+        "SELECT * FROM study_claims WHERE user_id = ? ORDER BY created_at DESC, id DESC",
+        (user_id,)).fetchall()
+
+
+def user_claimed_ncts(user_id):
+    rows = get_db().execute(
+        "SELECT nct FROM study_claims WHERE user_id = ?", (user_id,)).fetchall()
+    return {r["nct"] for r in rows if r["nct"]}
+
+
+def lead_counts_for_ncts(ncts):
+    ncts = sorted({x for x in (ncts or []) if x})
+    if not ncts:
+        return {}
+    qs = ",".join("?" * len(ncts))
+    rows = get_db().execute(
+        f"SELECT status, COUNT(*) n FROM leads WHERE nct IN ({qs}) GROUP BY status",
+        ncts).fetchall()
+    return {r["status"]: r["n"] for r in rows}
+
+
+def site_contact_for_nct(nct):
+    """Notification email for a claimed study (profile contact first, then login)."""
+    nct = _norm_nct(nct)
+    if not nct:
+        return ""
+    row = get_db().execute(
+        "SELECT p.contact_email, u.email FROM study_claims c "
+        "JOIN users u ON u.id = c.user_id "
+        "LEFT JOIN site_profiles p ON p.user_id = c.user_id "
+        "WHERE c.nct = ? ORDER BY c.id DESC LIMIT 1", (nct,)).fetchone()
+    if not row:
+        return ""
+    return (row["contact_email"] or row["email"] or "").strip()
+
+
+def add_study_claim(user_id, nct, title=""):
+    nct = _norm_nct(nct)
+    if not nct:
+        return False
+    db = get_db()
+    db.execute(
+        "INSERT OR IGNORE INTO study_claims (user_id, nct, title, created_at) "
+        "VALUES (?,?,?,?)", (user_id, nct, (title or "").strip(), now()))
+    db.commit()
+    return True
+
+
+def remove_study_claim(user_id, nct):
+    nct = _norm_nct(nct)
+    if not nct:
+        return False
+    db = get_db()
+    db.execute("DELETE FROM study_claims WHERE user_id = ? AND nct = ?",
+               (user_id, nct))
+    db.commit()
+    return True
+
+
+def lead_belongs_to_user(lead_id, user_id):
+    lead = get_lead(lead_id)
+    if not lead:
+        return False
+    claims = user_claimed_ncts(user_id)
+    return bool(claims and lead["nct"] in claims)
+
+
+def lead_token_belongs_to_user(token, user_id):
+    lead = get_lead_by_token(token)
+    if not lead:
+        return False
+    claims = user_claimed_ncts(user_id)
+    return bool(claims and lead["nct"] in claims)
 
 
 # --------------------------------------------------------------------------- #
@@ -484,8 +673,9 @@ def create_lead(data):
         """INSERT INTO leads
            (token, applicant_token, nct, title, condition, location, site, name,
             email, phone, age, sex, notes, consent, source, status, screener,
-            eligibility, records_connected, record_summary, created_at, updated_at)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            eligibility, records_connected, record_summary, referred_by,
+            invite_token, created_at, updated_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         (token, data.get("applicant_token", ""), data.get("nct", ""),
          data.get("title", ""), data.get("condition", ""),
          data.get("location", ""), data.get("site", ""), data.get("name", ""),
@@ -494,7 +684,8 @@ def create_lead(data):
          1 if data.get("consent") else 0, data.get("source", "web"),
          "prescreen", data.get("screener", ""), data.get("eligibility", ""),
          1 if data.get("records_connected") else 0,
-         data.get("record_summary", ""), ts, ts))
+         data.get("record_summary", ""), data.get("referred_by", ""),
+         data.get("invite_token", ""), ts, ts))
     lead_id = cur.lastrowid
     db.execute(
         "INSERT INTO lead_events (lead_id, status, note, actor, created_at) "
@@ -566,6 +757,16 @@ def advance_by_token(token, status, note=""):
 def list_leads():
     return get_db().execute(
         "SELECT * FROM leads ORDER BY updated_at DESC, id DESC").fetchall()
+
+
+def list_leads_for_user(user_id):
+    claims = sorted(user_claimed_ncts(user_id))
+    if not claims:
+        return []
+    qs = ",".join("?" * len(claims))
+    return get_db().execute(
+        f"SELECT * FROM leads WHERE nct IN ({qs}) "
+        "ORDER BY updated_at DESC, id DESC", claims).fetchall()
 
 
 def list_leads_by_applicant(applicant_token):
@@ -651,6 +852,170 @@ def set_lead_schedule(lead_id, url, actor="site"):
     return get_lead(lead_id)
 
 
+# --------------------------------------------------------------------------- #
+# Messaging (two-way patient <-> study team, + system nudges)
+# --------------------------------------------------------------------------- #
+def add_message(lead_id, sender, body):
+    """Append a message to an application thread. sender in
+    {'patient','site','system'}. The sender's own side is marked read."""
+    body = (body or "").strip()
+    if not body or sender not in ("patient", "site", "system"):
+        return None
+    db = get_db()
+    db.execute(
+        "INSERT INTO messages (lead_id, sender, body, read_patient, read_site, "
+        "created_at) VALUES (?,?,?,?,?,?)",
+        (lead_id, sender, body, 1 if sender == "patient" else 0,
+         1 if sender == "site" else 0, now()))
+    db.execute("UPDATE leads SET updated_at = ? WHERE id = ?", (now(), lead_id))
+    db.commit()
+    return db.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+
+
+def get_messages(lead_id):
+    return get_db().execute(
+        "SELECT * FROM messages WHERE lead_id = ? ORDER BY id ASC",
+        (lead_id,)).fetchall()
+
+
+def mark_thread_read(lead_id, side):
+    """side in {'patient','site'} - clears that reader's unread flags."""
+    col = "read_patient" if side == "patient" else "read_site"
+    db = get_db()
+    db.execute(f"UPDATE messages SET {col} = 1 WHERE lead_id = ?", (lead_id,))
+    db.commit()
+
+
+def unread_for_patient(applicant_token):
+    """Messages the patient hasn't read (from site/system) across their apps."""
+    if not applicant_token:
+        return 0
+    r = get_db().execute(
+        "SELECT COUNT(*) n FROM messages m JOIN leads l ON l.id = m.lead_id "
+        "WHERE l.applicant_token = ? AND m.sender != 'patient' "
+        "AND m.read_patient = 0", (applicant_token,)).fetchone()
+    return r["n"] if r else 0
+
+
+def unread_for_site(user_id=None):
+    """Patient messages the study team hasn't read (badge on the board)."""
+    if user_id:
+        claims = sorted(user_claimed_ncts(user_id))
+        if not claims:
+            return 0
+        qs = ",".join("?" * len(claims))
+        q = ("SELECT COUNT(*) n FROM messages m JOIN leads l ON l.id = m.lead_id "
+             f"WHERE m.sender = 'patient' AND m.read_site = 0 AND l.nct IN ({qs})")
+        r = get_db().execute(q, claims).fetchone()
+        return r["n"] if r else 0
+    r = get_db().execute(
+        "SELECT COUNT(*) n FROM messages WHERE sender = 'patient' "
+        "AND read_site = 0").fetchone()
+    return r["n"] if r else 0
+
+
+def lead_unread_for_site(lead_id):
+    r = get_db().execute(
+        "SELECT COUNT(*) n FROM messages WHERE lead_id = ? AND sender = 'patient' "
+        "AND read_site = 0", (lead_id,)).fetchone()
+    return r["n"] if r else 0
+
+
+def engagement_for_ncts(ncts):
+    """Message/visit counts scoped to a list/set of NCT ids."""
+    ncts = sorted({x for x in (ncts or []) if x})
+    if not ncts:
+        return {"messages": 0, "patient_messages": 0, "visits": 0}
+    qs = ",".join("?" * len(ncts))
+    db = get_db()
+    msgs = db.execute(
+        "SELECT COUNT(*) n FROM messages m JOIN leads l ON l.id = m.lead_id "
+        f"WHERE l.nct IN ({qs})", ncts).fetchone()["n"]
+    from_patient = db.execute(
+        "SELECT COUNT(*) n FROM messages m JOIN leads l ON l.id = m.lead_id "
+        f"WHERE l.nct IN ({qs}) AND m.sender='patient'", ncts).fetchone()["n"]
+    visits = db.execute(
+        "SELECT COUNT(*) n FROM lead_visits v JOIN leads l ON l.id = v.lead_id "
+        f"WHERE l.nct IN ({qs})", ncts).fetchone()["n"]
+    return {"messages": msgs, "patient_messages": from_patient, "visits": visits}
+
+
+# --------------------------------------------------------------------------- #
+# Visits (site books a screening/follow-up; drives reminders)
+# --------------------------------------------------------------------------- #
+def add_visit(lead_id, visit_at, kind="screening", location="", note=""):
+    db = get_db()
+    db.execute(
+        "INSERT INTO lead_visits (lead_id, kind, visit_at, location, note, "
+        "created_at) VALUES (?,?,?,?,?,?)",
+        (lead_id, kind or "screening", visit_at, location, note, now()))
+    db.commit()
+    return db.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+
+
+def get_visits(lead_id):
+    return get_db().execute(
+        "SELECT * FROM lead_visits WHERE lead_id = ? ORDER BY visit_at ASC",
+        (lead_id,)).fetchall()
+
+
+def upcoming_visits_for_applicant(applicant_token):
+    """Future visits across a patient's applications, joined with trial title."""
+    if not applicant_token:
+        return []
+    return get_db().execute(
+        "SELECT v.*, l.title, l.nct, l.token AS lead_token FROM lead_visits v "
+        "JOIN leads l ON l.id = v.lead_id WHERE l.applicant_token = ? "
+        "AND v.visit_at >= ? ORDER BY v.visit_at ASC",
+        (applicant_token, now())).fetchall()
+
+
+def visits_due_for_reminder(within_iso):
+    """Future visits happening before `within_iso` that haven't been reminded."""
+    return get_db().execute(
+        "SELECT v.*, l.email, l.name, l.title, l.nct, l.applicant_token "
+        "FROM lead_visits v JOIN leads l ON l.id = v.lead_id "
+        "WHERE v.reminded_at = '' AND v.visit_at >= ? AND v.visit_at <= ? "
+        "ORDER BY v.visit_at ASC", (now(), within_iso)).fetchall()
+
+
+def mark_visit_reminded(visit_id):
+    db = get_db()
+    db.execute("UPDATE lead_visits SET reminded_at = ? WHERE id = ?",
+               (now(), visit_id))
+    db.commit()
+
+
+# --------------------------------------------------------------------------- #
+# Quiet-applicant nudges (retention: re-engage people who've gone silent)
+# --------------------------------------------------------------------------- #
+_ACTIVE_STAGES = ("submitted", "prescreen", "eligible", "screening")
+
+
+def list_active_stage_leads():
+    """Leads still working through the funnel (not closed/withdrawn/enrolled)."""
+    qs = ",".join("?" * len(_ACTIVE_STAGES))
+    return get_db().execute(
+        f"SELECT * FROM leads WHERE status IN ({qs}) ORDER BY id",
+        _ACTIVE_STAGES).fetchall()
+
+
+def last_activity_at(lead_id, created_at):
+    """Most recent timestamp across created/events/messages for a lead."""
+    db = get_db()
+    e = db.execute("SELECT MAX(created_at) t FROM lead_events WHERE lead_id = ?",
+                   (lead_id,)).fetchone()["t"]
+    m = db.execute("SELECT MAX(created_at) t FROM messages WHERE lead_id = ?",
+                   (lead_id,)).fetchone()["t"]
+    return max(x for x in (created_at, e, m) if x)
+
+
+def set_nudged(lead_id):
+    db = get_db()
+    db.execute("UPDATE leads SET nudged_at = ? WHERE id = ?", (now(), lead_id))
+    db.commit()
+
+
 def withdraw_lead(token, applicant_token):
     """Patient withdraws their own application (must own the applicant token)."""
     lead = get_lead_by_token(token)
@@ -680,6 +1045,50 @@ def connect_records(token, applicant_token, summary):
         update_lead_status(lead["id"], "prescreen",
                            "auto-advanced after records connected", actor="you")
     return True
+
+
+# --------------------------------------------------------------------------- #
+# Physician invite links ("your doctor referred you") + attribution
+# --------------------------------------------------------------------------- #
+def create_invite(clinician_id, clinician_name, nct, title, condition, note=""):
+    db = get_db()
+    token = gen_token()
+    db.execute(
+        "INSERT INTO invites (token, clinician_id, clinician_name, nct, title, "
+        "condition, note, created_at) VALUES (?,?,?,?,?,?,?,?)",
+        (token, clinician_id, clinician_name, nct, title, condition, note, now()))
+    db.commit()
+    return token
+
+
+def get_invite(token):
+    return get_db().execute("SELECT * FROM invites WHERE token = ?",
+                            (token,)).fetchone()
+
+
+def bump_invite_clicks(token):
+    db = get_db()
+    db.execute("UPDATE invites SET clicks = clicks + 1 WHERE token = ?", (token,))
+    db.commit()
+
+
+def list_invites(clinician_id):
+    """A clinician's invites, each with how many patients applied + enrolled -
+    this is the clinician closing their own loop (they hear what happened)."""
+    rows = get_db().execute(
+        "SELECT * FROM invites WHERE clinician_id = ? ORDER BY id DESC",
+        (clinician_id,)).fetchall()
+    out = []
+    for r in rows:
+        leads = get_db().execute(
+            "SELECT status FROM leads WHERE invite_token = ?", (r["token"],)
+        ).fetchall()
+        applied = len(leads)
+        enrolled = sum(1 for l in leads if l["status"] == "enrolled")
+        active = sum(1 for l in leads if l["status"] in _ACTIVE_STAGES)
+        out.append({"invite": r, "applied": applied, "enrolled": enrolled,
+                    "active": active})
+    return out
 
 
 def lead_counts():
@@ -884,6 +1293,92 @@ def seed_demo_leads():
         con.commit()
     finally:
         con.close()
+
+
+def seed_demo_engagement(clinician_id):
+    """Populate the retention/engagement surfaces (messages, visits, one physician
+    referral) on top of the demo leads so a fresh demo shows the whole loop alive.
+    Idempotent: no-op once any message exists."""
+    db = get_db()
+    base = dt.datetime.now()
+
+    def ts(days=0, hours=0):
+        return (base + dt.timedelta(days=days, hours=hours)).strftime("%Y-%m-%d %H:%M")
+
+    # Always ensure the demo study-team setup exists (claimed NCTs + profile),
+    # even if message seeding already ran in a previous session.
+    if clinician_id:
+        study_rows = db.execute(
+            "SELECT DISTINCT nct, title FROM leads WHERE nct != '' ORDER BY nct"
+        ).fetchall()
+        for s in study_rows[:3]:
+            db.execute(
+                "INSERT OR IGNORE INTO study_claims (user_id, nct, title, created_at) "
+                "VALUES (?,?,?,?)",
+                (clinician_id, s["nct"], s["title"] or "", ts(days=-10)))
+        db.execute(
+            "INSERT OR IGNORE INTO site_profiles (user_id, org_name, contact_name, "
+            "contact_email, contact_phone, created_at, updated_at) "
+            "VALUES (?,?,?,?,?,?,?)",
+            (clinician_id, "Demo Research Site", "Demo Coordinator",
+             "coordinator@demo-site.example", "+1 416 555 0199", ts(days=-10),
+             ts(days=-1)))
+    if db.execute("SELECT COUNT(*) n FROM messages").fetchone()["n"]:
+        db.commit()
+        return
+
+    # Threads on the accepted/revealed candidates so neither side looks empty.
+    revealed = db.execute(
+        "SELECT * FROM leads WHERE revealed = 1 ORDER BY id").fetchall()
+    for ld in revealed:
+        first = ld["name"].split()[0] if ld["name"] else "there"
+        db.execute("INSERT INTO messages (lead_id, sender, body, read_patient, "
+                   "read_site, created_at) VALUES (?,?,?,?,?,?)",
+                   (ld["id"], "site",
+                    f"Hi {first}, thanks for applying - we've reviewed your details "
+                    "and would love to take the next step. Any questions so far?",
+                    1, 1, ts(hours=-30)))
+        db.execute("INSERT INTO messages (lead_id, sender, body, read_patient, "
+                   "read_site, created_at) VALUES (?,?,?,?,?,?)",
+                   (ld["id"], "patient",
+                    "Thank you! Yes - roughly how many visits are involved, and is "
+                    "parking available?", 1, 0, ts(hours=-26)))
+
+    # A visit on the screening/enrolled candidates (drives reminders + patient view).
+    for ld in revealed:
+        if ld["status"] in ("screening", "enrolled"):
+            when = ts(days=2, hours=3) if ld["status"] == "screening" else ts(days=-2)
+            db.execute("INSERT INTO lead_visits (lead_id, kind, visit_at, location, "
+                       "note, reminded_at, created_at) VALUES (?,?,?,?,?,?,?)",
+                       (ld["id"], "screening", when, ld["site"] or "Study site",
+                        "Please bring a photo ID. Allow about 90 minutes.",
+                        "", ts(hours=-20)))
+            db.execute("INSERT INTO messages (lead_id, sender, body, read_patient, "
+                       "read_site, created_at) VALUES (?,?,?,?,?,?)",
+                       (ld["id"], "system",
+                        f"Your screening visit is booked for {when} at "
+                        f"{ld['site'] or 'the study site'}. We'll remind you beforehand.",
+                        1, 1, ts(hours=-20)))
+
+    # One physician referral with attribution, so the invite view + funnel show the
+    # trusted-messenger channel producing a real applicant.
+    if clinician_id:
+        tok = gen_token()
+        db.execute(
+            "INSERT INTO invites (token, clinician_id, clinician_name, nct, title, "
+            "condition, note, clicks, created_at) VALUES (?,?,?,?,?,?,?,?,?)",
+            (tok, clinician_id, "Demo Clinician", "NCT05869903",
+             "Once-Weekly Semaglutide in Adults With Obesity", "Obesity",
+             "I think this could be a good fit for you - worth a look.", 3,
+             ts(days=-6)))
+        target = db.execute(
+            "SELECT id FROM leads WHERE nct = 'NCT05869903' AND status = 'eligible' "
+            "ORDER BY id LIMIT 1").fetchone()
+        if target:
+            db.execute("UPDATE leads SET referred_by = 'Demo Clinician', "
+                       "invite_token = ?, source = 'referral' WHERE id = ?",
+                       (tok, target["id"]))
+    db.commit()
 
 
 # --------------------------------------------------------------------------- #

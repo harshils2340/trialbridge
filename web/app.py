@@ -38,6 +38,7 @@ import match_trials as mt  # noqa: E402
 import refer as rf  # noqa: E402
 
 import alerts as alerts_mod  # noqa: E402
+import analytics  # noqa: E402
 import codes  # noqa: E402
 import db  # noqa: E402
 import fhir  # noqa: E402
@@ -45,6 +46,7 @@ import ingest  # noqa: E402
 import mailer  # noqa: E402
 import records as records_mod  # noqa: E402
 import redcap  # noqa: E402
+import reminders as reminders_mod  # noqa: E402
 import summarize  # noqa: E402
 import trends  # noqa: E402
 
@@ -133,6 +135,17 @@ def _ensure_demo_user():
     return u
 
 
+# Seed the retention/engagement surfaces (messages, visits, a physician referral)
+# on top of the demo leads so a fresh no-login demo shows the whole loop alive.
+if NO_LOGIN:
+    try:
+        with app.test_request_context():
+            _demo = _ensure_demo_user()
+            db.seed_demo_engagement(_demo["id"] if _demo else None)
+    except Exception:
+        app.logger.exception("demo engagement seeding failed")
+
+
 def login_required(view):
     @functools.wraps(view)
     def wrapped(*a, **k):
@@ -151,6 +164,7 @@ def load_user():
 
 
 APPLICANT_COOKIE = "tb_app"
+INVITE_COOKIE = "tb_invite"
 
 
 def get_applicant_token():
@@ -207,7 +221,7 @@ def _notify_site_new_candidate(token):
     lead = db.get_lead_by_token(token)
     if not lead:
         return False
-    to_addr = SITE_NOTIFY_EMAIL
+    to_addr = db.site_contact_for_nct(lead["nct"]) or SITE_NOTIFY_EMAIL
     link = _abs_url("candidate_page", token=token)
     subject, body = mailer.build_candidate_message(lead, link)
     return _notify(to_addr, subject, body)
@@ -238,6 +252,31 @@ def _notify_applicant_schedule(lead):
     return _notify(lead["email"], subject, body)
 
 
+def _notify_applicant_message(lead, body):
+    if not lead or not lead["email"]:
+        return False
+    subject, msg = mailer.build_dm_message(
+        lead, body, _abs_url("applications"), to="patient")
+    return _notify(lead["email"], subject, msg)
+
+
+def _notify_site_message(lead, body):
+    if not lead:
+        return False
+    to_addr = db.site_contact_for_nct(lead["nct"]) or SITE_NOTIFY_EMAIL
+    link = _abs_url("candidate_page", token=lead["token"])
+    subject, msg = mailer.build_dm_message(lead, body, link, to="site")
+    return _notify(to_addr, subject, msg)
+
+
+def _notify_applicant_visit(lead, when, location):
+    if not lead or not lead["email"]:
+        return False
+    subject, body = mailer.build_visit_message(
+        lead, when, location, _abs_url("applications"))
+    return _notify(lead["email"], subject, body)
+
+
 def _notify_alert(alert, new_matches):
     """Push new matching trials to the patient who saved this alert."""
     if not alert["email"]:
@@ -249,6 +288,26 @@ def _notify_alert(alert, new_matches):
 
 # Watch ClinicalTrials.gov in the background and push new matches to patients.
 alerts_mod.configure(app, notifier=_notify_alert)
+
+
+def _remind_visit(visit):
+    """Email a patient a reminder about an upcoming visit (row from a JOIN)."""
+    if not visit["email"]:
+        return False
+    subject, body = mailer.build_reminder_message(
+        visit, visit["visit_at"], visit["location"], _abs_url("applications"))
+    return _notify(visit["email"], subject, body)
+
+
+def _nudge_applicant(lead):
+    if not lead["email"]:
+        return False
+    subject, body = mailer.build_nudge_message(lead, _abs_url("applications"))
+    return _notify(lead["email"], subject, body)
+
+
+# Proactively remind about visits and re-engage quiet applicants (retention).
+reminders_mod.configure(app, on_visit=_remind_visit, on_nudge=_nudge_applicant)
 
 
 @app.context_processor
@@ -268,10 +327,19 @@ def inject_globals():
         alerts_new = db.new_matches_count(token) if token else 0
     except Exception:
         alerts_new = 0
+    try:
+        msgs_unread = db.unread_for_patient(token) if token else 0
+    except Exception:
+        msgs_unread = 0
+    try:
+        site_unread = db.unread_for_site(g.user["id"]) if g.user else 0
+    except Exception:
+        site_unread = 0
     # In no-login testing mode we show a small switcher so you can preview all
     # three POVs (patient / clinician / study team) without signing in.
     path = request.path or "/"
-    if path.startswith("/app/leads"):
+    if (path.startswith("/app/leads") or path.startswith("/app/dashboard")
+            or path.startswith("/app/site")):
         pov = "study"
     elif path.startswith("/app") or path.startswith("/referral"):
         pov = "clinician"
@@ -280,7 +348,24 @@ def inject_globals():
     return {"user": g.user, "llm_on": bool(mt.LLM_API_KEY),
             "applications_count": apps_n, "pov_demo": NO_LOGIN, "pov": pov,
             "records_profile": rec, "records_provider": records_mod.provider_label(),
-            "alerts_new_count": alerts_new}
+            "alerts_new_count": alerts_new, "messages_unread": msgs_unread,
+            "site_unread": site_unread}
+
+
+def _site_claims():
+    """Claimed NCT ids for the current logged-in study-team account."""
+    if not g.user:
+        return set()
+    try:
+        return db.user_claimed_ncts(g.user["id"])
+    except Exception:
+        return set()
+
+
+def _ensure_site_access_for_lead(lead_id):
+    """403 unless this lead's NCT belongs to the current account's claims."""
+    if not g.user or not db.lead_belongs_to_user(lead_id, g.user["id"]):
+        abort(403)
 
 
 @app.route("/register", methods=["GET", "POST"])
@@ -654,6 +739,17 @@ def interest():
         if isinstance(elig, dict):
             elig, _ = records_mod.autofill_eligibility(prof, elig)
 
+    # Physician-referral attribution: if the patient arrived via a doctor's invite
+    # link, credit that clinician so they can see the outcome (closes their loop).
+    referred_by, invite_token, source = "", "", "web"
+    inv_tok = request.cookies.get(INVITE_COOKIE, "")
+    if inv_tok:
+        inv = db.get_invite(inv_tok)
+        if inv:
+            referred_by = inv["clinician_name"] or "your physician"
+            invite_token = inv_tok
+            source = "referral"
+
     token = db.create_lead({
         "applicant_token": applicant,
         "nct": f.get("nct", "").strip(), "title": f.get("title", "").strip(),
@@ -662,10 +758,11 @@ def interest():
         "site": f.get("site", "").strip(), "name": name,
         "email": f.get("email", "").strip(), "phone": f.get("phone", "").strip(),
         "age": age, "sex": sex,
-        "notes": f.get("about", "").strip(), "consent": 1, "source": "web",
+        "notes": f.get("about", "").strip(), "consent": 1, "source": source,
         "screener": json.dumps(screener) if screener else "",
         "eligibility": json.dumps(elig) if elig else "",
         "records_connected": records_connected, "record_summary": record_summary,
+        "referred_by": referred_by, "invite_token": invite_token,
     })
     # Go-live hook: tell the site a new blinded candidate is waiting. No-op while
     # NOTIFY_LIVE is off, so nothing is emailed during testing.
@@ -693,10 +790,27 @@ def applications():
         apps.append({
             "lead": ld,
             "events": db.get_lead_events(ld["id"]),
+            "messages": db.get_messages(ld["id"]),
+            "visits": db.get_visits(ld["id"]),
         })
+        db.mark_thread_read(ld["id"], "patient")
     return render_template("applications.html", apps=apps,
                            pipeline=db.LEAD_PIPELINE, labels=db.LEAD_LABELS,
                            blurb=db.LEAD_BLURB, closed=db.LEAD_CLOSED)
+
+
+@app.route("/applications/<token>/message", methods=["POST"])
+def application_message(token):
+    """Patient sends a message to the study team about their own application."""
+    lead = db.get_lead_by_token(token)
+    if not lead or lead["applicant_token"] != get_applicant_token():
+        abort(403)
+    body = request.form.get("body", "").strip()
+    if body:
+        db.add_message(lead["id"], "patient", body)
+        _notify_site_message(lead, body)
+        flash("Message sent to the study team.", "success")
+    return redirect(url_for("applications") + f"#app-{lead['id']}")
 
 
 @app.route("/applications/withdraw/<token>", methods=["POST"])
@@ -838,6 +952,19 @@ def alerts_run():
     return jsonify({"checked": True, "new_matches": n})
 
 
+@app.route("/reminders/run")
+def reminders_run():
+    """Trigger a reminder/nudge sweep (cron or manual testing). Keyed by
+    ALERTS_CRON_KEY when set, else no-login/testing only."""
+    key = os.environ.get("ALERTS_CRON_KEY", "").strip()
+    if key:
+        if request.args.get("key", "") != key:
+            abort(403)
+    elif not NO_LOGIN:
+        abort(403)
+    return jsonify(reminders_mod.run_all())
+
+
 @app.route("/applications/connect-records/<token>", methods=["POST"])
 def connect_records(token):
     # Back-compat: the old per-application button now triggers the connect-once
@@ -922,13 +1049,16 @@ def _decode_lead(row):
         "flags": flags,
         "code": candidate_code(row),
         "age_band": age_band(row["age"]),
+        "unread": db.lead_unread_for_site(row["id"]),
     }
 
 
 @app.route("/app/leads")
 @login_required
 def leads():
-    rows = db.list_leads()
+    rows = db.list_leads_for_user(g.user["id"])
+    claims = db.list_study_claims(g.user["id"])
+    counts = db.lead_counts_for_ncts([c["nct"] for c in claims])
     review, reviewed = [], []
     for r in rows:
         item = _decode_lead(r)
@@ -937,15 +1067,69 @@ def leads():
         else:
             reviewed.append(item)
     return render_template("leads.html", review=review, reviewed=reviewed,
-                           counts=db.lead_counts(), pipeline=db.LEAD_PIPELINE,
+                           counts=counts, pipeline=db.LEAD_PIPELINE,
                            statuses=db.LEAD_STATUSES, labels=db.LEAD_LABELS,
                            screener_labels=SCREENER_LABELS,
-                           redcap_on=redcap.configured())
+                           redcap_on=redcap.configured(), claims=claims)
+
+
+@app.route("/app/dashboard")
+@login_required
+def recruitment_dashboard():
+    """The recruitment plan + proof: live funnel, conversion, time-in-stage, and
+    where candidates drop off - built from the data the pipeline already logs."""
+    claims = _site_claims()
+    return render_template(
+        "recruitment.html", stats=analytics.funnel_stats(claims),
+        labels=db.LEAD_LABELS, claims=db.list_study_claims(g.user["id"]))
+
+
+@app.route("/app/site", methods=["GET", "POST"])
+@login_required
+def site_setup():
+    """Study-team onboarding: account profile + claim your active NCTs."""
+    if request.method == "POST":
+        f = request.form
+        db.upsert_site_profile(
+            g.user["id"], f.get("org_name", ""), f.get("contact_name", ""),
+            f.get("contact_email", ""), f.get("contact_phone", ""))
+        flash("Site profile saved.", "success")
+        return redirect(url_for("site_setup"))
+    return render_template(
+        "site_setup.html",
+        profile=db.get_site_profile(g.user["id"]),
+        claims=db.list_study_claims(g.user["id"]))
+
+
+@app.route("/app/site/claim", methods=["POST"])
+@login_required
+def add_study_claim():
+    nct = request.form.get("nct", "").strip().upper()
+    title = request.form.get("title", "").strip()
+    if not nct:
+        flash("Add an NCT number to claim a study.", "error")
+    elif db.add_study_claim(g.user["id"], nct, title):
+        flash("Study claimed. New applicants for that NCT now route to your board.",
+              "success")
+    else:
+        flash("Couldn't claim that study. Check the NCT and try again.", "error")
+    return redirect(url_for("site_setup"))
+
+
+@app.route("/app/site/claim/remove", methods=["POST"])
+@login_required
+def remove_study_claim():
+    nct = request.form.get("nct", "").strip().upper()
+    if nct:
+        db.remove_study_claim(g.user["id"], nct)
+        flash("Study unclaimed.", "success")
+    return redirect(url_for("site_setup"))
 
 
 @app.route("/app/leads/<int:lead_id>/accept", methods=["POST"])
 @login_required
 def accept_lead(lead_id):
+    _ensure_site_access_for_lead(lead_id)
     note = request.form.get("note", "").strip()
     if db.accept_candidate(lead_id, note):
         _notify_applicant_by_id(lead_id, "accepted")
@@ -959,6 +1143,7 @@ def accept_lead(lead_id):
 @app.route("/app/leads/<int:lead_id>/decline", methods=["POST"])
 @login_required
 def decline_lead(lead_id):
+    _ensure_site_access_for_lead(lead_id)
     reason = request.form.get("reason", "").strip()
     if db.decline_candidate(lead_id, reason):
         _notify_applicant_by_id(lead_id, "declined")
@@ -972,6 +1157,7 @@ def decline_lead(lead_id):
 @app.route("/app/leads/<int:lead_id>/schedule", methods=["POST"])
 @login_required
 def schedule_lead(lead_id):
+    _ensure_site_access_for_lead(lead_id)
     """Attach a booking link (Calendly/Acuity/Cal.com/etc.) to an accepted
     candidate so the patient can self-schedule their screening call."""
     url = request.form.get("schedule_url", "").strip()
@@ -1009,6 +1195,7 @@ def candidate_schedule(token):
 @app.route("/app/leads/<int:lead_id>/redcap", methods=["POST"])
 @login_required
 def push_lead_redcap(lead_id):
+    _ensure_site_access_for_lead(lead_id)
     """Drop the candidate into the site's REDCap project so the coordinator
     doesn't re-type anything. No-op with a helpful message until configured."""
     lead = db.get_lead(lead_id)
@@ -1026,6 +1213,7 @@ def push_lead_redcap(lead_id):
 @app.route("/app/leads/<int:lead_id>/status", methods=["POST"])
 @login_required
 def update_lead(lead_id):
+    _ensure_site_access_for_lead(lead_id)
     status = request.form.get("status", "").strip()
     note = request.form.get("note", "").strip()
     if db.update_lead_status(lead_id, status, note, actor="you"):
@@ -1617,6 +1805,48 @@ def refer_confirm():
     return redirect(url_for("referral_detail", ref_id=ref_id))
 
 
+@app.route("/app/invite", methods=["GET", "POST"])
+@login_required
+def invite_patient():
+    """Clinician mints a 'your doctor referred you' link for a specific trial.
+    They hand it to a patient; when the patient applies, it's credited back here
+    so the clinician sees what happened - the same loop refer.py closes for sites."""
+    if request.method == "POST":
+        f = request.form
+        nct = f.get("nct", "").strip()
+        title = f.get("title", "").strip()
+        if not (nct or title):
+            flash("Add at least a trial NCT number or title.", "error")
+        else:
+            tok = db.create_invite(
+                g.user["id"], g.user["name"] or "your physician",
+                nct, title, f.get("condition", "").strip(),
+                f.get("note", "").strip())
+            flash("Invite link created - copy it below and send it to your patient.",
+                  "ok")
+            return redirect(url_for("invite_patient", new=tok))
+    invites = db.list_invites(g.user["id"])
+    return render_template("invite.html", invites=invites,
+                           new_token=request.args.get("new", ""))
+
+
+@app.route("/i/<token>")
+def invite_landing(token):
+    """Public patient landing for a physician invite. Sets an attribution cookie,
+    shows the trusted-messenger framing, and sends them to search + apply."""
+    inv = db.get_invite(token)
+    if not inv:
+        flash("That invite link isn't valid. You can still search for trials below.",
+              "error")
+        return redirect(url_for("home"))
+    db.bump_invite_clicks(token)
+    resp = make_response(render_template("invite_landing.html", inv=inv))
+    resp.set_cookie(INVITE_COOKIE, token, max_age=60 * 60 * 24 * 30,
+                    samesite="Lax", httponly=True,
+                    secure=bool(os.environ.get("BEHIND_PROXY")))
+    return resp
+
+
 @app.route("/referrals")
 @login_required
 def referrals():
@@ -1704,9 +1934,14 @@ def candidate_page(token):
     lead = db.get_lead_by_token(token)
     if not lead:
         abort(404)
+    messages = db.get_messages(lead["id"])
+    visits = db.get_visits(lead["id"])
+    if lead["revealed"]:
+        db.mark_thread_read(lead["id"], "site")
     return render_template("candidate_public.html", it=_decode_lead(lead),
                            lead=lead, labels=db.LEAD_LABELS,
                            screener_labels=SCREENER_LABELS,
+                           messages=messages, visits=visits,
                            post_accept=db.LEAD_PIPELINE[3:])  # screening, enrolled
 
 
@@ -1728,6 +1963,52 @@ def candidate_decline(token):
         flash("Marked as not a match. No contact details were revealed.", "ok")
     else:
         flash("Couldn't update this candidate.", "error")
+    return redirect(url_for("candidate_page", token=token))
+
+
+@app.route("/c/<token>/message", methods=["POST"])
+def candidate_message(token):
+    """Study team messages the applicant. Only after acceptance (blinded model)."""
+    lead = db.get_lead_by_token(token)
+    if not lead:
+        abort(404)
+    if not lead["revealed"]:
+        flash("Accept the candidate first to start a conversation.", "error")
+        return redirect(url_for("candidate_page", token=token))
+    body = request.form.get("body", "").strip()
+    if body:
+        db.add_message(lead["id"], "site", body)
+        _notify_applicant_message(lead, body)
+        flash("Message sent to the applicant.", "ok")
+    return redirect(url_for("candidate_page", token=token))
+
+
+@app.route("/c/<token>/visit", methods=["POST"])
+def candidate_visit(token):
+    """Study team books a screening/follow-up visit for an accepted candidate."""
+    lead = db.get_lead_by_token(token)
+    if not lead:
+        abort(404)
+    if not lead["revealed"]:
+        flash("Accept the candidate first to book a visit.", "error")
+        return redirect(url_for("candidate_page", token=token))
+    raw = request.form.get("visit_at", "").strip()
+    kind = request.form.get("kind", "screening").strip() or "screening"
+    location = request.form.get("location", "").strip()
+    note = request.form.get("note", "").strip()
+    if raw:
+        when = raw.replace("T", " ")            # datetime-local -> our format
+        db.add_visit(lead["id"], when, kind, location, note)
+        db.update_lead_status(lead["id"], "screening",
+                              f"{kind} visit booked for {when}", actor="site")
+        sysmsg = f"Your {kind} visit is booked for {when}"
+        sysmsg += f" at {location}." if location else "."
+        sysmsg += " We'll remind you beforehand."
+        db.add_message(lead["id"], "system", sysmsg)
+        _notify_applicant_visit(lead, when, location)
+        flash("Visit booked and shared with the applicant.", "ok")
+    else:
+        flash("Pick a date and time for the visit.", "error")
     return redirect(url_for("candidate_page", token=token))
 
 

@@ -25,6 +25,7 @@
 
   <div class="card">
     <span class="pill pill-{{ lead['status'] }}">{{ labels.get(lead['status'], lead['status']) }}</span>
+    {% if lead['referred_by'] %}<span class="pill pill-ref">{{ ic.icon('award') }} Physician-referred</span>{% endif %}
     <h1 style="margin:12px 0 4px; font-size:22px; letter-spacing:-.02em;">{{ it.code }}</h1>
     <p style="color:var(--muted); margin:0;">A consented applicant who may be eligible for your study. They're
       <b>de-identified</b> until you accept - review the fit below and decide.</p>
@@ -114,6 +115,51 @@
       {% if lead['schedule_url'] %}<p class="hint">Current link sent to applicant: {{ lead['schedule_url'] }}</p>{% endif %}
     </form>
   </div>
+  <div class="card">
+    <div class="section-title"><h2>Book a screening visit</h2></div>
+    {% if visits %}
+    <ul class="visit-list">
+      {% for v in visits %}
+      <li>{{ ic.icon('activity') }} <b>{{ v['kind']|capitalize }}</b> · {{ v['visit_at'] }}{% if v['location'] %} · {{ v['location'] }}{% endif %}
+        {% if v['reminded_at'] %}<span class="tag">reminder sent</span>{% endif %}</li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+    <form method="post" action="{{ url_for('candidate_visit', token=lead['token']) }}" class="visit-form">
+      <div class="visit-row">
+        <label>When<input type="datetime-local" name="visit_at" required></label>
+        <label>Type
+          <select name="kind"><option value="screening">Screening</option>
+            <option value="follow-up">Follow-up</option></select></label>
+      </div>
+      <input type="text" name="location" placeholder="Location (or 'phone / video call')">
+      <input type="text" name="note" placeholder="Note for the patient (optional)">
+      <button class="btn btn-primary" type="submit">{{ ic.icon('activity') }} Book &amp; notify patient</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <div class="section-title"><h2>Messages</h2></div>
+    {% if messages %}
+    <ul class="thread-list">
+      {% for m in messages %}
+      <li class="msg msg-{{ m['sender'] }}">
+        <span class="msg-who">{% if m['sender'] == 'site' %}You{% elif m['sender'] == 'system' %}TrialBridge{% else %}Applicant{% endif %}</span>
+        <span class="msg-body">{{ m['body'] }}</span>
+        <span class="msg-time">{{ m['created_at'] }}</span>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="thread-empty">No messages yet. A quick, warm first message ("Thanks for applying, here's what
+      happens next") is the single biggest thing that keeps candidates from going quiet.</p>
+    {% endif %}
+    <form class="thread-form" method="post" action="{{ url_for('candidate_message', token=lead['token']) }}">
+      <input type="text" name="body" placeholder="Message the applicant..." required autocomplete="off">
+      <button class="btn btn-primary btn-sm" type="submit">Send</button>
+    </form>
+  </div>
+
   <div class="card">
     <div class="section-title"><h2>Move forward</h2></div>
     <form method="post" action="{{ url_for('candidate_advance', token=lead['token']) }}">
