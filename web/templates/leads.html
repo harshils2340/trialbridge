@@ -3,8 +3,8 @@
 
 {% block body %}
 <div class="page-head">
-  <h1>Candidate pipeline</h1>
-  <p>Review new applicants, then run outreach from one place.</p>
+  <h1>Intake queue</h1>
+  <p>Review and approve candidates.</p>
 </div>
 
 {% if claims %}
@@ -24,18 +24,18 @@
 {% endif %}
 
 {% if claims %}
-<div class="stats">
-  <div class="stat"><div class="l">{{ ic.icon('list', 'ico stat-ico') }}Total</div><div class="n">{{ (review|length) + (active|length) + (done|length) }}</div></div>
-  <div class="stat accent"><div class="l">{{ ic.icon('activity', 'ico stat-ico') }}Awaiting review</div><div class="n">{{ review|length }}</div></div>
-  <div class="stat"><div class="l">{{ ic.icon('user-plus', 'ico stat-ico') }}Active outreach</div><div class="n">{{ active|length }}</div></div>
-  <div class="stat"><div class="l">{{ ic.icon('user-plus', 'ico stat-ico') }}Enrolled</div><div class="n">{{ counts.get('enrolled', 0) }}</div></div>
-  <div class="stat {{ 'accent' if site_unread }}"><div class="l">{{ ic.icon('activity', 'ico stat-ico') }}Unread messages</div><div class="n">{{ site_unread }}</div></div>
-</div>
-
 <div class="rev-tabs" role="tablist">
   <button type="button" class="rev-tab active" data-tab="review">{{ ic.icon('activity') }} Awaiting review <span class="tab-n">{{ review|length }}</span></button>
   <button type="button" class="rev-tab" data-tab="active">{{ ic.icon('user-plus') }} Active outreach <span class="tab-n">{{ active|length }}</span></button>
   <button type="button" class="rev-tab" data-tab="done">{{ ic.icon('list') }} Completed / closed <span class="tab-n">{{ done|length }}</span></button>
+</div>
+
+<div class="stats stats-compact">
+  <div class="stat compact"><div class="l">Total</div><div class="n">{{ (review|length) + (active|length) + (done|length) }}</div></div>
+  <div class="stat compact accent"><div class="l">Awaiting</div><div class="n">{{ review|length }}</div></div>
+  <div class="stat compact"><div class="l">Outreach</div><div class="n">{{ active|length }}</div></div>
+  <div class="stat compact"><div class="l">Enrolled</div><div class="n">{{ counts.get('enrolled', 0) }}</div></div>
+  <div class="stat compact {{ 'accent' if site_unread }}"><div class="l">Unread</div><div class="n">{{ site_unread }}</div></div>
 </div>
 
 <section class="pipeline-lane rev-panel" data-panel="review">
