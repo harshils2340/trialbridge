@@ -32,7 +32,13 @@
   <div class="stat {{ 'accent' if site_unread }}"><div class="l">{{ ic.icon('activity', 'ico stat-ico') }}Unread messages</div><div class="n">{{ site_unread }}</div></div>
 </div>
 
-<section class="pipeline-lane">
+<div class="rev-tabs" role="tablist">
+  <button type="button" class="rev-tab active" data-tab="review">{{ ic.icon('activity') }} Awaiting review <span class="tab-n">{{ review|length }}</span></button>
+  <button type="button" class="rev-tab" data-tab="active">{{ ic.icon('user-plus') }} Active outreach <span class="tab-n">{{ active|length }}</span></button>
+  <button type="button" class="rev-tab" data-tab="done">{{ ic.icon('list') }} Completed / closed <span class="tab-n">{{ done|length }}</span></button>
+</div>
+
+<section class="pipeline-lane rev-panel" data-panel="review">
   <div class="lane-head">
     <h2>{{ ic.icon('activity') }} Awaiting review</h2>
     <span class="lane-n">{{ review|length }}</span>
@@ -128,7 +134,7 @@
   {% endfor %}
 </section>
 
-<section class="pipeline-lane">
+<section class="pipeline-lane rev-panel" data-panel="active" hidden>
   <div class="lane-head">
     <h2>{{ ic.icon('user-plus') }} Active outreach</h2>
     <span class="lane-n">{{ active|length }}</span>
@@ -187,7 +193,7 @@
   {% endfor %}
 </section>
 
-<section class="pipeline-lane">
+<section class="pipeline-lane rev-panel" data-panel="done" hidden>
   <div class="lane-head">
     <h2>{{ ic.icon('list') }} Completed / closed</h2>
     <span class="lane-n">{{ done|length }}</span>
@@ -242,4 +248,22 @@
   </div>
 </section>
 {% endif %}
+<script>
+(function () {
+  var tabs = document.querySelectorAll('.rev-tab');
+  var panels = document.querySelectorAll('.rev-panel');
+  if (!tabs.length) return;
+  tabs.forEach(function (t) {
+    t.addEventListener('click', function () {
+      tabs.forEach(function (x) { x.classList.remove('active'); });
+      t.classList.add('active');
+      var name = t.getAttribute('data-tab');
+      panels.forEach(function (p) {
+        p.hidden = p.getAttribute('data-panel') !== name;
+      });
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+  });
+})();
+</script>
 {% endblock %}
