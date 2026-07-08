@@ -997,3 +997,65 @@ body.pub { background: var(--surface); }
   .how-cols { grid-template-columns: 1fr; }
   .how-loop { transform: rotate(90deg); padding: 4px 0; }
 }
+
+/* Patient apply: short screener */
+.if-screener { display: grid; gap: 10px; padding: 14px; background: var(--surface-2);
+  border: 1px solid var(--border); border-radius: 10px; }
+.if-screener label { font-size: 13px; font-weight: 600; color: var(--ink-soft); display: flex;
+  align-items: center; justify-content: space-between; gap: 10px; flex-direction: row; }
+.if-screener select { border: 1px solid var(--border-strong); border-radius: 8px; padding: 7px 9px;
+  font-size: 13px; font-family: var(--sans); background: var(--surface); color: var(--ink);
+  flex-shrink: 0; }
+
+/* Study-team candidate review board */
+.sec-title { display: flex; align-items: center; gap: 8px; font-size: 15px; letter-spacing: -.01em;
+  margin: 28px 0 14px; color: var(--ink); }
+.sec-title .ico { width: 16px; height: 16px; color: var(--accent); }
+.cand-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
+.cand-card { border: 1px solid var(--border-strong); border-radius: 14px; background: var(--surface);
+  box-shadow: var(--shadow); padding: 18px; display: flex; flex-direction: column; gap: 12px; }
+.cand-top { display: flex; align-items: center; justify-content: space-between; }
+.cand-code { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; font-size: 14px; }
+.cand-code .ico { width: 15px; height: 15px; color: var(--accent); }
+.cand-demo { font-size: 12px; color: var(--muted); background: var(--surface-2);
+  border: 1px solid var(--border); padding: 3px 10px; border-radius: 999px; }
+.cand-trial a { font-size: 12px; color: var(--accent); text-decoration: none; }
+.cand-title { font-size: 14px; font-weight: 600; line-height: 1.35; margin-top: 2px; }
+.cand-meta { display: flex; flex-wrap: wrap; gap: 8px 14px; font-size: 12.5px; color: var(--muted); }
+.cand-meta span { display: inline-flex; align-items: center; gap: 5px; }
+.cand-meta .ico { width: 13px; height: 13px; }
+.rec-yes { color: var(--green) !important; }
+.rec-no { color: var(--faint) !important; }
+.cand-elig { display: flex; gap: 8px; flex-wrap: wrap; }
+.ec { font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 999px; }
+.ec-met { background: var(--green-bg); color: var(--green); }
+.ec-unk { background: var(--amber-bg); color: var(--amber); }
+.ec-no { background: var(--red-bg); color: var(--red); }
+.cand-flags { font-size: 12.5px; color: var(--amber); background: var(--amber-bg); border-radius: 8px;
+  padding: 8px 10px; display: flex; align-items: center; gap: 6px; }
+.cand-flags .ico { width: 14px; height: 14px; }
+.cand-detail { border-top: 1px solid var(--border); padding-top: 10px; }
+.cand-detail summary { cursor: pointer; font-size: 13px; color: var(--ink-soft); font-weight: 600; }
+.cand-rationale { font-size: 13px; color: var(--ink-soft); margin: 8px 0; line-height: 1.5; }
+.eb { font-size: 12.5px; margin-top: 8px; }
+.eb b { display: block; margin-bottom: 3px; }
+.eb-met b { color: var(--green); } .eb-unk b { color: var(--amber); } .eb-no b { color: var(--red); }
+.eb ul { margin: 0; padding-left: 18px; color: var(--ink-soft); line-height: 1.5; }
+.cand-screener { list-style: none; margin: 8px 0 0; padding: 0; }
+.cand-screener li { display: flex; justify-content: space-between; gap: 10px; font-size: 13px;
+  padding: 4px 0; border-bottom: 1px solid var(--border); }
+.cand-screener li span { color: var(--muted); }
+.cand-record { white-space: pre-wrap; font-size: 12px; color: var(--ink-soft); background: var(--surface-2);
+  border: 1px solid var(--border); border-radius: 8px; padding: 10px; margin: 8px 0 0; }
+.cand-actions { display: flex; gap: 8px; align-items: flex-start; flex-wrap: wrap; margin-top: 4px; }
+.btn-ok { background: var(--green); color: #fff; border-color: var(--green); }
+.btn-ok:hover { filter: brightness(.95); }
+.decline-pop summary { list-style: none; }
+.decline-pop summary::-webkit-details-marker { display: none; }
+.decline-pop form { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+.decline-pop input { border: 1px solid var(--border-strong); border-radius: 8px; padding: 6px 9px;
+  font-size: 12.5px; font-family: var(--sans); }
+.cand-priv { font-size: 11.5px; color: var(--faint); display: flex; align-items: center; gap: 5px; margin: 0; }
+.cand-priv .ico { width: 13px; height: 13px; color: var(--green); }
+.locked { color: var(--faint); display: inline-flex; align-items: center; gap: 4px; }
+.locked .ico { width: 13px; height: 13px; }

@@ -372,6 +372,23 @@ def interest():
     new_cookie = not applicant
     if new_cookie:
         applicant = secrets.token_urlsafe(16)
+
+    # Short screener: only quick gate questions that records can't reliably
+    # answer. Everything clinical is filled from the record / search match.
+    screener = {}
+    for q in ("travel", "other_trial", "pregnancy", "consent_capable"):
+        v = f.get(q, "").strip()
+        if v:
+            screener[q] = v
+
+    # Carry the eligibility profile computed at search time (met/unknown/not_met)
+    # so the study team gets a criteria breakdown with no extra LLM cost.
+    elig_raw = f.get("eligibility", "").strip()
+    try:
+        elig = json.dumps(json.loads(elig_raw)) if elig_raw else ""
+    except (ValueError, TypeError):
+        elig = ""
+
     db.create_lead({
         "applicant_token": applicant,
         "nct": f.get("nct", "").strip(), "title": f.get("title", "").strip(),
@@ -381,6 +398,8 @@ def interest():
         "email": f.get("email", "").strip(), "phone": f.get("phone", "").strip(),
         "age": f.get("age", "").strip(), "sex": f.get("sex", "").strip(),
         "notes": f.get("about", "").strip(), "consent": 1, "source": "web",
+        "screener": json.dumps(screener) if screener else "",
+        "eligibility": elig,
     })
     resp = make_response(render_template("thanks.html", title=f.get("title", ""),
                                          nct=f.get("nct", "")))
@@ -481,15 +500,91 @@ def condition_city_page(slug, city_slug):
                            conditions=SEED_CONDITIONS, slugify=slugify)
 
 
+SCREENER_LABELS = {
+    "travel": "Can travel to the study site",
+    "other_trial": "Currently in another trial",
+    "pregnancy": "Pregnant / planning pregnancy",
+    "consent_capable": "Can give own consent",
+}
+# Answers that are a yellow flag for the study team to look at.
+SCREENER_FLAGS = {"other_trial": "yes", "pregnancy": "yes", "consent_capable": "no"}
+
+
+def age_band(age):
+    try:
+        a = int(str(age).strip())
+    except (ValueError, TypeError):
+        return "Adult"
+    lo = (a // 10) * 10
+    return f"{lo}-{lo + 9}"
+
+
+def candidate_code(lead):
+    return f"Candidate #{lead['id']:04d}"
+
+
+def _decode_lead(row):
+    """Attach parsed screener/eligibility + de-identified helpers to a lead row."""
+    try:
+        elig = json.loads(row["eligibility"]) if row["eligibility"] else {}
+    except (ValueError, TypeError):
+        elig = {}
+    try:
+        scr = json.loads(row["screener"]) if row["screener"] else {}
+    except (ValueError, TypeError):
+        scr = {}
+    flags = [SCREENER_LABELS.get(k, k) for k, bad in SCREENER_FLAGS.items()
+             if scr.get(k) == bad]
+    return {
+        "lead": row,
+        "events": db.get_lead_events(row["id"]),
+        "elig": elig,
+        "screener": scr,
+        "flags": flags,
+        "code": candidate_code(row),
+        "age_band": age_band(row["age"]),
+    }
+
+
 @app.route("/app/leads")
 @login_required
 def leads():
     rows = db.list_leads()
-    leads_with_events = [{"lead": r, "events": db.get_lead_events(r["id"])}
-                         for r in rows]
-    return render_template("leads.html", leads=leads_with_events,
+    review, reviewed = [], []
+    for r in rows:
+        item = _decode_lead(r)
+        if r["status"] == "prescreen" and not r["decision"]:
+            review.append(item)
+        else:
+            reviewed.append(item)
+    return render_template("leads.html", review=review, reviewed=reviewed,
                            counts=db.lead_counts(), pipeline=db.LEAD_PIPELINE,
-                           statuses=db.LEAD_STATUSES, labels=db.LEAD_LABELS)
+                           statuses=db.LEAD_STATUSES, labels=db.LEAD_LABELS,
+                           screener_labels=SCREENER_LABELS)
+
+
+@app.route("/app/leads/<int:lead_id>/accept", methods=["POST"])
+@login_required
+def accept_lead(lead_id):
+    note = request.form.get("note", "").strip()
+    if db.accept_candidate(lead_id, note):
+        flash("Candidate accepted - contact details unlocked so you can invite "
+              "them to a screening visit.", "success")
+    else:
+        flash("Couldn't accept that candidate.", "error")
+    return redirect(url_for("leads"))
+
+
+@app.route("/app/leads/<int:lead_id>/decline", methods=["POST"])
+@login_required
+def decline_lead(lead_id):
+    reason = request.form.get("reason", "").strip()
+    if db.decline_candidate(lead_id, reason):
+        flash("Candidate declined. They stay de-identified - no contact details "
+              "were revealed.", "success")
+    else:
+        flash("Couldn't decline that candidate.", "error")
+    return redirect(url_for("leads"))
 
 
 @app.route("/app/leads/<int:lead_id>/status", methods=["POST"])

@@ -124,6 +124,12 @@ CREATE TABLE IF NOT EXISTS leads (
     status          TEXT NOT NULL DEFAULT 'submitted',
     records_connected INTEGER DEFAULT 0,
     record_summary  TEXT DEFAULT '',
+    screener        TEXT DEFAULT '',
+    eligibility     TEXT DEFAULT '',
+    decision        TEXT DEFAULT '',
+    decision_reason TEXT DEFAULT '',
+    decided_at      TEXT DEFAULT '',
+    revealed        INTEGER DEFAULT 0,
     created_at      TEXT NOT NULL,
     updated_at      TEXT DEFAULT ''
 );
@@ -191,6 +197,12 @@ _MIGRATIONS = {
         "updated_at": "TEXT DEFAULT ''",
         "records_connected": "INTEGER DEFAULT 0",
         "record_summary": "TEXT DEFAULT ''",
+        "screener": "TEXT DEFAULT ''",
+        "eligibility": "TEXT DEFAULT ''",
+        "decision": "TEXT DEFAULT ''",
+        "decision_reason": "TEXT DEFAULT ''",
+        "decided_at": "TEXT DEFAULT ''",
+        "revealed": "INTEGER DEFAULT 0",
     },
 }
 
@@ -391,22 +403,64 @@ def create_lead(data):
     cur = db.execute(
         """INSERT INTO leads
            (token, applicant_token, nct, title, condition, location, site, name,
-            email, phone, age, sex, notes, consent, source, status, created_at,
-            updated_at)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            email, phone, age, sex, notes, consent, source, status, screener,
+            eligibility, created_at, updated_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         (token, data.get("applicant_token", ""), data.get("nct", ""),
          data.get("title", ""), data.get("condition", ""),
          data.get("location", ""), data.get("site", ""), data.get("name", ""),
          data.get("email", ""), data.get("phone", ""), data.get("age", ""),
          data.get("sex", ""), data.get("notes", ""),
          1 if data.get("consent") else 0, data.get("source", "web"),
-         "submitted", ts, ts))
+         "prescreen", data.get("screener", ""), data.get("eligibility", ""),
+         ts, ts))
+    lead_id = cur.lastrowid
     db.execute(
         "INSERT INTO lead_events (lead_id, status, note, actor, created_at) "
         "VALUES (?,?,?,?,?)",
-        (cur.lastrowid, "submitted", "application submitted", "you", ts))
+        (lead_id, "submitted", "application received", "you", ts))
+    db.execute(
+        "INSERT INTO lead_events (lead_id, status, note, actor, created_at) "
+        "VALUES (?,?,?,?,?)",
+        (lead_id, "prescreen", "ready for study-team review", "you", ts))
     db.commit()
     return token
+
+
+def accept_candidate(lead_id, note=""):
+    """Study team accepts a blinded candidate: mark likely eligible and reveal
+    contact + record (mutual consent - the patient already opted in on apply)."""
+    lead = get_lead(lead_id)
+    if not lead:
+        return False
+    db = get_db()
+    ts = now()
+    db.execute("UPDATE leads SET status = 'eligible', decision = 'accepted', "
+               "decided_at = ?, revealed = 1, updated_at = ? WHERE id = ?",
+               (ts, ts, lead_id))
+    msg = "accepted - likely eligible" + (f": {note}" if note else "")
+    db.execute(
+        "INSERT INTO lead_events (lead_id, status, note, actor, created_at) "
+        "VALUES (?,?,?,?,?)", (lead_id, "eligible", msg, "you", ts))
+    db.commit()
+    return True
+
+
+def decline_candidate(lead_id, reason=""):
+    lead = get_lead(lead_id)
+    if not lead:
+        return False
+    db = get_db()
+    ts = now()
+    db.execute("UPDATE leads SET status = 'closed', decision = 'declined', "
+               "decision_reason = ?, decided_at = ?, updated_at = ? WHERE id = ?",
+               (reason, ts, ts, lead_id))
+    msg = "not a match" + (f": {reason}" if reason else "")
+    db.execute(
+        "INSERT INTO lead_events (lead_id, status, note, actor, created_at) "
+        "VALUES (?,?,?,?,?)", (lead_id, "closed", msg, "you", ts))
+    db.commit()
+    return True
 
 
 def list_leads():
