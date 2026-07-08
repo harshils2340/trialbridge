@@ -32,7 +32,7 @@
     <div class="hero-chips">
       <span>Popular:</span>
       {% for c in conditions %}
-      <a class="chip" href="{{ url_for('condition_page', slug=slugify(c)) }}">{{ c }}</a>
+      <a class="chip cond-chip" href="{{ url_for('condition_page', slug=slugify(c)) }}" data-cond="{{ c }}">{{ c }}</a>
       {% endfor %}
     </div>
 
@@ -103,6 +103,18 @@
     }, 220);
   });
   window.addEventListener('pagehide', function () { if (bar) bar.style.width = '100%'; });
+
+  // Popular chips prefill the condition input instead of navigating away
+  var condInput = form.querySelector('input[name="condition"]');
+  document.querySelectorAll('.cond-chip').forEach(function (chip) {
+    chip.addEventListener('click', function (e) {
+      e.preventDefault();
+      if (condInput) { condInput.value = chip.getAttribute('data-cond'); }
+      form.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      var locInput = document.getElementById('location');
+      if (locInput && !locInput.value) { locInput.focus(); }
+    });
+  });
 
   var useLoc = document.getElementById('useLoc');
   var loc = document.getElementById('location');

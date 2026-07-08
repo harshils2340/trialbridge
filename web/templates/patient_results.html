@@ -9,85 +9,261 @@
   'error': ('Couldn’t assess', 'maybe')
 } %}
 
+{# facets present in this result set #}
+{% set phase_set = [] %}
+{% set fit_set = [] %}
+{% for r in results %}
+  {% set lab = labels.get(r.match.verdict, ('You might qualify','maybe')) %}
+  {% if r.trial.phase and r.trial.phase not in phase_set %}{% set _ = phase_set.append(r.trial.phase) %}{% endif %}
+  {% if lab[1] not in fit_set %}{% set _ = fit_set.append(lab[1]) %}{% endif %}
+{% endfor %}
+{% set fit_names = {'good': 'Likely a good fit', 'maybe': 'Might qualify', 'no': 'Probably not'} %}
+
 {% block body %}
-<section class="pr-wrap">
-  <div class="pr-head">
-    <div>
-      <h1>Trials for {{ condition }}</h1>
-      <p class="pr-sub">{{ ic.icon('pin') }} Near {{ location }} · {{ results|length }} recruiting match{{ '' if results|length == 1 else 'es' }}</p>
+<section class="pr-layout">
+
+  <aside class="pr-filters" id="prFilters">
+    <div class="pr-filters-head">
+      <h2>Filters</h2>
+      <button type="button" class="link-btn" id="filtReset">Reset</button>
     </div>
-    <a class="btn btn-ghost" href="{{ url_for('find') }}">{{ ic.icon('search') }} New search</a>
-  </div>
 
-  {% if not results %}
-  <div class="pr-empty">
-    <h2>No recruiting trials matched right now</h2>
-    <p>Try widening the distance, checking a nearby city, or a broader condition name.
-       New trials open all the time - it's worth checking back.</p>
-    <a class="btn btn-primary" href="{{ url_for('find') }}">Try another search</a>
-  </div>
-  {% endif %}
+    <form id="refineForm" class="pr-refine" method="post" action="{{ url_for('find') }}">
+      <input type="hidden" name="condition" value="{{ q_condition }}">
+      <input type="hidden" name="intervention" value="{{ q_intervention }}">
+      <input type="hidden" name="location" value="{{ location }}">
+      <input type="hidden" name="age" value="{{ q_age }}">
+      <input type="hidden" name="sex" value="{{ q_sex }}">
+      <input type="hidden" name="about" value="{{ q_about }}">
+      <input type="hidden" name="lat" value="{{ q_lat }}">
+      <input type="hidden" name="lon" value="{{ q_lon }}">
+      <input type="hidden" name="cc" value="{{ q_cc }}">
 
-  {% if results %}<div class="pr-grid">{% endif %}
-  {% for r in results %}
-  {% set t = r.trial %}{% set m = r.match %}
-  {% set lab = labels.get(m.verdict, ('You might qualify','maybe')) %}
-  <article class="pr-card">
-    <div class="pr-card-top">
-      <span class="fit fit-{{ lab[1] }}">{{ ic.icon('check') if lab[1]=='good' else ic.icon('sparkle') }}{{ lab[0] }}</span>
-      {% if r.distance is not none %}<span class="pr-dist">{{ ic.icon('pin') }}{{ '%.0f'|format(r.distance) }} {{ r.unit }} away</span>{% endif %}
-      {% if t.phase %}<span class="pr-phase">{{ t.phase }}</span>{% endif %}
+      <div class="filt-group">
+        <label class="filt-label">{{ ic.icon('pin') }} Distance</label>
+        <select name="radius" id="fRadius" class="filt-select">
+          {% for v, lbl in [(25,'Within 25 '+unit),(50,'Within 50 '+unit),(100,'Within 100 '+unit),(200,'Within 200 '+unit),(0,'Any distance')] %}
+          <option value="{{ v }}" {{ 'selected' if q_radius == v else '' }}>{{ lbl }}</option>
+          {% endfor %}
+        </select>
+        <p class="filt-hint">Changing distance re-runs the search.</p>
+      </div>
+    </form>
+
+    <div class="filt-group">
+      <label class="filt-label">{{ ic.icon('activity') }} Sort by</label>
+      <select id="fSort" class="filt-select">
+        <option value="best">Best match</option>
+        <option value="near">Nearest to me</option>
+      </select>
     </div>
-    <h2 class="pr-card-title">{{ t.title }}</h2>
-    {% if t.briefSummary %}<p class="pr-summary">{{ t.briefSummary[:280] }}{{ '…' if t.briefSummary|length > 280 }}</p>{% endif %}
 
-    {% if m.rationale %}
-    <div class="pr-why"><b>Why this match:</b> {{ m.rationale }}</div>
+    {% if fit_set|length > 1 %}
+    <div class="filt-group">
+      <label class="filt-label">{{ ic.icon('sparkle') }} Match quality</label>
+      {% for f in ['good','maybe','no'] %}{% if f in fit_set %}
+      <label class="filt-check"><input type="checkbox" class="f-fit" value="{{ f }}" checked>
+        <span class="dot dot-{{ f }}"></span>{{ fit_names[f] }}</label>
+      {% endif %}{% endfor %}
+    </div>
     {% endif %}
 
-    <div class="pr-facts">
-      {% if r.site_str %}<span>{{ ic.icon('pin') }} {{ r.site_str }}</span>{% endif %}
-      {% if t.leadSponsor %}<span>{{ ic.icon('award') }} {{ t.leadSponsor }}</span>{% endif %}
-      <span><a href="https://clinicaltrials.gov/study/{{ t.nctId }}" target="_blank" rel="noopener">{{ ic.icon('external') }} {{ t.nctId }} on ClinicalTrials.gov</a></span>
+    {% if phase_set|length > 1 %}
+    <div class="filt-group">
+      <label class="filt-label">{{ ic.icon('award') }} Study phase</label>
+      {% for p in phase_set %}
+      <label class="filt-check"><input type="checkbox" class="f-phase" value="{{ p }}" checked>
+        {{ p.replace('_',' ')|title if p != 'NA' else 'Not applicable' }}</label>
+      {% endfor %}
     </div>
-
-    {% if m.met or m.unknown %}
-    <details class="pr-elig">
-      <summary>{{ ic.icon('chevron-down') }} See eligibility details</summary>
-      {% if m.met %}<div class="pr-elig-b good"><b>Looks like you meet:</b><ul>{% for x in m.met[:6] %}<li>{{ x }}</li>{% endfor %}</ul></div>{% endif %}
-      {% if m.unknown %}<div class="pr-elig-b maybe"><b>The team will need to check:</b><ul>{% for x in m.unknown[:6] %}<li>{{ x }}</li>{% endfor %}</ul></div>{% endif %}
-      {% if m.not_met %}<div class="pr-elig-b no"><b>May be a barrier:</b><ul>{% for x in m.not_met[:6] %}<li>{{ x }}</li>{% endfor %}</ul></div>{% endif %}
-    </details>
     {% endif %}
 
-    <details class="pr-interest">
-      <summary class="btn btn-primary btn-block">{{ ic.icon('user-plus') }} I'm interested - have the study team contact me</summary>
-      <form class="interest-form" method="post" action="{{ url_for('interest') }}">
-        <input type="hidden" name="nct" value="{{ t.nctId }}">
-        <input type="hidden" name="title" value="{{ t.title }}">
-        <input type="hidden" name="condition" value="{{ condition }}">
-        <input type="hidden" name="location" value="{{ location }}">
-        <input type="hidden" name="site" value="{{ r.site_str }}">
-        <div class="if-row two">
-          <label>Your name<input name="name" type="text" required></label>
-          <label>Phone <span class="opt">(optional)</span><input name="phone" type="tel"></label>
-        </div>
-        <label>Email<input name="email" type="email" required></label>
-        <label class="if-consent">
-          <input type="checkbox" name="consent" required>
-          I agree that TrialBridge may share my contact details with this study's team so
-          they can reach out about my eligibility. I understand this isn't medical advice
-          and I can talk to my own doctor first.
-        </label>
-        <button class="btn btn-primary" type="submit">{{ ic.icon('arrow-right') }} Request contact</button>
-      </form>
-    </details>
-  </article>
-  {% endfor %}
-  {% if results %}</div>{% endif %}
+    <div class="filt-group filt-note">
+      {{ ic.icon('check') }} Every result is <b>actively recruiting</b> on ClinicalTrials.gov.
+    </div>
+  </aside>
 
-  <p class="pr-foot-note">TrialBridge shows public information from ClinicalTrials.gov and an
-    automated read of eligibility. It isn't medical advice - the study team makes the final
-    eligibility decision, and you should talk with your own doctor.</p>
+  <div class="pr-main">
+    <div class="pr-head">
+      <div>
+        <h1>Trials for {{ condition }}</h1>
+        <p class="pr-sub">{{ ic.icon('pin') }} Near {{ location }} ·
+          <span id="prCount">{{ results|length }}</span> recruiting match{{ '' if results|length == 1 else 'es' }}</p>
+      </div>
+      <div class="pr-head-actions">
+        <button type="button" class="btn btn-ghost pr-filter-toggle" id="filtToggle">{{ ic.icon('activity') }} Filters</button>
+        <a class="btn btn-ghost" href="{{ url_for('find') }}">{{ ic.icon('search') }} New search</a>
+      </div>
+    </div>
+
+    {% if not results %}
+    <div class="pr-empty">
+      <h2>No recruiting trials matched right now</h2>
+      <p>Try widening the distance, checking a nearby city, or a broader condition name.
+         New trials open all the time - it's worth checking back.</p>
+      <a class="btn btn-primary" href="{{ url_for('find') }}">Try another search</a>
+    </div>
+    {% endif %}
+
+    <div class="pr-list" id="prList">
+    {% for r in results %}
+    {% set t = r.trial %}{% set m = r.match %}
+    {% set lab = labels.get(m.verdict, ('You might qualify','maybe')) %}
+    <article class="pr-card" data-fit="{{ lab[1] }}" data-phase="{{ t.phase or 'NA' }}"
+             data-dist="{{ '%.1f'|format(r.distance) if r.distance is not none else 999999 }}">
+      <div class="pr-card-top">
+        <span class="fit fit-{{ lab[1] }}">{{ ic.icon('check') if lab[1]=='good' else ic.icon('sparkle') }}{{ lab[0] }}</span>
+        {% if r.distance is not none %}<span class="pr-dist">{{ ic.icon('pin') }}{{ '%.0f'|format(r.distance) }} {{ r.unit }} away</span>{% endif %}
+        {% if t.phase %}<span class="pr-phase">{{ t.phase.replace('_',' ')|title if t.phase != 'NA' else 'N/A' }}</span>{% endif %}
+        <span class="pr-recruiting">{{ ic.icon('check') }} Recruiting</span>
+      </div>
+      <h2 class="pr-card-title">{{ t.title }}</h2>
+      {% if t.briefSummary %}<p class="pr-summary">{{ t.briefSummary[:320] }}{{ '…' if t.briefSummary|length > 320 }}</p>{% endif %}
+
+      {% if m.rationale %}
+      <div class="pr-why"><b>Why this match:</b> {{ m.rationale }}</div>
+      {% endif %}
+
+      <div class="pr-facts">
+        {% if r.site_str %}<span>{{ ic.icon('pin') }} {{ r.site_str }}</span>{% endif %}
+        {% if t.leadSponsor %}<span>{{ ic.icon('award') }} {{ t.leadSponsor }}</span>{% endif %}
+        <span><a href="https://clinicaltrials.gov/study/{{ t.nctId }}" target="_blank" rel="noopener">{{ ic.icon('external') }} {{ t.nctId }} on ClinicalTrials.gov</a></span>
+      </div>
+
+      {% if m.met or m.unknown %}
+      <details class="pr-elig">
+        <summary>{{ ic.icon('chevron-down') }} See eligibility details</summary>
+        {% if m.met %}<div class="pr-elig-b good"><b>Looks like you meet:</b><ul>{% for x in m.met[:6] %}<li>{{ x }}</li>{% endfor %}</ul></div>{% endif %}
+        {% if m.unknown %}<div class="pr-elig-b maybe"><b>The team will need to check:</b><ul>{% for x in m.unknown[:6] %}<li>{{ x }}</li>{% endfor %}</ul></div>{% endif %}
+        {% if m.not_met %}<div class="pr-elig-b no"><b>May be a barrier:</b><ul>{% for x in m.not_met[:6] %}<li>{{ x }}</li>{% endfor %}</ul></div>{% endif %}
+      </details>
+      {% endif %}
+
+      <details class="pr-interest">
+        <summary class="btn btn-primary btn-block">{{ ic.icon('user-plus') }} I'm interested - have the study team contact me</summary>
+        <form class="interest-form" method="post" action="{{ url_for('interest') }}">
+          <input type="hidden" name="nct" value="{{ t.nctId }}">
+          <input type="hidden" name="title" value="{{ t.title }}">
+          <input type="hidden" name="condition" value="{{ condition }}">
+          <input type="hidden" name="location" value="{{ location }}">
+          <input type="hidden" name="site" value="{{ r.site_str }}">
+          <div class="if-row two">
+            <label>Your name<input name="name" type="text" required></label>
+            <label>Phone <span class="opt">(optional)</span><input name="phone" type="tel"></label>
+          </div>
+          <label>Email<input name="email" type="email" required></label>
+          <label class="if-consent">
+            <input type="checkbox" name="consent" required>
+            I agree that TrialBridge may share my contact details with this study's team so
+            they can reach out about my eligibility. I understand this isn't medical advice
+            and I can talk to my own doctor first.
+          </label>
+          <button class="btn btn-primary" type="submit">{{ ic.icon('arrow-right') }} Request contact</button>
+        </form>
+      </details>
+    </article>
+    {% endfor %}
+    </div>
+
+    <p class="pr-empty pr-noresults" id="prNoResults" style="display:none;">
+      No trials match these filters. <button type="button" class="link-btn" id="filtReset2">Reset filters</button>
+    </p>
+
+    <p class="pr-foot-note">TrialBridge shows public information from ClinicalTrials.gov and an
+      automated read of eligibility. It isn't medical advice - the study team makes the final
+      eligibility decision, and you should talk with your own doctor.</p>
+  </div>
 </section>
+
+<div class="loading-overlay" id="loadingOverlay" aria-hidden="true">
+  <div class="loading-card">
+    <div class="loading-spark"></div>
+    <div class="loading-title">Updating your results…</div>
+    <div class="loading-sub" id="loadingSub">Fetching recruiting studies</div>
+    <div class="progress"><div class="progress-bar" id="progressBar"></div></div>
+    <div class="loading-foot">This usually takes 15-30 seconds</div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var list = document.getElementById('prList');
+  if (!list) return;
+  var cards = Array.prototype.slice.call(list.querySelectorAll('.pr-card'));
+  var count = document.getElementById('prCount');
+  var noRes = document.getElementById('prNoResults');
+  var sortSel = document.getElementById('fSort');
+
+  function checkedValues(cls) {
+    var out = [];
+    document.querySelectorAll('.' + cls + ':checked').forEach(function (c) { out.push(c.value); });
+    return out;
+  }
+  function apply() {
+    var fits = checkedValues('f-fit');
+    var phases = checkedValues('f-phase');
+    var hasFit = document.querySelector('.f-fit');
+    var hasPhase = document.querySelector('.f-phase');
+    var shown = 0;
+    cards.forEach(function (c) {
+      var ok = true;
+      if (hasFit && fits.indexOf(c.getAttribute('data-fit')) === -1) ok = false;
+      if (hasPhase && phases.indexOf(c.getAttribute('data-phase')) === -1) ok = false;
+      c.style.display = ok ? '' : 'none';
+      if (ok) shown++;
+    });
+    if (count) count.textContent = shown;
+    if (noRes) noRes.style.display = shown ? 'none' : 'block';
+  }
+  function sortCards() {
+    var mode = sortSel ? sortSel.value : 'best';
+    var arr = cards.slice();
+    if (mode === 'near') {
+      arr.sort(function (a, b) {
+        return parseFloat(a.getAttribute('data-dist')) - parseFloat(b.getAttribute('data-dist'));
+      });
+      arr.forEach(function (c) { list.appendChild(c); });
+    } else {
+      cards.forEach(function (c) { list.appendChild(c); }); // original (best-match) order
+    }
+  }
+  document.querySelectorAll('.f-fit, .f-phase').forEach(function (c) {
+    c.addEventListener('change', apply);
+  });
+  if (sortSel) sortSel.addEventListener('change', sortCards);
+
+  function reset() {
+    document.querySelectorAll('.f-fit, .f-phase').forEach(function (c) { c.checked = true; });
+    if (sortSel) sortSel.value = 'best';
+    sortCards(); apply();
+  }
+  var r1 = document.getElementById('filtReset'), r2 = document.getElementById('filtReset2');
+  if (r1) r1.addEventListener('click', reset);
+  if (r2) r2.addEventListener('click', reset);
+
+  // Distance change re-runs the server search (with loading overlay)
+  var refine = document.getElementById('refineForm');
+  var fRadius = document.getElementById('fRadius');
+  var ov = document.getElementById('loadingOverlay');
+  var bar = document.getElementById('progressBar');
+  var sub = document.getElementById('loadingSub');
+  var steps = ['Fetching recruiting studies', 'Checking which are near you',
+               'Reading eligibility for each', 'Ranking your best matches'];
+  if (fRadius && refine) fRadius.addEventListener('change', function () {
+    ov.classList.add('show'); ov.setAttribute('aria-hidden', 'false');
+    var pct = 0, i = 0;
+    setInterval(function () { i++; if (i < steps.length) sub.textContent = steps[i]; }, 4200);
+    setInterval(function () {
+      pct += Math.max(0.4, (92 - pct) * 0.05); if (pct > 92) pct = 92;
+      bar.style.width = pct.toFixed(1) + '%';
+    }, 220);
+    refine.submit();
+  });
+
+  // Mobile: toggle the filter panel
+  var toggle = document.getElementById('filtToggle');
+  var panel = document.getElementById('prFilters');
+  if (toggle && panel) toggle.addEventListener('click', function () { panel.classList.toggle('open'); });
+})();
+</script>
 {% endblock %}

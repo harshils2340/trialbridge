@@ -293,6 +293,7 @@ def find():
     coords, unit = None, "km"
     lat_in = request.form.get("lat", "").strip()
     lon_in = request.form.get("lon", "").strip()
+    cc_in = request.form.get("cc", "").strip()
     if lat_in and lon_in:
         try:
             coords = (float(lat_in), float(lon_in))
@@ -324,7 +325,10 @@ def find():
                                location_value=location)
 
     return render_template("patient_results.html", results=results,
-                           condition=label, location=location, unit=unit)
+                           condition=label, location=location, unit=unit,
+                           q_condition=condition, q_intervention=intervention,
+                           q_age=age, q_sex=sex, q_about=about, q_radius=radius,
+                           q_lat=lat_in, q_lon=lon_in, q_cc=cc_in)
 
 
 @app.route("/interest", methods=["POST"])
