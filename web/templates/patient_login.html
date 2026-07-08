@@ -1,23 +1,34 @@
 {% extends "public_base.html" %}
-{% block title %}Sign in · TrialBridge{% endblock %}
+{% block title %}Sign in · BridgeMD{% endblock %}
 {% block body %}
-<section class="find-wrap">
-  <h1 class="find-title">Sign in</h1>
-  <p class="find-lead">Continue with Google for one-tap access.</p>
-  {% if google_enabled %}
-  <a class="btn btn-primary" href="{{ url_for('patient_google_start', next=request.args.get('next', '')) }}" style="margin-bottom:10px;">Continue with Google</a>
-  <p class="cond-note" style="margin-top:0;">Prefer email login? Use the fallback below.</p>
-  {% endif %}
-  <form method="post" class="find-form" novalidate data-friendly-validate>
-    <label class="find-field"><span>Email</span>
-      <input type="email" name="email" required></label>
-      <p class="find-error" data-error-for="email"></p>
-    <label class="find-field"><span>Password</span>
-      <input type="password" name="password" required></label>
-      <p class="find-error" data-error-for="password"></p>
-    <button class="btn btn-primary" type="submit">Continue</button>
-  </form>
-  <p class="cond-note">No account yet? <a href="{{ url_for('patient_signup') }}">Create one</a></p>
+<section class="auth-shell">
+  <article class="auth-card">
+    <a class="auth-brand" href="{{ url_for('home') }}">
+      <img src="{{ url_for('static', filename='logo.svg') }}" alt="">
+      <span>BridgeMD</span>
+    </a>
+    <h1 class="auth-title">Welcome back</h1>
+    <p class="auth-sub">Sign in to continue your applications and messages.</p>
+    {% if google_enabled %}
+    <a class="auth-google" href="{{ url_for('patient_google_start', next=request.args.get('next', '')) }}">
+      <span class="g">G</span>
+      <span>Continue with Google</span>
+    </a>
+    <div class="auth-divider">or use email</div>
+    {% else %}
+    <p class="auth-alt">Google sign-in will appear after OAuth keys are configured.</p>
+    {% endif %}
+    <form method="post" class="find-form" novalidate data-friendly-validate>
+      <label class="find-field"><span>Email</span>
+        <input type="email" name="email" required></label>
+        <p class="find-error" data-error-for="email"></p>
+      <label class="find-field"><span>Password</span>
+        <input type="password" name="password" required></label>
+        <p class="find-error" data-error-for="password"></p>
+      <button class="btn btn-primary" type="submit">Continue</button>
+    </form>
+    <p class="cond-note">No account yet? <a href="{{ url_for('patient_signup') }}">Create one</a></p>
+  </article>
 </section>
 <script>
 (function () {

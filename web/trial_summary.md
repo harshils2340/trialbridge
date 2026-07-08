@@ -1,6 +1,6 @@
 # Trial summary structure
 
-TrialBridge never shows the raw ClinicalTrials.gov description to patients. The
+BridgeMD never shows the raw ClinicalTrials.gov description to patients. The
 source text is long, written for researchers, and full of jargon. Every trial is
 rewritten into short, plain English following the exact structure below.
 

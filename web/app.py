@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""TrialBridge - a doctor-facing wrapper on ClinicalTrials.gov.
+"""BridgeMD - a doctor-facing wrapper on ClinicalTrials.gov.
 
 Paste a de-identified patient note, get ranked recruiting trials with a plain
 explanation of the fit, then refer a patient in one click and track that
 referral through the pipeline (referred -> contacted -> screened -> enrolled).
-TrialBridge never pays clinicians for referrals or enrollments - status is
+BridgeMD never pays clinicians for referrals or enrollments - status is
 tracked for follow-up only (anti-kickback / fee-splitting compliance).
 
 Run:
@@ -137,12 +137,20 @@ def healthz():
 # (falls back to a shared demo account) so there's zero barrier to trying it.
 # Set NO_LOGIN=1 only for local demos; production should keep this off.
 NO_LOGIN = os.environ.get("NO_LOGIN", "0") == "1"
-_DEMO_EMAIL = "demo@trialbridge.local"
+_DEMO_EMAIL = "demo@bridgemd.local"
+DEMO_SESSION_KEY = "demo_mode"
+USER_SESSION_KEY = "user_id"
+USER_PENDING_KEY = "user_pending_id"
+USER_PENDING_PURPOSE_KEY = "user_pending_purpose"
+USER_NEXT_KEY = "user_next"
+USER_GOOGLE_STATE_KEY = "user_google_state"
 PATIENT_SESSION_KEY = "patient_user_id"
 PATIENT_PENDING_KEY = "patient_pending_id"
 PATIENT_PENDING_PURPOSE_KEY = "patient_pending_purpose"
 PATIENT_NEXT_KEY = "patient_next"
 PATIENT_GOOGLE_STATE_KEY = "patient_google_state"
+LAST_LOCATION_KEY = "last_search_location"
+LAST_CONDITION_KEY = "last_search_condition"
 CSRF_SESSION_KEY = "_csrf_token"
 GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "").strip()
 GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "").strip()
@@ -155,6 +163,10 @@ RATE_LIMIT_WINDOW_SECONDS = max(
 RATE_LIMIT_DEFAULT_MSG = (
     "Too many attempts from this network. Please wait a few minutes and try again.")
 RATE_LIMIT_ROUTES = {
+    "user_login": max(1, int(os.environ.get("RATE_LIMIT_USER_LOGIN_MAX", "10"))),
+    "user_verify": max(1, int(os.environ.get("RATE_LIMIT_USER_VERIFY_MAX", "10"))),
+    "user_verify_resend": max(
+        1, int(os.environ.get("RATE_LIMIT_USER_VERIFY_RESEND_MAX", "5"))),
     "account_signup": max(1, int(os.environ.get("RATE_LIMIT_SIGNUP_MAX", "8"))),
     "account_login": max(1, int(os.environ.get("RATE_LIMIT_LOGIN_MAX", "10"))),
     "account_verify": max(1, int(os.environ.get("RATE_LIMIT_VERIFY_MAX", "10"))),
@@ -171,6 +183,11 @@ def _ensure_demo_user():
         db.create_user(_DEMO_EMAIL, pw, "Demo Clinician", "", "")
         u = db.get_user_by_email(_DEMO_EMAIL)
     return u
+
+
+def _demo_mode_enabled():
+    """True when the temporary no-login preview shell should be enabled."""
+    return NO_LOGIN or bool(session.get(DEMO_SESSION_KEY))
 
 
 # Seed the retention/engagement surfaces (messages, visits, a physician referral)
@@ -205,9 +222,9 @@ def patient_login_required(view):
 
 @app.before_request
 def load_user():
-    uid = session.get("user_id")
+    uid = session.get(USER_SESSION_KEY)
     g.user = db.get_user(uid) if uid else None
-    if g.user is None and NO_LOGIN:
+    if g.user is None and _demo_mode_enabled():
         g.user = _ensure_demo_user()
     pid = session.get(PATIENT_SESSION_KEY)
     g.patient_user = db.get_patient_user(pid) if pid else None
@@ -398,10 +415,30 @@ def inject_globals():
     else:
         pov = "patient"
     return {"user": g.user, "llm_on": bool(mt.LLM_API_KEY),
-            "applications_count": apps_n, "pov_demo": NO_LOGIN, "pov": pov,
+            "applications_count": apps_n, "pov_demo": _demo_mode_enabled(), "pov": pov,
             "records_profile": rec, "records_provider": records_mod.provider_label(),
             "alerts_new_count": alerts_new, "messages_unread": msgs_unread,
             "site_unread": site_unread, "patient_user": g.patient_user}
+
+
+@app.route("/demo-mode", methods=["POST"])
+def set_demo_mode():
+    """Allow quick POV testing without creating accounts in local demos."""
+    vals = request.form.getlist("enabled")
+    enabled = "1" in vals
+    if enabled:
+        session[DEMO_SESSION_KEY] = True
+        try:
+            demo_user = _ensure_demo_user()
+            db.seed_demo_engagement(demo_user["id"] if demo_user else None)
+        except Exception:
+            app.logger.exception("demo engagement seeding failed")
+    else:
+        session.pop(DEMO_SESSION_KEY, None)
+    nxt = request.form.get("next", "").strip()
+    if not nxt.startswith("/"):
+        nxt = url_for("home")
+    return redirect(nxt)
 
 
 def _site_claims():
@@ -424,8 +461,15 @@ def _ensure_site_access_for_lead(lead_id):
 def register():
     if g.user:
         return redirect(url_for("dashboard"))
+    nxt = _safe_next(request.args.get("next", ""))
+    if nxt:
+        session[USER_NEXT_KEY] = nxt
     if request.method == "POST":
         f = request.form
+        blocked = _guard_ip_rate_limit("user_login", template_name="register.html",
+                                       google_enabled=_google_ready())
+        if blocked:
+            return blocked
         email = f.get("email", "").strip().lower()
         pw = f.get("password", "")
         name = f.get("name", "").strip()
@@ -442,33 +486,191 @@ def register():
             pw_hash = generate_password_hash(pw, method="pbkdf2:sha256")
             uid = db.create_user(email, pw_hash, name,
                                  f.get("specialty", ""), f.get("institution", ""))
-            session.clear()
-            session["user_id"] = uid
-            return redirect(url_for("dashboard"))
-    return render_template("register.html")
+            user = db.get_user(uid)
+            ok, msg = _issue_user_code(user, "signup")
+            if not ok:
+                flash(msg, "error")
+                return render_template("register.html",
+                                       google_enabled=_google_ready())
+            session[USER_PENDING_KEY] = uid
+            session[USER_PENDING_PURPOSE_KEY] = "signup"
+            flash("Check your email for a 6-digit verification code.", "success")
+            return redirect(url_for("user_verify"))
+    return render_template("register.html", google_enabled=_google_ready())
 
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if g.user:
         return redirect(url_for("dashboard"))
+    nxt = _safe_next(request.args.get("next", ""))
+    if nxt:
+        session[USER_NEXT_KEY] = nxt
     if request.method == "POST":
+        blocked = _guard_ip_rate_limit("user_login", template_name="login.html",
+                                       google_enabled=_google_ready())
+        if blocked:
+            return blocked
         email = request.form.get("email", "").strip().lower()
         pw = request.form.get("password", "")
         user = db.get_user_by_email(email)
         if user and check_password_hash(user["password_hash"], pw):
-            session.clear()
-            session["user_id"] = user["id"]
-            nxt = request.args.get("next")
-            return redirect(nxt if nxt and nxt.startswith("/") else url_for("dashboard"))
+            purpose = "login" if user["verified"] else "signup"
+            ok, msg = _issue_user_code(user, purpose)
+            if not ok:
+                flash(msg, "error")
+                return render_template("login.html",
+                                       google_enabled=_google_ready())
+            session[USER_PENDING_KEY] = user["id"]
+            session[USER_PENDING_PURPOSE_KEY] = purpose
+            if purpose == "signup":
+                flash("Verify your email to finish account setup. We sent a fresh code.",
+                      "success")
+            else:
+                flash("Enter the 6-digit code we sent to your email.", "success")
+            return redirect(url_for("user_verify"))
         flash("Wrong email or password.", "error")
-    return render_template("login.html")
+    return render_template("login.html", google_enabled=_google_ready())
 
 
 @app.route("/logout")
 def logout():
-    session.clear()
+    session.pop(USER_SESSION_KEY, None)
+    session.pop(USER_PENDING_KEY, None)
+    session.pop(USER_PENDING_PURPOSE_KEY, None)
+    session.pop(USER_NEXT_KEY, None)
+    session.pop(USER_GOOGLE_STATE_KEY, None)
     return redirect(url_for("login"))
+
+
+@app.route("/login/verify", methods=["GET", "POST"])
+def user_verify():
+    uid = session.get(USER_PENDING_KEY)
+    purpose = session.get(USER_PENDING_PURPOSE_KEY, "signup")
+    user = db.get_user(uid) if uid else None
+    if not user:
+        flash("Start by creating an account or signing in.", "error")
+        return redirect(url_for("login"))
+    if request.method == "POST":
+        blocked = _guard_ip_rate_limit("user_verify",
+                                       template_name="login_verify.html",
+                                       email=user["email"], purpose=purpose)
+        if blocked:
+            return blocked
+        code = request.form.get("code", "").strip()
+        if db.verify_user_code(user["id"], purpose, code, int(time.time())):
+            if purpose == "signup":
+                db.mark_user_verified(user["id"])
+            session[USER_SESSION_KEY] = user["id"]
+            session.pop(USER_PENDING_KEY, None)
+            session.pop(USER_PENDING_PURPOSE_KEY, None)
+            flash("You're verified and signed in.", "success")
+            return _post_user_login_redirect()
+        flash("Invalid or expired code. Request a new one.", "error")
+    return render_template("login_verify.html", email=user["email"], purpose=purpose)
+
+
+@app.route("/login/verify/resend", methods=["POST"])
+def user_verify_resend():
+    uid = session.get(USER_PENDING_KEY)
+    purpose = session.get(USER_PENDING_PURPOSE_KEY, "signup")
+    user = db.get_user(uid) if uid else None
+    if not user:
+        flash("Start by signing in first.", "error")
+        return redirect(url_for("login"))
+    blocked = _guard_ip_rate_limit("user_verify_resend",
+                                   template_name="login_verify.html",
+                                   email=user["email"], purpose=purpose)
+    if blocked:
+        return blocked
+    ok, msg = _issue_user_code(user, purpose)
+    flash("Code re-sent to your email." if ok else msg, "success" if ok else "error")
+    return redirect(url_for("user_verify"))
+
+
+@app.route("/login/google")
+def user_google_start():
+    if g.user:
+        return _post_user_login_redirect()
+    if not _google_ready():
+        flash("Google sign-in is not configured yet.", "error")
+        return redirect(url_for("login"))
+    nxt = _safe_next(request.args.get("next", ""))
+    if nxt:
+        session[USER_NEXT_KEY] = nxt
+    state = secrets.token_urlsafe(24)
+    session[USER_GOOGLE_STATE_KEY] = state
+    qs = urllib.parse.urlencode({
+        "client_id": GOOGLE_CLIENT_ID,
+        "redirect_uri": _abs_url("user_google_callback"),
+        "response_type": "code",
+        "scope": GOOGLE_OAUTH_SCOPE,
+        "state": state,
+        "prompt": "select_account",
+    })
+    return redirect(f"{GOOGLE_AUTH_URL}?{qs}")
+
+
+@app.route("/login/google/callback")
+def user_google_callback():
+    if not _google_ready():
+        flash("Google sign-in is not configured yet.", "error")
+        return redirect(url_for("login"))
+    if request.args.get("error"):
+        flash("Google sign-in was cancelled. Please try again.", "error")
+        return redirect(url_for("login"))
+    state = request.args.get("state", "")
+    good_state = session.pop(USER_GOOGLE_STATE_KEY, "")
+    if not state or not good_state or not hmac.compare_digest(state, good_state):
+        flash("Google sign-in failed state validation. Please try again.", "error")
+        return redirect(url_for("login"))
+    code = request.args.get("code", "").strip()
+    if not code:
+        flash("Google sign-in did not return a code.", "error")
+        return redirect(url_for("login"))
+    try:
+        tok = _google_exchange_code(code, "user_google_callback")
+        access_token = (tok or {}).get("access_token", "")
+        profile = _google_userinfo(access_token)
+    except Exception:
+        app.logger.exception("google oauth callback failed (user)")
+        flash("Google sign-in failed. Please try again.", "error")
+        return redirect(url_for("login"))
+
+    email = (profile.get("email", "") or "").strip().lower()
+    sub = (profile.get("sub", "") or "").strip()
+    name = (profile.get("name", "") or "").strip() or "Clinician"
+    picture = (profile.get("picture", "") or "").strip()
+    if not email or not sub:
+        flash("Google did not return required profile fields.", "error")
+        return redirect(url_for("login"))
+
+    user = db.get_user_by_oauth("google", sub)
+    if not user:
+        user = db.get_user_by_email(email)
+        if user:
+            db.link_user_oauth(user["id"], "google", sub, name, picture)
+            user = db.get_user(user["id"])
+        else:
+            uid = db.create_user(
+                email=email,
+                password_hash=generate_password_hash(
+                    secrets.token_urlsafe(32), method="pbkdf2:sha256"),
+                name=name,
+                specialty="",
+                institution="",
+                verified=True,
+                oauth_provider="google",
+                oauth_sub=sub,
+                oauth_picture=picture,
+            )
+            user = db.get_user(uid)
+
+    session[USER_SESSION_KEY] = user["id"]
+    session.pop(USER_PENDING_KEY, None)
+    session.pop(USER_PENDING_PURPOSE_KEY, None)
+    flash("Signed in with Google.", "success")
+    return _post_user_login_redirect()
 
 
 def _gen_code():
@@ -570,11 +772,11 @@ def _issue_patient_code(patient, purpose):
     exp = int(time.time()) + (10 * 60)  # 10 minutes
     db.create_patient_code(patient["id"], purpose, code, exp)
     action = "sign-up verification" if purpose == "signup" else "login verification"
-    subject = f"Your TrialBridge {action} code"
+    subject = f"Your BridgeMD {action} code"
     body = "\n".join([
         f"Hi {patient['full_name'] or 'there'},",
         "",
-        f"Your TrialBridge {action} code is:",
+        f"Your BridgeMD {action} code is:",
         "",
         f"  {code}",
         "",
@@ -586,16 +788,41 @@ def _issue_patient_code(patient, purpose):
     return ok, msg
 
 
+def _issue_user_code(user, purpose):
+    """Create and send a short-lived clinician verification/login code."""
+    if not mailer.smtp_configured():
+        return False, "Email verification is unavailable right now."
+    db.invalidate_user_codes(user["id"], purpose)
+    code = _gen_code()
+    exp = int(time.time()) + (10 * 60)  # 10 minutes
+    db.create_user_code(user["id"], purpose, code, exp)
+    action = "sign-up verification" if purpose == "signup" else "login verification"
+    subject = f"Your BridgeMD {action} code"
+    body = "\n".join([
+        f"Hi {user['name'] or 'there'},",
+        "",
+        f"Your BridgeMD {action} code is:",
+        "",
+        f"  {code}",
+        "",
+        "It expires in 10 minutes.",
+        "",
+        "If you didn't request this, ignore this email.",
+    ])
+    ok, msg = mailer.send_email(user["email"], subject, body)
+    return ok, msg
+
+
 def _google_ready():
     return bool(GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET)
 
 
-def _google_exchange_code(code):
+def _google_exchange_code(code, redirect_endpoint="patient_google_callback"):
     payload = urllib.parse.urlencode({
         "code": code,
         "client_id": GOOGLE_CLIENT_ID,
         "client_secret": GOOGLE_CLIENT_SECRET,
-        "redirect_uri": _abs_url("patient_google_callback"),
+        "redirect_uri": _abs_url(redirect_endpoint),
         "grant_type": "authorization_code",
     }).encode("utf-8")
     req = urllib.request.Request(
@@ -624,6 +851,11 @@ def _post_patient_login_redirect():
         return redirect(url_for("patient_onboarding"))
     nxt = session.pop(PATIENT_NEXT_KEY, "")
     return redirect(nxt if nxt.startswith("/") else url_for("home"))
+
+
+def _post_user_login_redirect():
+    nxt = session.pop(USER_NEXT_KEY, "")
+    return redirect(nxt if nxt.startswith("/") else url_for("dashboard"))
 
 
 @app.route("/account/signup", methods=["GET", "POST"])
@@ -914,6 +1146,17 @@ SEED_CONDITIONS = [
     "Fatty liver disease (NAFLD/NASH)", "High cholesterol", "Metabolic syndrome",
     "High blood pressure", "PCOS", "Chronic kidney disease",
 ]
+SEARCH_CONDITION_OPTIONS = [
+    "Obesity", "Type 2 diabetes", "Prediabetes", "Weight loss",
+    "Fatty liver disease (NAFLD/NASH)", "Metabolic syndrome", "High cholesterol",
+    "High blood pressure", "PCOS", "Chronic kidney disease",
+    "Heart failure", "Coronary artery disease", "Atrial fibrillation",
+    "Stroke recovery", "Sleep apnea", "Migraine", "Depression", "Anxiety",
+    "Alzheimer's disease", "Parkinson's disease", "Multiple sclerosis",
+    "Rheumatoid arthritis", "Psoriasis", "Crohn's disease", "Ulcerative colitis",
+    "COPD", "Asthma", "Long COVID", "Endometriosis", "Lupus",
+    "Breast cancer", "Prostate cancer", "Lung cancer", "Colon cancer",
+]
 SEED_CITIES = [
     "Toronto, ON", "Vancouver, BC", "Montreal, QC", "Calgary, AB",
     "New York, NY", "Los Angeles, CA", "Chicago, IL", "Houston, TX",
@@ -979,11 +1222,18 @@ def build_patient_note(condition, age="", sex="", about=""):
 
 @app.route("/")
 def home():
+    condition_options = _merge_terms(
+        trending_conditions(12), SEARCH_CONDITION_OPTIONS, 30)
+    condition_prefill = request.args.get("condition", "").strip() or \
+        session.get(LAST_CONDITION_KEY, "")
+    location_prefill = request.args.get("location", "").strip() or \
+        session.get(LAST_LOCATION_KEY, "")
     return render_template("landing.html", vertical=VERTICAL,
                            conditions=trending_conditions(8),
                            drugs=trending_drugs(6), slugify=slugify,
-                           condition_value=request.args.get("condition", ""),
-                           location_value=request.args.get("location", ""))
+                           condition_options=condition_options,
+                           condition_value=condition_prefill,
+                           location_value=location_prefill)
 
 
 # --------------------------------------------------------------------------- #
@@ -1062,6 +1312,9 @@ def find():
         return redirect(url_for("home", **args))
 
     condition = request.form.get("condition", "").strip()
+    condition_terms = [x.strip() for x in condition.split(",") if x.strip()]
+    condition_query = condition_terms[0] if condition_terms else condition
+    condition_label = ", ".join(condition_terms) if condition_terms else condition
     intervention = request.form.get("intervention", "").strip()
     location = request.form.get("location", "").strip()
     age = request.form.get("age", "").strip()
@@ -1072,14 +1325,17 @@ def find():
     except ValueError:
         radius = 50
 
-    label = condition or intervention
+    label = condition_label or intervention
     if not label:
         flash("Tell us the condition or treatment you're looking for.", "error")
         return redirect(url_for("home", location=location))
     if not location:
         flash("Enter your city or postal code so we only show trials near you.",
               "error")
-        return redirect(url_for("home", condition=condition))
+        return redirect(url_for("home", condition=condition_label))
+    session[LAST_LOCATION_KEY] = location
+    if condition_label:
+        session[LAST_CONDITION_KEY] = condition_label
 
     coords, unit = None, "km"
     lat_in = request.form.get("lat", "").strip()
@@ -1102,29 +1358,31 @@ def find():
 
     note = build_patient_note(label, age, sex, about)
     try:
-        detected, results = run_search(note, condition, "", False, coords,
+        detected, results = run_search(note, condition_query, "", False, coords,
                                        radius, unit, interventional_only=True,
                                        intervention=intervention)
     except RuntimeError as e:
         flash(str(e), "error")
-        return redirect(url_for("home", condition=condition, location=location))
+        return redirect(url_for("home", condition=condition_label, location=location))
     except Exception:
         app.logger.exception("public find failed")
         flash("Search failed unexpectedly. Please try again.", "error")
-        return redirect(url_for("home", condition=condition, location=location))
+        return redirect(url_for("home", condition=condition_label, location=location))
 
     # Record the search so "trending" reflects real site traffic. Drug-name
     # queries go through the intervention field; everything else is a condition.
     try:
         if intervention:
             db.log_search_term(intervention, "drug")
-        if condition:
+        for t in condition_terms[:6]:
+            db.log_search_term(t, "condition")
+        if condition and not condition_terms:
             db.log_search_term(condition, "condition")
     except Exception:
         app.logger.exception("search stat logging failed")
 
     ctx = {"condition": label, "location": location, "unit": unit,
-           "q_condition": condition, "q_intervention": intervention,
+           "q_condition": condition_label, "q_intervention": intervention,
            "q_age": age, "q_sex": sex, "q_about": about, "q_radius": radius,
            "q_lat": lat_in, "q_lon": lon_in, "q_cc": cc_in}
     search_id = _cache_search(results, ctx)
@@ -1317,10 +1575,17 @@ def records_connect():
 
     db.set_records_profile(applicant, prof)
     n = db.attach_records_to_open_leads(applicant, records_mod.summary_text(prof))
-    msg = f"Health records connected via {prof.get('provider')}. "
-    msg += (f"Auto-filled {n} pending application(s) - "
-            if n else "New applications will auto-fill from your history - ")
-    msg += "you won't have to re-enter your medical details."
+    provider = (prof.get("provider") or "").strip()
+    is_sandbox = "sandbox" in provider.lower()
+    if is_sandbox:
+        msg = ("Demo records connected (SMART sandbox). "
+               "This is test data for trying the flow; once a real connector is set, "
+               "future applications will auto-fill from your actual history.")
+    else:
+        msg = f"Health records connected via {provider}. "
+        msg += (f"Auto-filled {n} pending application(s) - "
+                if n else "New applications will auto-fill from your history - ")
+        msg += "you won't have to re-enter your medical details."
     flash(msg, "success")
     return redirect(request.referrer or url_for("applications"))
 
@@ -1812,7 +2077,7 @@ def _zippopotam(country, code):
     try:
         req = urllib.request.Request(
             f"https://api.zippopotam.us/{country}/{urllib.parse.quote(code)}",
-            headers={"User-Agent": "TrialBridge/1.0"})
+            headers={"User-Agent": "BridgeMD/1.0"})
         with urllib.request.urlopen(req, timeout=15) as r:
             data = json.load(r)
         p = (data.get("places") or [None])[0]
@@ -1830,7 +2095,7 @@ def _nominatim(query):
                                     "addressdetails": "1"})
         req = urllib.request.Request(
             f"https://nominatim.openstreetmap.org/search?{q}",
-            headers={"User-Agent": "TrialBridge/1.0 (clinical trial finder)"})
+            headers={"User-Agent": "BridgeMD/1.0 (clinical trial finder)"})
         with urllib.request.urlopen(req, timeout=15) as r:
             data = json.load(r)
         if data:
@@ -1878,7 +2143,7 @@ def _nominatim_reverse(lat, lon):
                                     "zoom": "12", "addressdetails": "1"})
         req = urllib.request.Request(
             f"https://nominatim.openstreetmap.org/reverse?{q}",
-            headers={"User-Agent": "TrialBridge/1.0 (clinical trial finder)"})
+            headers={"User-Agent": "BridgeMD/1.0 (clinical trial finder)"})
         with urllib.request.urlopen(req, timeout=15) as r:
             data = json.load(r)
         a = data.get("address", {})
@@ -2423,7 +2688,7 @@ def referrals_csv():
                     r["created_at"], r["updated_at"]])
     from flask import Response
     return Response(buf.getvalue(), mimetype="text/csv", headers={
-        "Content-Disposition": "attachment; filename=trialbridge_referrals.csv"})
+        "Content-Disposition": "attachment; filename=bridgemd_referrals.csv"})
 
 
 @app.route("/referral/<int:ref_id>")
@@ -2638,7 +2903,7 @@ if __name__ == "__main__":
     if debug:
         app.config["TEMPLATES_AUTO_RELOAD"] = True
         app.jinja_env.auto_reload = True
-    print(f"TrialBridge on http://127.0.0.1:{port}  (LLM: "
+    print(f"BridgeMD on http://127.0.0.1:{port}  (LLM: "
           f"{'on' if mt.LLM_API_KEY else 'OFF - set LLM_API_KEY'})")
     app.run(host="127.0.0.1", port=port, debug=False, threaded=True,
             use_reloader=False)

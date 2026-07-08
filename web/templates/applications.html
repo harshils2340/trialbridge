@@ -1,5 +1,5 @@
 {% extends "public_base.html" %}
-{% block title %}My applications · TrialBridge{% endblock %}
+{% block title %}My applications · BridgeMD{% endblock %}
 
 {% block body %}
 <section class="apps-wrap">
@@ -12,15 +12,20 @@
   </div>
 
   {% if records_profile %}
+  {% set p = (records_profile.provider or '') %}
   <div class="rec-banner ok wide">{{ ic.icon('check') }}
+    {% if 'sandbox' in p|lower %}
+    <span><b>Demo record connected (SMART sandbox).</b> This is test data for workflow testing. In production, real records will auto-fill applications from your actual chart.</span>
+    {% else %}
     <span>Health records connected via <b>{{ records_profile.provider }}</b>. Every application auto-fills
       from your history - no re-entering details.</span>
+    {% endif %}
     <form method="post" action="{{ url_for('records_disconnect') }}"><button class="link-btn" type="submit">Disconnect</button></form>
   </div>
   {% elif apps %}
-  <form method="post" action="{{ url_for('records_connect') }}" class="rec-banner connect wide">
+  <form method="post" action="{{ url_for('records_connect') }}" class="rec-banner connect wide js-pending-submit" data-pending-text="Connecting records...">
     {{ ic.icon('activity') }}
-    <span><b>Connect records once.</b> Future applications auto-fill from your chart.</span>
+    <span><b>Connect records once.</b> Future applications auto-fill from your chart. This may take a few seconds.</span>
     <button class="btn btn-primary" type="submit">Connect records</button>
   </form>
   {% endif %}
@@ -106,7 +111,7 @@
       <ul class="thread-list">
         {% for m in a.messages %}
         <li class="msg msg-{{ m.sender }}">
-          <span class="msg-who">{% if m.sender == 'patient' %}You{% elif m.sender == 'system' %}TrialBridge{% else %}Study team{% endif %}</span>
+          <span class="msg-who">{% if m.sender == 'patient' %}You{% elif m.sender == 'system' %}BridgeMD{% else %}Study team{% endif %}</span>
           <span class="msg-body">{{ m.body }}</span>
           <span class="msg-time">{{ m.created_at }}</span>
         </li>
@@ -151,7 +156,7 @@
 
   {% if apps %}
   <p class="apps-foot-note">Statuses update as the study team reviews and responds to your
-    application. TrialBridge isn't the study sponsor and doesn't make eligibility decisions.</p>
+    application. BridgeMD isn't the study sponsor and doesn't make eligibility decisions.</p>
   {% endif %}
 </section>
 {% endblock %}

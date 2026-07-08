@@ -1,6 +1,6 @@
 {% extends "public_base.html" %}
 {% set t = r.trial %}{% set m = r.match %}
-{% block title %}{{ t.title }} · TrialBridge{% endblock %}
+{% block title %}{{ t.title }} · BridgeMD{% endblock %}
 
 {% set labels = {
   'likely_eligible': ('You may be a good fit', 'good'),
@@ -28,7 +28,14 @@
     <h1 class="td-title">{{ t.title }}</h1>
 
     {% if m.rationale %}
-    <div class="td-why"><b>Why this could be a match for you:</b> {{ m.rationale }}</div>
+    {% set raw_why = (m.rationale or '') %}
+    {% set low_why = raw_why|lower %}
+    {% set weak_reason = ('lacks specific details' in low_why) or ('insufficient detail' in low_why) or ('no records connected' in low_why) %}
+    {% if weak_reason %}
+    <div class="td-why"><b>Why this could be a match for you:</b> Basic details look relevant, but we still need age, medical history, and current meds to estimate fit more accurately.</div>
+    {% else %}
+    <div class="td-why"><b>Why this could be a match for you:</b> {{ raw_why }}</div>
+    {% endif %}
     {% endif %}
 
     {% if summary and (summary.purpose or summary.who or summary.what or summary.commitment or summary.one_liner) %}
@@ -71,7 +78,7 @@
       <span><a href="https://clinicaltrials.gov/study/{{ t.nctId }}" target="_blank" rel="noopener">{{ ic.icon('external') }} {{ t.nctId }} on ClinicalTrials.gov</a></span>
     </div>
 
-    <p class="pr-foot-note">TrialBridge shows public information from ClinicalTrials.gov and an
+    <p class="pr-foot-note">BridgeMD shows public information from ClinicalTrials.gov and an
       automated read of eligibility. It isn't medical advice - the study team makes the final
       eligibility decision, and you should talk with your own doctor.</p>
   </div>
@@ -95,14 +102,19 @@
       <p class="td-apply-sub">Answer 4 questions and submit contact info. Contact is shared after acceptance.</p>
 
       {% if records_profile %}
+      {% set p = (records_profile.provider or '') %}
+      {% if 'sandbox' in p|lower %}
       <div class="rec-banner ok">{{ ic.icon('check') }}
-        <span>Your health records are connected via <b>{{ records_profile.provider }}</b>. Your medical
-        history is filled in automatically - just confirm the quick questions and submit.</span></div>
+        <span><b>Demo record connected (SMART sandbox).</b> This is sample data to test the flow. In production, this will connect to your real record source and pre-fill your applications.</span></div>
       {% else %}
-      <form method="post" action="{{ url_for('records_connect') }}" class="rec-connect-form">
+      <div class="rec-banner ok">{{ ic.icon('check') }}
+        <span>Your health records are connected via <b>{{ records_profile.provider }}</b>. We pre-fill your applications so you only review and submit.</span></div>
+      {% endif %}
+      {% else %}
+      <form method="post" action="{{ url_for('records_connect') }}" class="rec-connect-form js-pending-submit" data-pending-text="Connecting records...">
         <button class="rec-connect" type="submit">{{ ic.icon('activity') }}
           <span><b>Connect your health records</b> to auto-fill this and every future application</span></button>
-        <span class="rec-connect-hint">One-time connection for faster pre-screening.</span>
+        <span class="rec-connect-hint">One-time connection for faster pre-screening. This can take a few seconds.</span>
       </form>
       {% endif %}
 

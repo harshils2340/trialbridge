@@ -31,7 +31,7 @@ def _get(path):
     url = f"{FHIR_BASE}/{path}"
     req = urllib.request.Request(url, headers={
         "Accept": "application/fhir+json, application/json",
-        "User-Agent": "TrialBridge/1.0"})
+        "User-Agent": "BridgeMD/1.0"})
     try:
         with urllib.request.urlopen(req, timeout=_TIMEOUT) as r:
             return json.load(r)

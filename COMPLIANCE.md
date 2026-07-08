@@ -1,4 +1,4 @@
-# TrialBridge — Legal & Compliance Reference (US + Canada)
+# BridgeMD — Legal & Compliance Reference (US + Canada)
 
 > **This is not legal advice.** It is an engineering/product reference so that every
 > feature we build stays inside well-established regulatory lines. Before launching
@@ -154,7 +154,7 @@ fee-splitting.**
 
 ---
 
-## 4. What this means for TrialBridge's business model
+## 4. What this means for BridgeMD's business model
 
 ### ❌ Do NOT
 - Pay referring physicians a commission, bonus, or finder's fee per patient / per

@@ -1,10 +1,10 @@
-# Render Blueprint — one-click deploy for TrialBridge.
+# Render Blueprint — one-click deploy for BridgeMD.
 # In Render: New +  ->  Blueprint  ->  pick this repo. It reads this file.
 # After the first deploy, set LLM_API_KEY in the service's Environment tab so the
 # AI eligibility matching turns on (the demo is much better with it).
 services:
   - type: web
-    name: trialbridge
+    name: bridgemd
     runtime: python
     plan: free
     rootDir: web
@@ -39,7 +39,7 @@ services:
       - key: SITE_NOTIFY_EMAIL
         sync: false              # coordinator inbox for new candidates
       - key: PUBLIC_BASE_URL
-        sync: false              # e.g. https://trialbridge.onrender.com (email links)
+        sync: false              # e.g. https://bridgemd.onrender.com (email links)
       - key: SMTP_HOST
         sync: false
       - key: SMTP_PORT
@@ -56,8 +56,8 @@ services:
       # plan the DB lives on the ephemeral filesystem and resets on each deploy
       # (fine for a demo, not for collecting real applicants).
       # - key: DB_PATH
-      #   value: /var/data/trialbridge.db
+      #   value: /var/data/bridgemd.db
     # disk:
-    #   name: trialbridge-data
+    #   name: bridgemd-data
     #   mountPath: /var/data
     #   sizeGB: 1

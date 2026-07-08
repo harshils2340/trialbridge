@@ -40,7 +40,7 @@ def _get(url):
         if url in _cache:
             return _cache[url]
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": "TrialBridge/1.0"})
+        req = urllib.request.Request(url, headers={"User-Agent": "BridgeMD/1.0"})
         with urllib.request.urlopen(req, timeout=_TIMEOUT) as r:
             data = json.load(r)
     except Exception:

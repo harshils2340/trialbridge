@@ -6,7 +6,7 @@ This is the living design doc. It captures the panel-derived requirements, the d
 decisions, and a progress log. Update it at the end of every phase.
 
 ## THE ONE KPI: Enrollment Velocity (test EVERY feature against this before building)
-TrialBridge is not a portal. It's an **enrollment optimization engine**. There is a single
+BridgeMD is not a portal. It's an **enrollment optimization engine**. There is a single
 metric everything ladders up to:
 
 > **Enrollment Velocity** = the rate at which patients move through the funnel over time:
@@ -155,7 +155,7 @@ or 2). See `.cursor/rules/enrollment-velocity.mdc` (always on).
 ## How to run / demo (morning)
 ```
 cd matcher/web
-DB_PATH=/tmp/trialbridge.db NO_LOGIN=1 PORT=8098 ../.venv/bin/python app.py
+DB_PATH=/tmp/bridgemd.db NO_LOGIN=1 PORT=8098 ../.venv/bin/python app.py
 ```
 Then walk the three POVs (switcher bar is visible in NO_LOGIN):
 - **Patient**: `/` search -> apply -> `/applications` (status stepper, message the team, see booked

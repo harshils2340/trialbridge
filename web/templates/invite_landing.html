@@ -1,11 +1,11 @@
 {% extends "public_base.html" %}
-{% block title %}A trial your doctor suggested · TrialBridge{% endblock %}
+{% block title %}A trial your doctor suggested · BridgeMD{% endblock %}
 
 {% block body %}
 <section class="inv-land">
   <div class="inv-badge">{{ ic.icon('award') }} Referred by {{ inv['clinician_name'] }}</div>
   <h1>Your doctor thought this study might be a fit for you.</h1>
-  <p class="inv-sub">{{ inv['clinician_name'] }} shared this clinical trial with you through TrialBridge.</p>
+  <p class="inv-sub">{{ inv['clinician_name'] }} shared this clinical trial with you through BridgeMD.</p>
 
   <div class="inv-trial card">
     {% if inv['title'] %}<h2>{{ inv['title'] }}</h2>{% endif %}
@@ -29,7 +29,7 @@
   <ul class="inv-reassure">
     <li>{{ ic.icon('check') }} You're always in control - applying just starts a conversation.</li>
     <li>{{ ic.icon('check') }} Your details stay private and are only shared with the study team when you say yes.</li>
-    <li>{{ ic.icon('check') }} TrialBridge is free for patients, always.</li>
+    <li>{{ ic.icon('check') }} BridgeMD is free for patients, always.</li>
   </ul>
 </section>
 {% endblock %}

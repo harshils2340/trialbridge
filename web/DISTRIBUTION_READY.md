@@ -1,6 +1,6 @@
 # Distribution Readiness (Site Intake First)
 
-Use this to get TrialBridge production-ready for real site onboarding and mock-client E2E tests.
+Use this to get BridgeMD production-ready for real site onboarding and mock-client E2E tests.
 
 ## 1) Required infra setup (you do once)
 
@@ -17,7 +17,7 @@ Must-have:
 - `SECRET_KEY`
 - `BEHIND_PROXY=1`
 - `NO_LOGIN=0`
-- `DB_PATH=/var/data/trialbridge.db` (or equivalent persistent path)
+- `DB_PATH=/var/data/bridgemd.db` (or equivalent persistent path)
 - `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`
 - `PUBLIC_BASE_URL`
 

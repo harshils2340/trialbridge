@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% import "_icons.html" as ic %}
+{% block title %}Verify code · BridgeMD{% endblock %}
+{% block container %}auth{% endblock %}
+{% block auth_body %}
+<div class="card">
+  <div class="auth-hero"><img class="hero-mark" src="{{ url_for('static', filename='logo.svg') }}" width="46" height="46" alt="BridgeMD"></div>
+  <h1>Verify your sign-in</h1>
+  <p class="sub">We sent a 6-digit code to <b>{{ email }}</b>.</p>
+  <form method="post" action="{{ url_for('user_verify') }}">
+    <div class="field">
+      <label for="code">Code</label>
+      <input id="code" name="code" type="text" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" required autocomplete="one-time-code" autofocus>
+    </div>
+    <button class="btn btn-primary btn-block" type="submit">Verify{{ ic.icon('arrow-right') }}</button>
+  </form>
+  <form method="post" action="{{ url_for('user_verify_resend') }}" style="margin-top:10px;">
+    <button class="btn btn-ghost btn-block" type="submit">Resend code</button>
+  </form>
+</div>
+{% endblock %}

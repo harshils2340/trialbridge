@@ -1,12 +1,16 @@
 {% extends "base.html" %}
 {% import "_icons.html" as ic %}
-{% block title %}Sign in · TrialBridge{% endblock %}
+{% block title %}Sign in · BridgeMD{% endblock %}
 {% block container %}auth{% endblock %}
 {% block auth_body %}
 <div class="card">
-  <div class="auth-hero"><img class="hero-mark" src="{{ url_for('static', filename='logo.svg') }}" width="46" height="46" alt="TrialBridge"></div>
+  <div class="auth-hero"><img class="hero-mark" src="{{ url_for('static', filename='logo.svg') }}" width="46" height="46" alt="BridgeMD"></div>
   <h1>Welcome back</h1>
-  <p class="sub">Sign in to find trials and track your referrals.</p>
+  <p class="sub">Sign in to find trials and track your referrals. Password logins require a 6-digit email code.</p>
+  {% if google_enabled %}
+  <a class="btn btn-ghost btn-block" href="{{ url_for('user_google_start', next=request.args.get('next', '')) }}">Continue with Google</a>
+  <p class="foot" style="margin-top:10px;">or sign in with email</p>
+  {% endif %}
   <form method="post" action="{{ url_for('login') }}{{ '?next=' + request.args.get('next') if request.args.get('next') }}">
     <div class="field">
       <label for="email">Email</label>

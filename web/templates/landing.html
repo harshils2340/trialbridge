@@ -1,5 +1,5 @@
 {% extends "public_base.html" %}
-{% block title %}TrialBridge - find recruiting clinical trials{% endblock %}
+{% block title %}BridgeMD - find recruiting clinical trials{% endblock %}
 
 {% block body %}
 <section class="hero">
@@ -12,8 +12,15 @@
       <div class="hero-search">
         <div class="hero-field">
           {{ ic.icon('search') }}
-          <input name="condition" type="text" placeholder="Condition - e.g. type 2 diabetes"
-                 value="{{ condition_value|default('') }}" required>
+          <div class="hero-chip-input" id="conditionChipInput">
+            <div class="hero-chip-list" id="conditionChipList"></div>
+            <input id="conditionInput" type="text"
+                   placeholder="Add interests (press Enter) - e.g. type 2 diabetes"
+                   autocomplete="off">
+          </div>
+          <input type="hidden" id="conditionHidden" name="condition"
+                 value="{{ condition_value|default('') }}">
+          <div class="hero-suggest" id="conditionSuggest" hidden></div>
         </div>
         <div class="hero-field">
           {{ ic.icon('pin') }}
@@ -93,17 +100,108 @@
 
   // Chips prefill the search box instead of navigating away. If a location is
   // already set, run the search immediately; otherwise focus the location field.
-  var condInput = form.querySelector('input[name="condition"]');
+  var condInput = document.getElementById('conditionInput');
+  var condHidden = document.getElementById('conditionHidden');
+  var condChipList = document.getElementById('conditionChipList');
+  var condSuggest = document.getElementById('conditionSuggest');
+  var conditionChoices = {{ condition_options|tojson }};
+  var condTerms = [];
   var interv = document.getElementById('heroIntervention');
   var locInput = document.getElementById('location');
 
-  // Manual typing means a condition search, so drop any drug intervention.
-  if (condInput && interv) {
-    condInput.addEventListener('input', function () { interv.value = ''; });
+  function syncConditionHidden() {
+    if (condHidden) condHidden.value = condTerms.join(', ');
+  }
+
+  function renderConditionChips() {
+    if (!condChipList) return;
+    condChipList.innerHTML = '';
+    condTerms.forEach(function (term) {
+      var chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'hero-term-chip';
+      chip.innerHTML = '<span>' + term + '</span><span class="x">×</span>';
+      chip.addEventListener('click', function () {
+        condTerms = condTerms.filter(function (x) { return x !== term; });
+        renderConditionChips();
+      });
+      condChipList.appendChild(chip);
+    });
+    syncConditionHidden();
+  }
+
+  function addConditionTerm(raw) {
+    var term = (raw || '').trim().replace(/\s+/g, ' ');
+    if (!term) return;
+    var exists = condTerms.some(function (x) { return x.toLowerCase() === term.toLowerCase(); });
+    if (exists) return;
+    condTerms.push(term);
+    renderConditionChips();
+    if (interv) interv.value = '';
+  }
+
+  function populateSuggest(q) {
+    if (!condSuggest) return;
+    var term = (q || '').trim().toLowerCase();
+    if (!term) { condSuggest.hidden = true; condSuggest.innerHTML = ''; return; }
+    var items = conditionChoices.filter(function (x) {
+      return x.toLowerCase().indexOf(term) !== -1 &&
+        !condTerms.some(function (t) { return t.toLowerCase() === x.toLowerCase(); });
+    }).slice(0, 12);
+    if (!items.length) { condSuggest.hidden = true; condSuggest.innerHTML = ''; return; }
+    condSuggest.innerHTML = '';
+    items.forEach(function (item) {
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'hero-suggest-item';
+      btn.textContent = item;
+      btn.addEventListener('click', function () {
+        addConditionTerm(item);
+        if (condInput) condInput.value = '';
+        condSuggest.hidden = true;
+      });
+      condSuggest.appendChild(btn);
+    });
+    condSuggest.hidden = false;
+  }
+
+  function setSingleCondition(term) {
+    condTerms = [];
+    addConditionTerm(term);
+  }
+
+  if (condHidden && condHidden.value) {
+    condHidden.value.split(',').forEach(function (t) { addConditionTerm(t); });
+  }
+  renderConditionChips();
+
+  if (condInput) {
+    condInput.addEventListener('input', function () { populateSuggest(condInput.value); });
+    condInput.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ',') {
+        e.preventDefault();
+        addConditionTerm(condInput.value);
+        condInput.value = '';
+        if (condSuggest) condSuggest.hidden = true;
+      } else if (e.key === 'Backspace' && !condInput.value.trim() && condTerms.length) {
+        condTerms.pop();
+        renderConditionChips();
+      }
+    });
+    condInput.addEventListener('blur', function () {
+      setTimeout(function () { if (condSuggest) condSuggest.hidden = true; }, 100);
+    });
+    condInput.addEventListener('focus', function () { populateSuggest(condInput.value); });
   }
 
   function prefillAndMaybeSearch(term, isDrug) {
-    if (condInput) { condInput.value = term; }
+    if (isDrug) {
+      condTerms = [];
+      renderConditionChips();
+    } else {
+      setSingleCondition(term);
+      if (condInput) condInput.value = '';
+    }
     if (interv) { interv.value = isDrug ? term : ''; }
     if (locInput && locInput.value.trim()) {
       if (typeof form.requestSubmit === 'function') { form.requestSubmit(); }
@@ -117,7 +215,13 @@
   document.querySelectorAll('.cond-chip').forEach(function (chip) {
     chip.addEventListener('click', function (e) {
       e.preventDefault();
-      prefillAndMaybeSearch(chip.getAttribute('data-cond'), false);
+      setSingleCondition(chip.getAttribute('data-cond'));
+      if (locInput && locInput.value.trim()) {
+        if (typeof form.requestSubmit === 'function') { form.requestSubmit(); }
+        else { form.submit(); }
+      } else if (locInput) {
+        locInput.focus();
+      }
     });
   });
   document.querySelectorAll('.drug-chip').forEach(function (chip) {
@@ -125,6 +229,17 @@
       e.preventDefault();
       prefillAndMaybeSearch(chip.getAttribute('data-drug'), true);
     });
+  });
+
+  form.addEventListener('submit', function (e) {
+    if (condInput && condInput.value.trim()) {
+      addConditionTerm(condInput.value);
+      condInput.value = '';
+    }
+    syncConditionHidden();
+    if (!condHidden || !condHidden.value.trim()) {
+      e.preventDefault();
+    }
   });
 
   var useLoc = document.getElementById('useLoc');

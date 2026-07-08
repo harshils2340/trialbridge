@@ -1,4 +1,4 @@
-"""SQLite storage for TrialBridge: users, referrals, and status history.
+"""SQLite storage for BridgeMD: users, referrals, and status history.
 
 One connection per request via Flask's `g`. Schema is created on first run
 (idempotent), so there is no separate migration step to run.
@@ -17,7 +17,7 @@ from flask import g
 # (e.g. a Render mounted disk). Defaults to a file next to this module.
 DB_PATH = pathlib.Path(
     os.environ.get("DB_PATH")
-    or (pathlib.Path(__file__).resolve().parent / "trialbridge.db"))
+    or (pathlib.Path(__file__).resolve().parent / "bridgemd.db"))
 
 # Referral pipeline. "received" = the site confirmed it got the referral.
 # "enrolled" is the commission-eligible terminal state.
@@ -79,6 +79,11 @@ CREATE TABLE IF NOT EXISTS users (
     name          TEXT NOT NULL,
     specialty     TEXT DEFAULT '',
     institution   TEXT DEFAULT '',
+    verified      INTEGER DEFAULT 0,
+    verified_at   TEXT DEFAULT '',
+    oauth_provider TEXT DEFAULT '',
+    oauth_sub     TEXT,
+    oauth_picture TEXT DEFAULT '',
     created_at    TEXT NOT NULL
 );
 
@@ -111,6 +116,18 @@ CREATE TABLE IF NOT EXISTS patient_auth_codes (
     used_at       TEXT DEFAULT '',
     created_at    TEXT NOT NULL,
     FOREIGN KEY (patient_id) REFERENCES patient_users(id)
+);
+
+-- Short-lived email codes for clinician signup/login verification.
+CREATE TABLE IF NOT EXISTS user_auth_codes (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id       INTEGER NOT NULL,
+    purpose       TEXT NOT NULL,              -- 'signup' | 'login'
+    code          TEXT NOT NULL,
+    expires_ts    INTEGER NOT NULL,
+    used_at       TEXT DEFAULT '',
+    created_at    TEXT NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id)
 );
 
 -- Per-IP counters for lightweight POST rate limiting on sensitive endpoints.
@@ -377,6 +394,7 @@ CREATE INDEX IF NOT EXISTS idx_referrals_user ON referrals(user_id);
 CREATE INDEX IF NOT EXISTS idx_events_ref ON referral_events(referral_id);
 CREATE INDEX IF NOT EXISTS idx_patient_email ON patient_users(email);
 CREATE INDEX IF NOT EXISTS idx_patient_codes ON patient_auth_codes(patient_id, purpose);
+CREATE INDEX IF NOT EXISTS idx_user_codes ON user_auth_codes(user_id, purpose);
 CREATE INDEX IF NOT EXISTS idx_ip_rate_window ON ip_rate_limits(window_start);
 CREATE INDEX IF NOT EXISTS idx_leads_created ON leads(created_at);
 CREATE INDEX IF NOT EXISTS idx_lead_events_lead ON lead_events(lead_id);
@@ -457,6 +475,11 @@ _MIGRATIONS = {
         "ehr_connected": "INTEGER DEFAULT 0",
         "ehr_provider": "TEXT DEFAULT ''",
         "ehr_connected_at": "TEXT DEFAULT ''",
+        "verified": "INTEGER DEFAULT 0",
+        "verified_at": "TEXT DEFAULT ''",
+        "oauth_provider": "TEXT DEFAULT ''",
+        "oauth_sub": "TEXT",
+        "oauth_picture": "TEXT DEFAULT ''",
     },
     "patient_users": {
         "oauth_provider": "TEXT DEFAULT ''",
@@ -531,6 +554,8 @@ def _migrate(con):
                 "ON leads(site_token)")
     con.execute("CREATE INDEX IF NOT EXISTS idx_patient_oauth "
                 "ON patient_users(oauth_provider, oauth_sub)")
+    con.execute("CREATE INDEX IF NOT EXISTS idx_user_oauth "
+                "ON users(oauth_provider, oauth_sub)")
 
 
 def init_db():
@@ -544,13 +569,18 @@ def init_db():
 # --------------------------------------------------------------------------- #
 # Users
 # --------------------------------------------------------------------------- #
-def create_user(email, password_hash, name, specialty="", institution=""):
+def create_user(email, password_hash, name, specialty="", institution="",
+                verified=False, oauth_provider="", oauth_sub=None,
+                oauth_picture=""):
     db = get_db()
     cur = db.execute(
         "INSERT INTO users (email, password_hash, name, specialty, institution, "
-        "created_at) VALUES (?,?,?,?,?,?)",
+        "verified, verified_at, oauth_provider, oauth_sub, oauth_picture, "
+        "created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
         (email.lower().strip(), password_hash, name.strip(), specialty.strip(),
-         institution.strip(), now()))
+         institution.strip(), 1 if verified else 0, now() if verified else "",
+         (oauth_provider or "").strip(), oauth_sub, (oauth_picture or "").strip(),
+         now()))
     db.commit()
     return cur.lastrowid
 
@@ -560,9 +590,40 @@ def get_user_by_email(email):
         "SELECT * FROM users WHERE email = ?", (email.lower().strip(),)).fetchone()
 
 
+def get_user_by_oauth(provider, oauth_sub):
+    if not provider or not oauth_sub:
+        return None
+    return get_db().execute(
+        "SELECT * FROM users WHERE oauth_provider = ? AND oauth_sub = ?",
+        ((provider or "").strip(), (oauth_sub or "").strip())).fetchone()
+
+
 def get_user(user_id):
     return get_db().execute(
         "SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+
+
+def mark_user_verified(user_id):
+    db = get_db()
+    db.execute("UPDATE users SET verified = 1, verified_at = ? WHERE id = ?",
+               (now(), user_id))
+    db.commit()
+
+
+def link_user_oauth(user_id, provider, oauth_sub, name="", picture=""):
+    user = get_user(user_id)
+    if not user or not provider or not oauth_sub:
+        return False
+    db = get_db()
+    db.execute(
+        "UPDATE users SET oauth_provider = ?, oauth_sub = ?, oauth_picture = ?, "
+        "name = CASE WHEN name = '' THEN ? ELSE name END, "
+        "verified = 1, verified_at = CASE WHEN verified_at = '' THEN ? ELSE verified_at END "
+        "WHERE id = ?",
+        ((provider or "").strip(), (oauth_sub or "").strip(),
+         (picture or "").strip(), (name or "").strip(), now(), user_id))
+    db.commit()
+    return True
 
 
 def set_ehr_connection(user_id, connected, provider=""):
@@ -653,6 +714,15 @@ def create_patient_code(patient_id, purpose, code, expires_ts):
     db.commit()
 
 
+def create_user_code(user_id, purpose, code, expires_ts):
+    db = get_db()
+    db.execute(
+        "INSERT INTO user_auth_codes (user_id, purpose, code, expires_ts, created_at) "
+        "VALUES (?,?,?,?,?)",
+        (user_id, purpose, code, int(expires_ts), now()))
+    db.commit()
+
+
 def verify_patient_code(patient_id, purpose, code, now_ts):
     """True if a live unused code exists; marks it used atomically."""
     db = get_db()
@@ -672,10 +742,36 @@ def verify_patient_code(patient_id, purpose, code, now_ts):
     return True
 
 
+def verify_user_code(user_id, purpose, code, now_ts):
+    """True if a live unused clinician code exists; marks it used atomically."""
+    db = get_db()
+    row = db.execute(
+        "SELECT id, code, expires_ts FROM user_auth_codes WHERE user_id = ? "
+        "AND purpose = ? AND used_at = '' ORDER BY id DESC LIMIT 1",
+        (user_id, purpose)).fetchone()
+    if not row:
+        return False
+    if int(row["expires_ts"]) < int(now_ts):
+        return False
+    if (code or "").strip() != (row["code"] or "").strip():
+        return False
+    db.execute("UPDATE user_auth_codes SET used_at = ? WHERE id = ?",
+               (now(), row["id"]))
+    db.commit()
+    return True
+
+
 def invalidate_patient_codes(patient_id, purpose):
     db = get_db()
     db.execute("UPDATE patient_auth_codes SET used_at = ? WHERE patient_id = ? "
                "AND purpose = ? AND used_at = ''", (now(), patient_id, purpose))
+    db.commit()
+
+
+def invalidate_user_codes(user_id, purpose):
+    db = get_db()
+    db.execute("UPDATE user_auth_codes SET used_at = ? WHERE user_id = ? "
+               "AND purpose = ? AND used_at = ''", (now(), user_id, purpose))
     db.commit()
 
 
@@ -2077,7 +2173,7 @@ def status_counts(user_id):
 
 def enrolled_count(user_id):
     """Number of this user's referrals that reached the 'enrolled' state. Pure
-    outcome tracking - TrialBridge never pays clinicians per referral/enrollment
+    outcome tracking - BridgeMD never pays clinicians per referral/enrollment
     (anti-kickback / fee-splitting), so there is no money attached."""
     row = get_db().execute(
         "SELECT COUNT(*) AS n FROM referrals WHERE user_id = ? AND status = ?",

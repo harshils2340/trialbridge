@@ -1,19 +1,25 @@
 {% extends "public_base.html" %}
-{% block title %}Verify code · TrialBridge{% endblock %}
+{% block title %}Verify code · BridgeMD{% endblock %}
 {% block body %}
-<section class="find-wrap">
-  <h1 class="find-title">Enter verification code</h1>
-  <p class="find-lead">We sent a 6-digit code to <b>{{ email }}</b>.</p>
-  <form method="post" class="find-form" novalidate data-friendly-validate>
-    <label class="find-field"><span>Code</span>
-      <input type="text" name="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" required autocomplete="one-time-code"></label>
-      <p class="find-hint">Enter the 6-digit code from your email.</p>
-      <p class="find-error" data-error-for="code"></p>
-    <button class="btn btn-primary" type="submit">Verify</button>
-  </form>
-  <form method="post" action="{{ url_for('patient_verify_resend') }}" class="find-form" style="margin-top:10px;">
-    <button class="btn btn-ghost" type="submit">Resend code</button>
-  </form>
+<section class="auth-shell">
+  <article class="auth-card">
+    <a class="auth-brand" href="{{ url_for('home') }}">
+      <img src="{{ url_for('static', filename='logo.svg') }}" alt="">
+      <span>BridgeMD</span>
+    </a>
+    <h1 class="auth-title">Check your email</h1>
+    <p class="auth-sub">Enter the 6-digit verification code sent to <b>{{ email }}</b>.</p>
+    <form method="post" class="find-form" novalidate data-friendly-validate>
+      <label class="find-field"><span>Verification code</span>
+        <input type="text" name="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" required autocomplete="one-time-code"></label>
+        <p class="find-hint">Tip: copy/paste also works.</p>
+        <p class="find-error" data-error-for="code"></p>
+      <button class="btn btn-primary" type="submit">Verify</button>
+    </form>
+    <form method="post" action="{{ url_for('patient_verify_resend') }}" class="find-form auth-resend">
+      <button class="btn btn-ghost" type="submit">Resend code</button>
+    </form>
+  </article>
 </section>
 <script>
 (function () {

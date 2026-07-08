@@ -1,4 +1,4 @@
-# UI/UX Sprint Checklist (TrialBridge)
+# UI/UX Sprint Checklist (BridgeMD)
 
 Use this before shipping any visual changes. The goal is not "prettier UI"; the goal is
 **Enrollment Velocity**: move users from found -> contacted -> screened -> enrolled -> retained.

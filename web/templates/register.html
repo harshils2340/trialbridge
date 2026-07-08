@@ -1,12 +1,16 @@
 {% extends "base.html" %}
 {% import "_icons.html" as ic %}
-{% block title %}Create account · TrialBridge{% endblock %}
+{% block title %}Create account · BridgeMD{% endblock %}
 {% block container %}auth{% endblock %}
 {% block auth_body %}
 <div class="card">
-  <div class="auth-hero"><img class="hero-mark" src="{{ url_for('static', filename='logo.svg') }}" width="46" height="46" alt="TrialBridge"></div>
+  <div class="auth-hero"><img class="hero-mark" src="{{ url_for('static', filename='logo.svg') }}" width="46" height="46" alt="BridgeMD"></div>
   <h1>Create your account</h1>
-  <p class="sub">For clinicians who refer patients to clinical trials.</p>
+  <p class="sub">For clinicians who refer patients to clinical trials. After sign-up, we'll verify your email with a 6-digit code.</p>
+  {% if google_enabled %}
+  <a class="btn btn-ghost btn-block" href="{{ url_for('user_google_start', next=request.args.get('next', '')) }}">Continue with Google</a>
+  <p class="foot" style="margin-top:10px;">or create with email</p>
+  {% endif %}
   <form method="post" action="{{ url_for('register') }}">
     <div class="field">
       <label for="name">Full name</label>

@@ -48,7 +48,7 @@ def build_message(ref, link):
         "Please confirm receipt and update the referral status here:",
         link,
         "",
-        "Sent via TrialBridge.",
+        "Sent via BridgeMD.",
     ]
     return subject, "\n".join(lines)
 
@@ -58,7 +58,7 @@ def build_candidate_message(lead, link):
     Contains NO contact details - the site reveals those only after accepting
     via the secure link."""
     nct = lead["nct"] or "your study"
-    subject = f"New candidate for {nct} - TrialBridge"
+    subject = f"New candidate for {nct} - BridgeMD"
     lines = [
         "Hello,",
         "",
@@ -81,7 +81,7 @@ def build_candidate_message(lead, link):
         "If you accept, the patient's consented contact details are unlocked so "
         "you can invite them to a screening visit.",
         "",
-        "Sent via TrialBridge.",
+        "Sent via BridgeMD.",
     ]
     return subject, "\n".join(lines)
 
@@ -119,7 +119,7 @@ def build_applicant_message(lead, kind, link):
         "",
         "This isn't medical advice and you can talk to your own doctor first.",
         "",
-        "Sent via TrialBridge.",
+        "Sent via BridgeMD.",
     ]
     return subj, "\n".join(lines)
 
@@ -147,7 +147,7 @@ def build_alert_message(alert, new_matches, link):
         "See them and ask to be contacted here:",
         link,
         "",
-        "You're getting this because you set up a trial alert on TrialBridge. "
+        "You're getting this because you set up a trial alert on BridgeMD. "
         "Manage or turn off alerts from the link above.",
     ]
     return subject, "\n".join(lines)
@@ -173,7 +173,7 @@ def build_schedule_message(lead, schedule_url, apps_link):
         "",
         "This isn't medical advice and you can talk to your own doctor first.",
         "",
-        "Sent via TrialBridge.",
+        "Sent via BridgeMD.",
     ]
     return subject, "\n".join(lines)
 
@@ -189,7 +189,7 @@ def build_dm_message(lead, body, link, to="patient"):
         subject = f"New message from an applicant - {lead['nct'] or 'application'}"
         opener = f"An applicant sent a message about {title}:"
     lines = [opener, "", f"  \"{body.strip()}\"", "",
-             "Reply here:", link, "", "Sent via TrialBridge."]
+             "Reply here:", link, "", "Sent via BridgeMD."]
     return subject, "\n".join(lines)
 
 
@@ -214,7 +214,7 @@ def build_visit_message(lead, when, location, link):
         "If the time doesn't work, reply to the study team from your applications "
         "page and they'll reschedule.",
         "",
-        "Sent via TrialBridge.",
+        "Sent via BridgeMD.",
     ]
     return subject, "\n".join(lines)
 
@@ -238,7 +238,7 @@ def build_reminder_message(lead, when, location, link):
         "confirms you can join. See details or message the team here:",
         link,
         "",
-        "Sent via TrialBridge.",
+        "Sent via BridgeMD.",
     ]
     return subject, "\n".join(lines)
 
@@ -260,7 +260,7 @@ def build_nudge_message(lead, link):
         "If your situation changed, you can withdraw from the same page. No "
         "pressure either way.",
         "",
-        "Sent via TrialBridge.",
+        "Sent via BridgeMD.",
     ]
     return subject, "\n".join(lines)
 

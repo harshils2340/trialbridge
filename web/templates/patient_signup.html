@@ -1,27 +1,38 @@
 {% extends "public_base.html" %}
-{% block title %}Create account · TrialBridge{% endblock %}
+{% block title %}Create account · BridgeMD{% endblock %}
 {% block body %}
-<section class="find-wrap">
-  <h1 class="find-title">Create your patient account</h1>
-  <p class="find-lead">Continue with Google to create your account in one step.</p>
-  {% if google_enabled %}
-  <a class="btn btn-primary" href="{{ url_for('patient_google_start', next=request.args.get('next', '')) }}" style="margin-bottom:10px;">Continue with Google</a>
-  <p class="cond-note" style="margin-top:0;">Prefer email + password? Use the fallback below.</p>
-  {% endif %}
-  <form method="post" class="find-form" novalidate data-friendly-validate>
-    <label class="find-field"><span>Full name</span>
-      <input type="text" name="full_name" required></label>
-      <p class="find-error" data-error-for="full_name"></p>
-    <label class="find-field"><span>Email</span>
-      <input type="email" name="email" required></label>
-      <p class="find-error" data-error-for="email"></p>
-    <label class="find-field"><span>Password</span>
-      <input type="password" name="password" minlength="8" required></label>
-      <p class="find-hint">Use at least 8 characters.</p>
-      <p class="find-error" data-error-for="password"></p>
-    <button class="btn btn-primary" type="submit">Create account</button>
-  </form>
-  <p class="cond-note">Already have an account? <a href="{{ url_for('patient_login') }}">Sign in</a></p>
+<section class="auth-shell">
+  <article class="auth-card">
+    <a class="auth-brand" href="{{ url_for('home') }}">
+      <img src="{{ url_for('static', filename='logo.svg') }}" alt="">
+      <span>BridgeMD</span>
+    </a>
+    <h1 class="auth-title">Create your account</h1>
+    <p class="auth-sub">Get matched faster and track every application in one place.</p>
+    {% if google_enabled %}
+    <a class="auth-google" href="{{ url_for('patient_google_start', next=request.args.get('next', '')) }}">
+      <span class="g">G</span>
+      <span>Continue with Google</span>
+    </a>
+    <div class="auth-divider">or use email</div>
+    {% else %}
+    <p class="auth-alt">Google sign-in will appear after OAuth keys are configured.</p>
+    {% endif %}
+    <form method="post" class="find-form" novalidate data-friendly-validate>
+      <label class="find-field"><span>Full name</span>
+        <input type="text" name="full_name" required></label>
+        <p class="find-error" data-error-for="full_name"></p>
+      <label class="find-field"><span>Email</span>
+        <input type="email" name="email" required></label>
+        <p class="find-error" data-error-for="email"></p>
+      <label class="find-field"><span>Password</span>
+        <input type="password" name="password" minlength="8" required></label>
+        <p class="find-hint">Use at least 8 characters.</p>
+        <p class="find-error" data-error-for="password"></p>
+      <button class="btn btn-primary" type="submit">Create account</button>
+    </form>
+    <p class="cond-note">Already have an account? <a href="{{ url_for('patient_login') }}">Sign in</a></p>
+  </article>
 </section>
 <script>
 (function () {

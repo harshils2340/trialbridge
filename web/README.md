@@ -1,4 +1,4 @@
-# TrialBridge
+# BridgeMD
 
 A doctor-facing wrapper on ClinicalTrials.gov. Paste a de-identified patient
 note, get ranked recruiting trials with a plain explanation of the fit, refer a
@@ -47,7 +47,7 @@ See `DISTRIBUTION_READY.md` for production launch order and checklist.
 From `matcher/web`:
 
 ```bash
-STAGING_BASE_URL="https://trialbridge-61vy.onrender.com" \
+STAGING_BASE_URL="https://bridgemd-61vy.onrender.com" \
 /Users/harshils/GraphMD/matcher/.venv/bin/python staging_smoke.py
 ```
 
@@ -101,7 +101,7 @@ Going live is a ~2 minute env change (no code):
 2. `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` / `SMTP_FROM`
 3. `SITE_NOTIFY_EMAIL` - inbox that receives new blinded candidates (with the
    `/c/<token>` link)
-4. `PUBLIC_BASE_URL` - e.g. `https://trialbridge.onrender.com` so email links
+4. `PUBLIC_BASE_URL` - e.g. `https://bridgemd.onrender.com` so email links
    are absolute
 
 While OFF, the loop still works end to end: the operator copies the secure link
@@ -111,7 +111,7 @@ de-identified - no patient name/contact is ever in them.
 
 ## Persistence
 
-SQLite lives at `DB_PATH` (defaults to `web/trialbridge.db`). For a real pilot,
+SQLite lives at `DB_PATH` (defaults to `web/bridgemd.db`). For a real pilot,
 point `DB_PATH` at a mounted disk so applications survive redeploys (see the
 commented `disk:` block in `render.yaml`).
 
@@ -120,7 +120,7 @@ commented `disk:` block in `render.yaml`).
 - `app.py` - Flask app: auth, search, EHR import, refer + consent, notify,
   tracking, public coordinator page, CSV export.
 - `db.py` - SQLite schema + helpers with idempotent migrations
-  (`trialbridge.db`, created on first run).
+  (`bridgemd.db`, created on first run).
 - `fhir.py` - EHR import via FHIR R4. `mailer.py` - optional SMTP email.
 - `templates/`, `static/` - polished UI.
 - Reuses `../match_trials.py` (fetch + gate + LLM scoring) and `../refer.py`

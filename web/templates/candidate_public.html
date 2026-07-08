@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="csrf-token" content="{{ csrf_token() }}">
-  <title>{{ it.code }} · TrialBridge</title>
+  <title>{{ it.code }} · BridgeMD</title>
   <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='logo.svg') }}">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -16,7 +16,7 @@
 <div class="coord-wrap">
   <div class="coord-brand">
     <img class="brand-mark" src="{{ url_for('static', filename='logo.svg') }}" width="24" height="24" alt="">
-    <span>TrialBridge</span>
+    <span>BridgeMD</span>
     <span class="coord-tag">Study coordinator</span>
   </div>
 
@@ -143,7 +143,7 @@
     <ul class="thread-list">
       {% for m in messages %}
       <li class="msg msg-{{ m['sender'] }}">
-        <span class="msg-who">{% if m['sender'] == 'site' %}You{% elif m['sender'] == 'system' %}TrialBridge{% else %}Applicant{% endif %}</span>
+        <span class="msg-who">{% if m['sender'] == 'site' %}You{% elif m['sender'] == 'system' %}BridgeMD{% else %}Applicant{% endif %}</span>
         <span class="msg-body">{{ m['body'] }}</span>
         <span class="msg-time">{{ m['created_at'] }}</span>
       </li>
@@ -189,7 +189,7 @@
       {% for e in it.events %}
       <li>
         <div><span class="pill pill-{{ e['status'] }}">{{ labels.get(e['status'], e['status']) }}</span>
-          <span class="actor-tag">{{ 'site' if e['actor'] == 'site' else 'TrialBridge' }}</span></div>
+          <span class="actor-tag">{{ 'site' if e['actor'] == 'site' else 'BridgeMD' }}</span></div>
         {% if e['note'] %}<div style="font-size:14px;margin-top:4px;">{{ e['note'] }}</div>{% endif %}
         <div class="t">{{ e['created_at'] }}</div>
       </li>
@@ -197,7 +197,7 @@
     </ul>
   </div>
 
-  <p class="coord-foot">Secure candidate link · TrialBridge</p>
+  <p class="coord-foot">Secure candidate link · BridgeMD</p>
 </div>
 <script>
 (function () {

@@ -1,8 +1,18 @@
-{% if pov_demo %}
 {% import "_icons.html" as ic %}
-<nav class="pov-switch" aria-label="View mode">
-  <a href="{{ url_for('home') }}" class="pov-pill{{ ' on' if pov == 'patient' }}">{{ ic.icon('user-plus') }} Patient</a>
-  <a href="{{ url_for('dashboard') }}" class="pov-pill{{ ' on' if pov == 'clinician' }}">{{ ic.icon('award') }} Clinician</a>
-  <a href="{{ url_for('leads') }}" class="pov-pill{{ ' on' if pov == 'study' }}">{{ ic.icon('activity') }} Study team</a>
-</nav>
-{% endif %}
+<div class="pov-tools">
+  <nav class="pov-switch" aria-label="View mode">
+    <a href="{{ url_for('home') }}" class="pov-pill{{ ' on' if pov == 'patient' }}">{{ ic.icon('user-plus') }} Patient</a>
+    <a href="{{ url_for('dashboard') }}" class="pov-pill{{ ' on' if pov == 'clinician' }}">{{ ic.icon('award') }} Clinician</a>
+    <a href="{{ url_for('leads') }}" class="pov-pill{{ ' on' if pov == 'study' }}">{{ ic.icon('activity') }} Study team</a>
+  </nav>
+  <form method="post" action="{{ url_for('set_demo_mode') }}" class="demo-toggle-form">
+    <input type="hidden" name="next" value="{{ request.path }}">
+    {% if not pov_demo %}
+    <input type="hidden" name="enabled" value="1">
+    {% endif %}
+    <button type="submit" class="demo-toggle{{ ' on' if pov_demo }}" aria-pressed="{{ 'true' if pov_demo else 'false' }}">
+      <span class="demo-toggle-track"><span class="demo-toggle-knob"></span></span>
+      <span class="demo-toggle-label">Demo mode {{ 'on' if pov_demo else 'off' }}</span>
+    </button>
+  </form>
+</div>

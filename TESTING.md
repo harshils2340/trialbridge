@@ -1,4 +1,4 @@
-# TrialBridge — Test Log
+# BridgeMD — Test Log
 
 A running log of changes and the local tests that verify them. Every entry lists
 what changed, how to reproduce the test, and the result. Tests are hermetic

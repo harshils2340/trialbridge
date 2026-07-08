@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="csrf-token" content="{{ csrf_token() }}">
-  <title>{% block title %}TrialBridge{% endblock %}</title>
+  <title>{% block title %}BridgeMD{% endblock %}</title>
   <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='logo.svg') }}">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -16,8 +16,8 @@
 {% if user %}
 <div class="layout">
   <aside class="sidebar">
-    <a class="brand" href="{{ url_for('leads') if pov == 'study' else url_for('dashboard') }}"><img class="brand-mark" src="{{ url_for('static', filename='logo.svg') }}" width="24" height="24" alt="">TrialBridge</a>
-    {% if pov_demo %}<div class="side-pov">{% include "_pov_bar.html" %}</div>{% endif %}
+    <a class="brand" href="{{ url_for('leads') if pov == 'study' else url_for('dashboard') }}"><img class="brand-mark" src="{{ url_for('static', filename='logo.svg') }}" width="24" height="24" alt="">BridgeMD</a>
+    <div class="side-pov">{% include "_pov_bar.html" %}</div>
     <nav class="side-nav">
       {% if pov == 'study' %}
       {# Study team = the site/sponsor running the trial and reviewing applicants. #}
@@ -42,21 +42,31 @@
     </div>
   </aside>
   <main class="content">
-    {% with messages = get_flashed_messages(with_categories=true) %}
-      {% for cat, msg in messages %}
-        <div class="flash {{ cat }}">{{ msg }}</div>
-      {% endfor %}
-    {% endwith %}
+    <div class="toast-stack">
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% for cat, msg in messages %}
+          <div class="flash flash-toast {{ cat }}">
+            <span>{{ msg }}</span>
+            <button type="button" class="toast-close" aria-label="Dismiss">×</button>
+          </div>
+        {% endfor %}
+      {% endwith %}
+    </div>
     {% block body %}{% endblock %}
   </main>
 </div>
 {% else %}
 <div class="{% block container %}wrap{% endblock %}">
-  {% with messages = get_flashed_messages(with_categories=true) %}
-    {% for cat, msg in messages %}
-      <div class="flash {{ cat }}">{{ msg }}</div>
-    {% endfor %}
-  {% endwith %}
+  <div class="toast-stack">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for cat, msg in messages %}
+        <div class="flash flash-toast {{ cat }}">
+          <span>{{ msg }}</span>
+          <button type="button" class="toast-close" aria-label="Dismiss">×</button>
+        </div>
+      {% endfor %}
+    {% endwith %}
+  </div>
   {% block auth_body %}{% endblock %}
 </div>
 {% endif %}
@@ -83,6 +93,19 @@
   } else {
     attachCsrf();
   }
+})();
+</script>
+<script>
+(function () {
+  var toasts = document.querySelectorAll('.flash-toast');
+  toasts.forEach(function (t) {
+    var close = t.querySelector('.toast-close');
+    if (close) close.addEventListener('click', function () { t.remove(); });
+    setTimeout(function () {
+      t.classList.add('toast-hide');
+      setTimeout(function () { t.remove(); }, 260);
+    }, 4800);
+  });
 })();
 </script>
 </body>

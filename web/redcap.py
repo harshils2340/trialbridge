@@ -103,7 +103,7 @@ def push_candidate(lead):
     req = urllib.request.Request(
         API_URL, data=data,
         headers={"Content-Type": "application/x-www-form-urlencoded",
-                 "User-Agent": "TrialBridge/1.0"})
+                 "User-Agent": "BridgeMD/1.0"})
     try:
         with urllib.request.urlopen(req, timeout=_TIMEOUT) as r:
             body = r.read().decode("utf-8", "replace")
