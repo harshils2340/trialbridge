@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
   <title>{{ it.code }} · TrialBridge</title>
   <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='logo.svg') }}">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -77,12 +78,12 @@
     <p style="color:var(--muted); font-size:14px; margin:0 0 14px;">Accepting unlocks the applicant's
       contact details (they consented to this) so you can invite them to a screening visit.</p>
     <div class="cand-actions">
-      <form method="post" action="{{ url_for('candidate_accept', token=lead['token']) }}">
+      <form method="post" action="{{ url_for('candidate_accept', token=lead['site_token']) }}">
         <button class="btn btn-ok" type="submit">{{ ic.icon('check') }} Accept &amp; unlock contact</button>
       </form>
       <details class="decline-pop">
         <summary class="btn btn-ghost">Decline</summary>
-        <form method="post" action="{{ url_for('candidate_decline', token=lead['token']) }}">
+        <form method="post" action="{{ url_for('candidate_decline', token=lead['site_token']) }}">
           <input type="text" name="reason" placeholder="Reason (optional)">
           <button class="btn btn-sm" type="submit">Confirm decline</button>
         </form>
@@ -103,7 +104,7 @@
   <div class="card">
     <div class="section-title"><h2>Invite to book a screening call</h2></div>
     <p class="hint">Set a booking link. This updates status to <b>Screening</b>.</p>
-    <form method="post" action="{{ url_for('candidate_schedule', token=lead['token']) }}">
+    <form method="post" action="{{ url_for('candidate_schedule', token=lead['site_token']) }}">
       <div class="field">
         <input name="schedule_url" type="url" value="{{ lead['schedule_url'] }}"
                placeholder="https://calendly.com/your-site/screening">
@@ -123,7 +124,7 @@
       {% endfor %}
     </ul>
     {% endif %}
-    <form method="post" action="{{ url_for('candidate_visit', token=lead['token']) }}" class="visit-form">
+    <form method="post" action="{{ url_for('candidate_visit', token=lead['site_token']) }}" class="visit-form">
       <div class="visit-row">
         <label>When<input type="datetime-local" name="visit_at" required></label>
         <label>Type
@@ -152,7 +153,7 @@
     <p class="thread-empty">No messages yet. A quick, warm first message ("Thanks for applying, here's what
       happens next") is the single biggest thing that keeps candidates from going quiet.</p>
     {% endif %}
-    <form class="thread-form" method="post" action="{{ url_for('candidate_message', token=lead['token']) }}">
+    <form class="thread-form" method="post" action="{{ url_for('candidate_message', token=lead['site_token']) }}">
       <input type="text" name="body" placeholder="Message the applicant..." required autocomplete="off">
       <button class="btn btn-primary btn-sm" type="submit">Send</button>
     </form>
@@ -160,7 +161,7 @@
 
   <div class="card">
     <div class="section-title"><h2>Move forward</h2></div>
-    <form method="post" action="{{ url_for('candidate_advance', token=lead['token']) }}">
+    <form method="post" action="{{ url_for('candidate_advance', token=lead['site_token']) }}">
       <div class="field">
         <label for="status">Status</label>
         <select id="status" name="status">
@@ -198,5 +199,20 @@
 
   <p class="coord-foot">Secure candidate link · TrialBridge</p>
 </div>
+<script>
+(function () {
+  var meta = document.querySelector('meta[name="csrf-token"]');
+  var token = meta ? meta.getAttribute('content') : '';
+  if (!token) return;
+  document.querySelectorAll('form[method="post"]').forEach(function (form) {
+    if (form.querySelector('input[name="_csrf_token"]')) return;
+    var input = document.createElement('input');
+    input.type = 'hidden';
+    input.name = '_csrf_token';
+    input.value = token;
+    form.prepend(input);
+  });
+})();
+</script>
 </body>
 </html>

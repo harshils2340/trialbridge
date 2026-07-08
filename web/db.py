@@ -88,6 +88,9 @@ CREATE TABLE IF NOT EXISTS patient_users (
     email             TEXT UNIQUE NOT NULL,
     password_hash     TEXT NOT NULL,
     full_name         TEXT DEFAULT '',
+    oauth_provider    TEXT DEFAULT '',
+    oauth_sub         TEXT,
+    oauth_picture     TEXT DEFAULT '',
     applicant_token   TEXT UNIQUE NOT NULL,
     verified          INTEGER DEFAULT 0,
     verified_at       TEXT DEFAULT '',
@@ -188,6 +191,9 @@ CREATE TABLE IF NOT EXISTS referral_events (
 CREATE TABLE IF NOT EXISTS leads (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     token           TEXT UNIQUE,
+    site_token      TEXT UNIQUE,
+    site_token_expires_at TEXT DEFAULT '',
+    site_token_revoked INTEGER DEFAULT 0,
     applicant_token TEXT DEFAULT '',
     nct             TEXT DEFAULT '',
     title           TEXT DEFAULT '',
@@ -409,6 +415,31 @@ def gen_token():
     return secrets.token_urlsafe(16)
 
 
+def _site_token_expiry(days=None):
+    try:
+        days = int(days or os.environ.get("SITE_TOKEN_TTL_DAYS", "30"))
+    except Exception:
+        days = 30
+    return (dt.datetime.now() + dt.timedelta(days=max(1, days))).strftime(
+        "%Y-%m-%d %H:%M")
+
+
+def _parse_ts(raw):
+    try:
+        return dt.datetime.strptime((raw or "").strip(), "%Y-%m-%d %H:%M")
+    except Exception:
+        return None
+
+
+def site_token_active(lead):
+    if not lead:
+        return False
+    if int(lead["site_token_revoked"] or 0):
+        return False
+    exp = _parse_ts(lead["site_token_expires_at"])
+    return bool(exp and exp >= dt.datetime.now())
+
+
 # New columns added after the first release - applied idempotently so existing
 # databases upgrade without a manual migration step.
 _MIGRATIONS = {
@@ -427,8 +458,16 @@ _MIGRATIONS = {
         "ehr_provider": "TEXT DEFAULT ''",
         "ehr_connected_at": "TEXT DEFAULT ''",
     },
+    "patient_users": {
+        "oauth_provider": "TEXT DEFAULT ''",
+        "oauth_sub": "TEXT",
+        "oauth_picture": "TEXT DEFAULT ''",
+    },
     "leads": {
         "applicant_token": "TEXT DEFAULT ''",
+        "site_token": "TEXT DEFAULT ''",
+        "site_token_expires_at": "TEXT DEFAULT ''",
+        "site_token_revoked": "INTEGER DEFAULT 0",
         "updated_at": "TEXT DEFAULT ''",
         "records_connected": "INTEGER DEFAULT 0",
         "record_summary": "TEXT DEFAULT ''",
@@ -471,11 +510,27 @@ def _migrate(con):
             "VALUES (?,?,?,?,?)",
             (row[0], row[1] or "submitted", "application submitted", "you",
              row[2]))
+    # Backfill separate public study-team tokens for candidate workspace links.
+    for row in con.execute(
+            "SELECT id FROM leads WHERE site_token IS NULL OR site_token = ''"
+    ).fetchall():
+        con.execute(
+            "UPDATE leads SET site_token = ?, site_token_expires_at = ? "
+            "WHERE id = ?",
+            (gen_token(), _site_token_expiry(), row[0]))
+    con.execute(
+        "UPDATE leads SET site_token_expires_at = ? "
+        "WHERE site_token_expires_at IS NULL OR site_token_expires_at = ''",
+        (_site_token_expiry(),))
     # Index depends on a migrated column, so create it after the ALTERs above.
     con.execute("CREATE INDEX IF NOT EXISTS idx_leads_applicant "
                 "ON leads(applicant_token)")
     con.execute("CREATE INDEX IF NOT EXISTS idx_leads_invite "
                 "ON leads(invite_token)")
+    con.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_leads_site_token "
+                "ON leads(site_token)")
+    con.execute("CREATE INDEX IF NOT EXISTS idx_patient_oauth "
+                "ON patient_users(oauth_provider, oauth_sub)")
 
 
 def init_db():
@@ -520,13 +575,17 @@ def set_ehr_connection(user_id, connected, provider=""):
     db.commit()
 
 
-def create_patient_user(email, password_hash, full_name=""):
+def create_patient_user(email, password_hash, full_name="", oauth_provider="",
+                        oauth_sub=None, oauth_picture="", verified=False):
     db = get_db()
     cur = db.execute(
         "INSERT INTO patient_users (email, password_hash, full_name, applicant_token, "
-        "created_at) VALUES (?,?,?,?,?)",
+        "oauth_provider, oauth_sub, oauth_picture, verified, verified_at, "
+        "created_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
         (email.lower().strip(), password_hash, (full_name or "").strip(),
-         gen_token(), now()))
+         gen_token(), (oauth_provider or "").strip(), oauth_sub,
+         (oauth_picture or "").strip(), 1 if verified else 0,
+         now() if verified else "", now()))
     db.commit()
     return cur.lastrowid
 
@@ -540,6 +599,30 @@ def get_patient_by_email(email):
     return get_db().execute(
         "SELECT * FROM patient_users WHERE email = ?",
         (email.lower().strip(),)).fetchone()
+
+
+def get_patient_by_oauth(provider, oauth_sub):
+    if not provider or not oauth_sub:
+        return None
+    return get_db().execute(
+        "SELECT * FROM patient_users WHERE oauth_provider = ? AND oauth_sub = ?",
+        ((provider or "").strip(), (oauth_sub or "").strip())).fetchone()
+
+
+def link_patient_oauth(patient_id, provider, oauth_sub, full_name="", picture=""):
+    patient = get_patient_user(patient_id)
+    if not patient or not provider or not oauth_sub:
+        return False
+    db = get_db()
+    db.execute(
+        "UPDATE patient_users SET oauth_provider = ?, oauth_sub = ?, oauth_picture = ?, "
+        "full_name = CASE WHEN full_name = '' THEN ? ELSE full_name END, "
+        "verified = 1, verified_at = CASE WHEN verified_at = '' THEN ? ELSE verified_at END "
+        "WHERE id = ?",
+        ((provider or "").strip(), (oauth_sub or "").strip(),
+         (picture or "").strip(), (full_name or "").strip(), now(), patient_id))
+    db.commit()
+    return True
 
 
 def mark_patient_verified(patient_id):
@@ -870,15 +953,18 @@ def update_status(ref_id, user_id, status, note=""):
 def create_lead(data):
     db = get_db()
     token = gen_token()
+    site_token = gen_token()
     ts = now()
     cur = db.execute(
         """INSERT INTO leads
-           (token, applicant_token, nct, title, condition, location, site, name,
+           (token, site_token, site_token_expires_at, site_token_revoked,
+            applicant_token, nct, title, condition, location, site, name,
             email, phone, age, sex, notes, consent, source, status, screener,
             eligibility, records_connected, record_summary, referred_by,
             invite_token, created_at, updated_at)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-        (token, data.get("applicant_token", ""), data.get("nct", ""),
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+        (token, site_token, _site_token_expiry(), 0,
+         data.get("applicant_token", ""), data.get("nct", ""),
          data.get("title", ""), data.get("condition", ""),
          data.get("location", ""), data.get("site", ""), data.get("name", ""),
          data.get("email", ""), data.get("phone", ""), data.get("age", ""),
@@ -938,19 +1024,25 @@ def decline_candidate(lead_id, reason=""):
 
 
 def accept_candidate_by_token(token, note=""):
-    lead = get_lead_by_token(token)
+    lead = get_lead_by_site_token(token)
+    if not site_token_active(lead):
+        return False
     return accept_candidate(lead["id"], note) if lead else False
 
 
 def decline_candidate_by_token(token, reason=""):
-    lead = get_lead_by_token(token)
+    lead = get_lead_by_site_token(token)
+    if not site_token_active(lead):
+        return False
     return decline_candidate(lead["id"], reason) if lead else False
 
 
 def advance_by_token(token, status, note=""):
     """Coordinator moves an already-accepted candidate forward (screening,
     enrolled) via their secure link."""
-    lead = get_lead_by_token(token)
+    lead = get_lead_by_site_token(token)
+    if not site_token_active(lead):
+        return False
     if not lead:
         return False
     return update_lead_status(lead["id"], status, note, actor="site")
@@ -1008,6 +1100,36 @@ def get_lead_by_token(token):
         return None
     return get_db().execute(
         "SELECT * FROM leads WHERE token = ?", (token,)).fetchone()
+
+
+def get_lead_by_site_token(token):
+    if not token:
+        return None
+    return get_db().execute(
+        "SELECT * FROM leads WHERE site_token = ?", (token,)).fetchone()
+
+
+def revoke_site_token(lead_id, revoked=True):
+    lead = get_lead(lead_id)
+    if not lead:
+        return False
+    db = get_db()
+    db.execute("UPDATE leads SET site_token_revoked = ?, updated_at = ? WHERE id = ?",
+               (1 if revoked else 0, now(), lead_id))
+    db.commit()
+    return True
+
+
+def extend_site_token(lead_id, days=None):
+    lead = get_lead(lead_id)
+    if not lead:
+        return False
+    db = get_db()
+    db.execute("UPDATE leads SET site_token_expires_at = ?, site_token_revoked = 0, "
+               "updated_at = ? WHERE id = ?",
+               (_site_token_expiry(days), now(), lead_id))
+    db.commit()
+    return True
 
 
 def get_lead_events(lead_id):
@@ -1515,13 +1637,15 @@ def seed_demo_leads():
                 if s.get("records") else ""
             cur = con.execute(
                 """INSERT INTO leads
-                   (token, applicant_token, nct, title, condition, location, site,
+                   (token, site_token, site_token_expires_at, site_token_revoked,
+                    applicant_token, nct, title, condition, location, site,
                     name, email, phone, age, sex, notes, consent, source, status,
                     records_connected, record_summary, screener, eligibility,
                     decision, decision_reason, decided_at, revealed,
                     created_at, updated_at)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                (gen_token(), "demo-" + gen_token(), s["nct"], s["title"],
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (gen_token(), gen_token(), _site_token_expiry(), 0,
+                 "demo-" + gen_token(), s["nct"], s["title"],
                  s["condition"], s["location"], s["site"], s["name"], s["email"],
                  s["phone"], s["age"], s["sex"], "", 1, "demo", s["status"],
                  s.get("records", 0), rec, json.dumps(s["screener"]),

@@ -13,6 +13,7 @@ Run:
 from __future__ import annotations
 
 import os
+import secrets
 import tempfile
 import time
 
@@ -73,6 +74,22 @@ def _setup_site_account():
         return uid
 
 
+def _csrf(client):
+    with client.session_transaction() as sess:
+        tok = sess.get("_csrf_token")
+        if tok:
+            return tok
+        tok = secrets.token_urlsafe(32)
+        sess["_csrf_token"] = tok
+        return tok
+
+
+def _post(client, path, data=None, **kwargs):
+    payload = dict(data or {})
+    payload["_csrf_token"] = _csrf(client)
+    return client.post(path, data=payload, **kwargs)
+
+
 def main():
     _stub_issue_patient_code()
     site_user_id = _setup_site_account()
@@ -87,7 +104,8 @@ def main():
     _pass("home page")
 
     # 2) Patient signup + verify + onboarding.
-    r = patient.post(
+    r = _post(
+        patient,
         "/account/signup",
         data={"full_name": "Mock Patient", "email": "patient@test.local", "password": "StrongPass123"},
         follow_redirects=False,
@@ -96,12 +114,13 @@ def main():
         _fail("patient signup", f"status {r.status_code}")
     _pass("patient signup", "redirected to verify")
 
-    r = patient.post("/account/verify", data={"code": "123456"}, follow_redirects=False)
+    r = _post(patient, "/account/verify", data={"code": "123456"}, follow_redirects=False)
     if r.status_code not in (302, 303):
         _fail("patient verify", f"status {r.status_code}")
     _pass("patient verify")
 
-    r = patient.post(
+    r = _post(
+        patient,
         "/account/onboarding",
         data={"primary_interest": "obesity", "notify_email": "patient@test.local", "email_alerts": "on"},
         follow_redirects=False,
@@ -130,7 +149,7 @@ def main():
         "consent_capable": "yes",
         "eligibility": '{"verdict":"possible","met":["Age within range"],"unknown":[],"not_met":[],"rationale":"Looks eligible"}',
     }
-    r = patient.post("/interest", data=apply_payload, follow_redirects=False)
+    r = _post(patient, "/interest", data=apply_payload, follow_redirects=False)
     if r.status_code != 200:
         _fail("patient apply", f"status {r.status_code}")
     _pass("patient apply")
@@ -157,12 +176,13 @@ def main():
     _pass("site receives inbound lead")
 
     t0 = time.time()
-    r = site.post(f"/app/leads/{lead_id}/accept", data={}, follow_redirects=False)
+    r = _post(site, f"/app/leads/{lead_id}/accept", data={}, follow_redirects=False)
     if r.status_code not in (302, 303):
         _fail("site accept", f"status {r.status_code}")
     _pass("site accept")
 
-    r = site.post(
+    r = _post(
+        site,
         f"/app/leads/{lead_id}/message",
         data={"body": "Hi, we can offer a screening this week."},
         follow_redirects=False,
@@ -171,7 +191,8 @@ def main():
         _fail("site message", f"status {r.status_code}")
     _pass("site message")
 
-    r = site.post(
+    r = _post(
+        site,
         f"/app/leads/{lead_id}/schedule",
         data={"schedule_url": "https://calendly.com/test-site/screening"},
         follow_redirects=False,
@@ -180,7 +201,8 @@ def main():
         _fail("site scheduling link", f"status {r.status_code}")
     _pass("site scheduling link")
 
-    r = site.post(
+    r = _post(
+        site,
         f"/app/leads/{lead_id}/status",
         data={"status": "screening", "note": "Booked call pending"},
         follow_redirects=False,
@@ -189,7 +211,8 @@ def main():
         _fail("site status update", f"status {r.status_code}")
     _pass("site status update")
 
-    r = site.post(
+    r = _post(
+        site,
         f"/app/leads/{lead_id}/reconcile",
         data={
             "outcome": "enrolled_verified",
@@ -220,7 +243,8 @@ def main():
             "SELECT * FROM leads WHERE id = ?", (lead_id,)
         ).fetchone()
         token = lead["token"]
-    r = patient.post(
+    r = _post(
+        patient,
         f"/applications/{token}/message",
         data={"body": "Thanks, I booked for Thursday."},
         follow_redirects=False,

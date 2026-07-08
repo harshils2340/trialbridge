@@ -123,7 +123,7 @@
       <details class="cand-share slim">
         <summary>{{ ic.icon('external') }} External handoff link</summary>
         <div class="cand-share-row">
-          <input type="text" readonly value="{{ url_for('candidate_page', token=l['token'], _external=True) }}" onclick="this.select()">
+          <input type="text" readonly value="{{ url_for('candidate_page', token=l['site_token'], _external=True) }}" onclick="this.select()">
           <button type="button" class="btn btn-sm" onclick="navigator.clipboard.writeText(this.previousElementSibling.value);this.textContent='Copied'">Copy</button>
         </div>
         <span class="cand-share-hint">Demo fallback when the site has no account yet.</span>
@@ -192,7 +192,14 @@
       </form>
     </div>
     <div class="outreach-foot">
-      <a class="cand-open" href="{{ url_for('candidate_page', token=l['token']) }}">{{ ic.icon('external') }} Open full workspace</a>
+      <a class="cand-open" href="{{ url_for('candidate_page', token=l['site_token']) }}">{{ ic.icon('external') }} Open full workspace</a>
+      <form method="post" action="{{ url_for('extend_lead_site_token', lead_id=l['id']) }}" class="lead-redcap-form">
+        <input type="hidden" name="days" value="30">
+        <button class="btn btn-sm btn-ghost" type="submit">Extend link 30d</button>
+      </form>
+      <form method="post" action="{{ url_for('revoke_lead_site_token', lead_id=l['id']) }}" class="lead-redcap-form">
+        <button class="btn btn-sm btn-ghost" type="submit">Revoke link</button>
+      </form>
       {% if redcap_on %}
       <form method="post" action="{{ url_for('push_lead_redcap', lead_id=l['id']) }}" class="lead-redcap-form">
         <button class="btn btn-sm btn-ghost" type="submit">{{ ic.icon('external') }} Push to REDCap</button>
@@ -224,7 +231,8 @@
           <td><b>{% if l['revealed'] %}{{ l['name'] }}{% else %}{{ it.code }}{% endif %}</b>
             {% if it.unread %}<span class="msg-badge">{{ it.unread }} new</span>{% endif %}
             <div class="tag">{{ it.age_band }}{% if l['sex'] %} · {{ l['sex']|capitalize }}{% endif %}</div>
-            <a class="cand-open" href="{{ url_for('candidate_page', token=l['token']) }}">{{ ic.icon('external') }} Open workspace</a></td>
+            <a class="cand-open" href="{{ url_for('candidate_page', token=l['site_token']) }}">{{ ic.icon('external') }} Open workspace</a>
+            <div class="tag">Link exp: {{ l['site_token_expires_at'] or '-' }}</div></td>
           <td>{% if l['nct'] %}<a href="https://clinicaltrials.gov/study/{{ l['nct'] }}" target="_blank" rel="noopener">{{ l['nct'] }}</a>{% endif %}<div class="tag">{{ l['title'][:44] }}</div></td>
           <td><span class="pill pill-{{ l['status'] }}">{{ labels.get(l['status'], l['status']) }}</span>
             {% if l['decision'] == 'declined' and l['decision_reason'] %}<div class="tag">{{ l['decision_reason'] }}</div>{% endif %}

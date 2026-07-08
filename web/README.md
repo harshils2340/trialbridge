@@ -42,6 +42,18 @@ From `matcher/web`:
 This verifies signup/verify/onboarding/apply + site intake/accept/message/schedule/status/reconcile.
 See `DISTRIBUTION_READY.md` for production launch order and checklist.
 
+## Live staging smoke (deployed URL)
+
+From `matcher/web`:
+
+```bash
+STAGING_BASE_URL="https://trialbridge-61vy.onrender.com" \
+/Users/harshils/GraphMD/matcher/.venv/bin/python staging_smoke.py
+```
+
+This hits your live app over HTTP (`/healthz`, home + CSRF, POST `/find`, `/how`,
+`/app/leads`) so you can quickly verify routing + form protection after deploy.
+
 ## Getting a patient in (three ways, so doctors don't retype)
 
 1. **Type/paste** the de-identified summary.
@@ -76,7 +88,8 @@ link. To send directly, set `SMTP_HOST` (and `SMTP_PORT`, `SMTP_USER`,
 
 A patient applies to a trial from the public site (`/find` -> "I'm interested").
 That creates a **de-identified candidate** in the study-team review board
-(`/app/leads`). Each candidate has a **secure tokenized link** (`/c/<token>`) a
+(`/app/leads`). Each candidate has a **secure tokenized link** (`/c/<token>`) with
+expiry/revoke controls that a
 real site coordinator can open with **no login** to review eligibility and
 **accept/decline**. Contact details unlock **only on accept** (mutual consent).
 The patient tracks status any time at `/applications` (cookie-based, no login).
@@ -120,6 +133,7 @@ commented `disk:` block in `render.yaml`).
 | `LLM_API_KEY` (+ `LLM_MODEL`, `LLM_BASE_URL`) | Eligibility reasoning + de-identification |
 | `FHIR_BASE` | FHIR R4 server for EHR import (default: SMART open sandbox) |
 | `SMTP_HOST` (+ `SMTP_PORT`/`USER`/`PASS`/`FROM`/`TLS`) | Send emails directly |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Enable patient "Continue with Google" OAuth |
 | `NOTIFY_LIVE` | `1` turns on real email delivery for the patient loop (default off) |
 | `SITE_NOTIFY_EMAIL` | Coordinator inbox that receives new blinded candidates |
 | `PUBLIC_BASE_URL` | Base URL used for links inside emails |

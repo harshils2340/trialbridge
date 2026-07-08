@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
   <title>{% block title %}TrialBridge{% endblock %}</title>
   <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='logo.svg') }}">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -59,5 +60,30 @@
   {% block auth_body %}{% endblock %}
 </div>
 {% endif %}
+<script>
+(function () {
+  function attachCsrf() {
+    var meta = document.querySelector('meta[name="csrf-token"]');
+    var token = meta ? meta.getAttribute('content') : '';
+    if (!token) return;
+    var forms = document.querySelectorAll('form');
+    forms.forEach(function (form) {
+      var method = (form.getAttribute('method') || 'get').toLowerCase();
+      if (method !== 'post') return;
+      if (form.querySelector('input[name="_csrf_token"]')) return;
+      var input = document.createElement('input');
+      input.type = 'hidden';
+      input.name = '_csrf_token';
+      input.value = token;
+      form.prepend(input);
+    });
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', attachCsrf);
+  } else {
+    attachCsrf();
+  }
+})();
+</script>
 </body>
 </html>

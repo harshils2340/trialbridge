@@ -4,13 +4,41 @@
 <section class="find-wrap">
   <h1 class="find-title">Enter verification code</h1>
   <p class="find-lead">We sent a 6-digit code to <b>{{ email }}</b>.</p>
-  <form method="post" class="find-form">
+  <form method="post" class="find-form" novalidate data-friendly-validate>
     <label class="find-field"><span>Code</span>
-      <input type="text" name="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" required></label>
+      <input type="text" name="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" required autocomplete="one-time-code"></label>
+      <p class="find-hint">Enter the 6-digit code from your email.</p>
+      <p class="find-error" data-error-for="code"></p>
     <button class="btn btn-primary" type="submit">Verify</button>
   </form>
   <form method="post" action="{{ url_for('patient_verify_resend') }}" class="find-form" style="margin-top:10px;">
     <button class="btn btn-ghost" type="submit">Resend code</button>
   </form>
 </section>
+<script>
+(function () {
+  var form = document.querySelector('form[data-friendly-validate]');
+  if (!form) return;
+  var input = form.querySelector('[name="code"]');
+  var err = form.querySelector('[data-error-for="code"]');
+  if (!input || !err) return;
+
+  input.addEventListener('input', function () {
+    input.value = (input.value || '').replace(/\D+/g, '').slice(0, 6);
+    err.textContent = '';
+    err.classList.remove('show');
+    input.classList.remove('input-invalid');
+  });
+
+  form.addEventListener('submit', function (e) {
+    var code = (input.value || '').trim();
+    if (!/^\d{6}$/.test(code)) {
+      e.preventDefault();
+      input.classList.add('input-invalid');
+      err.textContent = 'Enter a valid 6-digit code.';
+      err.classList.add('show');
+    }
+  });
+})();
+</script>
 {% endblock %}

@@ -16,6 +16,7 @@ Without an LLM key the app still fetches + gates trials (deterministic age/sex
 screening) but skips the per-trial eligibility reasoning.
 """
 import functools
+import hmac
 import json
 import math
 import os
@@ -110,6 +111,12 @@ def bad_method(_e):
                            msg="That action isn't allowed here."), 405
 
 
+@app.errorhandler(410)
+def gone(_e):
+    return render_template("error.html", code=410,
+                           msg="This secure link has expired or was revoked."), 410
+
+
 @app.errorhandler(500)
 def server_error(_e):
     app.logger.exception("Unhandled error")
@@ -135,6 +142,14 @@ PATIENT_SESSION_KEY = "patient_user_id"
 PATIENT_PENDING_KEY = "patient_pending_id"
 PATIENT_PENDING_PURPOSE_KEY = "patient_pending_purpose"
 PATIENT_NEXT_KEY = "patient_next"
+PATIENT_GOOGLE_STATE_KEY = "patient_google_state"
+CSRF_SESSION_KEY = "_csrf_token"
+GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "").strip()
+GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "").strip()
+GOOGLE_OAUTH_SCOPE = "openid email profile"
+GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
+GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
+GOOGLE_USERINFO_URL = "https://openidconnect.googleapis.com/v1/userinfo"
 RATE_LIMIT_WINDOW_SECONDS = max(
     1, int(os.environ.get("RATE_LIMIT_WINDOW_SECONDS", "300")))
 RATE_LIMIT_DEFAULT_MSG = (
@@ -259,7 +274,7 @@ def _notify_site_new_candidate(token):
     if not lead:
         return False
     to_addr = db.site_contact_for_nct(lead["nct"]) or SITE_NOTIFY_EMAIL
-    link = _abs_url("candidate_page", token=token)
+    link = _abs_url("candidate_page", token=lead["site_token"])
     subject, body = mailer.build_candidate_message(lead, link)
     return _notify(to_addr, subject, body)
 
@@ -301,7 +316,7 @@ def _notify_site_message(lead, body):
     if not lead:
         return False
     to_addr = db.site_contact_for_nct(lead["nct"]) or SITE_NOTIFY_EMAIL
-    link = _abs_url("candidate_page", token=lead["token"])
+    link = _abs_url("candidate_page", token=lead["site_token"])
     subject, msg = mailer.build_dm_message(lead, body, link, to="site")
     return _notify(to_addr, subject, msg)
 
@@ -472,6 +487,35 @@ def _safe_next(raw):
     return p.path if p.path.startswith("/") else ""
 
 
+def _csrf_token():
+    tok = session.get(CSRF_SESSION_KEY, "")
+    if not tok:
+        tok = secrets.token_urlsafe(32)
+        session[CSRF_SESSION_KEY] = tok
+    return tok
+
+
+app.jinja_env.globals["csrf_token"] = _csrf_token
+
+
+@app.before_request
+def _csrf_guard():
+    _csrf_token()
+    if request.method != "POST":
+        return None
+    if request.endpoint in {"alerts_run", "reminders_run"}:
+        return None
+    sent = (request.form.get("_csrf_token", "")
+            or request.headers.get("X-CSRF-Token", ""))
+    good = session.get(CSRF_SESSION_KEY, "")
+    if sent and good and hmac.compare_digest(sent, good):
+        return None
+    if _is_json_request():
+        return jsonify({"ok": False, "error": "csrf_failed"}), 403
+    flash("Your session expired. Please retry.", "error")
+    return redirect(request.referrer or request.path or url_for("home"))
+
+
 def _is_json_request():
     accepts = request.accept_mimetypes
     if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
@@ -511,7 +555,8 @@ def _guard_ip_rate_limit(route_key, template_name="", **template_ctx):
         ok, retry_after = False, RATE_LIMIT_WINDOW_SECONDS
     if ok:
         return None
-    flash(RATE_LIMIT_DEFAULT_MSG, "error")
+    mins = max(1, int(math.ceil(float(retry_after) / 60.0)))
+    flash(f"{RATE_LIMIT_DEFAULT_MSG} Try again in about {mins} minute(s).", "error")
     return _rate_limited_response(RATE_LIMIT_DEFAULT_MSG, retry_after,
                                   template_name, **template_ctx)
 
@@ -541,6 +586,46 @@ def _issue_patient_code(patient, purpose):
     return ok, msg
 
 
+def _google_ready():
+    return bool(GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET)
+
+
+def _google_exchange_code(code):
+    payload = urllib.parse.urlencode({
+        "code": code,
+        "client_id": GOOGLE_CLIENT_ID,
+        "client_secret": GOOGLE_CLIENT_SECRET,
+        "redirect_uri": _abs_url("patient_google_callback"),
+        "grant_type": "authorization_code",
+    }).encode("utf-8")
+    req = urllib.request.Request(
+        GOOGLE_TOKEN_URL,
+        data=payload,
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=20) as r:
+        return json.loads(r.read().decode("utf-8"))
+
+
+def _google_userinfo(access_token):
+    req = urllib.request.Request(
+        GOOGLE_USERINFO_URL,
+        headers={"Authorization": f"Bearer {access_token}"},
+        method="GET",
+    )
+    with urllib.request.urlopen(req, timeout=20) as r:
+        return json.loads(r.read().decode("utf-8"))
+
+
+def _post_patient_login_redirect():
+    fresh = db.get_patient_user(session.get(PATIENT_SESSION_KEY))
+    if fresh and not fresh["onboarding_done"]:
+        return redirect(url_for("patient_onboarding"))
+    nxt = session.pop(PATIENT_NEXT_KEY, "")
+    return redirect(nxt if nxt.startswith("/") else url_for("home"))
+
+
 @app.route("/account/signup", methods=["GET", "POST"])
 def patient_signup():
     if g.patient_user:
@@ -559,10 +644,12 @@ def patient_signup():
         pw = request.form.get("password", "")
         if not full_name or not email or not pw:
             flash("Name, email, and password are required.", "error")
-            return render_template("patient_signup.html")
+            return render_template("patient_signup.html",
+                                   google_enabled=_google_ready())
         if len(pw) < 8:
             flash("Use at least 8 characters for your password.", "error")
-            return render_template("patient_signup.html")
+            return render_template("patient_signup.html",
+                                   google_enabled=_google_ready())
         if db.get_patient_by_email(email):
             flash("An account with that email already exists. Try signing in.", "error")
             return redirect(url_for("patient_login"))
@@ -572,12 +659,13 @@ def patient_signup():
         ok, msg = _issue_patient_code(patient, "signup")
         if not ok:
             flash(msg, "error")
-            return render_template("patient_signup.html")
+            return render_template("patient_signup.html",
+                                   google_enabled=_google_ready())
         session[PATIENT_PENDING_KEY] = pid
         session[PATIENT_PENDING_PURPOSE_KEY] = "signup"
         flash("Check your email for a 6-digit verification code.", "success")
         return redirect(url_for("patient_verify"))
-    return render_template("patient_signup.html")
+    return render_template("patient_signup.html", google_enabled=_google_ready())
 
 
 @app.route("/account/verify", methods=["GET", "POST"])
@@ -603,11 +691,7 @@ def patient_verify():
             session.pop(PATIENT_PENDING_KEY, None)
             session.pop(PATIENT_PENDING_PURPOSE_KEY, None)
             flash("You're verified and signed in.", "success")
-            fresh = db.get_patient_user(patient["id"])
-            if not fresh["onboarding_done"]:
-                return redirect(url_for("patient_onboarding"))
-            nxt = session.pop(PATIENT_NEXT_KEY, "")
-            return redirect(nxt if nxt.startswith("/") else url_for("home"))
+            return _post_patient_login_redirect()
         flash("Invalid or expired code. Request a new one.", "error")
     return render_template("patient_verify.html", email=patient["email"],
                            purpose=purpose)
@@ -650,21 +734,110 @@ def patient_login():
         patient = db.get_patient_by_email(email)
         if not patient or not check_password_hash(patient["password_hash"], pw):
             flash("Wrong email or password.", "error")
-            return render_template("patient_login.html")
+            return render_template("patient_login.html",
+                                   google_enabled=_google_ready())
         if not patient["verified"]:
+            ok, msg = _issue_patient_code(patient, "signup")
+            if not ok:
+                flash(msg, "error")
+                return render_template("patient_login.html",
+                                       google_enabled=_google_ready())
             session[PATIENT_PENDING_KEY] = patient["id"]
             session[PATIENT_PENDING_PURPOSE_KEY] = "signup"
-            flash("Verify your email to finish account setup.", "error")
+            flash("Verify your email to finish account setup. We sent a fresh code.", "success")
             return redirect(url_for("patient_verify"))
         ok, msg = _issue_patient_code(patient, "login")
         if not ok:
             flash(msg, "error")
-            return render_template("patient_login.html")
+            return render_template("patient_login.html",
+                                   google_enabled=_google_ready())
         session[PATIENT_PENDING_KEY] = patient["id"]
         session[PATIENT_PENDING_PURPOSE_KEY] = "login"
         flash("Enter the 6-digit code we sent to your email.", "success")
         return redirect(url_for("patient_verify"))
-    return render_template("patient_login.html")
+    return render_template("patient_login.html", google_enabled=_google_ready())
+
+
+@app.route("/account/google")
+def patient_google_start():
+    if g.patient_user:
+        return _post_patient_login_redirect()
+    if not _google_ready():
+        flash("Google sign-in is not configured yet.", "error")
+        return redirect(url_for("patient_login"))
+    nxt = _safe_next(request.args.get("next", ""))
+    if nxt:
+        session[PATIENT_NEXT_KEY] = nxt
+    state = secrets.token_urlsafe(24)
+    session[PATIENT_GOOGLE_STATE_KEY] = state
+    qs = urllib.parse.urlencode({
+        "client_id": GOOGLE_CLIENT_ID,
+        "redirect_uri": _abs_url("patient_google_callback"),
+        "response_type": "code",
+        "scope": GOOGLE_OAUTH_SCOPE,
+        "state": state,
+        "prompt": "select_account",
+    })
+    return redirect(f"{GOOGLE_AUTH_URL}?{qs}")
+
+
+@app.route("/account/google/callback")
+def patient_google_callback():
+    if not _google_ready():
+        flash("Google sign-in is not configured yet.", "error")
+        return redirect(url_for("patient_login"))
+    if request.args.get("error"):
+        flash("Google sign-in was cancelled. Please try again.", "error")
+        return redirect(url_for("patient_login"))
+    state = request.args.get("state", "")
+    good_state = session.pop(PATIENT_GOOGLE_STATE_KEY, "")
+    if not state or not good_state or not hmac.compare_digest(state, good_state):
+        flash("Google sign-in failed state validation. Please try again.", "error")
+        return redirect(url_for("patient_login"))
+    code = request.args.get("code", "").strip()
+    if not code:
+        flash("Google sign-in did not return a code.", "error")
+        return redirect(url_for("patient_login"))
+    try:
+        tok = _google_exchange_code(code)
+        access_token = (tok or {}).get("access_token", "")
+        profile = _google_userinfo(access_token)
+    except Exception:
+        app.logger.exception("google oauth callback failed")
+        flash("Google sign-in failed. Please try again.", "error")
+        return redirect(url_for("patient_login"))
+
+    email = (profile.get("email", "") or "").strip().lower()
+    sub = (profile.get("sub", "") or "").strip()
+    name = (profile.get("name", "") or "").strip()
+    picture = (profile.get("picture", "") or "").strip()
+    if not email or not sub:
+        flash("Google did not return required profile fields.", "error")
+        return redirect(url_for("patient_login"))
+
+    patient = db.get_patient_by_oauth("google", sub)
+    if not patient:
+        patient = db.get_patient_by_email(email)
+        if patient:
+            db.link_patient_oauth(patient["id"], "google", sub, name, picture)
+            patient = db.get_patient_user(patient["id"])
+        else:
+            pid = db.create_patient_user(
+                email=email,
+                password_hash=generate_password_hash(
+                    secrets.token_urlsafe(32), method="pbkdf2:sha256"),
+                full_name=name,
+                oauth_provider="google",
+                oauth_sub=sub,
+                oauth_picture=picture,
+                verified=True,
+            )
+            patient = db.get_patient_user(pid)
+    session[PATIENT_SESSION_KEY] = patient["id"]
+    session.pop(PATIENT_PENDING_KEY, None)
+    session.pop(PATIENT_PENDING_PURPOSE_KEY, None)
+    flash("Signed in with Google.", "success")
+    return _post_patient_login_redirect()
 
 
 @app.route("/account/logout", methods=["POST"])
@@ -1510,16 +1683,16 @@ def candidate_schedule(token):
     url = request.form.get("schedule_url", "").strip()
     if url and not url.startswith(("http://", "https://")):
         url = "https://" + url
-    lead = db.get_lead_by_token(token)
+    lead = _site_token_lead_or_none(token)
     if not lead:
-        abort(404)
+        abort(410)
     lead = db.set_lead_schedule(lead["id"], url)
     if url:
         _notify_applicant_schedule(lead)
         flash("Booking link sent to the applicant.", "ok")
     else:
         flash("Booking link removed.", "ok")
-    return redirect(url_for("candidate_page", token=token))
+    return redirect(url_for("candidate_page", token=lead["site_token"]))
 
 
 @app.route("/app/leads/<int:lead_id>/redcap", methods=["POST"])
@@ -1554,6 +1727,35 @@ def reconcile_lead(lead_id):
         flash(f"Saved: {db.RECON_LABELS.get(outcome, outcome)}.", "success")
     else:
         flash("Couldn't save that verification update.", "error")
+    return redirect(url_for("leads"))
+
+
+@app.route("/app/leads/<int:lead_id>/site-token/revoke", methods=["POST"])
+@login_required
+def revoke_lead_site_token(lead_id):
+    _ensure_site_access_for_lead(lead_id)
+    if db.revoke_site_token(lead_id, revoked=True):
+        db.update_lead_status(
+            lead_id, db.get_lead(lead_id)["status"],
+            "secure study-team link revoked", actor="you")
+        flash("Secure candidate link revoked.", "success")
+    else:
+        flash("Couldn't revoke secure link.", "error")
+    return redirect(url_for("leads"))
+
+
+@app.route("/app/leads/<int:lead_id>/site-token/extend", methods=["POST"])
+@login_required
+def extend_lead_site_token(lead_id):
+    _ensure_site_access_for_lead(lead_id)
+    days = request.form.get("days", "").strip()
+    if db.extend_site_token(lead_id, days):
+        db.update_lead_status(
+            lead_id, db.get_lead(lead_id)["status"],
+            "secure study-team link extended", actor="you")
+        flash("Secure candidate link extended.", "success")
+    else:
+        flash("Couldn't extend secure link.", "error")
     return redirect(url_for("leads"))
 
 
@@ -2276,11 +2478,18 @@ def referral_mark_sent(ref_id):
 # review a de-identified applicant and accept/decline. This is what closes the
 # consumer loop without any cold email: you share the link with the site.
 # --------------------------------------------------------------------------- #
+def _site_token_lead_or_none(token):
+    lead = db.get_lead_by_site_token(token)
+    if not lead:
+        return None
+    return lead if db.site_token_active(lead) else None
+
+
 @app.route("/c/<token>")
 def candidate_page(token):
-    lead = db.get_lead_by_token(token)
+    lead = _site_token_lead_or_none(token)
     if not lead:
-        abort(404)
+        abort(410)
     messages = db.get_messages(lead["id"])
     visits = db.get_visits(lead["id"])
     if lead["revealed"]:
@@ -2295,7 +2504,9 @@ def candidate_page(token):
 @app.route("/c/<token>/accept", methods=["POST"])
 def candidate_accept(token):
     if db.accept_candidate_by_token(token, request.form.get("note", "").strip()):
-        _notify_applicant(token, "accepted")
+        lead = db.get_lead_by_site_token(token)
+        if lead:
+            _notify_applicant(lead["token"], "accepted")
         flash("Accepted. The applicant's contact details are now unlocked below "
               "so you can invite them to a screening visit.", "ok")
     else:
@@ -2306,7 +2517,9 @@ def candidate_accept(token):
 @app.route("/c/<token>/decline", methods=["POST"])
 def candidate_decline(token):
     if db.decline_candidate_by_token(token, request.form.get("reason", "").strip()):
-        _notify_applicant(token, "declined")
+        lead = db.get_lead_by_site_token(token)
+        if lead:
+            _notify_applicant(lead["token"], "declined")
         flash("Marked as not a match. No contact details were revealed.", "ok")
     else:
         flash("Couldn't update this candidate.", "error")
@@ -2316,9 +2529,9 @@ def candidate_decline(token):
 @app.route("/c/<token>/message", methods=["POST"])
 def candidate_message(token):
     """Study team messages the applicant. Only after acceptance (blinded model)."""
-    lead = db.get_lead_by_token(token)
+    lead = _site_token_lead_or_none(token)
     if not lead:
-        abort(404)
+        abort(410)
     if not lead["revealed"]:
         flash("Accept the candidate first to start a conversation.", "error")
         return redirect(url_for("candidate_page", token=token))
@@ -2333,9 +2546,9 @@ def candidate_message(token):
 @app.route("/c/<token>/visit", methods=["POST"])
 def candidate_visit(token):
     """Study team books a screening/follow-up visit for an accepted candidate."""
-    lead = db.get_lead_by_token(token)
+    lead = _site_token_lead_or_none(token)
     if not lead:
-        abort(404)
+        abort(410)
     if not lead["revealed"]:
         flash("Accept the candidate first to book a visit.", "error")
         return redirect(url_for("candidate_page", token=token))
@@ -2365,8 +2578,9 @@ def candidate_advance(token):
     note = request.form.get("note", "").strip()
     if status in ("screening", "enrolled", "closed") and \
             db.advance_by_token(token, status, note):
+        lead = db.get_lead_by_site_token(token)
         if status in ("screening", "enrolled"):
-            _notify_applicant(token, status)
+            _notify_applicant(lead["token"], status)
         flash(f"Updated to \"{db.LEAD_LABELS.get(status, status)}\".", "ok")
     else:
         flash("Couldn't update status.", "error")

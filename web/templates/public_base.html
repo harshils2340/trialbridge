@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
   <title>{% block title %}TrialBridge - find a clinical trial near you{% endblock %}</title>
   <meta name="description" content="{% block description %}Find recruiting clinical trials and apply online.{% endblock %}">
   <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='logo.svg') }}">
@@ -51,5 +52,30 @@
     <a href="{{ url_for('login') }}">Clinician sign in</a>
   </div>
 </footer>
+<script>
+(function () {
+  function attachCsrf() {
+    var meta = document.querySelector('meta[name="csrf-token"]');
+    var token = meta ? meta.getAttribute('content') : '';
+    if (!token) return;
+    var forms = document.querySelectorAll('form');
+    forms.forEach(function (form) {
+      var method = (form.getAttribute('method') || 'get').toLowerCase();
+      if (method !== 'post') return;
+      if (form.querySelector('input[name="_csrf_token"]')) return;
+      var input = document.createElement('input');
+      input.type = 'hidden';
+      input.name = '_csrf_token';
+      input.value = token;
+      form.prepend(input);
+    });
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', attachCsrf);
+  } else {
+    attachCsrf();
+  }
+})();
+</script>
 </body>
 </html>

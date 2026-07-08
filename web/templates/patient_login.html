@@ -3,14 +3,60 @@
 {% block body %}
 <section class="find-wrap">
   <h1 class="find-title">Sign in</h1>
-  <p class="find-lead">Enter your password, then verify with a 6-digit email code.</p>
-  <form method="post" class="find-form">
+  <p class="find-lead">Continue with Google for one-tap access.</p>
+  {% if google_enabled %}
+  <a class="btn btn-primary" href="{{ url_for('patient_google_start', next=request.args.get('next', '')) }}" style="margin-bottom:10px;">Continue with Google</a>
+  <p class="cond-note" style="margin-top:0;">Prefer email login? Use the fallback below.</p>
+  {% endif %}
+  <form method="post" class="find-form" novalidate data-friendly-validate>
     <label class="find-field"><span>Email</span>
       <input type="email" name="email" required></label>
+      <p class="find-error" data-error-for="email"></p>
     <label class="find-field"><span>Password</span>
       <input type="password" name="password" required></label>
+      <p class="find-error" data-error-for="password"></p>
     <button class="btn btn-primary" type="submit">Continue</button>
   </form>
   <p class="cond-note">No account yet? <a href="{{ url_for('patient_signup') }}">Create one</a></p>
 </section>
+<script>
+(function () {
+  var form = document.querySelector('form[data-friendly-validate]');
+  if (!form) return;
+
+  function showError(name, message) {
+    var input = form.querySelector('[name="' + name + '"]');
+    var err = form.querySelector('[data-error-for="' + name + '"]');
+    if (input) input.classList.add('input-invalid');
+    if (err) {
+      err.textContent = message || '';
+      err.classList.toggle('show', !!message);
+    }
+  }
+
+  function clearError(name) {
+    showError(name, '');
+    var input = form.querySelector('[name="' + name + '"]');
+    if (input) input.classList.remove('input-invalid');
+  }
+
+  ['email', 'password'].forEach(function (name) {
+    var input = form.querySelector('[name="' + name + '"]');
+    if (!input) return;
+    input.addEventListener('input', function () { clearError(name); });
+  });
+
+  form.addEventListener('submit', function (e) {
+    var email = (form.email.value || '').trim();
+    var password = form.password.value || '';
+    var ok = true;
+    if (!email) { showError('email', 'Enter your email address.'); ok = false; }
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      showError('email', 'Enter a valid email address.'); ok = false;
+    }
+    if (!password) { showError('password', 'Enter your password.'); ok = false; }
+    if (!ok) e.preventDefault();
+  });
+})();
+</script>
 {% endblock %}

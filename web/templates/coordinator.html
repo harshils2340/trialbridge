@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
   <title>Referral {{ ref['nct'] }} · TrialBridge</title>
   <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='logo.svg') }}">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -91,5 +92,20 @@
 
   <p class="coord-foot">Secure referral link · TrialBridge</p>
 </div>
+<script>
+(function () {
+  var meta = document.querySelector('meta[name="csrf-token"]');
+  var token = meta ? meta.getAttribute('content') : '';
+  if (!token) return;
+  document.querySelectorAll('form[method="post"]').forEach(function (form) {
+    if (form.querySelector('input[name="_csrf_token"]')) return;
+    var input = document.createElement('input');
+    input.type = 'hidden';
+    input.name = '_csrf_token';
+    input.value = token;
+    form.prepend(input);
+  });
+})();
+</script>
 </body>
 </html>
