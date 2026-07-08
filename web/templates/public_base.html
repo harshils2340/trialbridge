@@ -14,10 +14,10 @@
 </head>
 <body class="pub">
 {% import "_icons.html" as ic %}
-{% include "_pov_bar.html" %}
 <header class="pub-nav">
   <a class="brand" href="{{ url_for('home') }}"><img class="brand-mark" src="{{ url_for('static', filename='logo.svg') }}" width="24" height="24" alt="">TrialBridge</a>
   <nav class="pub-nav-links">
+    {% include "_pov_bar.html" %}
     <a href="{{ url_for('home') }}">Find a trial</a>
     <a href="{{ url_for('how_it_works') }}">How it works</a>
     <a href="{{ url_for('alerts') }}" class="pub-apps">Alerts{% if alerts_new_count %} <span class="nav-badge nav-badge-new">{{ alerts_new_count }}</span>{% endif %}</a>

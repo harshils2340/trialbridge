@@ -543,7 +543,7 @@ body.pub { background: var(--surface); }
 
 .pub-nav { display: flex; align-items: center; justify-content: space-between;
   max-width: 1180px; margin: 0 auto; padding: 20px 32px; }
-.pub-nav-links { display: flex; align-items: center; gap: 22px; }
+.pub-nav-links { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; justify-content: flex-end; }
 .pub-nav-links a { color: var(--muted); text-decoration: none; font-weight: 500;
   font-size: 14px; }
 .pub-nav-links a:hover { color: var(--ink); }
@@ -551,16 +551,18 @@ body.pub { background: var(--surface); }
   border-radius: 999px; color: var(--ink); }
 .pub-flash-wrap { max-width: 720px; margin: 0 auto; padding: 0 24px; }
 
-/* Demo POV switcher (only shown in no-login testing mode) */
-.pov-bar { display: flex; align-items: center; justify-content: center; gap: 8px;
-  flex-wrap: wrap; background: #0f1115; color: #fff; padding: 8px 16px; font-size: 13px; }
-.pov-lbl { color: rgba(255, 255, 255, .55); font-weight: 600; margin-right: 2px; }
-.pov-pill { display: inline-flex; align-items: center; gap: 6px; color: #fff; text-decoration: none;
-  padding: 5px 12px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, .22);
-  font-weight: 500; transition: .15s; }
+/* Demo POV switcher (embedded into existing header/shell) */
+.pov-switch { display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap;
+  padding: 3px; border-radius: 999px; background: #f0f1f5; border: 1px solid #e1e3ea; }
+.pov-pill { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); text-decoration: none;
+  padding: 6px 11px; border-radius: 999px; border: 1px solid transparent;
+  font-weight: 600; font-size: 12.5px; transition: .15s; }
 .pov-pill .ico { width: 14px; height: 14px; }
-.pov-pill:hover { background: rgba(255, 255, 255, .12); }
-.pov-pill.on { background: #fff; color: #0f1115; border-color: #fff; }
+.pov-pill:hover { color: var(--ink); background: #fff; border-color: #e6e8ef; }
+.pov-pill.on { background: #fff; color: #111218; border-color: #dfe2eb; box-shadow: 0 1px 2px rgba(17,17,20,.07); }
+.side-pov { margin-top: 12px; padding: 0 8px; }
+.side-pov .pov-switch { width: 100%; justify-content: space-between; border-radius: 12px; background: #f5f6fa; }
+.side-pov .pov-pill { padding: 6px 8px; font-size: 12px; }
 .pub-main { min-height: 60vh; }
 
 /* Hero */
@@ -865,6 +867,10 @@ body.pub { background: var(--surface); }
 .pub-foot a:hover { color: var(--accent); }
 
 @media (max-width: 720px) {
+  .pub-nav { padding: 14px 16px; align-items: flex-start; gap: 10px; }
+  .pub-nav-links { width: 100%; justify-content: flex-start; gap: 10px; }
+  .pub-nav-links .pov-switch { order: -1; width: 100%; justify-content: space-between; }
+  .pub-nav-links .pov-pill { flex: 1; justify-content: center; }
   .hero h1 { font-size: 36px; }
   .hero-search, .cond-search { flex-direction: column; }
   .hero-search .btn { width: 100%; justify-content: center; }

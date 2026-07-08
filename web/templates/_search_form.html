@@ -31,13 +31,14 @@
   {% endif %}
 </div>
 
-<form id="searchForm" class="tool-form" method="post" action="{{ url_for('search') }}">
+<form id="searchForm" class="tool-form" method="post" action="{{ url_for('search') }}" autocomplete="off">
   <div class="loc-strip">
     <div class="field loc-field">
       <label for="location">{{ ic.icon('pin') }} Patient location <span class="req">required</span>
         <button type="button" id="useLoc" class="link-btn loc-use">{{ ic.icon('pin') }} Use my current location</button>
       </label>
-      <input id="location" name="location" type="text" required autofocus
+      <input id="location" name="location" type="text" required autocomplete="new-password"
+             autocapitalize="off" autocorrect="off" spellcheck="false"
              placeholder="City or postal code - e.g. Toronto, ON or M5G 2C4"
              value="{{ request.form.get('location','') }}">
       <input type="hidden" id="locLat" name="lat" value="{{ request.form.get('lat','') }}">
