@@ -1066,10 +1066,33 @@ body.pub { background: var(--surface); }
 .sec-title { display: flex; align-items: center; gap: 8px; font-size: 15px; letter-spacing: -.01em;
   margin: 28px 0 14px; color: var(--ink); }
 .sec-title .ico { width: 16px; height: 16px; color: var(--accent); }
-.cand-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
-.cand-card { border: 1px solid var(--border-strong); border-radius: 14px; background: var(--surface);
-  box-shadow: var(--shadow); padding: 18px; display: flex; flex-direction: column; gap: 12px; }
-.cand-top { display: flex; align-items: center; justify-content: space-between; }
+/* Tabbed queue so Reviewed isn't buried below a long scroll */
+.rev-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin: 22px 0 18px; }
+.rev-tab { display: inline-flex; align-items: center; gap: 7px; background: none; border: 0;
+  padding: 10px 6px; margin-bottom: -1px; font: inherit; font-size: 14px; font-weight: 600;
+  color: var(--muted); cursor: pointer; border-bottom: 2px solid transparent; }
+.rev-tab .ico { width: 15px; height: 15px; }
+.rev-tab:hover { color: var(--ink); }
+.rev-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.tab-n { font-size: 12px; background: var(--surface-2); border: 1px solid var(--border);
+  color: var(--muted); padding: 1px 8px; border-radius: 999px; font-weight: 700; }
+.rev-tab.active .tab-n { background: var(--accent-soft); color: var(--accent); border-color: transparent; }
+.rev-panel { display: flex; flex-direction: column; gap: 12px; }
+
+/* Horizontal candidate row: id | trial+eligibility | actions */
+.cand-row { display: flex; gap: 24px; align-items: flex-start;
+  border: 1px solid var(--border-strong); border-radius: 14px; background: var(--surface);
+  box-shadow: var(--shadow); padding: 18px 20px; }
+.cand-row:hover { box-shadow: var(--shadow-lift); }
+.cr-left { width: 180px; flex-shrink: 0; display: flex; flex-direction: column; gap: 9px; }
+.cr-mid { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+.cr-right { width: 244px; flex-shrink: 0; display: flex; flex-direction: column; gap: 8px;
+  padding-left: 20px; border-left: 1px solid var(--border); }
+.cr-rec { font-size: 12.5px; display: inline-flex; align-items: center; gap: 5px; }
+.cr-rec .ico { width: 14px; height: 14px; }
+.cr-right form { width: 100%; margin: 0; }
+.cr-right .btn-ok, .cr-right .decline-pop > summary { width: 100%; justify-content: center; }
+.cand-details { display: flex; flex-direction: column; gap: 8px; }
 .cand-code { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; font-size: 14px; }
 .cand-code .ico { width: 15px; height: 15px; color: var(--accent); }
 .cand-demo { font-size: 12px; color: var(--muted); background: var(--surface-2);
@@ -1112,14 +1135,23 @@ body.pub { background: var(--surface); }
   font-size: 12.5px; font-family: var(--sans); }
 .cand-priv { font-size: 11.5px; color: var(--faint); display: flex; align-items: center; gap: 5px; margin: 0; }
 .cand-priv .ico { width: 13px; height: 13px; color: var(--green); }
-.cand-share { margin: 6px 0 2px; }
-.cand-share label { display: flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: 5px; }
-.cand-share label .ico { width: 13px; height: 13px; }
-.cand-share-row { display: flex; gap: 6px; }
-.cand-share-row input { flex: 1; min-width: 0; font-size: 12px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg-soft); color: var(--muted); font-family: ui-monospace, monospace; }
-.cand-share-hint { display: block; font-size: 11px; color: var(--faint); margin-top: 4px; }
+.cand-share { margin: 2px 0; }
+.cand-share > summary { list-style: none; cursor: pointer; display: flex; align-items: center;
+  gap: 5px; font-size: 12px; font-weight: 600; color: var(--muted); }
+.cand-share > summary::-webkit-details-marker { display: none; }
+.cand-share > summary:hover { color: var(--accent); }
+.cand-share > summary .ico { width: 13px; height: 13px; }
+.cand-share-row { display: flex; gap: 6px; margin-top: 8px; }
+.cand-share-row input { flex: 1; min-width: 0; font-size: 12px; padding: 6px 8px; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--surface-2); color: var(--muted); font-family: var(--mono); }
+.cand-share-hint { display: block; font-size: 11px; color: var(--faint); margin-top: 4px; line-height: 1.4; }
 .locked { color: var(--faint); display: inline-flex; align-items: center; gap: 4px; }
 .locked .ico { width: 13px; height: 13px; }
+@media (max-width: 900px) {
+  .cand-row { flex-direction: column; gap: 14px; }
+  .cr-left, .cr-right { width: 100%; }
+  .cr-left { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+  .cr-right { padding-left: 0; border-left: 0; border-top: 1px solid var(--border); padding-top: 14px; }
+}
 
 /* Clickable result cards -> trial detail page (list view) */
 .pr-card { transition: border-color .15s, box-shadow .15s, transform .15s; }

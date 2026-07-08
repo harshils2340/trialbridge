@@ -13,72 +13,78 @@
   <div class="stat"><div class="l">{{ ic.icon('user-plus', 'ico stat-ico') }}Enrolled</div><div class="n">{{ counts.get('enrolled', 0) }}</div></div>
 </div>
 
-<h2 class="sec-title">{{ ic.icon('activity') }} Awaiting your review</h2>
-{% if not review %}
-<div class="card"><div class="empty"><h3>All caught up</h3><p>New de-identified candidates will appear here as people apply.</p></div></div>
-{% endif %}
+<div class="rev-tabs" role="tablist">
+  <button type="button" class="rev-tab active" data-tab="review">{{ ic.icon('activity') }} Awaiting review <span class="tab-n">{{ review|length }}</span></button>
+  <button type="button" class="rev-tab" data-tab="reviewed">{{ ic.icon('list') }} Reviewed <span class="tab-n">{{ reviewed|length }}</span></button>
+</div>
 
-<div class="cand-grid">
+<div class="rev-panel" data-panel="review">
+  {% if not review %}
+  <div class="card"><div class="empty"><h3>All caught up</h3><p>New de-identified candidates will appear here as people apply.</p></div></div>
+  {% endif %}
+
   {% for it in review %}
   {% set l = it.lead %}
-  <div class="cand-card">
-    <div class="cand-top">
+  <div class="cand-row">
+    <div class="cr-left">
       <span class="cand-code">{{ ic.icon('user-plus') }} {{ it.code }}</span>
       <span class="cand-demo">{{ it.age_band }}{% if l['sex'] %} · {{ l['sex']|capitalize }}{% endif %}</span>
-    </div>
-
-    <div class="cand-trial">
-      {% if l['nct'] %}<a href="https://clinicaltrials.gov/study/{{ l['nct'] }}" target="_blank" rel="noopener">{{ l['nct'] }}</a>{% endif %}
-      <div class="cand-title">{{ l['title'] }}</div>
-    </div>
-
-    <div class="cand-meta">
-      {% if l['condition'] %}<span>{{ ic.icon('activity') }} {{ l['condition'] }}</span>{% endif %}
-      {% if l['location'] %}<span>{{ ic.icon('pin') }} {{ l['location'] }}</span>{% endif %}
-      <span class="{{ 'rec-yes' if l['records_connected'] else 'rec-no' }}">
+      <div class="cand-elig">
+        <span class="ec ec-met">{{ it.elig.get('met', [])|length }} met</span>
+        <span class="ec ec-unk">{{ it.elig.get('unknown', [])|length }} to confirm</span>
+        <span class="ec ec-no">{{ it.elig.get('not_met', [])|length }} not met</span>
+      </div>
+      <span class="cr-rec {{ 'rec-yes' if l['records_connected'] else 'rec-no' }}">
         {{ ic.icon('check') if l['records_connected'] else ic.icon('upload') }}
         {{ 'Record connected' if l['records_connected'] else 'No record' }}</span>
     </div>
 
-    <div class="cand-elig">
-      <span class="ec ec-met">{{ it.elig.get('met', [])|length }} met</span>
-      <span class="ec ec-unk">{{ it.elig.get('unknown', [])|length }} to confirm</span>
-      <span class="ec ec-no">{{ it.elig.get('not_met', [])|length }} not met</span>
+    <div class="cr-mid">
+      <div class="cand-trial">
+        {% if l['nct'] %}<a href="https://clinicaltrials.gov/study/{{ l['nct'] }}" target="_blank" rel="noopener">{{ l['nct'] }}</a>{% endif %}
+        <div class="cand-title">{{ l['title'] }}</div>
+      </div>
+      <div class="cand-meta">
+        {% if l['condition'] %}<span>{{ ic.icon('activity') }} {{ l['condition'] }}</span>{% endif %}
+        {% if l['location'] %}<span>{{ ic.icon('pin') }} {{ l['location'] }}</span>{% endif %}
+      </div>
+
+      {% if it.flags %}
+      <div class="cand-flags">{{ ic.icon('activity') }} {{ it.flags|join(' · ') }}</div>
+      {% endif %}
+
+      <div class="cand-details">
+        {% if it.elig.get('met') or it.elig.get('unknown') or it.elig.get('not_met') %}
+        <details class="cand-detail">
+          <summary>Eligibility breakdown</summary>
+          {% if it.elig.get('rationale') %}<p class="cand-rationale">{{ it.elig.rationale }}</p>{% endif %}
+          {% if it.elig.get('met') %}<div class="eb eb-met"><b>Meets</b><ul>{% for x in it.elig.met[:8] %}<li>{{ x }}</li>{% endfor %}</ul></div>{% endif %}
+          {% if it.elig.get('unknown') %}<div class="eb eb-unk"><b>To confirm at screening</b><ul>{% for x in it.elig.unknown[:8] %}<li>{{ x }}</li>{% endfor %}</ul></div>{% endif %}
+          {% if it.elig.get('not_met') %}<div class="eb eb-no"><b>Possible barriers</b><ul>{% for x in it.elig.not_met[:8] %}<li>{{ x }}</li>{% endfor %}</ul></div>{% endif %}
+        </details>
+        {% endif %}
+
+        {% if it.screener %}
+        <details class="cand-detail">
+          <summary>Screener answers</summary>
+          <ul class="cand-screener">
+            {% for k, v in it.screener.items() %}
+            <li><span>{{ screener_labels.get(k, k) }}</span><b>{{ v|capitalize }}</b></li>
+            {% endfor %}
+          </ul>
+        </details>
+        {% endif %}
+
+        {% if l['records_connected'] and l['record_summary'] %}
+        <details class="cand-detail">
+          <summary>Connected record (de-identified)</summary>
+          <pre class="cand-record">{{ l['record_summary'] }}</pre>
+        </details>
+        {% endif %}
+      </div>
     </div>
 
-    {% if it.flags %}
-    <div class="cand-flags">{{ ic.icon('activity') }} {{ it.flags|join(' · ') }}</div>
-    {% endif %}
-
-    {% if it.elig.get('met') or it.elig.get('unknown') or it.elig.get('not_met') %}
-    <details class="cand-detail">
-      <summary>Eligibility breakdown</summary>
-      {% if it.elig.get('rationale') %}<p class="cand-rationale">{{ it.elig.rationale }}</p>{% endif %}
-      {% if it.elig.get('met') %}<div class="eb eb-met"><b>Meets</b><ul>{% for x in it.elig.met[:8] %}<li>{{ x }}</li>{% endfor %}</ul></div>{% endif %}
-      {% if it.elig.get('unknown') %}<div class="eb eb-unk"><b>To confirm at screening</b><ul>{% for x in it.elig.unknown[:8] %}<li>{{ x }}</li>{% endfor %}</ul></div>{% endif %}
-      {% if it.elig.get('not_met') %}<div class="eb eb-no"><b>Possible barriers</b><ul>{% for x in it.elig.not_met[:8] %}<li>{{ x }}</li>{% endfor %}</ul></div>{% endif %}
-    </details>
-    {% endif %}
-
-    {% if it.screener %}
-    <details class="cand-detail">
-      <summary>Screener answers</summary>
-      <ul class="cand-screener">
-        {% for k, v in it.screener.items() %}
-        <li><span>{{ screener_labels.get(k, k) }}</span><b>{{ v|capitalize }}</b></li>
-        {% endfor %}
-      </ul>
-    </details>
-    {% endif %}
-
-    {% if l['records_connected'] and l['record_summary'] %}
-    <details class="cand-detail">
-      <summary>Connected record (de-identified)</summary>
-      <pre class="cand-record">{{ l['record_summary'] }}</pre>
-    </details>
-    {% endif %}
-
-    <div class="cand-actions">
+    <div class="cr-right">
       <form method="post" action="{{ url_for('accept_lead', lead_id=l['id']) }}">
         <button class="btn btn-ok" type="submit">{{ ic.icon('check') }} Accept &amp; unlock contact</button>
       </form>
@@ -89,56 +95,72 @@
           <button class="btn btn-sm" type="submit">Confirm decline</button>
         </form>
       </details>
+      <details class="cand-share">
+        <summary>{{ ic.icon('external') }} Secure link for the study site</summary>
+        <div class="cand-share-row">
+          <input type="text" readonly value="{{ url_for('candidate_page', token=l['token'], _external=True) }}" onclick="this.select()">
+          <button type="button" class="btn btn-sm" onclick="navigator.clipboard.writeText(this.previousElementSibling.value);this.textContent='Copied'">Copy</button>
+        </div>
+        <span class="cand-share-hint">The coordinator can review &amp; accept without a login. No email is sent.</span>
+      </details>
+      <p class="cand-priv">{{ ic.icon('check') }} Contact stays hidden until you accept.</p>
     </div>
-    <div class="cand-share">
-      <label>{{ ic.icon('external') }} Secure link for the study site</label>
-      <div class="cand-share-row">
-        <input type="text" readonly value="{{ url_for('candidate_page', token=l['token'], _external=True) }}" onclick="this.select()">
-        <button type="button" class="btn btn-sm" onclick="navigator.clipboard.writeText(this.previousElementSibling.value);this.textContent='Copied'">Copy</button>
-      </div>
-      <span class="cand-share-hint">Share with the coordinator - they can review &amp; accept without a login. No email is sent.</span>
-    </div>
-    <p class="cand-priv">{{ ic.icon('check') }} Contact stays hidden until you accept - de-identified pre-screen keeps you compliant.</p>
   </div>
   {% endfor %}
 </div>
 
-<h2 class="sec-title">{{ ic.icon('list') }} Reviewed</h2>
-<div class="card">
-  {% if not reviewed %}
-  <div class="empty"><p>Accepted and declined candidates show up here.</p></div>
-  {% else %}
-  <table>
-    <thead><tr><th>Candidate</th><th>Trial</th><th>Status</th><th>Contact</th><th>Update</th></tr></thead>
-    <tbody>
-      {% for it in reviewed %}
-      {% set l = it.lead %}
-      <tr>
-        <td><b>{% if l['revealed'] %}{{ l['name'] }}{% else %}{{ it.code }}{% endif %}</b>
-          <div class="tag">{{ it.age_band }}{% if l['sex'] %} · {{ l['sex']|capitalize }}{% endif %}</div></td>
-        <td>{% if l['nct'] %}<a href="https://clinicaltrials.gov/study/{{ l['nct'] }}" target="_blank" rel="noopener">{{ l['nct'] }}</a>{% endif %}<div class="tag">{{ l['title'][:44] }}</div></td>
-        <td><span class="pill pill-{{ l['status'] }}">{{ labels.get(l['status'], l['status']) }}</span>
-          {% if l['decision'] == 'declined' and l['decision_reason'] %}<div class="tag">{{ l['decision_reason'] }}</div>{% endif %}</td>
-        <td class="tag">
-          {% if l['revealed'] %}
-            {% if l['email'] %}{{ l['email'] }}{% endif %}{% if l['phone'] %}<div class="mono">{{ l['phone'] }}</div>{% endif %}
-          {% else %}<span class="locked">{{ ic.icon('check') }} hidden</span>{% endif %}
-        </td>
-        <td>
-          {% if l['status'] not in ['closed', 'withdrawn'] %}
-          <form method="post" action="{{ url_for('update_lead', lead_id=l['id']) }}" class="lead-status-form">
-            <select name="status">
-              {% for s in statuses %}<option value="{{ s }}" {{ 'selected' if s == l['status'] else '' }}>{{ labels.get(s, s) }}</option>{% endfor %}
-            </select>
-            <input type="text" name="note" placeholder="Note (optional)">
-            <button class="btn btn-sm" type="submit">Save</button>
-          </form>
-          {% else %}<span class="tag">-</span>{% endif %}
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  {% endif %}
+<div class="rev-panel" data-panel="reviewed" hidden>
+  <div class="card">
+    {% if not reviewed %}
+    <div class="empty"><p>Accepted and declined candidates show up here.</p></div>
+    {% else %}
+    <table>
+      <thead><tr><th>Candidate</th><th>Trial</th><th>Status</th><th>Contact</th><th>Update</th></tr></thead>
+      <tbody>
+        {% for it in reviewed %}
+        {% set l = it.lead %}
+        <tr>
+          <td><b>{% if l['revealed'] %}{{ l['name'] }}{% else %}{{ it.code }}{% endif %}</b>
+            <div class="tag">{{ it.age_band }}{% if l['sex'] %} · {{ l['sex']|capitalize }}{% endif %}</div></td>
+          <td>{% if l['nct'] %}<a href="https://clinicaltrials.gov/study/{{ l['nct'] }}" target="_blank" rel="noopener">{{ l['nct'] }}</a>{% endif %}<div class="tag">{{ l['title'][:44] }}</div></td>
+          <td><span class="pill pill-{{ l['status'] }}">{{ labels.get(l['status'], l['status']) }}</span>
+            {% if l['decision'] == 'declined' and l['decision_reason'] %}<div class="tag">{{ l['decision_reason'] }}</div>{% endif %}</td>
+          <td class="tag">
+            {% if l['revealed'] %}
+              {% if l['email'] %}{{ l['email'] }}{% endif %}{% if l['phone'] %}<div class="mono">{{ l['phone'] }}</div>{% endif %}
+            {% else %}<span class="locked">{{ ic.icon('check') }} hidden</span>{% endif %}
+          </td>
+          <td>
+            {% if l['status'] not in ['closed', 'withdrawn'] %}
+            <form method="post" action="{{ url_for('update_lead', lead_id=l['id']) }}" class="lead-status-form">
+              <select name="status">
+                {% for s in statuses %}<option value="{{ s }}" {{ 'selected' if s == l['status'] else '' }}>{{ labels.get(s, s) }}</option>{% endfor %}
+              </select>
+              <input type="text" name="note" placeholder="Note (optional)">
+              <button class="btn btn-sm" type="submit">Save</button>
+            </form>
+            {% else %}<span class="tag">-</span>{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+  </div>
 </div>
+
+<script>
+(function () {
+  var tabs = document.querySelectorAll('.rev-tab');
+  var panels = document.querySelectorAll('.rev-panel');
+  tabs.forEach(function (t) {
+    t.addEventListener('click', function () {
+      tabs.forEach(function (x) { x.classList.remove('active'); });
+      t.classList.add('active');
+      var name = t.getAttribute('data-tab');
+      panels.forEach(function (p) { p.hidden = p.getAttribute('data-panel') !== name; });
+    });
+  });
+})();
+</script>
 {% endblock %}
