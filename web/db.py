@@ -165,6 +165,14 @@ CREATE TABLE IF NOT EXISTS trend_cache (
     updated_at  TEXT NOT NULL
 );
 
+-- Plain-English trial summaries (see web/summarize.py). Cached per study so we
+-- only rewrite each description once.
+CREATE TABLE IF NOT EXISTS trial_summaries (
+    nct         TEXT PRIMARY KEY,
+    data        TEXT NOT NULL,
+    updated_at  TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_referrals_user ON referrals(user_id);
 CREATE INDEX IF NOT EXISTS idx_events_ref ON referral_events(referral_id);
 CREATE INDEX IF NOT EXISTS idx_leads_created ON leads(created_at);
@@ -847,6 +855,34 @@ def set_trend_cache(kind, terms):
         "ON CONFLICT(kind) DO UPDATE SET terms = excluded.terms, "
         "updated_at = excluded.updated_at",
         (kind, json.dumps(list(terms)), now()))
+    db.commit()
+
+
+# --------------------------------------------------------------------------- #
+# Plain-English trial summaries (see web/summarize.py)
+# --------------------------------------------------------------------------- #
+def get_trial_summary(nct):
+    if not nct:
+        return None
+    row = get_db().execute(
+        "SELECT data FROM trial_summaries WHERE nct = ?", (nct,)).fetchone()
+    if not row:
+        return None
+    try:
+        return json.loads(row["data"])
+    except (ValueError, TypeError):
+        return None
+
+
+def set_trial_summary(nct, data):
+    if not nct:
+        return
+    db = get_db()
+    db.execute(
+        "INSERT INTO trial_summaries (nct, data, updated_at) VALUES (?,?,?) "
+        "ON CONFLICT(nct) DO UPDATE SET data = excluded.data, "
+        "updated_at = excluded.updated_at",
+        (nct, json.dumps(data), now()))
     db.commit()
 
 

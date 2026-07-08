@@ -770,10 +770,8 @@ body.pub { background: var(--surface); }
   border-radius: 999px; }
 .pr-dist .ico { width: 12px; height: 12px; }
 .pr-card-title { font-size: 18px; line-height: 1.35; letter-spacing: -.02em; margin: 4px 0 10px; }
-.pr-summary { color: var(--muted); font-size: 14px; line-height: 1.55; margin: 0 0 12px; }
-.pr-sum-toggle { background: none; border: 0; padding: 0; margin: 0; cursor: pointer;
-  color: var(--accent); font: inherit; font-weight: 600; white-space: nowrap; }
-.pr-sum-toggle:hover { text-decoration: underline; }
+.pr-summary { color: var(--muted); font-size: 14px; line-height: 1.55; margin: 0 0 12px;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .pr-why { background: var(--accent-soft); color: var(--ink-soft); font-size: 14px;
   padding: 12px 14px; border-radius: 10px; line-height: 1.5; margin-bottom: 12px; }
 .pr-facts { display: flex; flex-direction: column; gap: 6px; font-size: 13px;
@@ -1182,6 +1180,19 @@ body.pub { background: var(--surface); }
 .td-section { border-top: 1px solid var(--border); padding-top: 20px; margin-top: 20px; }
 .td-section h2 { font-size: 18px; letter-spacing: -.02em; margin: 0 0 12px; }
 .td-summary { color: var(--ink-soft); font-size: 15px; line-height: 1.65; margin: 0; }
+.td-summary-struct { margin: 0; display: flex; flex-direction: column; gap: 14px; }
+.td-summary-struct > div { display: grid; grid-template-columns: 160px 1fr; gap: 18px;
+  align-items: start; }
+.td-summary-struct dt { margin: 0; font-size: 12px; font-weight: 700; letter-spacing: .04em;
+  text-transform: uppercase; color: var(--faint); padding-top: 2px; }
+.td-summary-struct dd { margin: 0; color: var(--ink-soft); font-size: 15px; line-height: 1.6; }
+.td-source { font-size: 12.5px; color: var(--faint); margin: 16px 0 0; line-height: 1.5; }
+.td-source a { color: var(--muted); display: inline-flex; align-items: center; gap: 4px; }
+.td-source a:hover { color: var(--accent); }
+.td-source a .ico { width: 12px; height: 12px; }
+@media (max-width: 640px) {
+  .td-summary-struct > div { grid-template-columns: 1fr; gap: 3px; }
+}
 .td-site, .td-other { color: var(--ink-soft); font-size: 14px; line-height: 1.5;
   margin: 0 0 8px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .td-site .ico { width: 15px; height: 15px; }

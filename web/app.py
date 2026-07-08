@@ -41,10 +41,13 @@ import db  # noqa: E402
 import fhir  # noqa: E402
 import ingest  # noqa: E402
 import mailer  # noqa: E402
+import summarize  # noqa: E402
 import trends  # noqa: E402
 
 app = Flask(__name__)
 trends.configure(app)
+# Short, plain-English card teaser (deterministic) available in every template.
+app.jinja_env.globals["card_blurb"] = summarize.card_blurb
 
 # Stable secret so sessions survive restarts. Prefer an env var (set this on any
 # host so logins survive redeploys); otherwise generate + store one locally.
@@ -518,8 +521,9 @@ def trial_detail(search_id, nct):
         flash("That trial result expired - please run your search again.", "error")
         return redirect(url_for("find"))
     applied = db.applied_ncts(get_applicant_token())
+    summary = summarize.plain(r["trial"])
     return render_template("trial_detail.html", r=r, search_id=search_id,
-                           applied=applied, **ctx)
+                           applied=applied, summary=summary, **ctx)
 
 
 @app.route("/interest", methods=["POST"])

@@ -31,10 +31,21 @@
     <div class="td-why"><b>Why this could be a match for you:</b> {{ m.rationale }}</div>
     {% endif %}
 
-    {% if t.briefSummary %}
+    {% if summary and (summary.purpose or summary.who or summary.what or summary.commitment or summary.one_liner) %}
     <div class="td-section">
       <h2>About this study</h2>
-      <p class="td-summary">{{ t.briefSummary }}</p>
+      {% if summary.purpose or summary.who or summary.what or summary.commitment %}
+      <dl class="td-summary-struct">
+        {% if summary.purpose %}<div><dt>What it's testing</dt><dd>{{ summary.purpose }}</dd></div>{% endif %}
+        {% if summary.who %}<div><dt>Who it's for</dt><dd>{{ summary.who }}</dd></div>{% endif %}
+        {% if summary.what %}<div><dt>What's involved</dt><dd>{{ summary.what }}</dd></div>{% endif %}
+        {% if summary.commitment %}<div><dt>Time commitment</dt><dd>{{ summary.commitment }}</dd></div>{% endif %}
+      </dl>
+      {% else %}
+      <p class="td-summary">{{ summary.one_liner }}</p>
+      {% endif %}
+      <p class="td-source">Summarized in plain language from the study's public
+        ClinicalTrials.gov listing.{% if t.nctId %} <a href="https://clinicaltrials.gov/study/{{ t.nctId }}" target="_blank" rel="noopener">Read the full description{{ ic.icon('external') }}</a>{% endif %}</p>
     </div>
     {% endif %}
 

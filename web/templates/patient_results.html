@@ -130,17 +130,8 @@
       <h2 class="pr-card-title">
         <a class="pr-card-link" href="{{ url_for('trial_detail', search_id=search_id, nct=t.nctId) }}">{{ t.title }}</a>
       </h2>
-      {% if t.briefSummary %}
-      {% if t.briefSummary|length > 240 %}
-      <p class="pr-summary">
-        <span class="pr-sum-short">{{ t.briefSummary[:240] }}… </span>
-        <span class="pr-sum-full" hidden>{{ t.briefSummary }} </span>
-        <button type="button" class="pr-sum-toggle" aria-expanded="false">Read more</button>
-      </p>
-      {% else %}
-      <p class="pr-summary">{{ t.briefSummary }}</p>
-      {% endif %}
-      {% endif %}
+      {% set blurb = card_blurb(t) %}
+      {% if blurb %}<p class="pr-summary">{{ blurb }}</p>{% endif %}
 
       <div class="pr-facts">
         {% if r.site_str %}<span><a href="https://www.google.com/maps/search/?api=1&query={{ r.site_str | urlencode }}" target="_blank" rel="noopener" title="Open in Google Maps">{{ ic.icon('pin') }} {{ r.site_str }}</a></span>{% endif %}
@@ -183,28 +174,6 @@
   var list = document.getElementById('prList');
   if (!list) return;
   var cards = Array.prototype.slice.call(list.querySelectorAll('.pr-card'));
-
-  // Expand/collapse long study descriptions.
-  list.addEventListener('click', function (e) {
-    var btn = e.target.closest ? e.target.closest('.pr-sum-toggle') : null;
-    if (!btn) return;
-    var p = btn.closest('.pr-summary');
-    if (!p) return;
-    var shortEl = p.querySelector('.pr-sum-short');
-    var fullEl = p.querySelector('.pr-sum-full');
-    var open = btn.getAttribute('aria-expanded') === 'true';
-    if (open) {
-      if (shortEl) shortEl.hidden = false;
-      if (fullEl) fullEl.hidden = true;
-      btn.textContent = 'Read more';
-      btn.setAttribute('aria-expanded', 'false');
-    } else {
-      if (shortEl) shortEl.hidden = true;
-      if (fullEl) fullEl.hidden = false;
-      btn.textContent = 'Show less';
-      btn.setAttribute('aria-expanded', 'true');
-    }
-  });
   var count = document.getElementById('prCount');
   var noRes = document.getElementById('prNoResults');
   var sortSel = document.getElementById('fSort');
