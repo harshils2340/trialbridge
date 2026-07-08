@@ -23,6 +23,7 @@ import pathlib
 import secrets
 import sys
 import time
+import datetime as dt
 import urllib.parse
 import urllib.request
 from collections import OrderedDict
@@ -116,14 +117,36 @@ def server_error(_e):
                            msg="Something went wrong on our end. Please try again."), 500
 
 
+@app.route("/healthz")
+def healthz():
+    """Lightweight process-level health probe for hosting checks."""
+    return jsonify({"ok": True}), 200
+
+
 # --------------------------------------------------------------------------- #
 # Auth
 # --------------------------------------------------------------------------- #
 # TEMP: no-login testing mode. When on, the clinician tool is open to everyone
 # (falls back to a shared demo account) so there's zero barrier to trying it.
-# Flip to "0" to re-enable real clinician logins.
-NO_LOGIN = os.environ.get("NO_LOGIN", "1") == "1"
+# Set NO_LOGIN=1 only for local demos; production should keep this off.
+NO_LOGIN = os.environ.get("NO_LOGIN", "0") == "1"
 _DEMO_EMAIL = "demo@trialbridge.local"
+PATIENT_SESSION_KEY = "patient_user_id"
+PATIENT_PENDING_KEY = "patient_pending_id"
+PATIENT_PENDING_PURPOSE_KEY = "patient_pending_purpose"
+PATIENT_NEXT_KEY = "patient_next"
+RATE_LIMIT_WINDOW_SECONDS = max(
+    1, int(os.environ.get("RATE_LIMIT_WINDOW_SECONDS", "300")))
+RATE_LIMIT_DEFAULT_MSG = (
+    "Too many attempts from this network. Please wait a few minutes and try again.")
+RATE_LIMIT_ROUTES = {
+    "account_signup": max(1, int(os.environ.get("RATE_LIMIT_SIGNUP_MAX", "8"))),
+    "account_login": max(1, int(os.environ.get("RATE_LIMIT_LOGIN_MAX", "10"))),
+    "account_verify": max(1, int(os.environ.get("RATE_LIMIT_VERIFY_MAX", "10"))),
+    "account_verify_resend": max(
+        1, int(os.environ.get("RATE_LIMIT_VERIFY_RESEND_MAX", "5"))),
+    "interest": max(1, int(os.environ.get("RATE_LIMIT_INTEREST_MAX", "12"))),
+}
 
 
 def _ensure_demo_user():
@@ -155,12 +178,24 @@ def login_required(view):
     return wrapped
 
 
+def patient_login_required(view):
+    @functools.wraps(view)
+    def wrapped(*a, **k):
+        if not g.patient_user:
+            flash("Sign in to continue.", "error")
+            return redirect(url_for("patient_login", next=request.path))
+        return view(*a, **k)
+    return wrapped
+
+
 @app.before_request
 def load_user():
     uid = session.get("user_id")
     g.user = db.get_user(uid) if uid else None
     if g.user is None and NO_LOGIN:
         g.user = _ensure_demo_user()
+    pid = session.get(PATIENT_SESSION_KEY)
+    g.patient_user = db.get_patient_user(pid) if pid else None
 
 
 APPLICANT_COOKIE = "tb_app"
@@ -170,6 +205,8 @@ INVITE_COOKIE = "tb_invite"
 def get_applicant_token():
     """Stable per-visitor id used to group a person's trial applications.
     No login: we keep it in a long-lived cookie. Returns '' if not set yet."""
+    if getattr(g, "patient_user", None):
+        return g.patient_user["applicant_token"] or ""
     return request.cookies.get(APPLICANT_COOKIE, "")
 
 
@@ -349,7 +386,7 @@ def inject_globals():
             "applications_count": apps_n, "pov_demo": NO_LOGIN, "pov": pov,
             "records_profile": rec, "records_provider": records_mod.provider_label(),
             "alerts_new_count": alerts_new, "messages_unread": msgs_unread,
-            "site_unread": site_unread}
+            "site_unread": site_unread, "patient_user": g.patient_user}
 
 
 def _site_claims():
@@ -417,6 +454,258 @@ def login():
 def logout():
     session.clear()
     return redirect(url_for("login"))
+
+
+def _gen_code():
+    return f"{secrets.randbelow(1000000):06d}"
+
+
+def _safe_next(raw):
+    """Accept only in-app relative paths for post-auth redirects."""
+    v = (raw or "").strip()
+    if v.startswith("/"):
+        return v
+    try:
+        p = urllib.parse.urlparse(v)
+    except Exception:
+        return ""
+    return p.path if p.path.startswith("/") else ""
+
+
+def _is_json_request():
+    accepts = request.accept_mimetypes
+    if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return True
+    return (accepts.best == "application/json"
+            and accepts["application/json"] > accepts["text/html"])
+
+
+def _rate_limited_response(msg, retry_after, template_name="", **template_ctx):
+    retry_after = max(1, int(retry_after or RATE_LIMIT_WINDOW_SECONDS))
+    if _is_json_request():
+        resp = jsonify({"ok": False, "error": msg, "retry_after": retry_after})
+        resp.status_code = 429
+    elif template_name:
+        resp = make_response(render_template(template_name, **template_ctx), 429)
+    else:
+        resp = make_response(
+            render_template("error.html", code=429, msg=msg), 429)
+    resp.headers["Retry-After"] = str(retry_after)
+    return resp
+
+
+def _guard_ip_rate_limit(route_key, template_name="", **template_ctx):
+    """Rate-limit sensitive POST flows by client IP."""
+    limit = RATE_LIMIT_ROUTES.get(route_key, 0)
+    ip = (request.remote_addr or "").strip()
+    if not ip or limit <= 0 or RATE_LIMIT_WINDOW_SECONDS <= 0:
+        flash("Temporarily unavailable. Please try again shortly.", "error")
+        return _rate_limited_response(RATE_LIMIT_DEFAULT_MSG,
+                                      RATE_LIMIT_WINDOW_SECONDS,
+                                      template_name, **template_ctx)
+    try:
+        ok, retry_after = db.check_and_bump_ip_limit(
+            route_key, ip, limit, RATE_LIMIT_WINDOW_SECONDS)
+    except Exception:
+        app.logger.exception("rate-limit check failed for %s", route_key)
+        ok, retry_after = False, RATE_LIMIT_WINDOW_SECONDS
+    if ok:
+        return None
+    flash(RATE_LIMIT_DEFAULT_MSG, "error")
+    return _rate_limited_response(RATE_LIMIT_DEFAULT_MSG, retry_after,
+                                  template_name, **template_ctx)
+
+
+def _issue_patient_code(patient, purpose):
+    """Create and send a short-lived email verification/login code."""
+    if not mailer.smtp_configured():
+        return False, "Email verification is unavailable right now."
+    db.invalidate_patient_codes(patient["id"], purpose)
+    code = _gen_code()
+    exp = int(time.time()) + (10 * 60)  # 10 minutes
+    db.create_patient_code(patient["id"], purpose, code, exp)
+    action = "sign-up verification" if purpose == "signup" else "login verification"
+    subject = f"Your TrialBridge {action} code"
+    body = "\n".join([
+        f"Hi {patient['full_name'] or 'there'},",
+        "",
+        f"Your TrialBridge {action} code is:",
+        "",
+        f"  {code}",
+        "",
+        "It expires in 10 minutes.",
+        "",
+        "If you didn't request this, ignore this email.",
+    ])
+    ok, msg = mailer.send_email(patient["email"], subject, body)
+    return ok, msg
+
+
+@app.route("/account/signup", methods=["GET", "POST"])
+def patient_signup():
+    if g.patient_user:
+        return redirect(url_for("patient_onboarding")
+                        if not g.patient_user["onboarding_done"] else url_for("home"))
+    nxt = _safe_next(request.args.get("next", ""))
+    if nxt:
+        session[PATIENT_NEXT_KEY] = nxt
+    if request.method == "POST":
+        blocked = _guard_ip_rate_limit("account_signup",
+                                       template_name="patient_signup.html")
+        if blocked:
+            return blocked
+        full_name = request.form.get("full_name", "").strip()
+        email = request.form.get("email", "").strip().lower()
+        pw = request.form.get("password", "")
+        if not full_name or not email or not pw:
+            flash("Name, email, and password are required.", "error")
+            return render_template("patient_signup.html")
+        if len(pw) < 8:
+            flash("Use at least 8 characters for your password.", "error")
+            return render_template("patient_signup.html")
+        if db.get_patient_by_email(email):
+            flash("An account with that email already exists. Try signing in.", "error")
+            return redirect(url_for("patient_login"))
+        pid = db.create_patient_user(
+            email, generate_password_hash(pw, method="pbkdf2:sha256"), full_name)
+        patient = db.get_patient_user(pid)
+        ok, msg = _issue_patient_code(patient, "signup")
+        if not ok:
+            flash(msg, "error")
+            return render_template("patient_signup.html")
+        session[PATIENT_PENDING_KEY] = pid
+        session[PATIENT_PENDING_PURPOSE_KEY] = "signup"
+        flash("Check your email for a 6-digit verification code.", "success")
+        return redirect(url_for("patient_verify"))
+    return render_template("patient_signup.html")
+
+
+@app.route("/account/verify", methods=["GET", "POST"])
+def patient_verify():
+    pid = session.get(PATIENT_PENDING_KEY)
+    purpose = session.get(PATIENT_PENDING_PURPOSE_KEY, "signup")
+    patient = db.get_patient_user(pid) if pid else None
+    if not patient:
+        flash("Start by signing up or signing in.", "error")
+        return redirect(url_for("patient_signup"))
+    if request.method == "POST":
+        blocked = _guard_ip_rate_limit(
+            "account_verify",
+            template_name="patient_verify.html",
+            email=patient["email"], purpose=purpose)
+        if blocked:
+            return blocked
+        code = request.form.get("code", "").strip()
+        if db.verify_patient_code(patient["id"], purpose, code, int(time.time())):
+            if purpose == "signup":
+                db.mark_patient_verified(patient["id"])
+            session[PATIENT_SESSION_KEY] = patient["id"]
+            session.pop(PATIENT_PENDING_KEY, None)
+            session.pop(PATIENT_PENDING_PURPOSE_KEY, None)
+            flash("You're verified and signed in.", "success")
+            fresh = db.get_patient_user(patient["id"])
+            if not fresh["onboarding_done"]:
+                return redirect(url_for("patient_onboarding"))
+            nxt = session.pop(PATIENT_NEXT_KEY, "")
+            return redirect(nxt if nxt.startswith("/") else url_for("home"))
+        flash("Invalid or expired code. Request a new one.", "error")
+    return render_template("patient_verify.html", email=patient["email"],
+                           purpose=purpose)
+
+
+@app.route("/account/verify/resend", methods=["POST"])
+def patient_verify_resend():
+    pid = session.get(PATIENT_PENDING_KEY)
+    purpose = session.get(PATIENT_PENDING_PURPOSE_KEY, "signup")
+    patient = db.get_patient_user(pid) if pid else None
+    if not patient:
+        flash("Start by signing up or signing in first.", "error")
+        return redirect(url_for("patient_signup"))
+    blocked = _guard_ip_rate_limit(
+        "account_verify_resend",
+        template_name="patient_verify.html",
+        email=patient["email"], purpose=purpose)
+    if blocked:
+        return blocked
+    ok, msg = _issue_patient_code(patient, purpose)
+    flash("Code re-sent to your email." if ok else msg, "success" if ok else "error")
+    return redirect(url_for("patient_verify"))
+
+
+@app.route("/account/login", methods=["GET", "POST"])
+def patient_login():
+    if g.patient_user:
+        return redirect(url_for("patient_onboarding")
+                        if not g.patient_user["onboarding_done"] else url_for("home"))
+    nxt = _safe_next(request.args.get("next", ""))
+    if nxt:
+        session[PATIENT_NEXT_KEY] = nxt
+    if request.method == "POST":
+        blocked = _guard_ip_rate_limit("account_login",
+                                       template_name="patient_login.html")
+        if blocked:
+            return blocked
+        email = request.form.get("email", "").strip().lower()
+        pw = request.form.get("password", "")
+        patient = db.get_patient_by_email(email)
+        if not patient or not check_password_hash(patient["password_hash"], pw):
+            flash("Wrong email or password.", "error")
+            return render_template("patient_login.html")
+        if not patient["verified"]:
+            session[PATIENT_PENDING_KEY] = patient["id"]
+            session[PATIENT_PENDING_PURPOSE_KEY] = "signup"
+            flash("Verify your email to finish account setup.", "error")
+            return redirect(url_for("patient_verify"))
+        ok, msg = _issue_patient_code(patient, "login")
+        if not ok:
+            flash(msg, "error")
+            return render_template("patient_login.html")
+        session[PATIENT_PENDING_KEY] = patient["id"]
+        session[PATIENT_PENDING_PURPOSE_KEY] = "login"
+        flash("Enter the 6-digit code we sent to your email.", "success")
+        return redirect(url_for("patient_verify"))
+    return render_template("patient_login.html")
+
+
+@app.route("/account/logout", methods=["POST"])
+def patient_logout():
+    session.pop(PATIENT_SESSION_KEY, None)
+    flash("Signed out.", "success")
+    return redirect(url_for("home"))
+
+
+@app.route("/account/onboarding", methods=["GET", "POST"])
+@patient_login_required
+def patient_onboarding():
+    if request.method == "POST":
+        f = request.form
+        interest = f.get("primary_interest", "").strip()
+        notify_email = f.get("notify_email", "").strip() or g.patient_user["email"]
+        wants_alerts = bool(f.get("email_alerts"))
+        db.set_patient_onboarding(
+            g.patient_user["id"], interest, notify_email, wants_alerts)
+        if wants_alerts and interest:
+            alert_id = db.create_alert({
+                "applicant_token": g.patient_user["applicant_token"],
+                "label": interest,
+                "condition": interest,
+                "intervention": "",
+                "location": "",
+                "lat": None,
+                "lon": None,
+                "cc": "",
+                "radius": 50,
+                "unit": "km",
+                "email": notify_email,
+            })
+            try:
+                alerts_mod.seed_baseline(alert_id)
+            except Exception:
+                app.logger.exception("onboarding alert baseline failed")
+        flash("Onboarding complete.", "success")
+        nxt = session.pop(PATIENT_NEXT_KEY, "")
+        return redirect(nxt if nxt.startswith("/") else url_for("home"))
+    return render_template("patient_onboarding.html")
 
 
 # --------------------------------------------------------------------------- #
@@ -689,21 +978,25 @@ def trial_detail(search_id, nct):
 @app.route("/interest", methods=["POST"])
 def interest():
     """Patient asks to be contacted about a specific trial -> consented lead."""
+    blocked = _guard_ip_rate_limit("interest")
+    if blocked:
+        return blocked
+    if not g.patient_user:
+        flash("Sign in or create an account to apply.", "error")
+        return redirect(url_for("patient_login", next=_safe_next(request.referrer) or request.path))
     f = request.form
     if not f.get("consent"):
         flash("Please check the consent box so a coordinator can contact you.",
               "error")
         return redirect(request.referrer or url_for("find"))
-    name = f.get("name", "").strip()
-    contact = (f.get("email", "").strip() or f.get("phone", "").strip())
+    name = (f.get("name", "").strip() or g.patient_user["full_name"] or "").strip()
+    email = (f.get("email", "").strip() or g.patient_user["email"] or "").strip()
+    contact = (email or f.get("phone", "").strip())
     if not name or not contact:
         flash("Add your name and an email or phone so the site can reach you.",
               "error")
         return redirect(request.referrer or url_for("find"))
-    applicant = get_applicant_token()
-    new_cookie = not applicant
-    if new_cookie:
-        applicant = secrets.token_urlsafe(16)
+    applicant = g.patient_user["applicant_token"]
 
     # Short screener: only quick gate questions that records can't reliably
     # answer. Everything clinical is filled from the record / search match.
@@ -756,7 +1049,7 @@ def interest():
         "condition": f.get("condition", "").strip(),
         "location": f.get("location", "").strip(),
         "site": f.get("site", "").strip(), "name": name,
-        "email": f.get("email", "").strip(), "phone": f.get("phone", "").strip(),
+        "email": email, "phone": f.get("phone", "").strip(),
         "age": age, "sex": sex,
         "notes": f.get("about", "").strip(), "consent": 1, "source": source,
         "screener": json.dumps(screener) if screener else "",
@@ -767,11 +1060,8 @@ def interest():
     # Go-live hook: tell the site a new blinded candidate is waiting. No-op while
     # NOTIFY_LIVE is off, so nothing is emailed during testing.
     _notify_site_new_candidate(token)
-    resp = make_response(render_template("thanks.html", title=f.get("title", ""),
-                                         nct=f.get("nct", "")))
-    if new_cookie:
-        _set_applicant_cookie(resp, applicant)
-    return resp
+    return render_template("thanks.html", title=f.get("title", ""),
+                           nct=f.get("nct", ""))
 
 
 @app.route("/how-it-works")
@@ -782,7 +1072,10 @@ def how_it_works():
 
 @app.route("/applications")
 def applications():
-    """Patient-facing 'My applications' - Indeed-style tracker, no login."""
+    """Patient-facing 'My applications'."""
+    if not g.patient_user:
+        flash("Sign in to view your applications.", "error")
+        return redirect(url_for("patient_login", next=url_for("applications")))
     token = get_applicant_token()
     leads = db.list_leads_by_applicant(token)
     apps = []
@@ -802,6 +1095,9 @@ def applications():
 @app.route("/applications/<token>/message", methods=["POST"])
 def application_message(token):
     """Patient sends a message to the study team about their own application."""
+    if not g.patient_user:
+        flash("Sign in to message the study team.", "error")
+        return redirect(url_for("patient_login", next=url_for("applications")))
     lead = db.get_lead_by_token(token)
     if not lead or lead["applicant_token"] != get_applicant_token():
         abort(403)
@@ -815,6 +1111,9 @@ def application_message(token):
 
 @app.route("/applications/withdraw/<token>", methods=["POST"])
 def withdraw_application(token):
+    if not g.patient_user:
+        flash("Sign in to manage your applications.", "error")
+        return redirect(url_for("patient_login", next=url_for("applications")))
     if db.withdraw_lead(token, get_applicant_token()):
         flash("Application withdrawn.", "success")
     else:
@@ -828,10 +1127,10 @@ def records_connect():
     profile and store it against their applicant token, so every application
     (past pending + future) auto-fills from it. Sandbox by default; a real
     aggregator (Metriport/1upHealth) slots in behind the same call."""
-    applicant = get_applicant_token()
-    new_cookie = not applicant
-    if new_cookie:
-        applicant = secrets.token_urlsafe(16)
+    if not g.patient_user:
+        flash("Sign in to connect health records.", "error")
+        return redirect(url_for("patient_login", next=_safe_next(request.referrer) or url_for("applications")))
+    applicant = g.patient_user["applicant_token"]
     try:
         prof = records_mod.connect()
     except fhir.FhirError as e:
@@ -850,14 +1149,14 @@ def records_connect():
             if n else "New applications will auto-fill from your history - ")
     msg += "you won't have to re-enter your medical details."
     flash(msg, "success")
-    resp = make_response(redirect(request.referrer or url_for("applications")))
-    if new_cookie:
-        _set_applicant_cookie(resp, applicant)
-    return resp
+    return redirect(request.referrer or url_for("applications"))
 
 
 @app.route("/records/disconnect", methods=["POST"])
 def records_disconnect():
+    if not g.patient_user:
+        flash("Sign in to manage records.", "error")
+        return redirect(url_for("patient_login", next=url_for("applications")))
     applicant = get_applicant_token()
     if applicant:
         db.clear_records_profile(applicant)
@@ -871,6 +1170,9 @@ def records_disconnect():
 @app.route("/alerts")
 def alerts():
     """Patient-facing 'My alerts': saved interests + any new matching trials."""
+    if not g.patient_user:
+        flash("Sign in to manage alerts.", "error")
+        return redirect(url_for("patient_login", next=url_for("alerts")))
     token = get_applicant_token()
     items = []
     for a in db.list_alerts(token):
@@ -883,6 +1185,9 @@ def alerts():
 
 @app.route("/alerts/create", methods=["POST"])
 def alerts_create():
+    if not g.patient_user:
+        flash("Sign in to save alerts.", "error")
+        return redirect(url_for("patient_login", next=_safe_next(request.referrer) or url_for("alerts")))
     """Save an interest. Works from the results CTA (carries the current search)
     or the alerts page form. Baselines immediately so only future trials alert."""
     f = request.form
@@ -896,10 +1201,7 @@ def alerts_create():
         flash("Add an email so we can notify you about new trials.", "error")
         return redirect(request.referrer or url_for("alerts"))
 
-    applicant = get_applicant_token()
-    new_cookie = not applicant
-    if new_cookie:
-        applicant = secrets.token_urlsafe(16)
+    applicant = g.patient_user["applicant_token"]
 
     def _f(v):
         try:
@@ -923,14 +1225,14 @@ def alerts_create():
         app.logger.exception("alert baseline failed")
     flash("Alert saved. We'll email you when a new matching trial opens - no "
           "need to keep searching.", "success")
-    resp = make_response(redirect(url_for("alerts")))
-    if new_cookie:
-        _set_applicant_cookie(resp, applicant)
-    return resp
+    return redirect(url_for("alerts"))
 
 
 @app.route("/alerts/<int:alert_id>/delete", methods=["POST"])
 def alerts_delete(alert_id):
+    if not g.patient_user:
+        flash("Sign in to manage alerts.", "error")
+        return redirect(url_for("patient_login", next=url_for("alerts")))
     if db.delete_alert(alert_id, get_applicant_token()):
         flash("Alert removed.", "success")
     else:
@@ -1029,7 +1331,7 @@ def candidate_code(lead):
     return f"Candidate #{lead['id']:04d}"
 
 
-def _decode_lead(row):
+def _decode_lead(row, recon=None):
     """Attach parsed screener/eligibility + de-identified helpers to a lead row."""
     try:
         elig = json.loads(row["eligibility"]) if row["eligibility"] else {}
@@ -1050,6 +1352,7 @@ def _decode_lead(row):
         "code": candidate_code(row),
         "age_band": age_band(row["age"]),
         "unread": db.lead_unread_for_site(row["id"]),
+        "recon": recon or db.latest_reconciliation(row["id"]),
     }
 
 
@@ -1057,11 +1360,12 @@ def _decode_lead(row):
 @login_required
 def leads():
     rows = db.list_leads_for_user(g.user["id"])
+    recon = db.latest_reconciliation_for_leads([r["id"] for r in rows])
     claims = db.list_study_claims(g.user["id"])
     counts = db.lead_counts_for_ncts([c["nct"] for c in claims])
     review, active, done = [], [], []
     for r in rows:
-        item = _decode_lead(r)
+        item = _decode_lead(r, recon.get(r["id"]))
         if r["status"] == "prescreen" and not r["decision"]:
             review.append(item)
         elif r["revealed"] and r["status"] not in db.LEAD_CLOSED:
@@ -1072,6 +1376,8 @@ def leads():
                            counts=counts, pipeline=db.LEAD_PIPELINE,
                            statuses=db.LEAD_STATUSES, labels=db.LEAD_LABELS,
                            screener_labels=SCREENER_LABELS,
+                           recon_labels=db.RECON_LABELS,
+                           recon_outcomes=db.RECON_OUTCOMES,
                            redcap_on=redcap.configured(), claims=claims)
 
 
@@ -1231,6 +1537,23 @@ def push_lead_redcap(lead_id):
         db.update_lead_status(lead_id, lead["status"], "pushed to REDCap",
                               actor="you")
     flash(msg, "success" if ok else "error")
+    return redirect(url_for("leads"))
+
+
+@app.route("/app/leads/<int:lead_id>/reconcile", methods=["POST"])
+@login_required
+def reconcile_lead(lead_id):
+    """Write auditable enrollment/retention proof for a candidate."""
+    _ensure_site_access_for_lead(lead_id)
+    outcome = request.form.get("outcome", "").strip()
+    src = request.form.get("source_system", "").strip()
+    ref = request.form.get("source_ref", "").strip()
+    note = request.form.get("note", "").strip()
+    actor = g.user["email"] if g.user and g.user["email"] else "site"
+    if db.add_reconciliation(lead_id, outcome, src, ref, note, actor=actor):
+        flash(f"Saved: {db.RECON_LABELS.get(outcome, outcome)}.", "success")
+    else:
+        flash("Couldn't save that verification update.", "error")
     return redirect(url_for("leads"))
 
 

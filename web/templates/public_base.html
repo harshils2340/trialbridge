@@ -22,6 +22,14 @@
     <a href="{{ url_for('how_it_works') }}">How it works</a>
     <a href="{{ url_for('alerts') }}" class="pub-apps">Alerts{% if alerts_new_count %} <span class="nav-badge nav-badge-new">{{ alerts_new_count }}</span>{% endif %}</a>
     <a href="{{ url_for('applications') }}" class="pub-apps">My applications{% if messages_unread %} <span class="nav-badge nav-badge-new">{{ messages_unread }}</span>{% elif applications_count %} <span class="nav-badge">{{ applications_count }}</span>{% endif %}</a>
+    {% if patient_user %}
+    <form method="post" action="{{ url_for('patient_logout') }}" style="margin:0;">
+      <button type="submit" class="link-btn">Sign out</button>
+    </form>
+    {% else %}
+    <a href="{{ url_for('patient_login') }}">Sign in</a>
+    <a href="{{ url_for('patient_signup') }}">Sign up</a>
+    {% endif %}
     <a href="{{ url_for('login') }}" class="pub-clin">For clinicians</a>
   </nav>
 </header>

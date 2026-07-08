@@ -21,8 +21,14 @@
   <div class="stat"><div class="l">{{ ic.icon('list', 'ico stat-ico') }}Applicants</div><div class="n">{{ stats.totals.total }}</div></div>
   <div class="stat"><div class="l">{{ ic.icon('activity', 'ico stat-ico') }}Active</div><div class="n">{{ stats.totals.active }}</div></div>
   <div class="stat"><div class="l">{{ ic.icon('user-plus', 'ico stat-ico') }}Enrolled</div><div class="n">{{ stats.totals.enrolled }}</div></div>
+  <div class="stat"><div class="l">{{ ic.icon('check', 'ico stat-ico') }}Verified enrolled</div><div class="n">{{ stats.totals.verified_enrolled }}</div></div>
   <div class="stat accent"><div class="l">{{ ic.icon('award', 'ico stat-ico') }}Overall conversion</div><div class="n">{{ stats.overall_conv }}%</div></div>
+  <div class="stat"><div class="l">{{ ic.icon('activity', 'ico stat-ico') }}Verification rate</div><div class="n">{{ stats.verification_rate }}%</div></div>
 </div>
+
+<div class="dash-verify-note">{{ ic.icon('check') }}
+  <span><b>Outcome proof:</b> {{ stats.totals.verified_enrolled }} of {{ stats.totals.enrolled }}
+    enrolled candidates are source-verified ({{ stats.verification_rate }}%).</span></div>
 
 {% if stats.dropoff and stats.dropoff.lost > 0 %}
 <div class="dash-leak">{{ ic.icon('activity') }}
@@ -90,6 +96,29 @@
   </table>
   {% else %}
   <div class="empty"><p>No applicants yet. As people apply, this fills in per trial.</p></div>
+  {% endif %}
+</div>
+
+<div class="card dash-card">
+  <div class="section-title"><h2>By acquisition channel</h2></div>
+  {% if stats.source_breakdown %}
+  <table class="dash-table">
+    <thead><tr><th>Channel</th><th>Applicants</th><th>Screening</th><th>Enrolled</th><th>Enroll conv</th><th>Verified</th></tr></thead>
+    <tbody>
+      {% for s in stats.source_breakdown %}
+      <tr>
+        <td><span class="dash-src">{{ s.source|replace('_', ' ')|title }}</span></td>
+        <td>{{ s.total }}</td>
+        <td>{{ s.screening }}</td>
+        <td>{{ s.enrolled }}</td>
+        <td><span class="dash-conv">{{ s.enroll_conv }}%</span></td>
+        <td>{{ s.verified_enrolled }} <span class="dash-src-sub">({{ s.verified_rate }}%)</span></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty"><p>No channel data yet.</p></div>
   {% endif %}
 </div>
 

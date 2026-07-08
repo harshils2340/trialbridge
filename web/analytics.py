@@ -62,6 +62,7 @@ def funnel_stats(ncts=None):
     labels = db.LEAD_LABELS
     use_scope = bool(ncts)
     leads = db.list_leads() if not use_scope else _scoped_leads(ncts)
+    recon = db.latest_reconciliation_for_leads([l["id"] for l in leads])
 
     reached = [0] * len(pipeline)          # leads that ever hit each stage
     transition_days = {i: [] for i in range(len(pipeline) - 1)}
@@ -127,6 +128,10 @@ def funnel_stats(ncts=None):
         t["conv"] = round(t["enrolled"] / t["total"] * 100.0, 0) if t["total"] else 0
 
     top = reached[0] or 1
+    verified_enrolled = sum(
+        1 for l in leads
+        if (recon.get(l["id"]) or {}).get("outcome") == "enrolled_verified")
+    source_breakdown = _source_breakdown(leads, recon, pipeline)
     return {
         "stages": stages,
         "overall_conv": round(reached[-1] / top * 100.0, 1),
@@ -136,10 +141,15 @@ def funnel_stats(ncts=None):
         "totals": {
             "total": len(leads),
             "enrolled": reached[-1],
+            "verified_enrolled": verified_enrolled,
+            "unverified_enrolled": max(0, reached[-1] - verified_enrolled),
             "active": _count_active(leads),
             "closed": closed,
             "withdrawn": withdrawn,
         },
+        "verification_rate": round(
+            (verified_enrolled / reached[-1] * 100.0), 1) if reached[-1] else 0.0,
+        "source_breakdown": source_breakdown,
         "engagement": _engagement(ncts if use_scope else None),
     }
 
@@ -167,3 +177,35 @@ def _engagement(ncts=None):
         "SELECT COUNT(*) n FROM messages WHERE sender='patient'").fetchone()["n"]
     visits = d.execute("SELECT COUNT(*) n FROM lead_visits").fetchone()["n"]
     return {"messages": msgs, "patient_messages": from_patient, "visits": visits}
+
+
+def _source_breakdown(leads, recon, pipeline):
+    """Channel-level throughput/cohort quality by lead source."""
+    out = {}
+    for lead in leads:
+        src = (lead["source"] or "web").strip().lower()
+        row = out.setdefault(src, {
+            "source": src,
+            "total": 0,
+            "prescreen": 0,
+            "eligible": 0,
+            "screening": 0,
+            "enrolled": 0,
+            "verified_enrolled": 0,
+        })
+        row["total"] += 1
+        mx = _stage_index(lead["status"], pipeline)
+        row["prescreen"] += 1 if mx >= _stage_index("prescreen", pipeline) else 0
+        row["eligible"] += 1 if mx >= _stage_index("eligible", pipeline) else 0
+        row["screening"] += 1 if mx >= _stage_index("screening", pipeline) else 0
+        row["enrolled"] += 1 if mx >= _stage_index("enrolled", pipeline) else 0
+        if (recon.get(lead["id"]) or {}).get("outcome") == "enrolled_verified":
+            row["verified_enrolled"] += 1
+    rows = list(out.values())
+    for r in rows:
+        r["enroll_conv"] = round((r["enrolled"] / r["total"] * 100.0), 1) \
+            if r["total"] else 0.0
+        r["verified_rate"] = round((r["verified_enrolled"] / r["enrolled"] * 100.0), 1) \
+            if r["enrolled"] else 0.0
+    rows.sort(key=lambda x: (-x["total"], x["source"]))
+    return rows

@@ -8,6 +8,7 @@ services:
     runtime: python
     plan: free
     rootDir: web
+    healthCheckPath: /healthz
     buildCommand: pip install -r requirements.txt
     startCommand: gunicorn app:app --workers 2 --timeout 120 --bind 0.0.0.0:$PORT
     envVars:
@@ -21,6 +22,14 @@ services:
         sync: false              # set this yourself in the dashboard (kept secret)
       - key: PYTHON_VERSION
         value: "3.11.9"
+      - key: NO_LOGIN
+        value: "0"
+      - key: ALERTS_BACKGROUND
+        value: "0"
+      - key: REMINDERS_BACKGROUND
+        value: "0"
+      - key: ALERTS_CRON_KEY
+        sync: false
       # --- Go-live notifications (OFF by default; ~2 min to enable) ------------
       # The full loop works without these (operator copies the /c/<token> link by
       # hand). To turn on real email delivery, set NOTIFY_LIVE=1 and the SMTP_*

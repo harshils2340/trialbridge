@@ -154,6 +154,7 @@
       <div>
         <span class="pill pill-{{ l['status'] }}">{{ labels.get(l['status'], l['status']) }}</span>
         {% if it.unread %}<span class="msg-badge">{{ it.unread }} new</span>{% endif %}
+        {% if it.recon %}<div class="tag recon-tag">{{ recon_labels.get(it.recon['outcome'], it.recon['outcome']) }}</div>{% endif %}
       </div>
     </div>
     <div class="outreach-grid">
@@ -175,6 +176,18 @@
           </select>
           <input type="text" name="note" placeholder="Note">
           <button class="btn btn-sm" type="submit">Save</button>
+        </div>
+      </form>
+      <form method="post" action="{{ url_for('reconcile_lead', lead_id=l['id']) }}" class="outreach-form">
+        <label>Outcome verification</label>
+        <div class="status-row">
+          <select name="outcome">
+            {% for k in recon_outcomes %}<option value="{{ k }}">{{ recon_labels.get(k, k) }}</option>{% endfor %}
+          </select>
+          <input type="text" name="source_system" placeholder="Source (REDCap/CTMS)">
+          <input type="text" name="source_ref" placeholder="Ref ID">
+          <input type="text" name="note" placeholder="Evidence note">
+          <button class="btn btn-sm btn-ghost" type="submit">Save proof</button>
         </div>
       </form>
     </div>
@@ -214,7 +227,8 @@
             <a class="cand-open" href="{{ url_for('candidate_page', token=l['token']) }}">{{ ic.icon('external') }} Open workspace</a></td>
           <td>{% if l['nct'] %}<a href="https://clinicaltrials.gov/study/{{ l['nct'] }}" target="_blank" rel="noopener">{{ l['nct'] }}</a>{% endif %}<div class="tag">{{ l['title'][:44] }}</div></td>
           <td><span class="pill pill-{{ l['status'] }}">{{ labels.get(l['status'], l['status']) }}</span>
-            {% if l['decision'] == 'declined' and l['decision_reason'] %}<div class="tag">{{ l['decision_reason'] }}</div>{% endif %}</td>
+            {% if l['decision'] == 'declined' and l['decision_reason'] %}<div class="tag">{{ l['decision_reason'] }}</div>{% endif %}
+            {% if it.recon %}<div class="tag recon-tag">{{ recon_labels.get(it.recon['outcome'], it.recon['outcome']) }}</div>{% endif %}</td>
           <td class="tag">
             {% if l['revealed'] %}
               {% if l['email'] %}{{ l['email'] }}{% endif %}{% if l['phone'] %}<div class="mono">{{ l['phone'] }}</div>{% endif %}

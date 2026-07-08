@@ -1,0 +1,16 @@
+{% extends "public_base.html" %}
+{% block title %}Verify code · TrialBridge{% endblock %}
+{% block body %}
+<section class="find-wrap">
+  <h1 class="find-title">Enter verification code</h1>
+  <p class="find-lead">We sent a 6-digit code to <b>{{ email }}</b>.</p>
+  <form method="post" class="find-form">
+    <label class="find-field"><span>Code</span>
+      <input type="text" name="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" required></label>
+    <button class="btn btn-primary" type="submit">Verify</button>
+  </form>
+  <form method="post" action="{{ url_for('patient_verify_resend') }}" class="find-form" style="margin-top:10px;">
+    <button class="btn btn-ghost" type="submit">Resend code</button>
+  </form>
+</section>
+{% endblock %}

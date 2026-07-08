@@ -31,6 +31,17 @@ Open http://127.0.0.1:5000, create an account, and start searching.
 Without `LLM_API_KEY` the app still fetches trials and screens by age/sex, but
 skips the per-trial eligibility reasoning.
 
+## Integrated E2E smoke (patient -> site ATS)
+
+From `matcher/web`:
+
+```bash
+/Users/harshils/GraphMD/matcher/.venv/bin/python test_e2e_intake_flow.py
+```
+
+This verifies signup/verify/onboarding/apply + site intake/accept/message/schedule/status/reconcile.
+See `DISTRIBUTION_READY.md` for production launch order and checklist.
+
 ## Getting a patient in (three ways, so doctors don't retype)
 
 1. **Type/paste** the de-identified summary.
@@ -113,7 +124,15 @@ commented `disk:` block in `render.yaml`).
 | `SITE_NOTIFY_EMAIL` | Coordinator inbox that receives new blinded candidates |
 | `PUBLIC_BASE_URL` | Base URL used for links inside emails |
 | `DB_PATH` | SQLite file location (point at a persistent disk in prod) |
-| `NO_LOGIN` | `1` opens the clinician tool with no login (default on for testing) |
+| `NO_LOGIN` | `1` opens the clinician tool with no login (default `0`; keep off in prod) |
+| `ALERTS_BACKGROUND`, `REMINDERS_BACKGROUND` | Background schedulers (`0` recommended with multi-worker gunicorn + cron) |
+| `ALERTS_CRON_KEY` | Shared key protecting `/alerts/run` and `/reminders/run` cron triggers |
+| `RATE_LIMIT_WINDOW_SECONDS` | IP rate-limit window for sensitive POSTs (default `300`) |
+| `RATE_LIMIT_SIGNUP_MAX` | Max POSTs/IP/window for `/account/signup` (default `8`) |
+| `RATE_LIMIT_LOGIN_MAX` | Max POSTs/IP/window for `/account/login` (default `10`) |
+| `RATE_LIMIT_VERIFY_MAX` | Max POSTs/IP/window for `/account/verify` (default `10`) |
+| `RATE_LIMIT_VERIFY_RESEND_MAX` | Max POSTs/IP/window for `/account/verify/resend` (default `5`) |
+| `RATE_LIMIT_INTEREST_MAX` | Max POSTs/IP/window for `/interest` (default `12`) |
 | `PORT`, `FLASK_DEBUG`, `WEB_MAX_MATCH` | Server port, debug, LLM calls per search |
 
 ## Privacy

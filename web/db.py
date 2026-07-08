@@ -42,6 +42,18 @@ LEAD_LABELS = {
     "closed": "Not a match / closed",
     "withdrawn": "Withdrawn",
 }
+RECON_OUTCOMES = [
+    "enrolled_verified",
+    "enrolled_rejected",
+    "retained_30d",
+    "retained_90d",
+]
+RECON_LABELS = {
+    "enrolled_verified": "Enrollment verified",
+    "enrolled_rejected": "Enrollment not confirmed",
+    "retained_30d": "30-day retained",
+    "retained_90d": "90-day retained",
+}
 # Plain one-liners shown to the patient under each stage.
 LEAD_BLURB = {
     "submitted": "We've saved your interest and shared it with the study team.",
@@ -68,6 +80,45 @@ CREATE TABLE IF NOT EXISTS users (
     specialty     TEXT DEFAULT '',
     institution   TEXT DEFAULT '',
     created_at    TEXT NOT NULL
+);
+
+-- Patient accounts (separate from clinician/study-team users).
+CREATE TABLE IF NOT EXISTS patient_users (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    email             TEXT UNIQUE NOT NULL,
+    password_hash     TEXT NOT NULL,
+    full_name         TEXT DEFAULT '',
+    applicant_token   TEXT UNIQUE NOT NULL,
+    verified          INTEGER DEFAULT 0,
+    verified_at       TEXT DEFAULT '',
+    onboarding_done   INTEGER DEFAULT 0,
+    primary_interest  TEXT DEFAULT '',
+    notify_email      TEXT DEFAULT '',
+    email_alerts      INTEGER DEFAULT 1,
+    created_at        TEXT NOT NULL
+);
+
+-- Short-lived email codes for patient signup/login verification.
+CREATE TABLE IF NOT EXISTS patient_auth_codes (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    patient_id    INTEGER NOT NULL,
+    purpose       TEXT NOT NULL,              -- 'signup' | 'login'
+    code          TEXT NOT NULL,
+    expires_ts    INTEGER NOT NULL,
+    used_at       TEXT DEFAULT '',
+    created_at    TEXT NOT NULL,
+    FOREIGN KEY (patient_id) REFERENCES patient_users(id)
+);
+
+-- Per-IP counters for lightweight POST rate limiting on sensitive endpoints.
+CREATE TABLE IF NOT EXISTS ip_rate_limits (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    route_key     TEXT NOT NULL,
+    ip            TEXT NOT NULL,
+    window_start  INTEGER NOT NULL,
+    hit_count     INTEGER NOT NULL DEFAULT 0,
+    updated_at    TEXT NOT NULL,
+    UNIQUE (route_key, ip)
 );
 
 -- Study-team account profile (organization + contact info).
@@ -225,6 +276,20 @@ CREATE TABLE IF NOT EXISTS lead_events (
     FOREIGN KEY (lead_id) REFERENCES leads(id)
 );
 
+-- Outcome reconciliation events: auditable proof of enrollment/retention tied
+-- to an external source (CTMS/REDCap/manual confirmation).
+CREATE TABLE IF NOT EXISTS lead_reconciliations (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    lead_id       INTEGER NOT NULL,
+    outcome       TEXT NOT NULL,
+    source_system TEXT DEFAULT '',
+    source_ref    TEXT DEFAULT '',
+    note          TEXT DEFAULT '',
+    actor         TEXT DEFAULT 'site',
+    created_at    TEXT NOT NULL,
+    FOREIGN KEY (lead_id) REFERENCES leads(id)
+);
+
 CREATE TABLE IF NOT EXISTS search_stats (
     term_key    TEXT PRIMARY KEY,
     term        TEXT NOT NULL,
@@ -304,8 +369,12 @@ CREATE TABLE IF NOT EXISTS alert_matches (
 
 CREATE INDEX IF NOT EXISTS idx_referrals_user ON referrals(user_id);
 CREATE INDEX IF NOT EXISTS idx_events_ref ON referral_events(referral_id);
+CREATE INDEX IF NOT EXISTS idx_patient_email ON patient_users(email);
+CREATE INDEX IF NOT EXISTS idx_patient_codes ON patient_auth_codes(patient_id, purpose);
+CREATE INDEX IF NOT EXISTS idx_ip_rate_window ON ip_rate_limits(window_start);
 CREATE INDEX IF NOT EXISTS idx_leads_created ON leads(created_at);
 CREATE INDEX IF NOT EXISTS idx_lead_events_lead ON lead_events(lead_id);
+CREATE INDEX IF NOT EXISTS idx_recon_lead ON lead_reconciliations(lead_id);
 CREATE INDEX IF NOT EXISTS idx_search_stats_kind ON search_stats(kind, hits);
 CREATE INDEX IF NOT EXISTS idx_search_cache_created ON search_cache(created_at);
 CREATE INDEX IF NOT EXISTS idx_alerts_applicant ON alerts(applicant_token);
@@ -449,6 +518,138 @@ def set_ehr_connection(user_id, connected, provider=""):
         (1 if connected else 0, provider if connected else "",
          now() if connected else "", user_id))
     db.commit()
+
+
+def create_patient_user(email, password_hash, full_name=""):
+    db = get_db()
+    cur = db.execute(
+        "INSERT INTO patient_users (email, password_hash, full_name, applicant_token, "
+        "created_at) VALUES (?,?,?,?,?)",
+        (email.lower().strip(), password_hash, (full_name or "").strip(),
+         gen_token(), now()))
+    db.commit()
+    return cur.lastrowid
+
+
+def get_patient_user(user_id):
+    return get_db().execute(
+        "SELECT * FROM patient_users WHERE id = ?", (user_id,)).fetchone()
+
+
+def get_patient_by_email(email):
+    return get_db().execute(
+        "SELECT * FROM patient_users WHERE email = ?",
+        (email.lower().strip(),)).fetchone()
+
+
+def mark_patient_verified(patient_id):
+    db = get_db()
+    db.execute(
+        "UPDATE patient_users SET verified = 1, verified_at = ? WHERE id = ?",
+        (now(), patient_id))
+    db.commit()
+
+
+def set_patient_onboarding(patient_id, primary_interest="", notify_email="",
+                           email_alerts=True):
+    db = get_db()
+    db.execute(
+        "UPDATE patient_users SET onboarding_done = 1, primary_interest = ?, "
+        "notify_email = ?, email_alerts = ? WHERE id = ?",
+        ((primary_interest or "").strip(), (notify_email or "").strip(),
+         1 if email_alerts else 0, patient_id))
+    db.commit()
+
+
+def create_patient_code(patient_id, purpose, code, expires_ts):
+    db = get_db()
+    db.execute(
+        "INSERT INTO patient_auth_codes (patient_id, purpose, code, expires_ts, "
+        "created_at) VALUES (?,?,?,?,?)",
+        (patient_id, purpose, code, int(expires_ts), now()))
+    db.commit()
+
+
+def verify_patient_code(patient_id, purpose, code, now_ts):
+    """True if a live unused code exists; marks it used atomically."""
+    db = get_db()
+    row = db.execute(
+        "SELECT id, code, expires_ts FROM patient_auth_codes WHERE patient_id = ? "
+        "AND purpose = ? AND used_at = '' ORDER BY id DESC LIMIT 1",
+        (patient_id, purpose)).fetchone()
+    if not row:
+        return False
+    if int(row["expires_ts"]) < int(now_ts):
+        return False
+    if (code or "").strip() != (row["code"] or "").strip():
+        return False
+    db.execute("UPDATE patient_auth_codes SET used_at = ? WHERE id = ?",
+               (now(), row["id"]))
+    db.commit()
+    return True
+
+
+def invalidate_patient_codes(patient_id, purpose):
+    db = get_db()
+    db.execute("UPDATE patient_auth_codes SET used_at = ? WHERE patient_id = ? "
+               "AND purpose = ? AND used_at = ''", (now(), patient_id, purpose))
+    db.commit()
+
+
+def check_and_bump_ip_limit(route_key, ip, max_hits, window_seconds, now_ts=None):
+    """Return (allowed: bool, retry_after_seconds: int) for an IP/route window.
+
+    This is intentionally lightweight: one row per (route_key, ip), reset when the
+    window expires. It blocks when max_hits are already consumed in the window.
+    """
+    route_key = (route_key or "").strip()
+    ip = (ip or "").strip()
+    if not route_key or not ip:
+        return False, max(1, int(window_seconds or 1))
+    try:
+        max_hits = int(max_hits)
+        window_seconds = int(window_seconds)
+    except (TypeError, ValueError):
+        return False, 60
+    if max_hits <= 0 or window_seconds <= 0:
+        return False, 60
+    ts = int(now_ts or time.time())
+    window_floor = ts - window_seconds
+
+    db = get_db()
+    # Keep this tiny table bounded; stale rows don't affect active checks.
+    db.execute("DELETE FROM ip_rate_limits WHERE window_start < ?", (window_floor,))
+    row = db.execute(
+        "SELECT id, window_start, hit_count FROM ip_rate_limits "
+        "WHERE route_key = ? AND ip = ?",
+        (route_key, ip)).fetchone()
+    if not row:
+        db.execute(
+            "INSERT INTO ip_rate_limits (route_key, ip, window_start, hit_count, "
+            "updated_at) VALUES (?,?,?,?,?)",
+            (route_key, ip, ts, 1, now()))
+        db.commit()
+        return True, 0
+
+    start = int(row["window_start"] or 0)
+    hits = int(row["hit_count"] or 0)
+    if start <= window_floor:
+        db.execute(
+            "UPDATE ip_rate_limits SET window_start = ?, hit_count = 1, "
+            "updated_at = ? WHERE id = ?",
+            (ts, now(), row["id"]))
+        db.commit()
+        return True, 0
+
+    if hits >= max_hits:
+        retry_after = max(1, window_seconds - (ts - start))
+        return False, retry_after
+
+    db.execute(
+        "UPDATE ip_rate_limits SET hit_count = ?, updated_at = ? WHERE id = ?",
+        (hits + 1, now(), row["id"]))
+    db.commit()
+    return True, 0
 
 
 def _norm_nct(nct):
@@ -829,6 +1030,63 @@ def update_lead_status(lead_id, status, note="", actor="you"):
         "VALUES (?,?,?,?,?)", (lead_id, status, note, actor, ts))
     db.commit()
     return True
+
+
+def add_reconciliation(lead_id, outcome, source_system="", source_ref="",
+                       note="", actor="site"):
+    """Append an auditable outcome event for a lead.
+
+    If enrollment is verified here, auto-advance the lead to enrolled so the
+    operational funnel and commercial truth stay in sync.
+    """
+    if outcome not in RECON_OUTCOMES:
+        return False
+    lead = get_lead(lead_id)
+    if not lead:
+        return False
+    db = get_db()
+    ts = now()
+    db.execute(
+        "INSERT INTO lead_reconciliations (lead_id, outcome, source_system, "
+        "source_ref, note, actor, created_at) VALUES (?,?,?,?,?,?,?)",
+        (lead_id, outcome, (source_system or "").strip(), (source_ref or "").strip(),
+         (note or "").strip(), actor, ts))
+    if outcome == "enrolled_verified" and lead["status"] != "enrolled":
+        db.execute("UPDATE leads SET status = 'enrolled', updated_at = ? WHERE id = ?",
+                   (ts, lead_id))
+        db.execute(
+            "INSERT INTO lead_events (lead_id, status, note, actor, created_at) "
+            "VALUES (?,?,?,?,?)",
+            (lead_id, "enrolled", "enrollment verified from source of truth",
+             actor, ts))
+    db.commit()
+    return True
+
+
+def get_reconciliations(lead_id):
+    return get_db().execute(
+        "SELECT * FROM lead_reconciliations WHERE lead_id = ? ORDER BY id DESC",
+        (lead_id,)).fetchall()
+
+
+def latest_reconciliation(lead_id):
+    return get_db().execute(
+        "SELECT * FROM lead_reconciliations WHERE lead_id = ? "
+        "ORDER BY id DESC LIMIT 1", (lead_id,)).fetchone()
+
+
+def latest_reconciliation_for_leads(lead_ids):
+    """Return {lead_id: latest reconciliation row} for a list of ids."""
+    lead_ids = [int(x) for x in (lead_ids or [])]
+    if not lead_ids:
+        return {}
+    qs = ",".join("?" * len(lead_ids))
+    rows = get_db().execute(
+        "SELECT r.* FROM lead_reconciliations r "
+        "JOIN (SELECT lead_id, MAX(id) max_id FROM lead_reconciliations "
+        f"WHERE lead_id IN ({qs}) GROUP BY lead_id) z ON z.max_id = r.id",
+        lead_ids).fetchall()
+    return {r["lead_id"]: r for r in rows}
 
 
 def set_lead_schedule(lead_id, url, actor="site"):
@@ -1360,6 +1618,17 @@ def seed_demo_engagement(clinician_id):
                         f"Your screening visit is booked for {when} at "
                         f"{ld['site'] or 'the study site'}. We'll remind you beforehand.",
                         1, 1, ts(hours=-20)))
+
+    # At least one source-verified enrollment for revenue/reconciliation demos.
+    enrolled = db.execute(
+        "SELECT id FROM leads WHERE status = 'enrolled' ORDER BY id LIMIT 1"
+    ).fetchone()
+    if enrolled:
+        db.execute(
+            "INSERT INTO lead_reconciliations (lead_id, outcome, source_system, "
+            "source_ref, note, actor, created_at) VALUES (?,?,?,?,?,?,?)",
+            (enrolled["id"], "enrolled_verified", "REDCap", "demo-record-001",
+             "Verified by coordinator after baseline visit", "site", ts(days=-1)))
 
     # One physician referral with attribution, so the invite view + funnel show the
     # trusted-messenger channel producing a real applicant.

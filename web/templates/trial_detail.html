@@ -78,7 +78,12 @@
 
   <aside class="td-aside">
     <div class="td-apply">
-      {% if applied and t.nctId in applied %}
+      {% if not patient_user %}
+      <h3 class="td-apply-title">{{ ic.icon('user-plus') }} Apply to this study</h3>
+      <p class="td-apply-sub">Create your patient account to apply and track status updates.</p>
+      <a class="btn btn-primary btn-block" href="{{ url_for('patient_signup', next=request.path) }}">Sign up to apply</a>
+      <a class="btn btn-ghost btn-block" href="{{ url_for('patient_login', next=request.path) }}">Sign in</a>
+      {% elif applied and t.nctId in applied %}
       <div class="td-applied">
         <div class="td-applied-ic">{{ ic.icon('check') }}</div>
         <h3>Application submitted</h3>
@@ -123,10 +128,10 @@
         </div>
 
         <div class="if-row two">
-          <label>Your name<input name="name" type="text" required></label>
+          <label>Your name<input name="name" type="text" value="{{ patient_user.full_name if patient_user else '' }}" required></label>
           <label>Phone <span class="opt">(optional)</span><input name="phone" type="tel"></label>
         </div>
-        <label>Email<input name="email" type="email" required></label>
+        <label>Email<input name="email" type="email" value="{{ patient_user.email if patient_user else '' }}" required></label>
         <label class="if-consent">
           <input type="checkbox" name="consent" required>
           <span>I agree to share a blinded summary for review and contact details after acceptance.</span>

@@ -1,0 +1,16 @@
+{% extends "public_base.html" %}
+{% block title %}Sign in · TrialBridge{% endblock %}
+{% block body %}
+<section class="find-wrap">
+  <h1 class="find-title">Sign in</h1>
+  <p class="find-lead">Enter your password, then verify with a 6-digit email code.</p>
+  <form method="post" class="find-form">
+    <label class="find-field"><span>Email</span>
+      <input type="email" name="email" required></label>
+    <label class="find-field"><span>Password</span>
+      <input type="password" name="password" required></label>
+    <button class="btn btn-primary" type="submit">Continue</button>
+  </form>
+  <p class="cond-note">No account yet? <a href="{{ url_for('patient_signup') }}">Create one</a></p>
+</section>
+{% endblock %}

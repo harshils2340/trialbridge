@@ -145,6 +145,12 @@ or 2). See `.cursor/rules/enrollment-velocity.mdc` (always on).
   seeding now includes profile + claims so the no-login walkthrough is live by default.
   Verified E2E on fresh DB: setup/leads/dashboard all render, claims persist, scoped counts are
   correct (5/8 leads visible after scoping), unauthorized post-block works, and no errors.
+- [2026-07-08] **Commercial proof layer DONE.** Added auditable outcome reconciliation:
+  `lead_reconciliations` table + `/app/leads/<id>/reconcile` workflow so study teams can
+  record source-backed proof (REDCap/CTMS/manual reference) for enrolled/retained outcomes.
+  `analytics.funnel_stats()` now reports verified-enrollment counts/rate plus channel-level
+  source throughput (`source_breakdown`) so distribution quality is measurable by source, not
+  just top-of-funnel volume.
 
 ## How to run / demo (morning)
 ```
