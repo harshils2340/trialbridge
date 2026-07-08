@@ -1220,6 +1220,32 @@ body.pub { background: var(--surface); }
 .claims-link { margin-left: auto; font-size: 12.5px; color: var(--accent); text-decoration: none; }
 .claims-link:hover { text-decoration: underline; }
 
+/* ATS-style lanes for study-team pipeline */
+.pipeline-lane { margin-bottom: 18px; }
+.lane-head { display: flex; align-items: center; gap: 10px; margin: 10px 2px 12px; }
+.lane-head h2 { margin: 0; font-size: 17px; display: inline-flex; align-items: center; gap: 7px; }
+.lane-head .ico { width: 16px; height: 16px; color: var(--accent); }
+.lane-n { font-size: 12px; color: var(--muted); background: var(--surface-2);
+  border: 1px solid var(--border); border-radius: 999px; padding: 2px 8px; font-weight: 700; }
+.cand-share.slim summary { font-size: 12.5px; color: var(--muted); }
+.outreach-card { padding: 16px 18px; }
+.outreach-top { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
+.outreach-top h3 { margin: 0 0 3px; font-size: 18px; }
+.outreach-top p { margin: 0; font-size: 13.5px; color: var(--muted); line-height: 1.45; }
+.outreach-top .tagline { margin-top: 3px; }
+.outreach-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
+.outreach-form { display: flex; flex-direction: column; gap: 6px; }
+.outreach-form label { margin: 0; font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+.outreach-form input, .outreach-form select { border: 1px solid var(--border-strong); border-radius: 9px; padding: 8px 10px; font-size: 13px; font-family: var(--sans); background: #fff; }
+.outreach-form input:focus, .outreach-form select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(90,101,240,.12); }
+.status-row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.status-row select { min-width: 140px; }
+.status-row input { min-width: 110px; flex: 1; }
+.outreach-foot { margin-top: 10px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+@media (max-width: 900px) {
+  .outreach-grid { grid-template-columns: 1fr; }
+}
+
 /* -------------------------------------------------------------------------- */
 /* Modern credibility polish (simple, clean, high-trust)                      */
 /* -------------------------------------------------------------------------- */

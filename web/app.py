@@ -1059,14 +1059,16 @@ def leads():
     rows = db.list_leads_for_user(g.user["id"])
     claims = db.list_study_claims(g.user["id"])
     counts = db.lead_counts_for_ncts([c["nct"] for c in claims])
-    review, reviewed = [], []
+    review, active, done = [], [], []
     for r in rows:
         item = _decode_lead(r)
         if r["status"] == "prescreen" and not r["decision"]:
             review.append(item)
+        elif r["revealed"] and r["status"] not in db.LEAD_CLOSED:
+            active.append(item)
         else:
-            reviewed.append(item)
-    return render_template("leads.html", review=review, reviewed=reviewed,
+            done.append(item)
+    return render_template("leads.html", review=review, active=active, done=done,
                            counts=counts, pipeline=db.LEAD_PIPELINE,
                            statuses=db.LEAD_STATUSES, labels=db.LEAD_LABELS,
                            screener_labels=SCREENER_LABELS,
@@ -1172,6 +1174,28 @@ def schedule_lead(lead_id):
               "screening call.", "success")
     else:
         flash("Booking link removed.", "success")
+    return redirect(url_for("leads"))
+
+
+@app.route("/app/leads/<int:lead_id>/message", methods=["POST"])
+@login_required
+def message_lead(lead_id):
+    """Study-team inbox action: send a message without leaving the board."""
+    _ensure_site_access_for_lead(lead_id)
+    lead = db.get_lead(lead_id)
+    if not lead:
+        flash("Couldn't find that candidate.", "error")
+        return redirect(url_for("leads"))
+    if not lead["revealed"]:
+        flash("Accept the candidate first to message them.", "error")
+        return redirect(url_for("leads"))
+    body = request.form.get("body", "").strip()
+    if body:
+        db.add_message(lead_id, "site", body)
+        _notify_applicant_message(lead, body)
+        flash("Message sent.", "success")
+    else:
+        flash("Write a message first.", "error")
     return redirect(url_for("leads"))
 
 

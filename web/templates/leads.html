@@ -3,8 +3,8 @@
 
 {% block body %}
 <div class="page-head">
-  <h1>Candidate review</h1>
-  <p>Review candidates. Accept to unlock contact. Decline to close.</p>
+  <h1>Candidate pipeline</h1>
+  <p>Review new applicants, then run outreach from one place.</p>
 </div>
 
 {% if claims %}
@@ -17,7 +17,7 @@
 <div class="card">
   <div class="empty">
     <h3>Claim your active studies first</h3>
-    <p>Once you claim your NCT IDs, new applicants for those studies route here automatically.</p>
+    <p>Applicants for claimed NCTs appear here automatically.</p>
     <a class="btn btn-primary" href="{{ url_for('site_setup') }}">{{ ic.icon('award') }} Set up site and claim studies</a>
   </div>
 </div>
@@ -25,18 +25,18 @@
 
 {% if claims %}
 <div class="stats">
-  <div class="stat"><div class="l">{{ ic.icon('list', 'ico stat-ico') }}Total</div><div class="n">{{ (review|length) + (reviewed|length) }}</div></div>
+  <div class="stat"><div class="l">{{ ic.icon('list', 'ico stat-ico') }}Total</div><div class="n">{{ (review|length) + (active|length) + (done|length) }}</div></div>
   <div class="stat accent"><div class="l">{{ ic.icon('activity', 'ico stat-ico') }}Awaiting review</div><div class="n">{{ review|length }}</div></div>
+  <div class="stat"><div class="l">{{ ic.icon('user-plus', 'ico stat-ico') }}Active outreach</div><div class="n">{{ active|length }}</div></div>
   <div class="stat"><div class="l">{{ ic.icon('user-plus', 'ico stat-ico') }}Enrolled</div><div class="n">{{ counts.get('enrolled', 0) }}</div></div>
   <div class="stat {{ 'accent' if site_unread }}"><div class="l">{{ ic.icon('activity', 'ico stat-ico') }}Unread messages</div><div class="n">{{ site_unread }}</div></div>
 </div>
 
-<div class="rev-tabs" role="tablist">
-  <button type="button" class="rev-tab active" data-tab="review">{{ ic.icon('activity') }} Awaiting review <span class="tab-n">{{ review|length }}</span></button>
-  <button type="button" class="rev-tab" data-tab="reviewed">{{ ic.icon('list') }} Reviewed <span class="tab-n">{{ reviewed|length }}</span></button>
-</div>
-
-<div class="rev-panel" data-panel="review">
+<section class="pipeline-lane">
+  <div class="lane-head">
+    <h2>{{ ic.icon('activity') }} Awaiting review</h2>
+    <span class="lane-n">{{ review|length }}</span>
+  </div>
   {% if not review %}
   <div class="card"><div class="empty"><h3>All caught up</h3><p>New candidates will appear here.</p></div></div>
   {% endif %}
@@ -113,29 +113,91 @@
           <button class="btn btn-sm" type="submit">Confirm decline</button>
         </form>
       </details>
-      <details class="cand-share">
-        <summary>{{ ic.icon('external') }} Secure link for the study site</summary>
+      <details class="cand-share slim">
+        <summary>{{ ic.icon('external') }} External handoff link</summary>
         <div class="cand-share-row">
           <input type="text" readonly value="{{ url_for('candidate_page', token=l['token'], _external=True) }}" onclick="this.select()">
           <button type="button" class="btn btn-sm" onclick="navigator.clipboard.writeText(this.previousElementSibling.value);this.textContent='Copied'">Copy</button>
         </div>
-        <span class="cand-share-hint">The coordinator can review &amp; accept without a login. No email is sent.</span>
+        <span class="cand-share-hint">Use only when an external coordinator needs no-login access.</span>
       </details>
-      <p class="cand-priv">{{ ic.icon('check') }} Contact stays hidden until you accept.</p>
     </div>
   </div>
   {% endfor %}
-</div>
+</section>
 
-<div class="rev-panel" data-panel="reviewed" hidden>
+<section class="pipeline-lane">
+  <div class="lane-head">
+    <h2>{{ ic.icon('user-plus') }} Active outreach</h2>
+    <span class="lane-n">{{ active|length }}</span>
+  </div>
+  {% if not active %}
+  <div class="card"><div class="empty"><p>No active outreach candidates yet.</p></div></div>
+  {% endif %}
+  {% for it in active %}
+  {% set l = it.lead %}
+  <div class="card outreach-card">
+    <div class="outreach-top">
+      <div>
+        <h3>{{ l['name'] }}</h3>
+        <p>{% if l['email'] %}{{ l['email'] }}{% endif %}{% if l['phone'] %} · {{ l['phone'] }}{% endif %}</p>
+        <p class="tagline">{% if l['nct'] %}{{ l['nct'] }} · {% endif %}{{ l['title'] }}</p>
+      </div>
+      <div>
+        <span class="pill pill-{{ l['status'] }}">{{ labels.get(l['status'], l['status']) }}</span>
+        {% if it.unread %}<span class="msg-badge">{{ it.unread }} new</span>{% endif %}
+      </div>
+    </div>
+    <div class="outreach-grid">
+      <form method="post" action="{{ url_for('message_lead', lead_id=l['id']) }}" class="outreach-form">
+        <label>Message</label>
+        <input type="text" name="body" placeholder="Message candidate..." required>
+        <button class="btn btn-primary btn-sm" type="submit">Send</button>
+      </form>
+      <form method="post" action="{{ url_for('schedule_lead', lead_id=l['id']) }}" class="outreach-form">
+        <label>Scheduling link</label>
+        <input type="url" name="schedule_url" value="{{ l['schedule_url'] }}" placeholder="https://calendly.com/...">
+        <button class="btn btn-ghost btn-sm" type="submit">{{ 'Update link' if l['schedule_url'] else 'Send link' }}</button>
+      </form>
+      <form method="post" action="{{ url_for('update_lead', lead_id=l['id']) }}" class="outreach-form">
+        <label>Status</label>
+        <div class="status-row">
+          <select name="status">
+            {% for s in statuses %}<option value="{{ s }}" {{ 'selected' if s == l['status'] else '' }}>{{ labels.get(s, s) }}</option>{% endfor %}
+          </select>
+          <input type="text" name="note" placeholder="Note">
+          <button class="btn btn-sm" type="submit">Save</button>
+        </div>
+      </form>
+    </div>
+    <div class="outreach-foot">
+      <a class="cand-open" href="{{ url_for('candidate_page', token=l['token']) }}">{{ ic.icon('external') }} Open full workspace</a>
+      {% if redcap_on %}
+      <form method="post" action="{{ url_for('push_lead_redcap', lead_id=l['id']) }}" class="lead-redcap-form">
+        <button class="btn btn-sm btn-ghost" type="submit">{{ ic.icon('external') }} Push to REDCap</button>
+      </form>
+      {% endif %}
+      {% if l['phone'] %}
+      <a class="cand-open" href="tel:{{ l['phone'] }}">{{ ic.icon('activity') }} Call</a>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</section>
+
+<section class="pipeline-lane">
+  <div class="lane-head">
+    <h2>{{ ic.icon('list') }} Completed / closed</h2>
+    <span class="lane-n">{{ done|length }}</span>
+  </div>
   <div class="card">
-    {% if not reviewed %}
-    <div class="empty"><p>Accepted and declined candidates show up here.</p></div>
+    {% if not done %}
+    <div class="empty"><p>No completed or closed candidates yet.</p></div>
     {% else %}
     <table>
       <thead><tr><th>Candidate</th><th>Trial</th><th>Status</th><th>Contact</th><th>Update</th></tr></thead>
       <tbody>
-        {% for it in reviewed %}
+        {% for it in done %}
         {% set l = it.lead %}
         <tr>
           <td><b>{% if l['revealed'] %}{{ l['name'] }}{% else %}{{ it.code }}{% endif %}</b>
@@ -176,21 +238,6 @@
     </table>
     {% endif %}
   </div>
-</div>
-
-<script>
-(function () {
-  var tabs = document.querySelectorAll('.rev-tab');
-  var panels = document.querySelectorAll('.rev-panel');
-  tabs.forEach(function (t) {
-    t.addEventListener('click', function () {
-      tabs.forEach(function (x) { x.classList.remove('active'); });
-      t.classList.add('active');
-      var name = t.getAttribute('data-tab');
-      panels.forEach(function (p) { p.hidden = p.getAttribute('data-panel') !== name; });
-    });
-  });
-})();
-</script>
+</section>
 {% endif %}
 {% endblock %}
