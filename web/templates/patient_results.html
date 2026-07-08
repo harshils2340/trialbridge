@@ -106,6 +106,25 @@
     </div>
     {% endif %}
 
+    <form class="pr-alert" method="post" action="{{ url_for('alerts_create') }}">
+      <input type="hidden" name="label" value="{{ condition }}">
+      <input type="hidden" name="condition" value="{{ q_condition }}">
+      <input type="hidden" name="intervention" value="{{ q_intervention }}">
+      <input type="hidden" name="location" value="{{ location }}">
+      <input type="hidden" name="lat" value="{{ q_lat }}">
+      <input type="hidden" name="lon" value="{{ q_lon }}">
+      <input type="hidden" name="cc" value="{{ q_cc }}">
+      <input type="hidden" name="radius" value="{{ q_radius }}">
+      <input type="hidden" name="unit" value="{{ unit }}">
+      <div class="pr-alert-copy">{{ ic.icon('activity') }}
+        <span><b>New trials open all the time.</b> Get an email the moment a new
+          {{ condition }} study opens near you - instead of searching again.</span></div>
+      <div class="pr-alert-act">
+        <input type="email" name="email" placeholder="you@email.com" required>
+        <button class="btn btn-primary" type="submit">Notify me</button>
+      </div>
+    </form>
+
     {% if not results %}
     <div class="pr-empty">
       <h2>No recruiting trials matched right now</h2>

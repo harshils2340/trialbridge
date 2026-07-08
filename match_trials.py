@@ -103,6 +103,14 @@ def extract_trial(study):
     clm = p.get("contactsLocationsModule", {})
     locs = clm.get("locations", [])
     status_mod = p.get("statusModule", {})
+    # CT.gov's own canonical vocabulary: MeSH terms + the ancestor hierarchy it
+    # assigns to each study. Free structured signal for concept-level matching.
+    derived = study.get("derivedSection", {})
+    cbm = derived.get("conditionBrowseModule", {})
+    ibm = derived.get("interventionBrowseModule", {})
+    mesh_terms = [m.get("term", "") for m in cbm.get("meshes", []) if m.get("term")]
+    mesh_ancestors = [a.get("term", "") for a in cbm.get("ancestors", []) if a.get("term")]
+    intr_mesh = [m.get("term", "") for m in ibm.get("meshes", []) if m.get("term")]
     return {
         "nctId": ident.get("nctId", ""),
         "title": ident.get("briefTitle", ""),
@@ -118,6 +126,9 @@ def extract_trial(study):
         "completionDate": status_mod.get("primaryCompletionDateStruct", {})
                            .get("date", ""),
         "conditions": p.get("conditionsModule", {}).get("conditions", []),
+        "meshTerms": mesh_terms,
+        "meshAncestors": mesh_ancestors,
+        "intrMesh": intr_mesh,
         "criteria": elig.get("eligibilityCriteria", ""),
         "sex": elig.get("sex", ""),
         "minAge": elig.get("minimumAge", ""),
@@ -149,6 +160,21 @@ def sites_in_country(trial, country):
         return trial["locations"]
     return [l for l in trial["locations"]
             if country.lower() in (l.get("country", "") or "").lower()]
+
+
+_CONCEPT_STOP = {"the", "and", "for", "with", "any", "all", "type", "study",
+                 "trial", "disease", "disorder", "syndrome", "chronic", "acute",
+                 "mellitus", "diseases", "system", "related", "conditions"}
+
+
+def concept_tokens(trial):
+    """Lowercased concept tokens for a trial from CT.gov's MeSH terms, ancestors
+    and listed conditions. Empty when CT.gov assigned no MeSH (older/small
+    studies) - callers then fall back to string matching."""
+    text = " ".join(trial.get("meshTerms", []) + trial.get("meshAncestors", [])
+                    + trial.get("conditions", []))
+    return {w for w in re.findall(r"[a-z0-9]+", text.lower())
+            if len(w) > 3 and w not in _CONCEPT_STOP}
 
 
 # --------------------------------------------------------------------------- #

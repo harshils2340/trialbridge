@@ -89,14 +89,27 @@
       <h3 class="td-apply-title">{{ ic.icon('user-plus') }} Ask to be contacted</h3>
       <p class="td-apply-sub">Answer 4 quick questions and leave your contact info. The study team
         first reviews you <b>de-identified</b> - they only see your details <b>if they accept you</b>.</p>
+
+      {% if records_profile %}
+      <div class="rec-banner ok">{{ ic.icon('check') }}
+        <span>Your health records are connected via <b>{{ records_profile.provider }}</b>. Your medical
+        history is filled in automatically - just confirm the quick questions and submit.</span></div>
+      {% else %}
+      <form method="post" action="{{ url_for('records_connect') }}" class="rec-connect-form">
+        <button class="rec-connect" type="submit">{{ ic.icon('activity') }}
+          <span><b>Connect your health records</b> to auto-fill this and every future application</span></button>
+        <span class="rec-connect-hint">One-time, private. Your history is shared <b>de-identified</b>, only with study teams you apply to.</span>
+      </form>
+      {% endif %}
+
       <form class="interest-form" method="post" action="{{ url_for('interest') }}">
         <input type="hidden" name="nct" value="{{ t.nctId }}">
         <input type="hidden" name="title" value="{{ t.title }}">
         <input type="hidden" name="condition" value="{{ condition }}">
         <input type="hidden" name="location" value="{{ location }}">
         <input type="hidden" name="site" value="{{ r.site_str }}">
-        <input type="hidden" name="age" value="{{ q_age }}">
-        <input type="hidden" name="sex" value="{{ q_sex }}">
+        <input type="hidden" name="age" value="{{ q_age or (records_profile.age if records_profile else '') }}">
+        <input type="hidden" name="sex" value="{{ q_sex or (records_profile.sex if records_profile else '') }}">
         <input type="hidden" name="eligibility" value='{{ {"verdict": m.verdict, "rationale": m.rationale, "met": m.met, "unknown": m.unknown, "not_met": m.not_met}|tojson }}'>
 
         <div class="if-screener">

@@ -124,6 +124,60 @@ def build_applicant_message(lead, kind, link):
     return subj, "\n".join(lines)
 
 
+def build_alert_message(alert, new_matches, link):
+    """Notify a patient that new trials matched their saved interest.
+    new_matches: list of (nct, title)."""
+    what = alert["label"] or alert["condition"] or alert["intervention"] or "your interests"
+    n = len(new_matches)
+    subject = (f"{n} new clinical trial{'s' if n != 1 else ''} matching {what}")
+    lines = [
+        "Hi,",
+        "",
+        f"{n} new recruiting trial{'s' if n != 1 else ''} just matched your "
+        f"saved interest ({what})"
+        + (f" near {alert['location']}" if alert["location"] else "") + ":",
+        "",
+    ]
+    for nct, title in new_matches[:10]:
+        lines.append(f"  - {title or nct} ({nct})")
+    if n > 10:
+        lines.append(f"  ...and {n - 10} more.")
+    lines += [
+        "",
+        "See them and ask to be contacted here:",
+        link,
+        "",
+        "You're getting this because you set up a trial alert on TrialBridge. "
+        "Manage or turn off alerts from the link above.",
+    ]
+    return subject, "\n".join(lines)
+
+
+def build_schedule_message(lead, schedule_url, apps_link):
+    """Tell the applicant a study team invited them to book their screening call."""
+    title = lead["title"] or lead["nct"] or "a clinical trial"
+    subject = f"Book your screening call - {lead['nct'] or 'your trial application'}"
+    lines = [
+        f"Hi {lead['name'] or 'there'},",
+        "",
+        "Good news - a study team wants to move forward and invited you to book "
+        "a screening call, the first quick step to see if you qualify.",
+        "",
+        f"Trial: {title}",
+        "",
+        "Pick a time that works for you here:",
+        schedule_url,
+        "",
+        "You can review this application any time at:",
+        apps_link,
+        "",
+        "This isn't medical advice and you can talk to your own doctor first.",
+        "",
+        "Sent via TrialBridge.",
+    ]
+    return subject, "\n".join(lines)
+
+
 def send_email(to_addr, subject, body):
     """Send via SMTP. Returns (ok, message)."""
     if not smtp_configured():

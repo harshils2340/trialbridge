@@ -37,10 +37,14 @@ sys.path.insert(0, str(HERE.parent))
 import match_trials as mt  # noqa: E402
 import refer as rf  # noqa: E402
 
+import alerts as alerts_mod  # noqa: E402
+import codes  # noqa: E402
 import db  # noqa: E402
 import fhir  # noqa: E402
 import ingest  # noqa: E402
 import mailer  # noqa: E402
+import records as records_mod  # noqa: E402
+import redcap  # noqa: E402
 import summarize  # noqa: E402
 import trends  # noqa: E402
 
@@ -225,12 +229,45 @@ def _notify_applicant_by_id(lead_id, kind):
     return _notify_applicant(lead["token"], kind) if lead else False
 
 
+def _notify_applicant_schedule(lead):
+    """Email the applicant their booking link so they can self-schedule."""
+    if not lead or not lead["email"] or not lead["schedule_url"]:
+        return False
+    subject, body = mailer.build_schedule_message(
+        lead, lead["schedule_url"], _abs_url("applications"))
+    return _notify(lead["email"], subject, body)
+
+
+def _notify_alert(alert, new_matches):
+    """Push new matching trials to the patient who saved this alert."""
+    if not alert["email"]:
+        return False
+    link = _abs_url("alerts")
+    subject, body = mailer.build_alert_message(alert, new_matches, link)
+    return _notify(alert["email"], subject, body)
+
+
+# Watch ClinicalTrials.gov in the background and push new matches to patients.
+alerts_mod.configure(app, notifier=_notify_alert)
+
+
 @app.context_processor
 def inject_globals():
+    token = get_applicant_token()
     try:
-        apps_n = db.count_applications(get_applicant_token())
+        apps_n = db.count_applications(token)
     except Exception:
         apps_n = 0
+    # Whether this visitor has connected their health records once already, so
+    # the apply form can auto-fill instead of asking again.
+    try:
+        rec = db.get_records_profile(token) if token else None
+    except Exception:
+        rec = None
+    try:
+        alerts_new = db.new_matches_count(token) if token else 0
+    except Exception:
+        alerts_new = 0
     # In no-login testing mode we show a small switcher so you can preview all
     # three POVs (patient / clinician / study team) without signing in.
     path = request.path or "/"
@@ -241,7 +278,9 @@ def inject_globals():
     else:
         pov = "patient"
     return {"user": g.user, "llm_on": bool(mt.LLM_API_KEY),
-            "applications_count": apps_n, "pov_demo": NO_LOGIN, "pov": pov}
+            "applications_count": apps_n, "pov_demo": NO_LOGIN, "pov": pov,
+            "records_profile": rec, "records_provider": records_mod.provider_label(),
+            "alerts_new_count": alerts_new}
 
 
 @app.route("/register", methods=["GET", "POST"])
@@ -402,9 +441,15 @@ def home():
 
 # --------------------------------------------------------------------------- #
 # Search result cache. A search is expensive (CT.gov fetch + per-trial LLM), so
-# we keep the ranked results in memory keyed by a short id. That lets each trial
-# open on its own detail page (like an Airbnb listing) without re-running the
-# search or losing the eligibility read computed at search time.
+# we keep the ranked results keyed by a short id. That lets each trial open on
+# its own detail page (like an Airbnb listing) without re-running the search or
+# losing the eligibility read computed at search time.
+#
+# The cache is persisted in SQLite (db.save_search / db.get_search) so it is
+# shared across gunicorn workers - otherwise a detail request routed to a
+# different worker than the one that ran the search wouldn't find the results
+# and would wrongly report "that trial result expired". A small in-process
+# OrderedDict is kept as an L1 fast path in front of the DB.
 # --------------------------------------------------------------------------- #
 _SEARCH_CACHE = OrderedDict()
 _SEARCH_CACHE_MAX = 80
@@ -412,15 +457,45 @@ _SEARCH_CACHE_MAX = 80
 
 def _cache_search(results, ctx):
     sid = secrets.token_urlsafe(9)
-    _SEARCH_CACHE[sid] = {"results": results, "ctx": ctx, "ts": time.time()}
+    entry = {"results": results, "ctx": ctx, "ts": time.time()}
+    _SEARCH_CACHE[sid] = entry
     while len(_SEARCH_CACHE) > _SEARCH_CACHE_MAX:
         _SEARCH_CACHE.popitem(last=False)
+    try:
+        db.save_search(sid, json.dumps({"results": results, "ctx": ctx}))
+    except Exception:
+        app.logger.exception("search cache persist failed")
     return sid
+
+
+def _load_search(sid):
+    """Return the cached search entry ({'results', 'ctx'}) for an id, checking
+    the in-process cache first and falling back to the shared SQLite store."""
+    entry = _SEARCH_CACHE.get(sid)
+    if entry:
+        return entry
+    try:
+        payload = db.get_search(sid)
+    except Exception:
+        app.logger.exception("search cache read failed")
+        payload = None
+    if not payload:
+        return None
+    try:
+        data = json.loads(payload)
+    except (ValueError, TypeError):
+        return None
+    entry = {"results": data.get("results") or [],
+             "ctx": data.get("ctx") or {}, "ts": time.time()}
+    _SEARCH_CACHE[sid] = entry   # warm the L1 cache for subsequent hits
+    while len(_SEARCH_CACHE) > _SEARCH_CACHE_MAX:
+        _SEARCH_CACHE.popitem(last=False)
+    return entry
 
 
 def _get_cached_trial(sid, nct):
     """Return (result_dict, ctx) for one trial in a cached search, or (None, ctx)."""
-    entry = _SEARCH_CACHE.get(sid)
+    entry = _load_search(sid)
     if not entry:
         return None, None
     for r in entry["results"]:
@@ -557,9 +632,27 @@ def interest():
     # so the study team gets a criteria breakdown with no extra LLM cost.
     elig_raw = f.get("eligibility", "").strip()
     try:
-        elig = json.dumps(json.loads(elig_raw)) if elig_raw else ""
+        elig = json.loads(elig_raw) if elig_raw else None
     except (ValueError, TypeError):
-        elig = ""
+        elig = None
+
+    age = f.get("age", "").strip()
+    sex = f.get("sex", "").strip()
+
+    # Auto-fill from records the patient already connected once. Age/sex fill any
+    # blanks, the de-identified summary rides along, and connected clinical facts
+    # promote "unknown" eligibility items to "met" (records.py, conservative).
+    prof = db.get_records_profile(applicant)
+    record_summary, records_connected = "", 0
+    if prof:
+        records_connected = 1
+        record_summary = records_mod.summary_text(prof)
+        if not age and prof.get("age") not in (None, ""):
+            age = str(prof.get("age"))
+        if not sex and prof.get("sex") in ("male", "female"):
+            sex = prof.get("sex")
+        if isinstance(elig, dict):
+            elig, _ = records_mod.autofill_eligibility(prof, elig)
 
     token = db.create_lead({
         "applicant_token": applicant,
@@ -568,10 +661,11 @@ def interest():
         "location": f.get("location", "").strip(),
         "site": f.get("site", "").strip(), "name": name,
         "email": f.get("email", "").strip(), "phone": f.get("phone", "").strip(),
-        "age": f.get("age", "").strip(), "sex": f.get("sex", "").strip(),
+        "age": age, "sex": sex,
         "notes": f.get("about", "").strip(), "consent": 1, "source": "web",
         "screener": json.dumps(screener) if screener else "",
-        "eligibility": elig,
+        "eligibility": json.dumps(elig) if elig else "",
+        "records_connected": records_connected, "record_summary": record_summary,
     })
     # Go-live hook: tell the site a new blinded candidate is waiting. No-op while
     # NOTIFY_LIVE is off, so nothing is emailed during testing.
@@ -614,35 +708,141 @@ def withdraw_application(token):
     return redirect(url_for("applications"))
 
 
-def build_demo_record_summary(lead):
-    """Prototype: stand-in for a real patient-mediated FHIR pull (SMART on FHIR /
-    1upHealth / Health Gorilla). Produces a de-identified summary the study team
-    would use to pre-screen. NOT real data - clearly labelled as a demo."""
-    cond = (lead["condition"] or "the condition").strip()
-    age = (lead["age"] or "").strip()
-    sex = (lead["sex"] or "").strip()
-    who = " ".join(x for x in [age and f"{age}yo", sex] if x) or "adult"
-    return (
-        f"DEMO de-identified record for a {who} patient.\n"
-        f"- Active problems: {cond}\n"
-        f"- Medications: (imported from connected record)\n"
-        f"- Recent labs / vitals: (imported from connected record)\n"
-        f"- No prior investigational-drug participation on file.\n"
-        f"This is sample data to demonstrate records-based pre-screening; in "
-        f"production it would be pulled from the patient's EHR with their consent.")
+@app.route("/records/connect", methods=["POST"])
+def records_connect():
+    """Patient authorizes their health records ONCE. We pull a de-identified
+    profile and store it against their applicant token, so every application
+    (past pending + future) auto-fills from it. Sandbox by default; a real
+    aggregator (Metriport/1upHealth) slots in behind the same call."""
+    applicant = get_applicant_token()
+    new_cookie = not applicant
+    if new_cookie:
+        applicant = secrets.token_urlsafe(16)
+    try:
+        prof = records_mod.connect()
+    except fhir.FhirError as e:
+        flash(str(e), "error")
+        return redirect(request.referrer or url_for("applications"))
+    except Exception:
+        app.logger.exception("records connect failed")
+        flash("Couldn't connect your records right now. Please try again.",
+              "error")
+        return redirect(request.referrer or url_for("applications"))
+
+    db.set_records_profile(applicant, prof)
+    n = db.attach_records_to_open_leads(applicant, records_mod.summary_text(prof))
+    msg = f"Health records connected via {prof.get('provider')}. "
+    msg += (f"Auto-filled {n} pending application(s) - "
+            if n else "New applications will auto-fill from your history - ")
+    msg += "you won't have to re-enter your medical details."
+    flash(msg, "success")
+    resp = make_response(redirect(request.referrer or url_for("applications")))
+    if new_cookie:
+        _set_applicant_cookie(resp, applicant)
+    return resp
+
+
+@app.route("/records/disconnect", methods=["POST"])
+def records_disconnect():
+    applicant = get_applicant_token()
+    if applicant:
+        db.clear_records_profile(applicant)
+    flash("Disconnected your health records.", "success")
+    return redirect(request.referrer or url_for("applications"))
+
+
+# --------------------------------------------------------------------------- #
+# Trial alerts (saved searches -> push notifications). See alerts.py.
+# --------------------------------------------------------------------------- #
+@app.route("/alerts")
+def alerts():
+    """Patient-facing 'My alerts': saved interests + any new matching trials."""
+    token = get_applicant_token()
+    items = []
+    for a in db.list_alerts(token):
+        items.append({"alert": a, "matches": db.get_alert_matches(a["id"])})
+    # Viewing clears the "new" badge in the nav.
+    if token:
+        db.clear_new_flags(token)
+    return render_template("alerts.html", items=items)
+
+
+@app.route("/alerts/create", methods=["POST"])
+def alerts_create():
+    """Save an interest. Works from the results CTA (carries the current search)
+    or the alerts page form. Baselines immediately so only future trials alert."""
+    f = request.form
+    condition = f.get("condition", "").strip()
+    intervention = f.get("intervention", "").strip()
+    email = f.get("email", "").strip()
+    if not (condition or intervention):
+        flash("Tell us a condition or treatment to watch for.", "error")
+        return redirect(request.referrer or url_for("alerts"))
+    if not email:
+        flash("Add an email so we can notify you about new trials.", "error")
+        return redirect(request.referrer or url_for("alerts"))
+
+    applicant = get_applicant_token()
+    new_cookie = not applicant
+    if new_cookie:
+        applicant = secrets.token_urlsafe(16)
+
+    def _f(v):
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return None
+
+    alert_id = db.create_alert({
+        "applicant_token": applicant,
+        "label": f.get("label", "").strip(),
+        "condition": condition, "intervention": intervention,
+        "location": f.get("location", "").strip(),
+        "lat": _f(f.get("lat")), "lon": _f(f.get("lon")),
+        "cc": f.get("cc", "").strip(), "radius": f.get("radius", "50").strip() or 50,
+        "unit": f.get("unit", "km").strip() or "km", "email": email,
+    })
+    # Baseline current matches so the patient isn't spammed with the backlog.
+    try:
+        alerts_mod.seed_baseline(alert_id)
+    except Exception:
+        app.logger.exception("alert baseline failed")
+    flash("Alert saved. We'll email you when a new matching trial opens - no "
+          "need to keep searching.", "success")
+    resp = make_response(redirect(url_for("alerts")))
+    if new_cookie:
+        _set_applicant_cookie(resp, applicant)
+    return resp
+
+
+@app.route("/alerts/<int:alert_id>/delete", methods=["POST"])
+def alerts_delete(alert_id):
+    if db.delete_alert(alert_id, get_applicant_token()):
+        flash("Alert removed.", "success")
+    else:
+        flash("Couldn't remove that alert.", "error")
+    return redirect(url_for("alerts"))
+
+
+@app.route("/alerts/run")
+def alerts_run():
+    """Trigger a sweep (for cron or manual testing). Protect with ALERTS_CRON_KEY
+    when set; otherwise only allowed in no-login/testing mode."""
+    key = os.environ.get("ALERTS_CRON_KEY", "").strip()
+    if key:
+        if request.args.get("key", "") != key:
+            abort(403)
+    elif not NO_LOGIN:
+        abort(403)
+    n = alerts_mod.check_all()
+    return jsonify({"checked": True, "new_matches": n})
 
 
 @app.route("/applications/connect-records/<token>", methods=["POST"])
 def connect_records(token):
-    applicant = get_applicant_token()
-    lead = db.get_lead_by_token(token)
-    if not lead or lead["applicant_token"] != applicant:
-        flash("Couldn't connect records for that application.", "error")
-        return redirect(url_for("applications"))
-    db.connect_records(token, applicant, build_demo_record_summary(lead))
-    flash("Health records connected (prototype) - pre-screening has started.",
-          "success")
-    return redirect(url_for("applications"))
+    # Back-compat: the old per-application button now triggers the connect-once
+    # flow (records apply to every application, not just one).
+    return records_connect()
 
 
 @app.route("/trials/<slug>")
@@ -739,7 +939,8 @@ def leads():
     return render_template("leads.html", review=review, reviewed=reviewed,
                            counts=db.lead_counts(), pipeline=db.LEAD_PIPELINE,
                            statuses=db.LEAD_STATUSES, labels=db.LEAD_LABELS,
-                           screener_labels=SCREENER_LABELS)
+                           screener_labels=SCREENER_LABELS,
+                           redcap_on=redcap.configured())
 
 
 @app.route("/app/leads/<int:lead_id>/accept", methods=["POST"])
@@ -765,6 +966,60 @@ def decline_lead(lead_id):
               "were revealed.", "success")
     else:
         flash("Couldn't decline that candidate.", "error")
+    return redirect(url_for("leads"))
+
+
+@app.route("/app/leads/<int:lead_id>/schedule", methods=["POST"])
+@login_required
+def schedule_lead(lead_id):
+    """Attach a booking link (Calendly/Acuity/Cal.com/etc.) to an accepted
+    candidate so the patient can self-schedule their screening call."""
+    url = request.form.get("schedule_url", "").strip()
+    if url and not url.startswith(("http://", "https://")):
+        url = "https://" + url
+    lead = db.set_lead_schedule(lead_id, url)
+    if not lead:
+        flash("Couldn't find that candidate.", "error")
+    elif url:
+        _notify_applicant_schedule(lead)
+        flash("Booking link sent - the applicant can now self-schedule their "
+              "screening call.", "success")
+    else:
+        flash("Booking link removed.", "success")
+    return redirect(url_for("leads"))
+
+
+@app.route("/c/<token>/schedule", methods=["POST"])
+def candidate_schedule(token):
+    url = request.form.get("schedule_url", "").strip()
+    if url and not url.startswith(("http://", "https://")):
+        url = "https://" + url
+    lead = db.get_lead_by_token(token)
+    if not lead:
+        abort(404)
+    lead = db.set_lead_schedule(lead["id"], url)
+    if url:
+        _notify_applicant_schedule(lead)
+        flash("Booking link sent to the applicant.", "ok")
+    else:
+        flash("Booking link removed.", "ok")
+    return redirect(url_for("candidate_page", token=token))
+
+
+@app.route("/app/leads/<int:lead_id>/redcap", methods=["POST"])
+@login_required
+def push_lead_redcap(lead_id):
+    """Drop the candidate into the site's REDCap project so the coordinator
+    doesn't re-type anything. No-op with a helpful message until configured."""
+    lead = db.get_lead(lead_id)
+    if not lead:
+        flash("Couldn't find that candidate.", "error")
+        return redirect(url_for("leads"))
+    ok, msg = redcap.push_candidate(lead)
+    if ok:
+        db.update_lead_status(lead_id, lead["status"], "pushed to REDCap",
+                              actor="you")
+    flash(msg, "success" if ok else "error")
     return redirect(url_for("leads"))
 
 
@@ -996,6 +1251,20 @@ def run_search(note, condition, country, require_site, coords=None, radius=50,
 
     gated = [t for t in trials if mt.hard_gate(t, profile)[0]]
 
+    # Concept-level relevance from CT.gov's own MeSH vocabulary. We normalize the
+    # patient's condition into the same tokens CT.gov tags studies with, so we
+    # spend the (costly) per-trial LLM budget on the most on-topic studies first
+    # instead of whatever order the loose text search returned. Best-effort: if
+    # the NLM lookup or a study's MeSH is missing, relevance is 0 and ordering
+    # falls back to the previous behaviour - nothing is ever dropped.
+    try:
+        patient_tokens = codes.condition_tokens(search_label)
+    except Exception:
+        patient_tokens = set()
+
+    def _rel(t):
+        return codes.relevance(patient_tokens, mt.concept_tokens(t))
+
     # Pick which trials to screen. With a location, keep only trials with a
     # RECRUITING site inside the radius, screen the closest first - so we never
     # surface something across the country or a site that isn't enrolling.
@@ -1006,9 +1275,12 @@ def run_search(note, condition, country, require_site, coords=None, radius=50,
             near = nearby_sites(t, coords[0], coords[1], unit, radius)
             if near:                              # has a reachable recruiting site
                 within.append((t, near))
-        within.sort(key=lambda x: x[1][0]["distance"])   # nearest site first
+        # Nearest first, but let strong concept relevance win close ties so a
+        # slightly-farther on-topic trial isn't buried by an off-topic closer one.
+        within.sort(key=lambda x: (round(x[1][0]["distance"], 0), -_rel(x[0])))
         picks = within[:MAX_MATCH]
     else:
+        gated.sort(key=lambda t: -_rel(t))        # most on-topic into LLM budget
         picks = [(t, []) for t in gated[:MAX_MATCH]]
 
     results = []
@@ -1053,7 +1325,7 @@ def run_search(note, condition, country, require_site, coords=None, radius=50,
         results.append({"trial": t, "match": m, "site": site,
                         "site_str": _site_str(site),
                         "coordinator": _coordinator(t, site),
-                        "distance": dist, "unit": unit,
+                        "distance": dist, "unit": unit, "relevance": _rel(t),
                         "nearby": near[:8], "nearby_total": len(near),
                         "other_count": len(others), "other_regions": other_regions[:5]})
 
@@ -1065,6 +1337,7 @@ def run_search(note, condition, country, require_site, coords=None, radius=50,
         local = bool(mt.sites_in_country(t, country)) if country else True
         return (mt.VERDICT_RANK.get(m.get("verdict"), 3), round(dist_sort, 1),
                 0 if local else 1, 0 if not obs else 1,
+                -int(r.get("relevance") or 0),
                 len(m.get("not_met") or []), len(m.get("unknown") or []),
                 -int(m.get("score") or 0))
 

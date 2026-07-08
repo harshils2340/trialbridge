@@ -139,6 +139,15 @@
               <input type="text" name="note" placeholder="Note (optional)">
               <button class="btn btn-sm" type="submit">Save</button>
             </form>
+            {% if l['revealed'] %}
+            <form method="post" action="{{ url_for('push_lead_redcap', lead_id=l['id']) }}" class="lead-redcap-form" title="{{ 'Push this candidate into your REDCap project' if redcap_on else 'Connect REDCap (REDCAP_API_URL/TOKEN) to enable' }}">
+              <button class="btn btn-sm btn-ghost" type="submit">{{ ic.icon('external') }} Push to REDCap</button>
+            </form>
+            <form method="post" action="{{ url_for('schedule_lead', lead_id=l['id']) }}" class="lead-sched-form" title="Send the applicant a link to book their screening call">
+              <input type="url" name="schedule_url" value="{{ l['schedule_url'] }}" placeholder="Booking link (Calendly, Cal.com...)">
+              <button class="btn btn-sm btn-ghost" type="submit">{{ ic.icon('activity') }} {{ 'Update link' if l['schedule_url'] else 'Send booking link' }}</button>
+            </form>
+            {% endif %}
             {% else %}<span class="tag">-</span>{% endif %}
           </td>
         </tr>

@@ -101,6 +101,20 @@
     </dl>
   </div>
   <div class="card">
+    <div class="section-title"><h2>Invite to book a screening call</h2></div>
+    <p class="hint">Paste your scheduling link (Calendly, Cal.com, Acuity...). We email it to the
+      applicant so they self-book - no phone tag.</p>
+    <form method="post" action="{{ url_for('candidate_schedule', token=lead['token']) }}">
+      <div class="field">
+        <input name="schedule_url" type="url" value="{{ lead['schedule_url'] }}"
+               placeholder="https://calendly.com/your-site/screening">
+      </div>
+      <button class="btn btn-primary" type="submit">{{ ic.icon('activity') }}
+        {{ 'Update booking link' if lead['schedule_url'] else 'Send booking link' }}</button>
+      {% if lead['schedule_url'] %}<p class="hint">Current link sent to applicant: {{ lead['schedule_url'] }}</p>{% endif %}
+    </form>
+  </div>
+  <div class="card">
     <div class="section-title"><h2>Move forward</h2></div>
     <form method="post" action="{{ url_for('candidate_advance', token=lead['token']) }}">
       <div class="field">

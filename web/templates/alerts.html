@@ -1,0 +1,79 @@
+{% extends "public_base.html" %}
+{% block title %}Trial alerts · TrialBridge{% endblock %}
+
+{% block body %}
+<section class="apps-wrap">
+  <div class="apps-head">
+    <div>
+      <h1>Trial alerts</h1>
+      <p class="apps-sub">Tell us what you're looking for once. We'll email you when a new matching
+        study opens - so you never have to keep searching.</p>
+    </div>
+    <a class="btn btn-ghost" href="{{ url_for('find') }}">{{ ic.icon('search') }} Find trials now</a>
+  </div>
+
+  <form class="alert-new" method="post" action="{{ url_for('alerts_create') }}">
+    <div class="alert-new-row">
+      <label>Condition or treatment
+        <input type="text" name="condition" placeholder="e.g. obesity, semaglutide" required>
+      </label>
+      <label>Near <span class="opt">(optional)</span>
+        <input type="text" name="location" placeholder="City or region">
+      </label>
+      <label>Email
+        <input type="email" name="email" placeholder="you@email.com" required>
+      </label>
+      <button class="btn btn-primary" type="submit">{{ ic.icon('activity') }} Create alert</button>
+    </div>
+    <p class="alert-new-hint">Watches recruiting, treatment (interventional) studies. You're only
+      notified about trials that open <b>after</b> you create the alert - never the existing backlog.</p>
+  </form>
+
+  {% if not items %}
+  <div class="apps-empty">
+    <div class="apps-empty-mark">{{ ic.icon('activity') }}</div>
+    <h2>No alerts yet</h2>
+    <p>Create one above, or set one straight from any search results page.</p>
+  </div>
+  {% endif %}
+
+  {% for it in items %}
+  {% set a = it.alert %}
+  <article class="alert-card">
+    <div class="alert-card-head">
+      <div>
+        <h2 class="alert-title">{{ a.label or a.condition or a.intervention }}</h2>
+        <p class="alert-meta">
+          {% if a.location %}{{ ic.icon('pin') }} Near {{ a.location }} · {% endif %}
+          {{ ic.icon('check') }} Watching for new trials
+          {% if a.last_checked_at %}· last checked {{ a.last_checked_at }}{% endif %}
+        </p>
+      </div>
+      <form method="post" action="{{ url_for('alerts_delete', alert_id=a.id) }}">
+        <button class="link-btn" type="submit">Remove</button>
+      </form>
+    </div>
+
+    {% set news = it.matches | selectattr('is_new') | list %}
+    {% if news %}
+    <div class="alert-new-banner">{{ ic.icon('sparkle') }}
+      <span><b>{{ news|length }} new</b> matching trial{{ '' if news|length == 1 else 's' }} since you last looked.</span></div>
+    {% endif %}
+
+    {% if it.matches %}
+    <ul class="alert-matches">
+      {% for m in it.matches %}
+      <li class="alert-match{{ ' is-new' if m.is_new else '' }}">
+        {% if m.is_new %}<span class="alert-tag-new">New</span>{% endif %}
+        <a href="https://clinicaltrials.gov/study/{{ m.nct }}" target="_blank" rel="noopener">{{ m.title or m.nct }}</a>
+        <span class="alert-match-nct">{{ m.nct }}</span>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="alert-none">No matches yet - we'll email <b>{{ a.email }}</b> the moment one opens.</p>
+    {% endif %}
+  </article>
+  {% endfor %}
+</section>
+{% endblock %}

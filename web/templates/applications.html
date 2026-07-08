@@ -11,6 +11,21 @@
     <a class="btn btn-primary" href="{{ url_for('find') }}">{{ ic.icon('search') }} Find more trials</a>
   </div>
 
+  {% if records_profile %}
+  <div class="rec-banner ok wide">{{ ic.icon('check') }}
+    <span>Health records connected via <b>{{ records_profile.provider }}</b>. Every application auto-fills
+      from your history - no re-entering details.</span>
+    <form method="post" action="{{ url_for('records_disconnect') }}"><button class="link-btn" type="submit">Disconnect</button></form>
+  </div>
+  {% elif apps %}
+  <form method="post" action="{{ url_for('records_connect') }}" class="rec-banner connect wide">
+    {{ ic.icon('activity') }}
+    <span><b>Connect your health records once</b> and every application - now and later - auto-fills from
+      your medical history. Shared <b>de-identified</b>, only with study teams you apply to.</span>
+    <button class="btn btn-primary" type="submit">Connect records</button>
+  </form>
+  {% endif %}
+
   {% if not apps %}
   <div class="apps-empty">
     <div class="apps-empty-mark">{{ ic.icon('user-plus') }}</div>
@@ -59,15 +74,17 @@
     </ol>
     {% endif %}
 
-    {% if not is_closed %}
-      {% if ld.records_connected %}
-      <div class="app-records ok">{{ ic.icon('check') }} <span>Health records connected - the study team can pre-screen you from your history.</span></div>
-      {% else %}
-      <form method="post" action="{{ url_for('connect_records', token=ld.token) }}" class="app-records-form">
-        <button class="btn btn-ghost btn-block" type="submit">{{ ic.icon('upload') }} Connect your health records to speed up pre-screening</button>
-        <span class="app-records-note">Prototype: links records (like your hospital portal or Apple Health) so the team can check eligibility from your history, with your consent. No data is sent anywhere yet.</span>
-      </form>
-      {% endif %}
+    {% if not is_closed and ld.schedule_url %}
+    <div class="app-book">
+      <div class="app-book-copy">{{ ic.icon('activity') }}
+        <span><b>The study team invited you to book your screening call.</b>
+          Pick a time that works - it's the quick first step to see if you qualify.</span></div>
+      <a class="btn btn-primary" href="{{ ld.schedule_url }}" target="_blank" rel="noopener">Book your call</a>
+    </div>
+    {% endif %}
+
+    {% if not is_closed and ld.records_connected %}
+    <div class="app-records ok">{{ ic.icon('check') }} <span>Records attached - the study team can pre-screen you from your history.</span></div>
     {% endif %}
 
     <div class="app-foot">

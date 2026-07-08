@@ -133,8 +133,17 @@ def _observations(pid):
     return keep
 
 
-def fetch_patient_summary(pid):
-    """Return (summary_text, top_condition). Raises FhirError on failure."""
+def fetch_patient_profile(pid):
+    """Pull a patient's chart and return a STRUCTURED, de-identified profile:
+
+        {"age": int|None, "sex": "male"|"female"|"unknown",
+         "conditions": [...], "meds": [...], "labs": [...]}
+
+    This is the shape a patient-mediated FHIR pull (SMART on FHIR / 1upHealth /
+    Metriport) returns. Everything downstream (summary text, screener auto-fill)
+    is built from this, so swapping the sandbox for a real aggregator only
+    changes where the FHIR bundles come from, not this structure.
+    """
     pid = (pid or "").strip()
     if not pid:
         raise FhirError("Enter a patient ID.")
@@ -169,17 +178,34 @@ def fetch_patient_summary(pid):
         if meds:
             break
 
-    labs = _observations(pid)
+    return {
+        "age": age,
+        "sex": sex if sex in ("male", "female") else "unknown",
+        "conditions": conds[:12],
+        "meds": meds[:15],
+        "labs": _observations(pid),
+    }
 
+
+def profile_to_text(prof):
+    """De-identified summary text (age/sex + problems + meds + labs)."""
+    age, sex = prof.get("age"), prof.get("sex")
     lines = [f"AGE: {age if age is not None else 'unknown'}",
              f"SEX: {sex if sex in ('male', 'female') else 'unknown'}"]
-    if conds:
-        lines.append("Active problems: " + "; ".join(conds[:12]) + ".")
-    if meds:
-        lines.append("Medications: " + "; ".join(meds[:15]) + ".")
-    if labs:
-        lines.append("Recent labs/vitals: " + "; ".join(labs) + ".")
-    if not (conds or meds or labs):
+    if prof.get("conditions"):
+        lines.append("Active problems: " + "; ".join(prof["conditions"]) + ".")
+    if prof.get("meds"):
+        lines.append("Medications: " + "; ".join(prof["meds"]) + ".")
+    if prof.get("labs"):
+        lines.append("Recent labs/vitals: " + "; ".join(prof["labs"]) + ".")
+    if not (prof.get("conditions") or prof.get("meds") or prof.get("labs")):
         lines.append("No coded problems, medications, or results found for this "
                      "patient in the EHR.")
-    return "\n".join(lines), (conds[0] if conds else "")
+    return "\n".join(lines)
+
+
+def fetch_patient_summary(pid):
+    """Return (summary_text, top_condition). Raises FhirError on failure."""
+    prof = fetch_patient_profile(pid)
+    conds = prof.get("conditions") or []
+    return profile_to_text(prof), (conds[0] if conds else "")

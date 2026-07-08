@@ -9,6 +9,7 @@ import os
 import pathlib
 import secrets
 import sqlite3
+import time
 
 from flask import g
 
@@ -136,6 +137,7 @@ CREATE TABLE IF NOT EXISTS leads (
     decision_reason TEXT DEFAULT '',
     decided_at      TEXT DEFAULT '',
     revealed        INTEGER DEFAULT 0,
+    schedule_url    TEXT DEFAULT '',
     created_at      TEXT NOT NULL,
     updated_at      TEXT DEFAULT ''
 );
@@ -173,11 +175,69 @@ CREATE TABLE IF NOT EXISTS trial_summaries (
     updated_at  TEXT NOT NULL
 );
 
+-- Ranked patient-search results, keyed by a short id. Persisted (not in-process
+-- memory) so a trial detail page opened on a DIFFERENT gunicorn worker than the
+-- one that ran the search can still read it. Pruned by age/count on write.
+CREATE TABLE IF NOT EXISTS search_cache (
+    sid         TEXT PRIMARY KEY,
+    payload     TEXT NOT NULL,
+    created_at  REAL NOT NULL
+);
+
+-- Patient-mediated health records, connected ONCE per applicant (see records.py).
+-- Stored against the applicant token so every future application auto-fills.
+CREATE TABLE IF NOT EXISTS records_profiles (
+    applicant_token TEXT PRIMARY KEY,
+    provider        TEXT DEFAULT '',
+    age             TEXT DEFAULT '',
+    sex             TEXT DEFAULT '',
+    data            TEXT NOT NULL,
+    summary         TEXT DEFAULT '',
+    connected_at    TEXT NOT NULL
+);
+
+-- Trial alerts (saved searches). A patient registers interests once; a
+-- background job (see alerts.py) watches ClinicalTrials.gov and notifies them
+-- when NEW matching recruiting trials appear -> push, not pull.
+CREATE TABLE IF NOT EXISTS alerts (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    applicant_token TEXT NOT NULL,
+    label           TEXT DEFAULT '',
+    condition       TEXT DEFAULT '',
+    intervention    TEXT DEFAULT '',
+    location        TEXT DEFAULT '',
+    lat             REAL,
+    lon             REAL,
+    cc              TEXT DEFAULT '',
+    radius          INTEGER DEFAULT 50,
+    unit            TEXT DEFAULT 'km',
+    email           TEXT DEFAULT '',
+    active          INTEGER DEFAULT 1,
+    created_at      TEXT NOT NULL,
+    last_checked_at TEXT DEFAULT ''
+);
+
+-- Trials an alert has already seen. Baseline (is_new=0) is seeded at creation so
+-- we never spam the patient with trials that already existed; genuinely new
+-- matches land with is_new=1 until surfaced.
+CREATE TABLE IF NOT EXISTS alert_matches (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    alert_id    INTEGER NOT NULL,
+    nct         TEXT NOT NULL,
+    title       TEXT DEFAULT '',
+    is_new      INTEGER DEFAULT 1,
+    created_at  TEXT NOT NULL,
+    FOREIGN KEY (alert_id) REFERENCES alerts(id)
+);
+
 CREATE INDEX IF NOT EXISTS idx_referrals_user ON referrals(user_id);
 CREATE INDEX IF NOT EXISTS idx_events_ref ON referral_events(referral_id);
 CREATE INDEX IF NOT EXISTS idx_leads_created ON leads(created_at);
 CREATE INDEX IF NOT EXISTS idx_lead_events_lead ON lead_events(lead_id);
 CREATE INDEX IF NOT EXISTS idx_search_stats_kind ON search_stats(kind, hits);
+CREATE INDEX IF NOT EXISTS idx_search_cache_created ON search_cache(created_at);
+CREATE INDEX IF NOT EXISTS idx_alerts_applicant ON alerts(applicant_token);
+CREATE INDEX IF NOT EXISTS idx_alert_matches_alert ON alert_matches(alert_id);
 """
 
 
@@ -232,6 +292,7 @@ _MIGRATIONS = {
         "decision_reason": "TEXT DEFAULT ''",
         "decided_at": "TEXT DEFAULT ''",
         "revealed": "INTEGER DEFAULT 0",
+        "schedule_url": "TEXT DEFAULT ''",
     },
 }
 
@@ -423,8 +484,8 @@ def create_lead(data):
         """INSERT INTO leads
            (token, applicant_token, nct, title, condition, location, site, name,
             email, phone, age, sex, notes, consent, source, status, screener,
-            eligibility, created_at, updated_at)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            eligibility, records_connected, record_summary, created_at, updated_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         (token, data.get("applicant_token", ""), data.get("nct", ""),
          data.get("title", ""), data.get("condition", ""),
          data.get("location", ""), data.get("site", ""), data.get("name", ""),
@@ -432,7 +493,8 @@ def create_lead(data):
          data.get("sex", ""), data.get("notes", ""),
          1 if data.get("consent") else 0, data.get("source", "web"),
          "prescreen", data.get("screener", ""), data.get("eligibility", ""),
-         ts, ts))
+         1 if data.get("records_connected") else 0,
+         data.get("record_summary", ""), ts, ts))
     lead_id = cur.lastrowid
     db.execute(
         "INSERT INTO lead_events (lead_id, status, note, actor, created_at) "
@@ -565,6 +627,28 @@ def update_lead_status(lead_id, status, note="", actor="you"):
         "VALUES (?,?,?,?,?)", (lead_id, status, note, actor, ts))
     db.commit()
     return True
+
+
+def set_lead_schedule(lead_id, url, actor="site"):
+    """Attach the study team's booking link to an accepted candidate so the
+    patient can self-schedule their screening call. Moves the app to 'screening'
+    and logs it on the timeline. Returns the lead row (or None)."""
+    lead = get_lead(lead_id)
+    if not lead:
+        return None
+    db = get_db()
+    ts = now()
+    db.execute("UPDATE leads SET schedule_url = ?, updated_at = ? WHERE id = ?",
+               (url, ts, lead_id))
+    if url and lead["status"] in ("eligible", "prescreen", "submitted"):
+        db.execute("UPDATE leads SET status = 'screening' WHERE id = ?", (lead_id,))
+    db.execute(
+        "INSERT INTO lead_events (lead_id, status, note, actor, created_at) "
+        "VALUES (?,?,?,?,?)",
+        (lead_id, "screening" if url else lead["status"],
+         "sent booking link" if url else "removed booking link", actor, ts))
+    db.commit()
+    return get_lead(lead_id)
 
 
 def withdraw_lead(token, applicant_token):
@@ -832,6 +916,39 @@ def top_terms(kind, limit=8):
 
 
 # --------------------------------------------------------------------------- #
+# Search result cache - shared across gunicorn workers (see web/app.py). Kept in
+# SQLite (not process memory) so a trial detail request served by a different
+# worker than the one that ran the search can still find the ranked results.
+# --------------------------------------------------------------------------- #
+SEARCH_CACHE_TTL = 24 * 3600   # results are good for a day
+SEARCH_CACHE_MAX = 500         # hard cap on rows kept
+
+
+def save_search(sid, payload):
+    """Persist a search result blob (JSON string) under a short id, then prune
+    anything older than the TTL and trim back to SEARCH_CACHE_MAX rows."""
+    con = get_db()
+    ts = time.time()
+    con.execute(
+        "INSERT OR REPLACE INTO search_cache (sid, payload, created_at) "
+        "VALUES (?,?,?)", (sid, payload, ts))
+    con.execute("DELETE FROM search_cache WHERE created_at < ?",
+                (ts - SEARCH_CACHE_TTL,))
+    con.execute(
+        "DELETE FROM search_cache WHERE sid NOT IN "
+        "(SELECT sid FROM search_cache ORDER BY created_at DESC LIMIT ?)",
+        (SEARCH_CACHE_MAX,))
+    con.commit()
+
+
+def get_search(sid):
+    """Return the stored payload (JSON string) for a search id, or None."""
+    row = get_db().execute(
+        "SELECT payload FROM search_cache WHERE sid = ?", (sid,)).fetchone()
+    return row["payload"] if row else None
+
+
+# --------------------------------------------------------------------------- #
 # Trending cache - externally-sourced trending terms (see web/trends.py).
 # --------------------------------------------------------------------------- #
 def get_trend_cache(kind):
@@ -884,6 +1001,182 @@ def set_trial_summary(nct, data):
         "updated_at = excluded.updated_at",
         (nct, json.dumps(data), now()))
     db.commit()
+
+
+# --------------------------------------------------------------------------- #
+# Patient-mediated records profile (connected once, see records.py)
+# --------------------------------------------------------------------------- #
+def get_records_profile(applicant_token):
+    if not applicant_token:
+        return None
+    row = get_db().execute(
+        "SELECT * FROM records_profiles WHERE applicant_token = ?",
+        (applicant_token,)).fetchone()
+    if not row:
+        return None
+    try:
+        prof = json.loads(row["data"])
+    except (ValueError, TypeError):
+        prof = {}
+    prof.setdefault("provider", row["provider"])
+    prof.setdefault("summary", row["summary"])
+    prof["age"] = row["age"] or prof.get("age")
+    prof["sex"] = row["sex"] or prof.get("sex")
+    return prof
+
+
+def set_records_profile(applicant_token, prof):
+    if not applicant_token or not prof:
+        return
+    db = get_db()
+    age = "" if prof.get("age") in (None, "") else str(prof.get("age"))
+    db.execute(
+        "INSERT INTO records_profiles "
+        "(applicant_token, provider, age, sex, data, summary, connected_at) "
+        "VALUES (?,?,?,?,?,?,?) "
+        "ON CONFLICT(applicant_token) DO UPDATE SET provider = excluded.provider, "
+        "age = excluded.age, sex = excluded.sex, data = excluded.data, "
+        "summary = excluded.summary, connected_at = excluded.connected_at",
+        (applicant_token, prof.get("provider", ""), age, prof.get("sex", ""),
+         json.dumps(prof), prof.get("summary", ""), now()))
+    db.commit()
+
+
+def clear_records_profile(applicant_token):
+    if not applicant_token:
+        return
+    db = get_db()
+    db.execute("DELETE FROM records_profiles WHERE applicant_token = ?",
+               (applicant_token,))
+    db.commit()
+
+
+# --------------------------------------------------------------------------- #
+# Trial alerts (saved searches, see alerts.py)
+# --------------------------------------------------------------------------- #
+def create_alert(data):
+    db = get_db()
+    cur = db.execute(
+        """INSERT INTO alerts
+           (applicant_token, label, condition, intervention, location, lat, lon,
+            cc, radius, unit, email, active, created_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,1,?)""",
+        (data.get("applicant_token", ""), data.get("label", ""),
+         data.get("condition", ""), data.get("intervention", ""),
+         data.get("location", ""), data.get("lat"), data.get("lon"),
+         data.get("cc", ""), int(data.get("radius") or 50),
+         data.get("unit", "km"), data.get("email", ""), now()))
+    db.commit()
+    return cur.lastrowid
+
+
+def list_alerts(applicant_token):
+    if not applicant_token:
+        return []
+    return get_db().execute(
+        "SELECT * FROM alerts WHERE applicant_token = ? ORDER BY id DESC",
+        (applicant_token,)).fetchall()
+
+
+def list_active_alerts():
+    return get_db().execute(
+        "SELECT * FROM alerts WHERE active = 1 ORDER BY id").fetchall()
+
+
+def get_alert(alert_id):
+    return get_db().execute(
+        "SELECT * FROM alerts WHERE id = ?", (alert_id,)).fetchone()
+
+
+def delete_alert(alert_id, applicant_token):
+    a = get_alert(alert_id)
+    if not a or a["applicant_token"] != applicant_token:
+        return False
+    db = get_db()
+    db.execute("DELETE FROM alert_matches WHERE alert_id = ?", (alert_id,))
+    db.execute("DELETE FROM alerts WHERE id = ?", (alert_id,))
+    db.commit()
+    return True
+
+
+def alert_seen_ncts(alert_id):
+    rows = get_db().execute(
+        "SELECT nct FROM alert_matches WHERE alert_id = ?", (alert_id,)).fetchall()
+    return {r["nct"] for r in rows}
+
+
+def add_alert_matches(alert_id, matches, is_new):
+    """matches: iterable of (nct, title). Skips NCTs already recorded."""
+    db = get_db()
+    seen = alert_seen_ncts(alert_id)
+    ts = now()
+    added = 0
+    for nct, title in matches:
+        if not nct or nct in seen:
+            continue
+        db.execute(
+            "INSERT INTO alert_matches (alert_id, nct, title, is_new, created_at) "
+            "VALUES (?,?,?,?,?)",
+            (alert_id, nct, title or "", 1 if is_new else 0, ts))
+        seen.add(nct)
+        added += 1
+    db.commit()
+    return added
+
+
+def mark_alert_checked(alert_id):
+    db = get_db()
+    db.execute("UPDATE alerts SET last_checked_at = ? WHERE id = ?",
+               (now(), alert_id))
+    db.commit()
+
+
+def get_alert_matches(alert_id, limit=20):
+    return get_db().execute(
+        "SELECT * FROM alert_matches WHERE alert_id = ? "
+        "ORDER BY is_new DESC, id DESC LIMIT ?", (alert_id, limit)).fetchall()
+
+
+def new_matches_count(applicant_token):
+    if not applicant_token:
+        return 0
+    r = get_db().execute(
+        "SELECT COUNT(*) n FROM alert_matches m JOIN alerts a ON a.id = m.alert_id "
+        "WHERE a.applicant_token = ? AND m.is_new = 1",
+        (applicant_token,)).fetchone()
+    return r["n"] if r else 0
+
+
+def clear_new_flags(applicant_token):
+    """Called when the patient views their alerts, so the nav badge resets."""
+    if not applicant_token:
+        return
+    db = get_db()
+    db.execute(
+        "UPDATE alert_matches SET is_new = 0 WHERE alert_id IN "
+        "(SELECT id FROM alerts WHERE applicant_token = ?)", (applicant_token,))
+    db.commit()
+
+
+def attach_records_to_open_leads(applicant_token, summary):
+    """When a patient connects records, backfill their pending (not-yet-decided)
+    applications so the study team sees the record on those too."""
+    if not applicant_token:
+        return 0
+    db = get_db()
+    ts = now()
+    rows = db.execute(
+        "SELECT id FROM leads WHERE applicant_token = ? AND decision = '' "
+        "AND records_connected = 0", (applicant_token,)).fetchall()
+    for r in rows:
+        db.execute("UPDATE leads SET records_connected = 1, record_summary = ?, "
+                   "updated_at = ? WHERE id = ?", (summary, ts, r["id"]))
+        db.execute(
+            "INSERT INTO lead_events (lead_id, status, note, actor, created_at) "
+            "VALUES (?,?,?,?,?)",
+            (r["id"], "prescreen", "health records connected", "you", ts))
+    db.commit()
+    return len(rows)
 
 
 def status_counts(user_id):
