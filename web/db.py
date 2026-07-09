@@ -1802,6 +1802,20 @@ def seed_demo_engagement(clinician_id):
             (clinician_id, "Demo Research Site", "Demo Coordinator",
              "coordinator@demo-site.example", "+1 416 555 0199", ts(days=-10),
              ts(days=-1)))
+
+    # Ensure at least one visible booking link exists in demo so "calendar invite"
+    # UX can be tested immediately on both study-team and patient surfaces.
+    sched = db.execute(
+        "SELECT id, schedule_url FROM leads WHERE status IN ('screening', 'enrolled') "
+        "ORDER BY id LIMIT 1").fetchone()
+    if sched and not (sched["schedule_url"] or "").strip():
+        db.execute(
+            "UPDATE leads SET schedule_url = ?, updated_at = ? WHERE id = ?",
+            ("https://calendly.com/demo-site/screening", ts(), sched["id"]))
+        db.execute(
+            "INSERT INTO lead_events (lead_id, status, note, actor, created_at) "
+            "VALUES (?,?,?,?,?)",
+            (sched["id"], "screening", "booking link shared with applicant", "site", ts()))
     if db.execute("SELECT COUNT(*) n FROM messages").fetchone()["n"]:
         db.commit()
         return
@@ -1868,6 +1882,147 @@ def seed_demo_engagement(clinician_id):
             db.execute("UPDATE leads SET referred_by = 'Demo Clinician', "
                        "invite_token = ?, source = 'referral' WHERE id = ?",
                        (tok, target["id"]))
+    db.commit()
+
+
+def seed_demo_patient_apps(applicant_token):
+    """Seed realistic patient-facing applications for demo mode.
+
+    Idempotent for the given applicant token.
+    """
+    applicant_token = (applicant_token or "").strip()
+    if not applicant_token:
+        return
+    db = get_db()
+    has_any = db.execute(
+        "SELECT COUNT(*) n FROM leads WHERE applicant_token = ?",
+        (applicant_token,)).fetchone()
+    if has_any and has_any["n"]:
+        return
+    ts = now()
+    demo_specs = [
+        {
+            "nct": "NCT07321886",
+            "title": "A Study of Eloraliptide (LY3841136) in Participants With Obesity",
+            "condition": "Obesity",
+            "location": "Brampton, ON",
+            "site": "Aggarwal and Associates Limited, Brampton, Canada",
+            "status": "prescreen",
+            "decision": "",
+            "revealed": 0,
+            "schedule_url": "",
+        },
+        {
+            "nct": "NCT06034262",
+            "title": "Tirzepatide vs Placebo for Type 2 Diabetes and Weight",
+            "condition": "Type 2 Diabetes",
+            "location": "Mississauga, ON",
+            "site": "Trillium Clinical Trials",
+            "status": "screening",
+            "decision": "accepted",
+            "revealed": 1,
+            "schedule_url": "https://calendly.com/demo-site/screening",
+        },
+    ]
+    for s in demo_specs:
+        cur = db.execute(
+            """INSERT INTO leads
+               (token, site_token, site_token_expires_at, site_token_revoked,
+                applicant_token, nct, title, condition, location, site, name,
+                email, phone, age, sex, notes, consent, source, status,
+                screener, eligibility, records_connected, record_summary, decision,
+                decision_reason, decided_at, revealed, schedule_url, created_at,
+                updated_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (gen_token(), gen_token(), _site_token_expiry(), 0, applicant_token,
+             s["nct"], s["title"], s["condition"], s["location"], s["site"],
+             "Demo Patient", "demo.patient@bridgemd.local", "+1 416 555 0110",
+             "31", "female", "", 1, "demo", s["status"],
+             json.dumps({"travel": "yes", "other_trial": "no",
+                         "pregnancy": "na", "consent_capable": "yes"}),
+             json.dumps({
+                 "verdict": "possible",
+                 "met": ["Age within range", "Condition appears aligned"],
+                 "unknown": ["Labs to confirm"],
+                 "not_met": [],
+                 "rationale": "Good initial fit pending site review."
+             }),
+             1, _demo_record(s["condition"], "31", "female"), s["decision"], "",
+             ts if s["decision"] else "", s["revealed"], s["schedule_url"], ts, ts))
+        lead_id = cur.lastrowid
+        db.execute(
+            "INSERT INTO lead_events (lead_id, status, note, actor, created_at) "
+            "VALUES (?,?,?,?,?)",
+            (lead_id, "submitted", "application received", "you", ts))
+        db.execute(
+            "INSERT INTO lead_events (lead_id, status, note, actor, created_at) "
+            "VALUES (?,?,?,?,?)",
+            (lead_id, "prescreen", "ready for study-team review", "you", ts))
+        if s["status"] in ("screening", "enrolled"):
+            db.execute(
+                "INSERT INTO lead_events (lead_id, status, note, actor, created_at) "
+                "VALUES (?,?,?,?,?)",
+                (lead_id, "eligible", "accepted - likely eligible", "you", ts))
+            db.execute(
+                "INSERT INTO lead_events (lead_id, status, note, actor, created_at) "
+                "VALUES (?,?,?,?,?)",
+                (lead_id, "screening", "screening visit invited", "site", ts))
+            db.execute(
+                "INSERT INTO messages (lead_id, sender, body, read_patient, "
+                "read_site, created_at) VALUES (?,?,?,?,?,?)",
+                (lead_id, "site",
+                 "Great news - you look like a fit. Please book your screening call.",
+                 0, 1, ts))
+            db.execute(
+                "INSERT INTO lead_visits (lead_id, kind, visit_at, location, note, "
+                "reminded_at, created_at) VALUES (?,?,?,?,?,?,?)",
+                (lead_id, "screening", ts, s["site"],
+                 "Bring a photo ID and medication list.", "", ts))
+    db.commit()
+
+
+def seed_demo_referrals(clinician_id):
+    """Seed clinician-facing referral history for demo mode (idempotent)."""
+    if not clinician_id:
+        return
+    db = get_db()
+    has_any = db.execute(
+        "SELECT COUNT(*) n FROM referrals WHERE user_id = ?",
+        (clinician_id,)).fetchone()
+    if has_any and has_any["n"]:
+        return
+    ts = now()
+    rows = [
+        ("NCT05869903", "Once-Weekly Semaglutide in Adults With Obesity",
+         "Patient A", "Obesity", "Toronto site", "coordinator@demo-site.example",
+         "contacted"),
+        ("NCT06034262", "Tirzepatide vs Placebo for Type 2 Diabetes and Weight",
+         "Patient B", "Type 2 diabetes", "Mississauga site",
+         "coordinator@demo-site.example", "enrolled"),
+    ]
+    for nct, title, label, condition, site, coord_email, status in rows:
+        token = gen_token()
+        db.execute(
+            """INSERT INTO referrals
+               (user_id, token, nct, title, patient_label, patient_summary, condition,
+                country, site, coordinator, coordinator_email, patient_name,
+                patient_contact, consent, consent_at, verdict, score, rationale,
+                status, created_at, updated_at, notified_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (clinician_id, token, nct, title, label,
+             "De-identified summary on file.", condition, "CA", site,
+             "Demo Coordinator", coord_email, "", "", 1, ts, "possible", 78,
+             "Good fit for follow-up.", status, ts, ts, ts))
+        ref_id = db.execute(
+            "SELECT id FROM referrals WHERE token = ?", (token,)).fetchone()["id"]
+        db.execute(
+            "INSERT INTO referral_events (referral_id, status, note, actor, created_at) "
+            "VALUES (?,?,?,?,?)",
+            (ref_id, "referred", "referral created", "you", ts))
+        db.execute(
+            "INSERT INTO referral_events (referral_id, status, note, actor, created_at) "
+            "VALUES (?,?,?,?,?)",
+            (ref_id, status, "demo progression", "site", ts))
     db.commit()
 
 

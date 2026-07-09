@@ -138,6 +138,7 @@ def healthz():
 # Set NO_LOGIN=1 only for local demos; production should keep this off.
 NO_LOGIN = os.environ.get("NO_LOGIN", "0") == "1"
 _DEMO_EMAIL = "demo@bridgemd.local"
+_DEMO_PATIENT_EMAIL = "demo.patient@bridgemd.local"
 DEMO_SESSION_KEY = "demo_mode"
 USER_SESSION_KEY = "user_id"
 USER_PENDING_KEY = "user_pending_id"
@@ -185,6 +186,23 @@ def _ensure_demo_user():
     return u
 
 
+def _ensure_demo_patient():
+    p = db.get_patient_by_email(_DEMO_PATIENT_EMAIL)
+    if not p:
+        pw = generate_password_hash("demo-patient", method="pbkdf2:sha256")
+        pid = db.create_patient_user(
+            _DEMO_PATIENT_EMAIL, pw, "Demo Patient", verified=True)
+        db.set_patient_onboarding(
+            pid, primary_interest="Obesity", notify_email=_DEMO_PATIENT_EMAIL,
+            email_alerts=True)
+        p = db.get_patient_user(pid)
+    elif not p["verified"]:
+        db.mark_patient_verified(p["id"])
+        p = db.get_patient_user(p["id"])
+    db.seed_demo_patient_apps(p["applicant_token"] if p else "")
+    return p
+
+
 def _demo_mode_enabled():
     """True when the temporary no-login preview shell should be enabled."""
     return NO_LOGIN or bool(session.get(DEMO_SESSION_KEY))
@@ -197,6 +215,8 @@ if NO_LOGIN:
         with app.test_request_context():
             _demo = _ensure_demo_user()
             db.seed_demo_engagement(_demo["id"] if _demo else None)
+            db.seed_demo_referrals(_demo["id"] if _demo else None)
+            _ensure_demo_patient()
     except Exception:
         app.logger.exception("demo engagement seeding failed")
 
@@ -226,8 +246,12 @@ def load_user():
     g.user = db.get_user(uid) if uid else None
     if g.user is None and _demo_mode_enabled():
         g.user = _ensure_demo_user()
+        db.seed_demo_engagement(g.user["id"] if g.user else None)
+        db.seed_demo_referrals(g.user["id"] if g.user else None)
     pid = session.get(PATIENT_SESSION_KEY)
     g.patient_user = db.get_patient_user(pid) if pid else None
+    if g.patient_user is None and _demo_mode_enabled():
+        g.patient_user = _ensure_demo_patient()
 
 
 APPLICANT_COOKIE = "tb_app"
@@ -431,6 +455,8 @@ def set_demo_mode():
         try:
             demo_user = _ensure_demo_user()
             db.seed_demo_engagement(demo_user["id"] if demo_user else None)
+            db.seed_demo_referrals(demo_user["id"] if demo_user else None)
+            _ensure_demo_patient()
         except Exception:
             app.logger.exception("demo engagement seeding failed")
     else:
