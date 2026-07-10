@@ -2767,9 +2767,18 @@ def _nominatim_reverse(lat, lon):
         a = data.get("address", {})
         city = (a.get("city") or a.get("town") or a.get("village")
                 or a.get("municipality") or a.get("county") or "")
-        parts = [p for p in (city, a.get("state"), a.get("country")) if p]
-        label = ", ".join(parts) or data.get("display_name", "")
-        return label, (a.get("country_code") or "").upper()
+        cc = (a.get("country_code") or "").upper()
+        # Prefer a clean "City, Region" (e.g. "Toronto, Ontario"); fall back to
+        # the country when there's no state/province. For US, append the ZIP so
+        # it reads like "New York, New York 10014".
+        region = a.get("state") or a.get("country") or ""
+        parts = [p for p in (city, region) if p]
+        label = ", ".join(parts)
+        postcode = a.get("postcode") or ""
+        if cc == "US" and postcode:
+            label = (label + " " + postcode).strip(", ").strip()
+        label = label or data.get("display_name", "")
+        return label, cc
     except Exception:
         return "", ""
 
@@ -2780,8 +2789,10 @@ def units_for(country_code):
 
 
 @app.route("/geo/reverse")
-@login_required
 def geo_reverse():
+    # Public helper: the patient-facing search form (no login) reverse-geocodes
+    # the browser's coordinates so the location field shows a real place name
+    # instead of a raw "Current location" placeholder. No user data involved.
     try:
         lat = float(request.args.get("lat", ""))
         lon = float(request.args.get("lon", ""))

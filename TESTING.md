@@ -46,3 +46,39 @@ automatically on startup (`CREATE TABLE IF NOT EXISTS`), so no manual migration.
 | `test_expired_search_redirects` | A genuinely unknown search id still shows the friendly redirect. |
 
 **Result:** `All 4 tests passed`.
+
+---
+
+## 2026-07-10 — Auto-hide "Probably not a fit" + real location on mobile
+
+**Two patient-facing fixes.**
+
+### 1. Auto-deselect "Probably not a match" trials
+Results now start with the "Probably not a fit" match-quality filter **unchecked**,
+so those studies are hidden until the patient opts in.
+
+- `web/templates/patient_results.html`: the `no` fit checkbox renders unchecked;
+  `apply()` runs on load to hide those cards; `reset()` restores this default
+  (good/maybe shown, "no" hidden). The filter group only appears when there's a
+  mix of qualities, so an all-"no" result set still shows everything.
+
+### 2. Location field showed "Current location" instead of the real place
+On the live (non-demo) site, `/geo/reverse` was gated by `@login_required`.
+Logged-out patients' browser calls got redirected to the login page, `r.json()`
+threw, and the search box fell back to the literal string "Current location".
+
+- `web/app.py`: removed `@login_required` from `geo_reverse` (it's a stateless
+  reverse-geocode helper, no user data). Cleaned the label to read
+  "City, Region" and append the ZIP for US (e.g. "New York, New York 10014",
+  "Toronto, Ontario").
+
+**Tests:** `web/test_ui_fixes.py`
+
+| Test | What it proves |
+|------|----------------|
+| `test_geo_reverse_public_no_login` | `/geo/reverse` returns 200 JSON when logged out (`NO_LOGIN=0`) — no login redirect. |
+| `test_label_us_includes_zip` | US coordinates format as `City, State ZIP`. |
+| `test_label_canada_city_region` | Non-US coordinates format as `City, Region` (no ZIP). |
+| `test_results_hide_probably_not_by_default` | Results template renders the "no" fit checkbox unchecked, "good" checked, and applies the filter on load. |
+
+**Result:** `All 4 tests passed`; search-cache regression suite still `4/4`.

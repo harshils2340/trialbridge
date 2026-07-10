@@ -64,7 +64,7 @@
     <div class="filt-group">
       <label class="filt-label">{{ ic.icon('sparkle') }} Match quality</label>
       {% for f in ['good','maybe','no'] %}{% if f in fit_set %}
-      <label class="filt-check"><input type="checkbox" class="f-fit" value="{{ f }}" checked>
+      <label class="filt-check"><input type="checkbox" class="f-fit" value="{{ f }}" {{ '' if f == 'no' else 'checked' }}>
         <span class="dot dot-{{ f }}"></span>{{ fit_names[f] }}</label>
       {% endif %}{% endfor %}
     </div>
@@ -259,13 +259,19 @@
   if (sortSel) sortSel.addEventListener('change', sortCards);
 
   function reset() {
-    document.querySelectorAll('.f-fit, .f-phase').forEach(function (c) { c.checked = true; });
+    // Default view hides "Probably not a fit" studies; the rest start shown.
+    document.querySelectorAll('.f-fit').forEach(function (c) { c.checked = c.value !== 'no'; });
+    document.querySelectorAll('.f-phase').forEach(function (c) { c.checked = true; });
     if (sortSel) sortSel.value = 'best';
     sortCards(); apply();
   }
   var r1 = document.getElementById('filtReset'), r2 = document.getElementById('filtReset2');
   if (r1) r1.addEventListener('click', reset);
   if (r2) r2.addEventListener('click', reset);
+
+  // Apply the default filter on load so "Probably not a fit" trials are hidden
+  // until the patient opts to include them (the checkbox starts unchecked).
+  apply();
 
   // Distance change: shrinking is instant (client-side subset filter); only a
   // wider radius (or "any distance") needs a fresh fetch from ClinicalTrials.gov.
