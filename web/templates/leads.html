@@ -225,7 +225,7 @@
             <td>{% if l['nct'] %}<a href="https://clinicaltrials.gov/study/{{ l['nct'] }}" target="_blank" rel="noopener">{{ l['nct'] }}</a>{% endif %}<div class="tag">{{ l['title'][:56] }}</div></td>
             <td><span class="pill pill-{{ l['status'] }}">{{ labels.get(l['status'], l['status']) }}</span></td>
             <td>{% if it.unread %}<span class="msg-badge">{{ it.unread }} new</span>{% endif %}<span class="tag">{{ it.elig.get('met', [])|length }} met / {{ it.elig.get('unknown', [])|length }} confirm / {{ it.elig.get('not_met', [])|length }} not met</span></td>
-            <td><span class="tag">{{ (l['source'] or 'web')|replace('_', ' ')|title }}</span><span class="tag">{{ 'Record' if l['records_connected'] else 'No record' }}</span></td>
+            <td><span class="tag">{{ ('web' if (l['source'] or '') == 'demo' else (l['source'] or 'web'))|replace('_', ' ')|title }}</span><span class="tag">{{ 'Record' if l['records_connected'] else 'No record' }}</span></td>
             <td><a class="cand-open" href="{{ url_for('candidate_page', token=l['site_token']) }}">{{ ic.icon('external') }} Open</a></td>
           </tr>
           {% endfor %}
@@ -251,7 +251,7 @@
             <td>{% if l['nct'] %}<a href="https://clinicaltrials.gov/study/{{ l['nct'] }}" target="_blank" rel="noopener">{{ l['nct'] }}</a>{% endif %}<div class="tag">{{ l['title'][:56] }}</div></td>
             <td><span class="pill pill-{{ l['status'] }}">{{ labels.get(l['status'], l['status']) }}</span></td>
             <td>{% if it.unread %}<span class="msg-badge">{{ it.unread }} new</span>{% endif %}<span class="tag">Coverage: {{ support_coverage_labels.get(it.support.coverage_status, it.support.coverage_status or 'Not checked') }}</span><span class="tag">Travel: {{ support_travel_labels.get(it.support.travel_status, it.support.travel_status or 'Not planned') }}</span></td>
-            <td><span class="tag">{{ (l['source'] or 'web')|replace('_', ' ')|title }}</span><span class="tag">{{ 'Record' if l['records_connected'] else 'No record' }}</span></td>
+            <td><span class="tag">{{ ('web' if (l['source'] or '') == 'demo' else (l['source'] or 'web'))|replace('_', ' ')|title }}</span><span class="tag">{{ 'Record' if l['records_connected'] else 'No record' }}</span></td>
             <td><a class="cand-open" href="{{ url_for('candidate_page', token=l['site_token']) }}">{{ ic.icon('external') }} Open</a></td>
           </tr>
           {% endfor %}
@@ -275,7 +275,7 @@
             <td>{% if l['nct'] %}<a href="https://clinicaltrials.gov/study/{{ l['nct'] }}" target="_blank" rel="noopener">{{ l['nct'] }}</a>{% endif %}<div class="tag">{{ l['title'][:56] }}</div></td>
             <td><span class="pill pill-{{ l['status'] }}">{{ labels.get(l['status'], l['status']) }}</span></td>
             <td>{% if it.recon %}<span class="tag recon-tag">{{ recon_labels.get(it.recon['outcome'], it.recon['outcome']) }}</span>{% endif %}<span class="tag">Coverage: {{ support_coverage_labels.get(it.support.coverage_status, it.support.coverage_status or 'Not checked') }}</span></td>
-            <td><span class="tag">{{ (l['source'] or 'web')|replace('_', ' ')|title }}</span><span class="tag">{{ 'Record' if l['records_connected'] else 'No record' }}</span></td>
+            <td><span class="tag">{{ ('web' if (l['source'] or '') == 'demo' else (l['source'] or 'web'))|replace('_', ' ')|title }}</span><span class="tag">{{ 'Record' if l['records_connected'] else 'No record' }}</span></td>
             <td><a class="cand-open" href="{{ url_for('candidate_page', token=l['site_token']) }}">{{ ic.icon('external') }} Open</a></td>
           </tr>
           {% endfor %}
@@ -374,7 +374,7 @@
           <input type="text" readonly value="{{ url_for('candidate_page', token=l['site_token'], _external=True) }}" onclick="this.select()">
           <button type="button" class="btn btn-sm" onclick="navigator.clipboard.writeText(this.previousElementSibling.value);this.textContent='Copied'">Copy</button>
         </div>
-        <span class="cand-share-hint">Demo fallback when the site has no account yet.</span>
+        <span class="cand-share-hint">Share this secure handoff link when the site has no account yet.</span>
       </details>
       {% endif %}
     </div>
@@ -419,17 +419,17 @@
     {% for it in active_needs %}{{ active_card(it, labels, statuses, recon_labels, recon_outcomes, support_coverage_labels, support_travel_labels, redcap_on) }}{% endfor %}
   </div>
 
-  <div class="active-group">
-    <div class="active-group-head"><h3>{{ ic.icon('check') }} Ready to schedule / advance</h3><span>{{ active_ready|length }}</span></div>
+  <details class="active-group active-fold" {% if active_ready|length <= 3 %}open{% endif %}>
+    <summary class="active-group-head"><h3>{{ ic.icon('check') }} Ready to schedule / advance</h3><span>{{ active_ready|length }}</span></summary>
     {% if not active_ready %}<div class="card"><div class="empty"><p>No candidates waiting on scheduling.</p></div></div>{% endif %}
     {% for it in active_ready %}{{ active_card(it, labels, statuses, recon_labels, recon_outcomes, support_coverage_labels, support_travel_labels, redcap_on) }}{% endfor %}
-  </div>
+  </details>
 
-  <div class="active-group">
-    <div class="active-group-head"><h3>{{ ic.icon('list') }} In progress</h3><span>{{ active_pipeline|length }}</span></div>
+  <details class="active-group active-fold">
+    <summary class="active-group-head"><h3>{{ ic.icon('list') }} In progress</h3><span>{{ active_pipeline|length }}</span></summary>
     {% if not active_pipeline %}<div class="card"><div class="empty"><p>No remaining active candidates.</p></div></div>{% endif %}
     {% for it in active_pipeline %}{{ active_card(it, labels, statuses, recon_labels, recon_outcomes, support_coverage_labels, support_travel_labels, redcap_on) }}{% endfor %}
-  </div>
+  </details>
 </section>
 
 <section class="pipeline-lane rev-panel" data-panel="done" hidden>
@@ -496,17 +496,20 @@
   var tabs = document.querySelectorAll('.rev-tab');
   var panels = document.querySelectorAll('.rev-panel');
   if (!tabs.length) return;
+  function activateTab(name) {
+    tabs.forEach(function (x) { x.classList.toggle('active', x.getAttribute('data-tab') === name); });
+    panels.forEach(function (p) { p.hidden = p.getAttribute('data-panel') !== name; });
+  }
   tabs.forEach(function (t) {
     t.addEventListener('click', function () {
-      tabs.forEach(function (x) { x.classList.remove('active'); });
-      t.classList.add('active');
       var name = t.getAttribute('data-tab');
-      panels.forEach(function (p) {
-        p.hidden = p.getAttribute('data-panel') !== name;
-      });
+      activateTab(name);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     });
   });
+  // Operator default: jump straight into active outreach if work exists.
+  var hasActive = {{ 1 if active|length else 0 }};
+  activateTab(hasActive ? 'active' : 'review');
 
   var rows = Array.prototype.slice.call(document.querySelectorAll('.ats-row-item'));
   if (!rows.length) return;

@@ -220,7 +220,7 @@
   if (searchForm) searchForm.addEventListener('submit', function () {
     startLoading('Searching ClinicalTrials.gov…', 'Search in progress',
       ['Fetching recruiting trials', 'Screening age & sex',
-       'Reading eligibility criteria with AI', 'Ranking by fit, then distance']);
+       'Reading eligibility criteria', 'Ranking by fit, then distance']);
   });
 
   // EHR import: pull a patient chart from the connected FHIR server.

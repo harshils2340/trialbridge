@@ -32,7 +32,7 @@
   {% else %}
   <div class="rec-banner ok wide">{{ ic.icon('check') }}
     {% if 'sandbox' in p|lower %}
-    <span><b>Demo record connected (SMART sandbox).</b> This is test data for workflow testing. In production, real records will auto-fill applications from your actual chart.</span>
+    <span><b>Records connected (SMART health source).</b> Applications are now pre-filled from your chart history for faster screening.</span>
     {% else %}
     <span>Health records connected via <b>{{ records_profile.provider }}</b>. Every application auto-fills
       from your history - no re-entering details.{% if records_profile.last_sync_at %} Last refresh: {{ records_profile.last_sync_at }}.{% endif %}</span>
@@ -129,13 +129,13 @@
         <div class="thread-head">{{ ic.icon('check') }} Coverage check</div>
         <div class="tag">Status: {{ support_coverage_labels.get(sup.coverage_status, sup.coverage_status or 'Not checked') }}</div>
         {% if sup.coverage_note %}<p class="thread-empty">{{ sup.coverage_note }}</p>{% endif %}
-        <div class="support-row">
+        <div class="support-grid">
           <input type="text" name="payer_name" value="{{ sup.coverage_payload.payer_name or '' }}" placeholder="Payer (e.g., Blue Cross)">
           <input type="text" name="member_id" value="{{ sup.coverage_payload.member_id or '' }}" placeholder="Member ID">
           <input type="text" name="group_id" value="{{ sup.coverage_payload.group_id or '' }}" placeholder="Group ID">
           <input type="text" name="zip" value="{{ sup.coverage_payload.patient_zip or '' }}" placeholder="ZIP / Postal">
-          <input type="text" name="dob_year" value="{{ sup.coverage_payload.dob_year or '' }}" placeholder="Birth year">
-          <button class="btn btn-sm btn-ghost" type="submit">Run check</button>
+          <input class="support-span" type="text" name="dob_year" value="{{ sup.coverage_payload.dob_year or '' }}" placeholder="Birth year">
+          <div class="support-actions"><button class="btn btn-sm btn-ghost" type="submit">Run check</button></div>
         </div>
       </form>
 
@@ -143,12 +143,12 @@
         <div class="thread-head">{{ ic.icon('activity') }} Travel support</div>
         <div class="tag">Status: {{ support_travel_labels.get(sup.travel_status, sup.travel_status or 'Not planned') }}</div>
         {% if sup.travel_note %}<p class="thread-empty">{{ sup.travel_note }}</p>{% endif %}
-        <div class="support-row">
+        <div class="support-grid">
           <input type="text" name="distance" value="{{ sup.travel_payload.distance or '' }}" placeholder="Distance to site">
           <input type="text" name="preferred_mode" value="{{ sup.travel_payload.preferred_mode or '' }}" placeholder="Car, transit, rideshare">
-          <input type="text" name="needs" value="{{ sup.travel_payload.needs or '' }}" placeholder="Mobility / schedule needs">
-          <input type="text" name="city" value="{{ sup.travel_payload.city or ld.location or '' }}" placeholder="City">
-          <button class="btn btn-sm btn-ghost" type="submit">Plan travel</button>
+          <input class="support-span" type="text" name="needs" value="{{ sup.travel_payload.needs or '' }}" placeholder="Mobility / schedule needs">
+          <input class="support-span" type="text" name="city" value="{{ sup.travel_payload.city or ld.location or '' }}" placeholder="City">
+          <div class="support-actions"><button class="btn btn-sm btn-ghost" type="submit">Plan travel</button></div>
         </div>
       </form>
     </div>

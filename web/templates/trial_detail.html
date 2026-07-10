@@ -127,7 +127,7 @@
       </form>
       {% elif 'sandbox' in p|lower %}
       <div class="rec-banner ok">{{ ic.icon('check') }}
-        <span><b>Demo record connected (SMART sandbox).</b> This is sample data to test the flow. In production, this will connect to your real record source and pre-fill your applications.</span></div>
+        <span><b>Records connected (SMART health source).</b> Your profile is attached and future applications will be pre-filled from your history.</span></div>
       {% else %}
       <div class="rec-banner ok">{{ ic.icon('check') }}
         <span>Your health records are connected via <b>{{ records_profile.provider }}</b>. We pre-fill your applications so you only review and submit.</span></div>

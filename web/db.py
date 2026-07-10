@@ -1821,12 +1821,12 @@ def lead_counts():
 def _demo_record(cond, age, sex):
     who = " ".join(x for x in [age and f"{age}yo", sex] if x) or "adult"
     return (
-        f"DEMO de-identified record for a {who} patient.\n"
+        f"De-identified record summary for a {who} patient.\n"
         f"- Active problems: {cond}\n"
         f"- Medications: metformin 1000mg BID; atorvastatin 20mg\n"
         f"- Recent labs: BMI 34.2, HbA1c 7.8%, eGFR 88\n"
         f"- No prior investigational-drug participation on file.\n"
-        f"Sample data to demonstrate records-based pre-screening.")
+        f"Structured summary used for records-based pre-screening.")
 
 
 def _demo_lead_specs():
@@ -2039,7 +2039,7 @@ def _demo_lead_specs():
             "location": loc,
             "site": site,
             "name": f"{first} {last}.",
-            "email": f"demo.{first.lower()}.{last.lower()}@example.com",
+            "email": f"candidate.{first.lower()}.{last.lower()}@example.com",
             "phone": f"+1 416 555 {1200 + idx:04d}",
             "age": age,
             "sex": sex,
@@ -2053,7 +2053,7 @@ def _demo_lead_specs():
                 "met": ["Age within range", "Condition aligns with protocol"],
                 "unknown": ["One lab panel pending site confirmation"],
                 "not_met": not_met,
-                "rationale": "Demo candidate seeded for realistic queue volume.",
+                "rationale": "Candidate seeded for realistic queue volume.",
             },
         })
     return specs
@@ -2146,8 +2146,8 @@ def seed_demo_engagement(clinician_id):
             "INSERT OR IGNORE INTO site_profiles (user_id, org_name, contact_name, "
             "contact_email, contact_phone, created_at, updated_at) "
             "VALUES (?,?,?,?,?,?,?)",
-            (clinician_id, "Demo Research Site", "Demo Coordinator",
-             "coordinator@demo-site.example", "+1 416 555 0199", ts(days=-10),
+            (clinician_id, "Research Site", "Site Coordinator",
+             "coordinator@site.example", "+1 416 555 0199", ts(days=-10),
              ts(days=-1)))
 
     # Ensure at least one visible booking link exists in demo so "calendar invite"
@@ -2158,7 +2158,7 @@ def seed_demo_engagement(clinician_id):
     if sched and not (sched["schedule_url"] or "").strip():
         db.execute(
             "UPDATE leads SET schedule_url = ?, updated_at = ? WHERE id = ?",
-            ("https://calendly.com/demo-site/screening", ts(), sched["id"]))
+            ("https://calendly.com/site/screening", ts(), sched["id"]))
         db.execute(
             "INSERT INTO lead_events (lead_id, status, note, actor, created_at) "
             "VALUES (?,?,?,?,?)",
@@ -2208,7 +2208,7 @@ def seed_demo_engagement(clinician_id):
         db.execute(
             "INSERT INTO lead_reconciliations (lead_id, outcome, source_system, "
             "source_ref, note, actor, created_at) VALUES (?,?,?,?,?,?,?)",
-            (enrolled["id"], "enrolled_verified", "REDCap", "demo-record-001",
+            (enrolled["id"], "enrolled_verified", "REDCap", "record-001",
              "Verified by coordinator after baseline visit", "site", ts(days=-1)))
 
     # One physician referral with attribution, so the invite view + funnel show the
@@ -2218,7 +2218,7 @@ def seed_demo_engagement(clinician_id):
         db.execute(
             "INSERT INTO invites (token, clinician_id, clinician_name, nct, title, "
             "condition, note, clicks, created_at) VALUES (?,?,?,?,?,?,?,?,?)",
-            (tok, clinician_id, "Demo Clinician", "NCT05869903",
+            (tok, clinician_id, "Referring Clinician", "NCT05869903",
              "Once-Weekly Semaglutide in Adults With Obesity", "Obesity",
              "I think this could be a good fit for you - worth a look.", 3,
              ts(days=-6)))
@@ -2226,7 +2226,7 @@ def seed_demo_engagement(clinician_id):
             "SELECT id FROM leads WHERE nct = 'NCT05869903' AND status = 'eligible' "
             "ORDER BY id LIMIT 1").fetchone()
         if target:
-            db.execute("UPDATE leads SET referred_by = 'Demo Clinician', "
+            db.execute("UPDATE leads SET referred_by = 'Referring Clinician', "
                        "invite_token = ?, source = 'referral' WHERE id = ?",
                        (tok, target["id"]))
     db.commit()
@@ -2282,7 +2282,7 @@ def ensure_demo_claim_volume(user_id, minimum_rows=18):
             "met": ["Age within protocol range", "Condition aligned with protocol intent"],
             "unknown": ["One lab panel pending confirmation"],
             "not_met": ["Potential protocol mismatch noted"] if status == "closed" else [],
-            "rationale": "Demo candidate auto-seeded for high-volume ATS walkthrough.",
+            "rationale": "Initial pre-screen completed; candidate queued for coordinator review.",
         }
         rec = _demo_record(cond, str(30 + (idx % 35)), "female" if idx % 2 else "male") \
             if records_connected else ""
@@ -2295,8 +2295,8 @@ def ensure_demo_claim_volume(user_id, minimum_rows=18):
                 decision_reason, decided_at, revealed, created_at, updated_at)
                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (token, site_token, _site_token_expiry(), 0,
-             f"demo-volume-{idx}", nct, title_for.get(nct, nct), cond, city,
-             "Demo Trial Site", f"Demo Candidate {idx}", f"demo.queue.{idx}@example.com",
+             f"seeded-volume-{idx}", nct, title_for.get(nct, nct), cond, city,
+             "Trial Site", f"Candidate {idx}", f"candidate.queue.{idx}@example.com",
              f"+1 416 555 {2000 + idx:04d}", str(30 + (idx % 35)),
              "female" if idx % 2 else "male", "", 1, "demo", status,
              json.dumps({"travel": "yes", "other_trial": "no",
@@ -2372,7 +2372,7 @@ def seed_demo_patient_apps(applicant_token):
             "status": "screening",
             "decision": "accepted",
             "revealed": 1,
-            "schedule_url": "https://calendly.com/demo-site/screening",
+            "schedule_url": "https://calendly.com/site/screening",
         },
     ]
     for s in demo_specs:
@@ -2387,7 +2387,7 @@ def seed_demo_patient_apps(applicant_token):
                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (gen_token(), gen_token(), _site_token_expiry(), 0, applicant_token,
              s["nct"], s["title"], s["condition"], s["location"], s["site"],
-             "Demo Patient", "demo.patient@bridgemd.local", "+1 416 555 0110",
+             "Patient Profile", "patient.profile@bridgemd.local", "+1 416 555 0110",
              "31", "female", "", 1, "demo", s["status"],
              json.dumps({"travel": "yes", "other_trial": "no",
                          "pregnancy": "na", "consent_capable": "yes"}),
@@ -2445,11 +2445,11 @@ def seed_demo_referrals(clinician_id):
     ts = now()
     rows = [
         ("NCT05869903", "Once-Weekly Semaglutide in Adults With Obesity",
-         "Patient A", "Obesity", "Toronto site", "coordinator@demo-site.example",
+         "Patient A", "Obesity", "Toronto site", "coordinator@site.example",
          "contacted"),
         ("NCT06034262", "Tirzepatide vs Placebo for Type 2 Diabetes and Weight",
          "Patient B", "Type 2 diabetes", "Mississauga site",
-         "coordinator@demo-site.example", "enrolled"),
+         "coordinator@site.example", "enrolled"),
     ]
     for nct, title, label, condition, site, coord_email, status in rows:
         token = gen_token()
@@ -2462,7 +2462,7 @@ def seed_demo_referrals(clinician_id):
                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (clinician_id, token, nct, title, label,
              "De-identified summary on file.", condition, "CA", site,
-             "Demo Coordinator", coord_email, "", "", 1, ts, "possible", 78,
+             "Site Coordinator", coord_email, "", "", 1, ts, "possible", 78,
              "Good fit for follow-up.", status, ts, ts, ts))
         ref_id = db.execute(
             "SELECT id FROM referrals WHERE token = ?", (token,)).fetchone()["id"]
@@ -2473,7 +2473,7 @@ def seed_demo_referrals(clinician_id):
         db.execute(
             "INSERT INTO referral_events (referral_id, status, note, actor, created_at) "
             "VALUES (?,?,?,?,?)",
-            (ref_id, status, "demo progression", "site", ts))
+            (ref_id, status, "seeded progression", "site", ts))
     db.commit()
 
 

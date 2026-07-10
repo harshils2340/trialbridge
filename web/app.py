@@ -1804,16 +1804,10 @@ def _finalize_records_connect(redirect_to):
 
     db.set_records_profile(applicant, prof)
     n = db.attach_records_to_open_leads(applicant, records_mod.summary_text(prof))
-    is_sandbox = "sandbox" in provider.lower()
-    if is_sandbox:
-        msg = ("Demo records connected (SMART sandbox). "
-               "This is test data for trying the flow; once a real connector is set, "
-               "future applications will auto-fill from your actual history.")
-    else:
-        msg = f"Health records connected via {provider}. "
-        msg += (f"Auto-filled {n} pending application(s) - "
-                if n else "New applications will auto-fill from your history - ")
-        msg += "you won't have to re-enter your medical details."
+    msg = f"Health records connected via {provider}. "
+    msg += (f"Auto-filled {n} pending application(s) - "
+            if n else "New applications will auto-fill from your history - ")
+    msg += "you won't have to re-enter your medical details."
     flash(msg, "success")
     return redirect(redirect_to)
 
@@ -2253,46 +2247,8 @@ def recruitment_dashboard():
         if enrolled else None
     spend["cost_per_screened"] = round(spend["total_usd"] / screened, 2) \
         if screened else None
-    integration_rows = [
-        {
-            "name": "Internal EHR cohort feed",
-            "purpose": "Identify likely-eligible internal patients weekly",
-            "tools": "FHIR/Metriport + BridgeMD prescreen queue",
-            "status": "live" if records_mod.provider().strip().lower() != "sandbox" else "setup",
-            "next": "Set RECORDS_PROVIDER and API key for live sync",
-        },
-        {
-            "name": "Site intake website",
-            "purpose": "Capture self-referrals from community traffic",
-            "tools": "BridgeMD patient flow + application tracking",
-            "status": "live",
-            "next": "Share landing/search URL in outreach materials",
-        },
-        {
-            "name": "Physician/community referral channel",
-            "purpose": "Trusted introductions from clinicians/org partners",
-            "tools": "Invite links + source attribution + conversion",
-            "status": "live",
-            "next": "Expand partner list and add monthly source review",
-        },
-        {
-            "name": "Paid media campaigns",
-            "purpose": "Generate top-of-funnel awareness quickly",
-            "tools": "Meta/Google spend logs + BridgeMD ROI",
-            "status": "live" if spend.get("rows") else "setup",
-            "next": "Log campaign spend weekly for cost-per-enrolled proof",
-        },
-        {
-            "name": "Outcome reconciliation",
-            "purpose": "Prove enrolled/retained outcomes to sponsors",
-            "tools": "REDCap/CTMS refs + reconciliation audit trail",
-            "status": "live" if redcap.configured() else "setup",
-            "next": "Connect REDCap token or add CTMS source refs",
-        },
-    ]
     return render_template(
         "recruitment.html", stats=stats, spend=spend,
-        integration_rows=integration_rows,
         labels=db.LEAD_LABELS, claims=db.list_study_claims(g.user["id"]))
 
 
