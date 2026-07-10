@@ -55,6 +55,18 @@ def main():
         _fail("/healthz did not return ok=true")
     _ok("healthz")
 
+    ops_key = (os.environ.get("OPS_READINESS_KEY", "") or "").strip()
+    if ops_key:
+        status, ready_body = _open(
+            opener, base + "/ops/readiness?key=" + urllib.parse.quote(ops_key)
+        )
+        if status != 200:
+            _fail(f"/ops/readiness returned {status}")
+        ready = json.loads(ready_body or "{}")
+        if "gaps" not in ready:
+            _fail("/ops/readiness missing gaps field")
+        _ok("ops readiness endpoint")
+
     status, home = _open(opener, base + "/")
     if status != 200:
         _fail(f"/ returned {status}")

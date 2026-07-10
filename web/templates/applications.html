@@ -13,15 +13,33 @@
 
   {% if records_profile %}
   {% set p = (records_profile.provider or '') %}
+  {% if records_profile.sync_status == 'syncing' %}
+  <div class="rec-banner connect wide">{{ ic.icon('activity') }}
+    <span><b>Records syncing via {{ records_profile.provider or records_provider }}.</b> We are pulling your chart now.
+      {% if records_profile.last_sync_at %}Last update: {{ records_profile.last_sync_at }}.{% endif %}</span>
+    <form method="post" action="{{ url_for('records_refresh') }}">
+      <button class="link-btn" type="submit">Refresh status</button>
+    </form>
+  </div>
+  {% elif records_profile.sync_status == 'error' %}
+  <div class="rec-banner connect wide">{{ ic.icon('activity') }}
+    <span><b>Records sync needs attention.</b>
+      {{ records_profile.last_sync_error or 'The provider sync did not complete yet.' }}</span>
+    <form method="post" action="{{ url_for('records_refresh') }}">
+      <button class="btn btn-primary" type="submit">Retry sync</button>
+    </form>
+  </div>
+  {% else %}
   <div class="rec-banner ok wide">{{ ic.icon('check') }}
     {% if 'sandbox' in p|lower %}
     <span><b>Demo record connected (SMART sandbox).</b> This is test data for workflow testing. In production, real records will auto-fill applications from your actual chart.</span>
     {% else %}
     <span>Health records connected via <b>{{ records_profile.provider }}</b>. Every application auto-fills
-      from your history - no re-entering details.</span>
+      from your history - no re-entering details.{% if records_profile.last_sync_at %} Last refresh: {{ records_profile.last_sync_at }}.{% endif %}</span>
     {% endif %}
     <form method="post" action="{{ url_for('records_disconnect') }}"><button class="link-btn" type="submit">Disconnect</button></form>
   </div>
+  {% endif %}
   {% elif apps %}
   <form method="post" action="{{ url_for('records_connect') }}" class="rec-banner connect wide js-pending-submit" data-pending-text="Connecting records...">
     {{ ic.icon('activity') }}
@@ -94,6 +112,7 @@
       {% for v in a.visits %}
       <div class="app-visit">{{ ic.icon('activity') }}
         <span><b>{{ v.kind|capitalize }} visit</b> · {{ v.visit_at }}{% if v.location %} · {{ v.location }}{% endif %}
+          · <a href="{{ url_for('visit_ics', token=ld.token, visit_id=v.id) }}">Calendar invite (.ics)</a>
           {% if v.note %}<span class="app-visit-note">{{ v.note }}</span>{% endif %}</span></div>
       {% endfor %}
     </div>
@@ -101,6 +120,38 @@
 
     {% if not is_closed and ld.records_connected %}
     <div class="app-records ok">{{ ic.icon('check') }} <span>Records attached - the study team can pre-screen you from your history.</span></div>
+    {% endif %}
+
+    {% set sup = a.support %}
+    {% if not is_closed %}
+    <div class="app-support-grid">
+      <form class="app-support-card" method="post" action="{{ url_for('application_coverage_check', token=ld.token) }}">
+        <div class="thread-head">{{ ic.icon('check') }} Coverage check</div>
+        <div class="tag">Status: {{ support_coverage_labels.get(sup.coverage_status, sup.coverage_status or 'Not checked') }}</div>
+        {% if sup.coverage_note %}<p class="thread-empty">{{ sup.coverage_note }}</p>{% endif %}
+        <div class="support-row">
+          <input type="text" name="payer_name" value="{{ sup.coverage_payload.payer_name or '' }}" placeholder="Payer (e.g., Blue Cross)">
+          <input type="text" name="member_id" value="{{ sup.coverage_payload.member_id or '' }}" placeholder="Member ID">
+          <input type="text" name="group_id" value="{{ sup.coverage_payload.group_id or '' }}" placeholder="Group ID">
+          <input type="text" name="zip" value="{{ sup.coverage_payload.patient_zip or '' }}" placeholder="ZIP / Postal">
+          <input type="text" name="dob_year" value="{{ sup.coverage_payload.dob_year or '' }}" placeholder="Birth year">
+          <button class="btn btn-sm btn-ghost" type="submit">Run check</button>
+        </div>
+      </form>
+
+      <form class="app-support-card" method="post" action="{{ url_for('application_travel_support', token=ld.token) }}">
+        <div class="thread-head">{{ ic.icon('activity') }} Travel support</div>
+        <div class="tag">Status: {{ support_travel_labels.get(sup.travel_status, sup.travel_status or 'Not planned') }}</div>
+        {% if sup.travel_note %}<p class="thread-empty">{{ sup.travel_note }}</p>{% endif %}
+        <div class="support-row">
+          <input type="text" name="distance" value="{{ sup.travel_payload.distance or '' }}" placeholder="Distance to site">
+          <input type="text" name="preferred_mode" value="{{ sup.travel_payload.preferred_mode or '' }}" placeholder="Car, transit, rideshare">
+          <input type="text" name="needs" value="{{ sup.travel_payload.needs or '' }}" placeholder="Mobility / schedule needs">
+          <input type="text" name="city" value="{{ sup.travel_payload.city or ld.location or '' }}" placeholder="City">
+          <button class="btn btn-sm btn-ghost" type="submit">Plan travel</button>
+        </div>
+      </form>
+    </div>
     {% endif %}
 
     <div class="thread">

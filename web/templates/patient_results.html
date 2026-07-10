@@ -55,6 +55,7 @@
       <select id="fSort" class="filt-select">
         <option value="best">Best match</option>
         <option value="near">Nearest to me</option>
+        <option value="pay">Higher-pay potential</option>
       </select>
     </div>
 
@@ -139,11 +140,13 @@
     {% set t = r.trial %}{% set m = r.match %}
     {% set lab = labels.get(m.verdict, ('You might qualify','maybe')) %}
     <article class="pr-card" data-fit="{{ lab[1] }}" data-phase="{{ t.phase or 'NA' }}"
-             data-dist="{{ '%.1f'|format(r.distance) if r.distance is not none else 999999 }}">
+             data-dist="{{ '%.1f'|format(r.distance) if r.distance is not none else 999999 }}"
+             data-pay="{{ r.pay.score if r.pay else 0 }}" data-order="{{ loop.index0 }}">
       <div class="pr-card-top">
         <span class="fit fit-{{ lab[1] }}">{{ ic.icon('check') if lab[1]=='good' else ic.icon('sparkle') }}{{ lab[0] }}</span>
         {% if r.distance is not none %}<span class="pr-dist">{{ ic.icon('pin') }}{{ '%.0f'|format(r.distance) }} {{ r.unit }} away</span>{% endif %}
         {% if t.phase %}<span class="pr-phase">{{ t.phase.replace('_',' ')|title if t.phase != 'NA' else 'N/A' }}</span>{% endif %}
+        {% if r.pay and r.pay.label %}<span class="pr-pay pr-pay-{{ r.pay.tier }}">{{ ic.icon('activity') }}{{ r.pay.label }}</span>{% endif %}
         <span class="pr-recruiting">{{ ic.icon('check') }} Recruiting</span>
       </div>
       <h2 class="pr-card-title">
@@ -230,6 +233,13 @@
     if (mode === 'near') {
       arr.sort(function (a, b) {
         return parseFloat(a.getAttribute('data-dist')) - parseFloat(b.getAttribute('data-dist'));
+      });
+      arr.forEach(function (c) { list.appendChild(c); });
+    } else if (mode === 'pay') {
+      arr.sort(function (a, b) {
+        var pay = parseFloat(b.getAttribute('data-pay')) - parseFloat(a.getAttribute('data-pay'));
+        if (pay !== 0) return pay;
+        return parseInt(a.getAttribute('data-order'), 10) - parseInt(b.getAttribute('data-order'), 10);
       });
       arr.forEach(function (c) { list.appendChild(c); });
     } else {

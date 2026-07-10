@@ -178,6 +178,13 @@ def build_schedule_message(lead, schedule_url, apps_link):
     return subject, "\n".join(lines)
 
 
+def build_schedule_sms(lead, schedule_url):
+    """Short SMS for self-scheduling invites."""
+    trial = lead["nct"] or "your trial application"
+    return ("BridgeMD: A study team invited you to book your screening call for "
+            f"{trial}. Book here: {schedule_url}")
+
+
 def build_dm_message(lead, body, link, to="patient"):
     """A new chat message notification. `to` is who receives the email."""
     title = lead["title"] or lead["nct"] or "your clinical trial application"
@@ -193,7 +200,17 @@ def build_dm_message(lead, body, link, to="patient"):
     return subject, "\n".join(lines)
 
 
-def build_visit_message(lead, when, location, link):
+def build_dm_sms(lead, link, to="patient"):
+    """Short SMS for new direct-message notifications."""
+    if to == "patient":
+        trial = lead["nct"] or "your application"
+        return (f"BridgeMD: New message from the study team about {trial}. "
+                f"Reply here: {link}")
+    trial = lead["nct"] or "application"
+    return f"BridgeMD: New applicant message about {trial}. Reply here: {link}"
+
+
+def build_visit_message(lead, when, location, link, invite_url=""):
     """Confirmation that a screening/visit was booked."""
     title = lead["title"] or lead["nct"] or "your clinical trial"
     subject = f"Visit booked - {lead['nct'] or 'your trial application'}"
@@ -206,6 +223,8 @@ def build_visit_message(lead, when, location, link):
     ]
     if location:
         lines.append(f"  Where: {location}")
+    if invite_url:
+        lines += ["", "Add to calendar (.ics):", invite_url]
     lines += [
         "",
         "We'll remind you before it. See details any time here:",
@@ -243,6 +262,15 @@ def build_reminder_message(lead, when, location, link):
     return subject, "\n".join(lines)
 
 
+def build_reminder_sms(lead, when, location, link):
+    """Short SMS sent before an upcoming visit."""
+    trial = lead["nct"] or "your trial"
+    msg = f"BridgeMD reminder: your {trial} visit is on {when}"
+    if location:
+        msg += f" at {location}"
+    return f"{msg}. Details: {link}"
+
+
 def build_nudge_message(lead, link):
     """Gentle check-in for an applicant who's gone quiet mid-process."""
     title = lead["title"] or lead["nct"] or "your clinical trial application"
@@ -263,6 +291,13 @@ def build_nudge_message(lead, link):
         "Sent via BridgeMD.",
     ]
     return subject, "\n".join(lines)
+
+
+def build_nudge_sms(lead, link):
+    """Short SMS re-engagement nudge."""
+    trial = lead["nct"] or "your trial application"
+    return ("BridgeMD: Your application is still active for "
+            f"{trial}. Continue or message the team: {link}")
 
 
 def send_email(to_addr, subject, body):

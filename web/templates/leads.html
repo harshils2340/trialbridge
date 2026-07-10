@@ -145,42 +145,52 @@
   {% for it in active %}
   {% set l = it.lead %}
   <div class="card outreach-card">
-    <div class="outreach-top">
-      <div>
+    <div class="ats-head">
+      <div class="ats-main">
         <h3>{{ l['name'] }}</h3>
         <p>{% if l['email'] %}{{ l['email'] }}{% endif %}{% if l['phone'] %} · {{ l['phone'] }}{% endif %}</p>
         <p class="tagline">{% if l['nct'] %}{{ l['nct'] }} · {% endif %}{{ l['title'] }}</p>
       </div>
-      <div>
+      <div class="ats-badges">
         <span class="pill pill-{{ l['status'] }}">{{ labels.get(l['status'], l['status']) }}</span>
         {% if it.unread %}<span class="msg-badge">{{ it.unread }} new</span>{% endif %}
-        {% if it.recon %}<div class="tag recon-tag">{{ recon_labels.get(it.recon['outcome'], it.recon['outcome']) }}</div>{% endif %}
+        {% if it.recon %}<span class="tag recon-tag">{{ recon_labels.get(it.recon['outcome'], it.recon['outcome']) }}</span>{% endif %}
+        <span class="tag">Coverage: {{ support_coverage_labels.get(it.support.coverage_status, it.support.coverage_status or 'Not checked') }}</span>
+        <span class="tag">Travel: {{ support_travel_labels.get(it.support.travel_status, it.support.travel_status or 'Not planned') }}</span>
       </div>
     </div>
-    <div class="outreach-grid">
-      <form method="post" action="{{ url_for('message_lead', lead_id=l['id']) }}" class="outreach-form">
+
+    <div class="ats-actions">
+      <form method="post" action="{{ url_for('message_lead', lead_id=l['id']) }}" class="ats-action">
         <label>Message</label>
-        <input type="text" name="body" placeholder="Message candidate..." required>
-        <button class="btn btn-primary btn-sm" type="submit">Send</button>
+        <div class="ats-row">
+          <input type="text" name="body" placeholder="Message candidate..." required>
+          <button class="btn btn-primary btn-sm" type="submit">Send</button>
+        </div>
       </form>
-      <form method="post" action="{{ url_for('schedule_lead', lead_id=l['id']) }}" class="outreach-form">
+
+      <form method="post" action="{{ url_for('schedule_lead', lead_id=l['id']) }}" class="ats-action">
         <label>Scheduling link</label>
-        <input type="url" name="schedule_url" value="{{ l['schedule_url'] }}" placeholder="https://calendly.com/...">
-        <button class="btn btn-ghost btn-sm" type="submit">{{ 'Update link' if l['schedule_url'] else 'Send link' }}</button>
+        <div class="ats-row">
+          <input type="url" name="schedule_url" value="{{ l['schedule_url'] }}" placeholder="https://calendly.com/...">
+          <button class="btn btn-ghost btn-sm" type="submit">{{ 'Update link' if l['schedule_url'] else 'Send link' }}</button>
+        </div>
       </form>
-      <form method="post" action="{{ url_for('update_lead', lead_id=l['id']) }}" class="outreach-form">
+
+      <form method="post" action="{{ url_for('update_lead', lead_id=l['id']) }}" class="ats-action">
         <label>Status</label>
-        <div class="status-row">
+        <div class="ats-row">
           <select name="status">
             {% for s in statuses %}<option value="{{ s }}" {{ 'selected' if s == l['status'] else '' }}>{{ labels.get(s, s) }}</option>{% endfor %}
           </select>
-          <input type="text" name="note" placeholder="Note">
+          <input type="text" name="note" placeholder="Internal note">
           <button class="btn btn-sm" type="submit">Save</button>
         </div>
       </form>
-      <form method="post" action="{{ url_for('reconcile_lead', lead_id=l['id']) }}" class="outreach-form">
+
+      <form method="post" action="{{ url_for('reconcile_lead', lead_id=l['id']) }}" class="ats-action">
         <label>Outcome verification</label>
-        <div class="status-row">
+        <div class="ats-row">
           <select name="outcome">
             {% for k in recon_outcomes %}<option value="{{ k }}">{{ recon_labels.get(k, k) }}</option>{% endfor %}
           </select>
@@ -191,8 +201,37 @@
         </div>
       </form>
     </div>
+
+    <details class="ats-advanced">
+      <summary>{{ ic.icon('chevron-down') }} Coverage / travel checks</summary>
+      <div class="outreach-grid">
+        <div class="outreach-form">
+          <label>Coverage readiness</label>
+          <div class="tag">{{ support_coverage_labels.get(it.support.coverage_status, it.support.coverage_status or 'Not checked') }}</div>
+          {% if it.support.coverage_note %}<p class="tagline">{{ it.support.coverage_note }}</p>{% endif %}
+          <form method="post" action="{{ url_for('coverage_check_lead', lead_id=l['id']) }}" class="status-row">
+            <input type="text" name="payer_name" value="{{ it.support.coverage_payload.payer_name or '' }}" placeholder="Payer">
+            <input type="text" name="member_id" value="{{ it.support.coverage_payload.member_id or '' }}" placeholder="Member ID">
+            <button class="btn btn-sm btn-ghost" type="submit">Refresh</button>
+          </form>
+        </div>
+        <div class="outreach-form">
+          <label>Travel readiness</label>
+          <div class="tag">{{ support_travel_labels.get(it.support.travel_status, it.support.travel_status or 'Not planned') }}</div>
+          {% if it.support.travel_note %}<p class="tagline">{{ it.support.travel_note }}</p>{% endif %}
+          <form method="post" action="{{ url_for('travel_plan_lead', lead_id=l['id']) }}" class="status-row">
+            <input type="text" name="distance" value="{{ it.support.travel_payload.distance or '' }}" placeholder="Distance">
+            <input type="text" name="preferred_mode" value="{{ it.support.travel_payload.preferred_mode or '' }}" placeholder="Travel mode">
+            <button class="btn btn-sm btn-ghost" type="submit">Refresh</button>
+          </form>
+        </div>
+      </div>
+    </details>
+
     <div class="outreach-foot">
       <a class="cand-open" href="{{ url_for('candidate_page', token=l['site_token']) }}">{{ ic.icon('external') }} Open full workspace</a>
+      {% if l['email'] %}<a class="cand-open" href="mailto:{{ l['email'] }}">{{ ic.icon('activity') }} Email</a>{% endif %}
+      {% if l['phone'] %}<a class="cand-open" href="tel:{{ l['phone'] }}">{{ ic.icon('activity') }} Call</a>{% endif %}
       <form method="post" action="{{ url_for('extend_lead_site_token', lead_id=l['id']) }}" class="lead-redcap-form">
         <input type="hidden" name="days" value="30">
         <button class="btn btn-sm btn-ghost" type="submit">Extend link 30d</button>
@@ -204,9 +243,6 @@
       <form method="post" action="{{ url_for('push_lead_redcap', lead_id=l['id']) }}" class="lead-redcap-form">
         <button class="btn btn-sm btn-ghost" type="submit">{{ ic.icon('external') }} Push to REDCap</button>
       </form>
-      {% endif %}
-      {% if l['phone'] %}
-      <a class="cand-open" href="tel:{{ l['phone'] }}">{{ ic.icon('activity') }} Call</a>
       {% endif %}
     </div>
   </div>
@@ -236,7 +272,9 @@
           <td>{% if l['nct'] %}<a href="https://clinicaltrials.gov/study/{{ l['nct'] }}" target="_blank" rel="noopener">{{ l['nct'] }}</a>{% endif %}<div class="tag">{{ l['title'][:44] }}</div></td>
           <td><span class="pill pill-{{ l['status'] }}">{{ labels.get(l['status'], l['status']) }}</span>
             {% if l['decision'] == 'declined' and l['decision_reason'] %}<div class="tag">{{ l['decision_reason'] }}</div>{% endif %}
-            {% if it.recon %}<div class="tag recon-tag">{{ recon_labels.get(it.recon['outcome'], it.recon['outcome']) }}</div>{% endif %}</td>
+            {% if it.recon %}<div class="tag recon-tag">{{ recon_labels.get(it.recon['outcome'], it.recon['outcome']) }}</div>{% endif %}
+            <div class="tag">Coverage: {{ support_coverage_labels.get(it.support.coverage_status, it.support.coverage_status or 'Not checked') }}</div>
+            <div class="tag">Travel: {{ support_travel_labels.get(it.support.travel_status, it.support.travel_status or 'Not planned') }}</div></td>
           <td class="tag">
             {% if l['revealed'] %}
               {% if l['email'] %}{{ l['email'] }}{% endif %}{% if l['phone'] %}<div class="mono">{{ l['phone'] }}</div>{% endif %}

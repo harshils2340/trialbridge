@@ -89,6 +89,35 @@ or 2). See `.cursor/rules/enrollment-velocity.mdc` (always on).
   time-in-stage bars; drop-off highlighted.
 
 ## Progress log
+- [2026-07-09] **SCRS finding -> funded recruitment proof shipped.**
+  Added sponsor-facing recruitment spend logging by trial/source and ROI surface
+  in `/app/dashboard` (total spend, cost per screened, cost per enrolled, spend
+  by source), plus CSV export integration and regression test
+  (`test_spend_roi.py`). This directly supports budget justification loops from
+  site to sponsor/CRO.
+- [2026-07-09] **Sponsor onboarding + ops hardening slice DONE + tested.**
+  Added `/ops/readiness` (keyed operational posture endpoint), sponsor-facing
+  reporting exports (`/app/dashboard/export.csv`, `/app/dashboard/summary.json`),
+  expanded site setup profile fields (intake SLA, escalation email, CTMS/REDCap
+  endpoints), plus backup/recovery scripts (`backup_db.py`, `restore_drill.py`).
+  Updated staging smoke to probe ops readiness when key is supplied and added
+  production onboarding/legal checklists under `web/`.
+- [2026-07-09] **Pre-enrollment readiness checks DONE + tested (coverage + travel).**
+  Added a dedicated support-readiness layer to reduce late-stage drop-off before
+  enrollment: new `lead_support_checks` storage, payer eligibility checks (`payer.py`),
+  travel/logistics planning (`logistics.py`), patient self-serve forms on
+  `/applications`, and study-team refresh actions on `/app/leads`. Results are
+  persisted per candidate, surfaced to both sides, and appended into the lead
+  timeline so blockers are visible early. API adapters are live-ready through
+  env vars (`PAYER_*`, `LOGISTICS_*`) with deterministic sandbox fallback so the
+  full UX works immediately without vendor keys.
+- [2026-07-09] **Patient acquisition boost (optional compensation signal) DONE.**
+  Added a conservative "compensation likelihood" helper on patient search results
+  and trial detail pages, plus an optional "Higher-pay potential" sort. This is
+  designed to increase top-of-funnel discovery without degrading downstream
+  throughput: default ranking remains match-first (eligibility + distance), and
+  pay is guidance-only with explicit "confirm with site" messaging because
+  ClinicalTrials.gov has no reliable structured pay field.
 - [2026-07-08] Doc created. Starting Phase 1.
 - [2026-07-08] **Phase 1 DONE + tested.** Two-way messaging shipped:
   `messages` table + helpers; patient composer on `/applications`, study-team composer +

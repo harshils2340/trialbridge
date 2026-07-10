@@ -118,6 +118,8 @@ def extract_trial(study):
         "phase": ", ".join(p.get("designModule", {}).get("phases", []) or []),
         "overallStatus": status_mod.get("overallStatus", ""),
         "briefSummary": p.get("descriptionModule", {}).get("briefSummary", ""),
+        "detailedDescription": p.get("descriptionModule", {})
+        .get("detailedDescription", ""),
         "leadSponsor": p.get("sponsorCollaboratorsModule", {})
                         .get("leadSponsor", {}).get("name", ""),
         "enrollment": p.get("designModule", {})

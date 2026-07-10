@@ -23,8 +23,27 @@
       <label>Contact phone
         <input type="text" name="contact_phone" value="{{ profile['contact_phone'] if profile else '' }}" placeholder="+1 615 555 0123">
       </label>
+      <label>Intake SLA (hours)
+        <input type="text" name="intake_sla_hours" value="{{ profile['intake_sla_hours'] if profile else '' }}" placeholder="e.g. 24">
+      </label>
+      <label>Escalation email
+        <input type="email" name="escalation_email" value="{{ profile['escalation_email'] if profile else '' }}" placeholder="ops-escalation@site.org">
+      </label>
+      <label>CTMS endpoint / workspace URL
+        <input type="url" name="ctms_endpoint" value="{{ profile['ctms_endpoint'] if profile else '' }}" placeholder="https://ctms.yoursite.org/studies/...">
+      </label>
+      <label>REDCap endpoint URL
+        <input type="url" name="redcap_endpoint" value="{{ profile['redcap_endpoint'] if profile else '' }}" placeholder="https://redcap.yoursite.org/api/">
+      </label>
+      <label>REDCap project label
+        <input type="text" name="redcap_project_label" value="{{ profile['redcap_project_label'] if profile else '' }}" placeholder="Obesity 2026 Enrollment Project">
+      </label>
       <button class="btn btn-primary" type="submit">{{ ic.icon('check') }} Save profile</button>
     </form>
+    <p class="site-hint">
+      REDCap connection status: <b>{{ 'Connected' if redcap_on else 'Not connected' }}</b>.
+      Configure `REDCAP_API_URL` + `REDCAP_API_TOKEN` in environment to enable push.
+    </p>
   </div>
 
   <div class="card">

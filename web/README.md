@@ -99,15 +99,23 @@ Going live is a ~2 minute env change (no code):
 
 1. `NOTIFY_LIVE=1`
 2. `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` / `SMTP_FROM`
-3. `SITE_NOTIFY_EMAIL` - inbox that receives new blinded candidates (with the
+3. *(Optional SMS channel)* `NOTIFY_SMS=1` + `TWILIO_ACCOUNT_SID` +
+   `TWILIO_AUTH_TOKEN` + `TWILIO_FROM_NUMBER` (E.164, e.g. `+16135550123`)
+4. `SITE_NOTIFY_EMAIL` - inbox that receives new blinded candidates (with the
    `/c/<token>` link)
-4. `PUBLIC_BASE_URL` - e.g. `https://bridgemd.onrender.com` so email links
+5. `PUBLIC_BASE_URL` - e.g. `https://bridgemd.onrender.com` so email/SMS links
    are absolute
 
 While OFF, the loop still works end to end: the operator copies the secure link
 from `/app/leads` and hands it to the site. On accept/decline/screening/enrolled
-the applicant is emailed (only when `NOTIFY_LIVE=1`). Site emails are always
-de-identified - no patient name/contact is ever in them.
+and retention events (message reminders, schedule invites, nudges), the applicant
+gets email when `NOTIFY_LIVE=1`; optional SMS is additive and only sends when
+`NOTIFY_SMS=1` with Twilio configured. If SMS config is missing/invalid, delivery
+falls back safely to email-only. Site emails are always de-identified - no patient
+name/contact is ever in them.
+
+When a screening/follow-up visit is booked, BridgeMD now includes a downloadable
+calendar invite (`.ics`) in the patient-facing message and email.
 
 ## Persistence
 
@@ -133,7 +141,35 @@ commented `disk:` block in `render.yaml`).
 | `LLM_API_KEY` (+ `LLM_MODEL`, `LLM_BASE_URL`) | Eligibility reasoning + de-identification |
 | `FHIR_BASE` | FHIR R4 server for EHR import (default: SMART open sandbox) |
 | `SMTP_HOST` (+ `SMTP_PORT`/`USER`/`PASS`/`FROM`/`TLS`) | Send emails directly |
+| `NOTIFY_SMS` | `1` enables optional Twilio SMS for patient-facing notifications |
+| `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER` | Twilio REST credentials + sender number (E.164) |
+| `SMS_DEFAULT_COUNTRY_CODE` | Default country code when normalizing 10-digit numbers (`+1` default) |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Enable patient "Continue with Google" OAuth |
+| `GOOGLE_CALENDAR_SYNC` | `1` enables best-effort Google Calendar push on visit booking |
+| `GOOGLE_CALENDAR_ID`, `GOOGLE_CALENDAR_ACCESS_TOKEN` | Calendar destination + auth token for visit push |
+| `GOOGLE_CALENDAR_TIMEZONE` | Optional timezone for pushed events (default `UTC`) |
+| `GOOGLE_CALENDAR_API_BASE` | Optional Calendar API base override |
+| `VISIT_INVITE_DURATION_MINUTES` | Duration used for ICS/Google events (default `30`) |
+| `VISIT_ICS_ORGANIZER_NAME` | Organizer label in generated ICS files |
+| `RECORDS_PROVIDER` | `sandbox` (default) or `metriport` / `1uphealth` |
+| `RECORDS_API_KEY` | Live records provider API key |
+| `RECORDS_API_BASE` | Live provider base URL (default `https://api.metriport.com`) |
+| `RECORDS_API_KEY_HEADER` | Header name for API key (`Authorization` default) |
+| `RECORDS_API_KEY_PREFIX` | Prefix for auth header (`Bearer ` default) |
+| `METRIPORT_FACILITY_ID` | Optional Metriport facility id for patient creation |
+| `RECORDS_WEBHOOK_SECRET` | Shared secret for `/records/webhook/metriport?key=...` |
+| `METRIPORT_CREATE_PATIENT_PATH` | Override live patient-create path |
+| `METRIPORT_START_NETWORK_QUERY_PATH` | Override network-query path |
+| `METRIPORT_GET_CONSOLIDATED_PATH` | Override direct consolidated-data path |
+| `METRIPORT_START_CONSOLIDATED_PATH` | Override consolidated-query start path |
+| `METRIPORT_GET_CONSOLIDATED_QUERY_PATH` | Override consolidated-query status path |
+| `PAYER_PROVIDER` | Payer check provider label (`sandbox` default) |
+| `PAYER_API_URL`, `PAYER_API_KEY` | Optional payer eligibility API endpoint + key |
+| `PAYER_API_KEY_HEADER`, `PAYER_API_KEY_PREFIX` | Optional payer auth header config |
+| `LOGISTICS_PROVIDER` | Travel support provider label (`sandbox` default) |
+| `LOGISTICS_API_URL`, `LOGISTICS_API_KEY` | Optional travel/logistics API endpoint + key |
+| `LOGISTICS_API_KEY_HEADER`, `LOGISTICS_API_KEY_PREFIX` | Optional logistics auth header config |
+| `OPS_READINESS_KEY` | Shared key for `/ops/readiness` (fallbacks to `ALERTS_CRON_KEY`) |
 | `NOTIFY_LIVE` | `1` turns on real email delivery for the patient loop (default off) |
 | `SITE_NOTIFY_EMAIL` | Coordinator inbox that receives new blinded candidates |
 | `PUBLIC_BASE_URL` | Base URL used for links inside emails |
@@ -148,6 +184,17 @@ commented `disk:` block in `render.yaml`).
 | `RATE_LIMIT_VERIFY_RESEND_MAX` | Max POSTs/IP/window for `/account/verify/resend` (default `5`) |
 | `RATE_LIMIT_INTEREST_MAX` | Max POSTs/IP/window for `/interest` (default `12`) |
 | `PORT`, `FLASK_DEBUG`, `WEB_MAX_MATCH` | Server port, debug, LLM calls per search |
+
+## Ops endpoints and drills
+
+- `GET /ops/readiness?key=...` -> integration + infra + security go-live posture.
+  Uses `OPS_READINESS_KEY` (or `ALERTS_CRON_KEY`) and never returns secret values.
+- `GET /app/dashboard/summary.json` -> sponsor-friendly scoped funnel/source summary.
+- `GET /app/dashboard/export.csv` -> CSV export of stage + source metrics.
+- `POST /app/dashboard/spend` -> log recruitment spend by source/trial (ROI proof).
+- Backup drill:
+  - `python backup_db.py` (uses `DB_PATH`, optional `DB_BACKUP_DIR`)
+  - `BACKUP_FILE=... python restore_drill.py`
 
 ## Privacy
 

@@ -18,7 +18,7 @@
 <header class="pub-nav">
   <a class="brand" href="{{ url_for('home') }}"><img class="brand-mark" src="{{ url_for('static', filename='logo.svg') }}" width="24" height="24" alt="">BridgeMD</a>
   <nav class="pub-nav-links">
-    <a href="{{ url_for('home') }}">Find a trial</a>
+    <a href="{{ url_for('find') }}">Find a trial</a>
     <a href="{{ url_for('how_it_works') }}">How it works</a>
     <a href="{{ url_for('alerts') }}" class="pub-apps">Alerts{% if alerts_new_count %} <span class="nav-badge nav-badge-new">{{ alerts_new_count }}</span>{% endif %}</a>
     <a href="{{ url_for('applications') }}" class="pub-apps">My applications{% if messages_unread %} <span class="nav-badge nav-badge-new">{{ messages_unread }}</span>{% elif applications_count %} <span class="nav-badge">{{ applications_count }}</span>{% endif %}</a>
@@ -33,9 +33,11 @@
     <a href="{{ url_for('login') }}" class="pub-clin">For clinicians</a>
   </nav>
 </header>
+{% if not patient_user and not user %}
 <div class="pub-nav-tools">
   {% include "_pov_bar.html" %}
 </div>
+{% endif %}
 <div class="toast-stack">
   {% with messages = get_flashed_messages(with_categories=true) %}
     {% for cat, msg in messages %}
@@ -56,7 +58,9 @@
       <span class="pub-foot-note">Not medical advice.</span>
     </div>
     <div class="pub-foot-tools">
+      {% if not patient_user and not user %}
       {% include "_pov_bar.html" %}
+      {% endif %}
     </div>
   </div>
 </footer>

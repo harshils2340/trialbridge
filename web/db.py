@@ -148,6 +148,11 @@ CREATE TABLE IF NOT EXISTS site_profiles (
     contact_name  TEXT DEFAULT '',
     contact_email TEXT DEFAULT '',
     contact_phone TEXT DEFAULT '',
+    intake_sla_hours TEXT DEFAULT '',
+    escalation_email TEXT DEFAULT '',
+    ctms_endpoint TEXT DEFAULT '',
+    redcap_endpoint TEXT DEFAULT '',
+    redcap_project_label TEXT DEFAULT '',
     created_at    TEXT NOT NULL,
     updated_at    TEXT NOT NULL,
     FOREIGN KEY (user_id) REFERENCES users(id)
@@ -288,6 +293,26 @@ CREATE TABLE IF NOT EXISTS lead_visits (
     FOREIGN KEY (lead_id) REFERENCES leads(id)
 );
 
+-- Payer eligibility + travel/logistics readiness checks per lead. These reduce
+-- late-stage drop-off by surfacing blockers (coverage/travel) earlier.
+CREATE TABLE IF NOT EXISTS lead_support_checks (
+    lead_id              INTEGER PRIMARY KEY,
+    coverage_status      TEXT DEFAULT '',
+    coverage_note        TEXT DEFAULT '',
+    coverage_payload     TEXT DEFAULT '',
+    coverage_provider    TEXT DEFAULT '',
+    coverage_ref         TEXT DEFAULT '',
+    coverage_checked_at  TEXT DEFAULT '',
+    travel_status        TEXT DEFAULT '',
+    travel_note          TEXT DEFAULT '',
+    travel_payload       TEXT DEFAULT '',
+    travel_provider      TEXT DEFAULT '',
+    travel_ref           TEXT DEFAULT '',
+    travel_checked_at    TEXT DEFAULT '',
+    updated_at           TEXT NOT NULL,
+    FOREIGN KEY (lead_id) REFERENCES leads(id)
+);
+
 -- Status history for a patient application (drives the "My applications" timeline).
 CREATE TABLE IF NOT EXISTS lead_events (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -311,6 +336,21 @@ CREATE TABLE IF NOT EXISTS lead_reconciliations (
     actor         TEXT DEFAULT 'site',
     created_at    TEXT NOT NULL,
     FOREIGN KEY (lead_id) REFERENCES leads(id)
+);
+
+-- Sponsor-funded recruitment activity spend. Lets sites prove ROI by source
+-- and justify future budget with actual cost-per-screened/enrolled evidence.
+CREATE TABLE IF NOT EXISTS recruitment_spend (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER NOT NULL,
+    nct         TEXT DEFAULT '',
+    source      TEXT DEFAULT '',
+    campaign    TEXT DEFAULT '',
+    amount_usd  REAL DEFAULT 0,
+    spend_date  TEXT DEFAULT '',
+    note        TEXT DEFAULT '',
+    created_at  TEXT NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id)
 );
 
 CREATE TABLE IF NOT EXISTS search_stats (
@@ -351,9 +391,27 @@ CREATE TABLE IF NOT EXISTS records_profiles (
     provider        TEXT DEFAULT '',
     age             TEXT DEFAULT '',
     sex             TEXT DEFAULT '',
+    sync_status     TEXT DEFAULT '',
+    source_status   TEXT DEFAULT '',
+    external_patient_id TEXT DEFAULT '',
+    external_query_id   TEXT DEFAULT '',
+    completeness_score INTEGER DEFAULT 0,
+    last_sync_error TEXT DEFAULT '',
+    last_sync_at    TEXT DEFAULT '',
     data            TEXT NOT NULL,
     summary         TEXT DEFAULT '',
     connected_at    TEXT NOT NULL
+);
+
+-- Deduplicate provider webhook events (at-least-once delivery safe).
+CREATE TABLE IF NOT EXISTS records_webhook_events (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_key       TEXT UNIQUE NOT NULL,
+    applicant_token TEXT DEFAULT '',
+    provider        TEXT DEFAULT '',
+    event_type      TEXT DEFAULT '',
+    source_status   TEXT DEFAULT '',
+    created_at      TEXT NOT NULL
 );
 
 -- Trial alerts (saved searches). A patient registers interests once; a
@@ -398,7 +456,11 @@ CREATE INDEX IF NOT EXISTS idx_user_codes ON user_auth_codes(user_id, purpose);
 CREATE INDEX IF NOT EXISTS idx_ip_rate_window ON ip_rate_limits(window_start);
 CREATE INDEX IF NOT EXISTS idx_leads_created ON leads(created_at);
 CREATE INDEX IF NOT EXISTS idx_lead_events_lead ON lead_events(lead_id);
+CREATE INDEX IF NOT EXISTS idx_support_cov_status ON lead_support_checks(coverage_status);
+CREATE INDEX IF NOT EXISTS idx_support_travel_status ON lead_support_checks(travel_status);
 CREATE INDEX IF NOT EXISTS idx_recon_lead ON lead_reconciliations(lead_id);
+CREATE INDEX IF NOT EXISTS idx_spend_user ON recruitment_spend(user_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_spend_nct ON recruitment_spend(nct);
 CREATE INDEX IF NOT EXISTS idx_search_stats_kind ON search_stats(kind, hits);
 CREATE INDEX IF NOT EXISTS idx_search_cache_created ON search_cache(created_at);
 CREATE INDEX IF NOT EXISTS idx_alerts_applicant ON alerts(applicant_token);
@@ -408,6 +470,7 @@ CREATE INDEX IF NOT EXISTS idx_visits_lead ON lead_visits(lead_id);
 CREATE INDEX IF NOT EXISTS idx_invites_clinician ON invites(clinician_id);
 CREATE INDEX IF NOT EXISTS idx_claims_user ON study_claims(user_id);
 CREATE INDEX IF NOT EXISTS idx_claims_nct ON study_claims(nct);
+CREATE INDEX IF NOT EXISTS idx_records_webhook_created ON records_webhook_events(created_at);
 """
 
 
@@ -486,6 +549,22 @@ _MIGRATIONS = {
         "oauth_sub": "TEXT",
         "oauth_picture": "TEXT DEFAULT ''",
     },
+    "site_profiles": {
+        "intake_sla_hours": "TEXT DEFAULT ''",
+        "escalation_email": "TEXT DEFAULT ''",
+        "ctms_endpoint": "TEXT DEFAULT ''",
+        "redcap_endpoint": "TEXT DEFAULT ''",
+        "redcap_project_label": "TEXT DEFAULT ''",
+    },
+    "records_profiles": {
+        "sync_status": "TEXT DEFAULT ''",
+        "source_status": "TEXT DEFAULT ''",
+        "external_patient_id": "TEXT DEFAULT ''",
+        "external_query_id": "TEXT DEFAULT ''",
+        "completeness_score": "INTEGER DEFAULT 0",
+        "last_sync_error": "TEXT DEFAULT ''",
+        "last_sync_at": "TEXT DEFAULT ''",
+    },
     "leads": {
         "applicant_token": "TEXT DEFAULT ''",
         "site_token": "TEXT DEFAULT ''",
@@ -556,6 +635,10 @@ def _migrate(con):
                 "ON patient_users(oauth_provider, oauth_sub)")
     con.execute("CREATE INDEX IF NOT EXISTS idx_user_oauth "
                 "ON users(oauth_provider, oauth_sub)")
+    con.execute("CREATE INDEX IF NOT EXISTS idx_records_external_patient "
+                "ON records_profiles(external_patient_id)")
+    con.execute("CREATE INDEX IF NOT EXISTS idx_records_external_query "
+                "ON records_profiles(external_query_id)")
 
 
 def init_db():
@@ -848,17 +931,31 @@ def get_site_profile(user_id):
         "SELECT * FROM site_profiles WHERE user_id = ?", (user_id,)).fetchone()
 
 
-def upsert_site_profile(user_id, org_name, contact_name, contact_email, contact_phone):
+def upsert_site_profile(user_id, org_name, contact_name, contact_email,
+                        contact_phone, intake_sla_hours="", escalation_email="",
+                        ctms_endpoint="", redcap_endpoint="",
+                        redcap_project_label=""):
     ts = now()
     db = get_db()
     db.execute(
         "INSERT INTO site_profiles (user_id, org_name, contact_name, contact_email, "
-        "contact_phone, created_at, updated_at) VALUES (?,?,?,?,?,?,?) "
+        "contact_phone, intake_sla_hours, escalation_email, ctms_endpoint, "
+        "redcap_endpoint, redcap_project_label, created_at, updated_at) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?) "
         "ON CONFLICT(user_id) DO UPDATE SET org_name=excluded.org_name, "
         "contact_name=excluded.contact_name, contact_email=excluded.contact_email, "
-        "contact_phone=excluded.contact_phone, updated_at=excluded.updated_at",
+        "contact_phone=excluded.contact_phone, "
+        "intake_sla_hours=excluded.intake_sla_hours, "
+        "escalation_email=excluded.escalation_email, "
+        "ctms_endpoint=excluded.ctms_endpoint, "
+        "redcap_endpoint=excluded.redcap_endpoint, "
+        "redcap_project_label=excluded.redcap_project_label, "
+        "updated_at=excluded.updated_at",
         (user_id, (org_name or "").strip(), (contact_name or "").strip(),
-         (contact_email or "").strip(), (contact_phone or "").strip(), ts, ts))
+         (contact_email or "").strip(), (contact_phone or "").strip(),
+         (intake_sla_hours or "").strip(), (escalation_email or "").strip(),
+         (ctms_endpoint or "").strip(), (redcap_endpoint or "").strip(),
+         (redcap_project_label or "").strip(), ts, ts))
     db.commit()
 
 
@@ -898,6 +995,43 @@ def site_contact_for_nct(nct):
     if not row:
         return ""
     return (row["contact_email"] or row["email"] or "").strip()
+
+
+def add_recruitment_spend(user_id, nct, source, campaign, amount_usd, spend_date,
+                          note=""):
+    db = get_db()
+    db.execute(
+        "INSERT INTO recruitment_spend (user_id, nct, source, campaign, amount_usd, "
+        "spend_date, note, created_at) VALUES (?,?,?,?,?,?,?,?)",
+        (user_id, _norm_nct(nct), (source or "").strip().lower(),
+         (campaign or "").strip(), float(amount_usd or 0),
+         (spend_date or "").strip(), (note or "").strip(), now()))
+    db.commit()
+
+
+def list_recruitment_spend_for_user(user_id, ncts=None):
+    ncts = sorted({x for x in (ncts or []) if x})
+    if ncts:
+        qs = ",".join("?" * len(ncts))
+        return get_db().execute(
+            f"SELECT * FROM recruitment_spend WHERE user_id = ? AND nct IN ({qs}) "
+            "ORDER BY created_at DESC, id DESC",
+            [user_id] + ncts).fetchall()
+    return get_db().execute(
+        "SELECT * FROM recruitment_spend WHERE user_id = ? "
+        "ORDER BY created_at DESC, id DESC", (user_id,)).fetchall()
+
+
+def spend_summary_for_user(user_id, ncts=None):
+    rows = list_recruitment_spend_for_user(user_id, ncts=ncts)
+    total = sum(float(r["amount_usd"] or 0) for r in rows)
+    by_source = {}
+    for r in rows:
+        src = (r["source"] or "unknown").strip().lower() or "unknown"
+        by_source[src] = by_source.get(src, 0.0) + float(r["amount_usd"] or 0)
+    src_rows = [{"source": k, "amount_usd": round(v, 2)}
+                for k, v in sorted(by_source.items(), key=lambda kv: -kv[1])]
+    return {"total_usd": round(total, 2), "by_source": src_rows, "rows": rows}
 
 
 def add_study_claim(user_id, nct, title=""):
@@ -1430,10 +1564,117 @@ def add_visit(lead_id, visit_at, kind="screening", location="", note=""):
     return db.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
 
 
+def get_visit(visit_id):
+    return get_db().execute(
+        "SELECT * FROM lead_visits WHERE id = ?",
+        (visit_id,)).fetchone()
+
+
 def get_visits(lead_id):
     return get_db().execute(
         "SELECT * FROM lead_visits WHERE lead_id = ? ORDER BY visit_at ASC",
         (lead_id,)).fetchall()
+
+
+def get_lead_support(lead_id):
+    row = get_db().execute(
+        "SELECT * FROM lead_support_checks WHERE lead_id = ?",
+        (lead_id,)).fetchone()
+    if not row:
+        return {
+            "lead_id": lead_id,
+            "coverage_status": "",
+            "coverage_note": "",
+            "coverage_payload": {},
+            "coverage_provider": "",
+            "coverage_ref": "",
+            "coverage_checked_at": "",
+            "travel_status": "",
+            "travel_note": "",
+            "travel_payload": {},
+            "travel_provider": "",
+            "travel_ref": "",
+            "travel_checked_at": "",
+            "updated_at": "",
+        }
+    out = dict(row)
+    try:
+        out["coverage_payload"] = json.loads(out.get("coverage_payload") or "{}")
+    except Exception:
+        out["coverage_payload"] = {}
+    try:
+        out["travel_payload"] = json.loads(out.get("travel_payload") or "{}")
+    except Exception:
+        out["travel_payload"] = {}
+    return out
+
+
+def set_lead_coverage_check(lead_id, status, note="", payload=None,
+                            provider="", ref=""):
+    if not get_lead(lead_id):
+        return False
+    db = get_db()
+    ts = now()
+    prev = get_lead_support(lead_id)
+    db.execute(
+        "INSERT INTO lead_support_checks (lead_id, coverage_status, coverage_note, "
+        "coverage_payload, coverage_provider, coverage_ref, coverage_checked_at, "
+        "travel_status, travel_note, travel_payload, travel_provider, travel_ref, "
+        "travel_checked_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?) "
+        "ON CONFLICT(lead_id) DO UPDATE SET "
+        "coverage_status = excluded.coverage_status, "
+        "coverage_note = excluded.coverage_note, "
+        "coverage_payload = excluded.coverage_payload, "
+        "coverage_provider = excluded.coverage_provider, "
+        "coverage_ref = excluded.coverage_ref, "
+        "coverage_checked_at = excluded.coverage_checked_at, "
+        "updated_at = excluded.updated_at",
+        (lead_id, (status or "").strip(), (note or "").strip(),
+         json.dumps(payload or {}), (provider or "").strip(), (ref or "").strip(), ts,
+         prev.get("travel_status", ""), prev.get("travel_note", ""),
+         json.dumps(prev.get("travel_payload") or {}),
+         prev.get("travel_provider", ""), prev.get("travel_ref", ""),
+         prev.get("travel_checked_at", ""), ts))
+    db.execute(
+        "INSERT INTO lead_events (lead_id, status, note, actor, created_at) "
+        "VALUES (?,?,?,?,?)",
+        (lead_id, get_lead(lead_id)["status"], f"coverage check: {status}", "system", ts))
+    db.commit()
+    return True
+
+
+def set_lead_travel_check(lead_id, status, note="", payload=None,
+                          provider="", ref=""):
+    if not get_lead(lead_id):
+        return False
+    db = get_db()
+    ts = now()
+    prev = get_lead_support(lead_id)
+    db.execute(
+        "INSERT INTO lead_support_checks (lead_id, coverage_status, coverage_note, "
+        "coverage_payload, coverage_provider, coverage_ref, coverage_checked_at, "
+        "travel_status, travel_note, travel_payload, travel_provider, travel_ref, "
+        "travel_checked_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?) "
+        "ON CONFLICT(lead_id) DO UPDATE SET "
+        "travel_status = excluded.travel_status, "
+        "travel_note = excluded.travel_note, "
+        "travel_payload = excluded.travel_payload, "
+        "travel_provider = excluded.travel_provider, "
+        "travel_ref = excluded.travel_ref, "
+        "travel_checked_at = excluded.travel_checked_at, "
+        "updated_at = excluded.updated_at",
+        (lead_id, prev.get("coverage_status", ""), prev.get("coverage_note", ""),
+         json.dumps(prev.get("coverage_payload") or {}),
+         prev.get("coverage_provider", ""), prev.get("coverage_ref", ""),
+         prev.get("coverage_checked_at", ""),
+         (status or "").strip(), (note or "").strip(), json.dumps(payload or {}),
+         (provider or "").strip(), (ref or "").strip(), ts, ts))
+    db.execute(
+        "INSERT INTO lead_events (lead_id, status, note, actor, created_at) "
+        "VALUES (?,?,?,?,?)",
+        (lead_id, get_lead(lead_id)["status"], f"travel plan: {status}", "system", ts))
+    db.commit()
+    return True
 
 
 def upcoming_visits_for_applicant(applicant_token):
@@ -1450,7 +1691,7 @@ def upcoming_visits_for_applicant(applicant_token):
 def visits_due_for_reminder(within_iso):
     """Future visits happening before `within_iso` that haven't been reminded."""
     return get_db().execute(
-        "SELECT v.*, l.email, l.name, l.title, l.nct, l.applicant_token "
+        "SELECT v.*, l.email, l.phone, l.name, l.title, l.nct, l.applicant_token "
         "FROM lead_visits v JOIN leads l ON l.id = v.lead_id "
         "WHERE v.reminded_at = '' AND v.visit_at >= ? AND v.visit_at <= ? "
         "ORDER BY v.visit_at ASC", (now(), within_iso)).fetchall()
@@ -2162,6 +2403,18 @@ def get_records_profile(applicant_token):
     prof.setdefault("summary", row["summary"])
     prof["age"] = row["age"] or prof.get("age")
     prof["sex"] = row["sex"] or prof.get("sex")
+    prof["sync_status"] = row["sync_status"] or prof.get("sync_status") or ""
+    prof["source_status"] = row["source_status"] or prof.get("source_status") or ""
+    prof["external_patient_id"] = row["external_patient_id"] or \
+        prof.get("external_patient_id") or ""
+    prof["external_query_id"] = row["external_query_id"] or \
+        prof.get("external_query_id") or ""
+    prof["completeness_score"] = int(
+        row["completeness_score"] or prof.get("completeness_score") or 0)
+    prof["last_sync_error"] = row["last_sync_error"] or \
+        prof.get("last_sync_error") or ""
+    prof["last_sync_at"] = row["last_sync_at"] or prof.get("last_sync_at") or ""
+    prof["connected_at"] = row["connected_at"] or prof.get("connected_at") or ""
     return prof
 
 
@@ -2172,14 +2425,121 @@ def set_records_profile(applicant_token, prof):
     age = "" if prof.get("age") in (None, "") else str(prof.get("age"))
     db.execute(
         "INSERT INTO records_profiles "
-        "(applicant_token, provider, age, sex, data, summary, connected_at) "
-        "VALUES (?,?,?,?,?,?,?) "
+        "(applicant_token, provider, age, sex, sync_status, source_status, "
+        "external_patient_id, external_query_id, completeness_score, "
+        "last_sync_error, last_sync_at, data, summary, connected_at) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?) "
         "ON CONFLICT(applicant_token) DO UPDATE SET provider = excluded.provider, "
-        "age = excluded.age, sex = excluded.sex, data = excluded.data, "
+        "age = excluded.age, sex = excluded.sex, sync_status = excluded.sync_status, "
+        "source_status = excluded.source_status, "
+        "external_patient_id = excluded.external_patient_id, "
+        "external_query_id = excluded.external_query_id, "
+        "completeness_score = excluded.completeness_score, "
+        "last_sync_error = excluded.last_sync_error, "
+        "last_sync_at = excluded.last_sync_at, data = excluded.data, "
         "summary = excluded.summary, connected_at = excluded.connected_at",
         (applicant_token, prof.get("provider", ""), age, prof.get("sex", ""),
+         prof.get("sync_status", ""), prof.get("source_status", ""),
+         prof.get("external_patient_id", ""), prof.get("external_query_id", ""),
+         int(prof.get("completeness_score") or 0),
+         prof.get("last_sync_error", ""), prof.get("last_sync_at", ""),
          json.dumps(prof), prof.get("summary", ""), now()))
     db.commit()
+
+
+def _norm_sync(v):
+    return (v or "").strip().lower()
+
+
+def _pick_sync_status(prev_status, next_status, allow_regress=False):
+    prev = _norm_sync(prev_status)
+    nxt = _norm_sync(next_status)
+    if not nxt:
+        return prev
+    if prev == nxt or not prev:
+        return nxt
+    if allow_regress:
+        return nxt
+    if nxt in ("connected", "error"):
+        return nxt
+    if nxt == "syncing" and prev in ("connected", "error"):
+        # Ignore stale in-flight events after we already have a terminal state.
+        return prev
+    return nxt
+
+
+def set_records_sync_state(applicant_token, provider="", sync_status="",
+                           source_status="", external_patient_id="",
+                           external_query_id="", error_msg="",
+                           allow_regress=False):
+    """Upsert sync metadata for a profile before/without full record payload."""
+    if not applicant_token:
+        return
+    prev = get_records_profile(applicant_token) or {}
+    target_sync = _pick_sync_status(
+        prev.get("sync_status", ""), sync_status or prev.get("sync_status", ""),
+        allow_regress=allow_regress)
+    prof = {
+        "provider": provider or prev.get("provider", ""),
+        "age": prev.get("age", ""),
+        "sex": prev.get("sex", ""),
+        "summary": prev.get("summary", ""),
+        "sync_status": target_sync,
+        "source_status": source_status or prev.get("source_status", ""),
+        "external_patient_id": external_patient_id or prev.get("external_patient_id", ""),
+        "external_query_id": external_query_id or prev.get("external_query_id", ""),
+        "completeness_score": prev.get("completeness_score", 0),
+        "last_sync_error": error_msg if error_msg is not None else prev.get("last_sync_error", ""),
+        "last_sync_at": now(),
+        "conditions": prev.get("conditions", []),
+        "meds": prev.get("meds", []),
+        "labs": prev.get("labs", []),
+        "data_source": prev.get("data_source", ""),
+    }
+    set_records_profile(applicant_token, prof)
+
+
+def record_records_webhook_event(event_key, applicant_token="", provider="",
+                                 event_type="", source_status=""):
+    """Returns True for first-seen event key, False for duplicate delivery."""
+    event_key = (event_key or "").strip()
+    if not event_key:
+        return False
+    db = get_db()
+    ts = now()
+    cur = db.execute(
+        "INSERT OR IGNORE INTO records_webhook_events "
+        "(event_key, applicant_token, provider, event_type, source_status, created_at) "
+        "VALUES (?,?,?,?,?,?)",
+        (event_key, (applicant_token or "").strip(), (provider or "").strip(),
+         (event_type or "").strip(), (source_status or "").strip(), ts))
+    # Keep the dedup table bounded without separate jobs.
+    try:
+        keep_days = max(1, int(os.environ.get("RECORDS_WEBHOOK_EVENT_RETENTION_DAYS", "30")))
+    except Exception:
+        keep_days = 30
+    cutoff = (dt.datetime.now() - dt.timedelta(days=keep_days)).strftime("%Y-%m-%d %H:%M")
+    db.execute("DELETE FROM records_webhook_events WHERE created_at < ?", (cutoff,))
+    db.commit()
+    return bool((cur.rowcount or 0) > 0)
+
+
+def find_applicant_by_external_patient(external_patient_id):
+    if not external_patient_id:
+        return ""
+    row = get_db().execute(
+        "SELECT applicant_token FROM records_profiles WHERE external_patient_id = ?",
+        ((external_patient_id or "").strip(),)).fetchone()
+    return row["applicant_token"] if row else ""
+
+
+def find_applicant_by_external_query(external_query_id):
+    if not external_query_id:
+        return ""
+    row = get_db().execute(
+        "SELECT applicant_token FROM records_profiles WHERE external_query_id = ?",
+        ((external_query_id or "").strip(),)).fetchone()
+    return row["applicant_token"] if row else ""
 
 
 def clear_records_profile(applicant_token):

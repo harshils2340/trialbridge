@@ -17,14 +17,17 @@ screening) but skips the per-trial eligibility reasoning.
 """
 import functools
 import hmac
+import io
 import json
 import math
 import os
 import pathlib
+import re
 import secrets
 import sys
 import time
 import datetime as dt
+import csv
 import urllib.parse
 import urllib.request
 from collections import OrderedDict
@@ -41,11 +44,15 @@ import refer as rf  # noqa: E402
 
 import alerts as alerts_mod  # noqa: E402
 import analytics  # noqa: E402
+import calendar_invites  # noqa: E402
 import codes  # noqa: E402
 import db  # noqa: E402
 import fhir  # noqa: E402
 import ingest  # noqa: E402
+import logistics  # noqa: E402
 import mailer  # noqa: E402
+import notifications as notifications_mod  # noqa: E402
+import payer  # noqa: E402
 import records as records_mod  # noqa: E402
 import redcap  # noqa: E402
 import reminders as reminders_mod  # noqa: E402
@@ -130,6 +137,74 @@ def healthz():
     return jsonify({"ok": True}), 200
 
 
+def _ops_key_ok():
+    want = (os.environ.get("OPS_READINESS_KEY", "").strip()
+            or os.environ.get("ALERTS_CRON_KEY", "").strip())
+    if not want:
+        return False
+    got = (request.args.get("key", "").strip()
+           or request.headers.get("X-Ops-Key", "").strip())
+    return bool(got and hmac.compare_digest(got, want))
+
+
+@app.route("/ops/readiness")
+def ops_readiness():
+    """Operational go-live posture (safe; no secrets returned)."""
+    if not _ops_key_ok():
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+    db_path = os.environ.get("DB_PATH", "").strip()
+    rec_provider = records_mod.provider().strip().lower()
+    readiness = {
+        "ok": True,
+        "integrations": {
+            "records_live": bool(rec_provider != "sandbox"
+                                 and os.environ.get("RECORDS_API_KEY", "").strip()),
+            "payer_live": bool(os.environ.get("PAYER_API_URL", "").strip()
+                               and os.environ.get("PAYER_API_KEY", "").strip()),
+            "logistics_live": bool(os.environ.get("LOGISTICS_API_URL", "").strip()
+                                   and os.environ.get("LOGISTICS_API_KEY", "").strip()),
+            "notifications_email_live": bool(os.environ.get("NOTIFY_LIVE", "0") == "1"
+                                             and os.environ.get("SMTP_HOST", "").strip()
+                                             and os.environ.get("SMTP_FROM", "").strip()),
+            "notifications_sms_live": bool(os.environ.get("NOTIFY_SMS", "0") == "1"
+                                           and notifications_mod.sms_configured()),
+        },
+        "infra": {
+            "db_path": db_path or str(db.DB_PATH),
+            "persistent_db_hint": bool((db_path or "").startswith("/var/data/")
+                                       or (db_path or "").startswith("/data/")),
+            "cron_key_set": bool(os.environ.get("ALERTS_CRON_KEY", "").strip()),
+            "background_loops_disabled": (
+                os.environ.get("ALERTS_BACKGROUND", "0") == "0"
+                and os.environ.get("REMINDERS_BACKGROUND", "0") == "0"
+            ),
+        },
+        "security": {
+            "no_login_off": not NO_LOGIN,
+            "secret_key_set": bool(os.environ.get("SECRET_KEY", "").strip()),
+            "webhook_secret_set": bool(os.environ.get("RECORDS_WEBHOOK_SECRET", "").strip()),
+        },
+    }
+    gaps = []
+    if not readiness["integrations"]["records_live"]:
+        gaps.append("records_live_not_configured")
+    if not readiness["integrations"]["payer_live"]:
+        gaps.append("payer_live_not_configured")
+    if not readiness["integrations"]["logistics_live"]:
+        gaps.append("logistics_live_not_configured")
+    if not readiness["integrations"]["notifications_email_live"]:
+        gaps.append("notifications_email_not_live")
+    if not readiness["infra"]["persistent_db_hint"]:
+        gaps.append("persistent_db_not_configured")
+    if not readiness["infra"]["cron_key_set"]:
+        gaps.append("alerts_cron_key_missing")
+    if not readiness["security"]["webhook_secret_set"]:
+        gaps.append("records_webhook_secret_missing")
+    readiness["gaps"] = gaps
+    readiness["ok"] = not gaps
+    return jsonify(readiness), 200
+
+
 # --------------------------------------------------------------------------- #
 # Auth
 # --------------------------------------------------------------------------- #
@@ -203,6 +278,31 @@ def _ensure_demo_patient():
     return p
 
 
+def _seed_demo_surfaces(user_id=None):
+    """Populate demo data across patient/clinician/study-team surfaces.
+
+    When demo mode is enabled we should show a fully working product view
+    immediately (claimed studies, queue, messages, schedule links), without
+    requiring manual setup steps.
+    """
+    try:
+        db.seed_demo_leads()
+    except Exception:
+        app.logger.exception("demo lead seeding failed")
+    try:
+        db.seed_demo_engagement(user_id)
+    except Exception:
+        app.logger.exception("demo engagement seeding failed")
+    try:
+        db.seed_demo_referrals(user_id)
+    except Exception:
+        app.logger.exception("demo referral seeding failed")
+    try:
+        _ensure_demo_patient()
+    except Exception:
+        app.logger.exception("demo patient seeding failed")
+
+
 def _demo_mode_enabled():
     """True when the temporary no-login preview shell should be enabled."""
     return NO_LOGIN or bool(session.get(DEMO_SESSION_KEY))
@@ -214,9 +314,7 @@ if NO_LOGIN:
     try:
         with app.test_request_context():
             _demo = _ensure_demo_user()
-            db.seed_demo_engagement(_demo["id"] if _demo else None)
-            db.seed_demo_referrals(_demo["id"] if _demo else None)
-            _ensure_demo_patient()
+            _seed_demo_surfaces(_demo["id"] if _demo else None)
     except Exception:
         app.logger.exception("demo engagement seeding failed")
 
@@ -246,8 +344,8 @@ def load_user():
     g.user = db.get_user(uid) if uid else None
     if g.user is None and _demo_mode_enabled():
         g.user = _ensure_demo_user()
-        db.seed_demo_engagement(g.user["id"] if g.user else None)
-        db.seed_demo_referrals(g.user["id"] if g.user else None)
+    if _demo_mode_enabled() and g.user:
+        _seed_demo_surfaces(g.user["id"])
     pid = session.get(PATIENT_SESSION_KEY)
     g.patient_user = db.get_patient_user(pid) if pid else None
     if g.patient_user is None and _demo_mode_enabled():
@@ -278,6 +376,7 @@ def _set_applicant_cookie(resp, token):
 # so nothing is emailed during testing. Go-live is ~2 min: set these env vars.
 #   NOTIFY_LIVE=1
 #   SMTP_HOST / SMTP_PORT / SMTP_USER / SMTP_PASS / SMTP_FROM
+#   NOTIFY_SMS=1 + TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN / TWILIO_FROM_NUMBER
 #   SITE_NOTIFY_EMAIL=coordinator@site          (where new candidates are sent)
 #   PUBLIC_BASE_URL=https://yourdomain.com      (optional, for correct email links)
 # While OFF, the loop still works end to end: the operator copies the secure
@@ -286,6 +385,10 @@ def _set_applicant_cookie(resp, token):
 NOTIFY_LIVE = os.environ.get("NOTIFY_LIVE", "0") == "1"
 SITE_NOTIFY_EMAIL = os.environ.get("SITE_NOTIFY_EMAIL", "").strip()
 PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL", "").strip().rstrip("/")
+_NOTIFIER = notifications_mod.Notifier(
+    live=NOTIFY_LIVE,
+    send_email_fn=mailer.send_email if mailer.smtp_configured() else None,
+)
 
 
 def _abs_url(endpoint, **kw):
@@ -296,16 +399,25 @@ def _abs_url(endpoint, **kw):
 
 
 def notifications_ready():
-    return NOTIFY_LIVE and mailer.smtp_configured()
+    return _NOTIFIER.email_ready()
 
 
 def _notify(to_addr, subject, body):
     """Single switch for every consumer-loop email. No-op (never errors) unless
     go-live is on AND SMTP is configured AND there's a recipient."""
-    if not (notifications_ready() and to_addr):
-        return False
-    ok, _ = mailer.send_email(to_addr, subject, body)
-    return ok
+    return _NOTIFIER.send(to_email=to_addr, subject=subject, email_body=body,
+                          allow_sms=False)
+
+
+def _notify_patient(to_email, to_phone, subject, email_body, sms_body):
+    """Patient-facing notify: email by default, optional SMS when env-enabled."""
+    return _NOTIFIER.send(
+        to_email=to_email,
+        to_phone=to_phone,
+        subject=subject,
+        email_body=email_body,
+        sms_body=sms_body,
+    )
 
 
 def _notify_site_new_candidate(token):
@@ -324,11 +436,11 @@ def _notify_applicant(token, kind):
     """Tell the applicant their status changed. kind in {accepted, declined,
     screening, enrolled}."""
     lead = db.get_lead_by_token(token)
-    if not lead or not lead["email"]:
+    if not lead or (not lead["email"] and not lead["phone"]):
         return False
     link = _abs_url("applications")
     subject, body = mailer.build_applicant_message(lead, kind, link)
-    return _notify(lead["email"], subject, body)
+    return _notify_patient(lead["email"], lead["phone"], subject, body, "")
 
 
 def _notify_applicant_by_id(lead_id, kind):
@@ -338,19 +450,23 @@ def _notify_applicant_by_id(lead_id, kind):
 
 def _notify_applicant_schedule(lead):
     """Email the applicant their booking link so they can self-schedule."""
-    if not lead or not lead["email"] or not lead["schedule_url"]:
+    if (not lead or not lead["schedule_url"] or
+            (not lead["email"] and not lead["phone"])):
         return False
     subject, body = mailer.build_schedule_message(
         lead, lead["schedule_url"], _abs_url("applications"))
-    return _notify(lead["email"], subject, body)
+    sms = mailer.build_schedule_sms(lead, lead["schedule_url"])
+    return _notify_patient(lead["email"], lead["phone"], subject, body, sms)
 
 
 def _notify_applicant_message(lead, body):
-    if not lead or not lead["email"]:
+    if not lead or (not lead["email"] and not lead["phone"]):
         return False
+    link = _abs_url("applications")
     subject, msg = mailer.build_dm_message(
         lead, body, _abs_url("applications"), to="patient")
-    return _notify(lead["email"], subject, msg)
+    sms = mailer.build_dm_sms(lead, link, to="patient")
+    return _notify_patient(lead["email"], lead["phone"], subject, msg, sms)
 
 
 def _notify_site_message(lead, body):
@@ -362,12 +478,13 @@ def _notify_site_message(lead, body):
     return _notify(to_addr, subject, msg)
 
 
-def _notify_applicant_visit(lead, when, location):
-    if not lead or not lead["email"]:
+def _notify_applicant_visit(lead, when, location, invite_url=""):
+    if not lead or (not lead["email"] and not lead["phone"]):
         return False
     subject, body = mailer.build_visit_message(
-        lead, when, location, _abs_url("applications"))
-    return _notify(lead["email"], subject, body)
+        lead, when, location, _abs_url("applications"), invite_url=invite_url)
+    sms = mailer.build_reminder_sms(lead, when, location, _abs_url("applications"))
+    return _notify_patient(lead["email"], lead["phone"], subject, body, sms)
 
 
 def _notify_alert(alert, new_matches):
@@ -385,18 +502,21 @@ alerts_mod.configure(app, notifier=_notify_alert)
 
 def _remind_visit(visit):
     """Email a patient a reminder about an upcoming visit (row from a JOIN)."""
-    if not visit["email"]:
+    if not visit["email"] and not visit["phone"]:
         return False
     subject, body = mailer.build_reminder_message(
         visit, visit["visit_at"], visit["location"], _abs_url("applications"))
-    return _notify(visit["email"], subject, body)
+    sms = mailer.build_reminder_sms(
+        visit, visit["visit_at"], visit["location"], _abs_url("applications"))
+    return _notify_patient(visit["email"], visit["phone"], subject, body, sms)
 
 
 def _nudge_applicant(lead):
-    if not lead["email"]:
+    if not lead["email"] and not lead["phone"]:
         return False
     subject, body = mailer.build_nudge_message(lead, _abs_url("applications"))
-    return _notify(lead["email"], subject, body)
+    sms = mailer.build_nudge_sms(lead, _abs_url("applications"))
+    return _notify_patient(lead["email"], lead["phone"], subject, body, sms)
 
 
 # Proactively remind about visits and re-engage quiet applicants (retention).
@@ -453,10 +573,8 @@ def set_demo_mode():
     if enabled:
         session[DEMO_SESSION_KEY] = True
         try:
-            demo_user = _ensure_demo_user()
-            db.seed_demo_engagement(demo_user["id"] if demo_user else None)
-            db.seed_demo_referrals(demo_user["id"] if demo_user else None)
-            _ensure_demo_patient()
+            actor = g.user if g.user else _ensure_demo_user()
+            _seed_demo_surfaces(actor["id"] if actor else None)
         except Exception:
             app.logger.exception("demo engagement seeding failed")
     else:
@@ -731,7 +849,7 @@ def _csrf_guard():
     _csrf_token()
     if request.method != "POST":
         return None
-    if request.endpoint in {"alerts_run", "reminders_run"}:
+    if request.endpoint in {"alerts_run", "reminders_run", "records_metriport_webhook"}:
         return None
     sent = (request.form.get("_csrf_token", "")
             or request.headers.get("X-CSRF-Token", ""))
@@ -1248,6 +1366,16 @@ def build_patient_note(condition, age="", sex="", about=""):
 
 @app.route("/")
 def home():
+    # Public marketing/search landing should be signed-out only.
+    # Logged-in users go straight to their working surfaces.
+    if g.patient_user:
+        return redirect(url_for("applications"))
+    if g.user:
+        return redirect(url_for("dashboard"))
+    return _render_landing()
+
+
+def _render_landing():
     condition_options = _merge_terms(
         trending_conditions(12), SEARCH_CONDITION_OPTIONS, 30)
     condition_prefill = request.args.get("condition", "").strip() or \
@@ -1333,9 +1461,9 @@ def find():
     this endpoint handles the POST and renders patient-friendly results. A GET
     just bounces back to the homepage (carrying any prefill)."""
     if request.method == "GET":
-        args = {k: request.args[k] for k in ("condition", "location")
-                if request.args.get(k)}
-        return redirect(url_for("home", **args))
+        if g.user and not g.patient_user:
+            return redirect(url_for("dashboard"))
+        return _render_landing()
 
     condition = request.form.get("condition", "").strip()
     condition_terms = [x.strip() for x in condition.split(",") if x.strip()]
@@ -1542,11 +1670,14 @@ def applications():
             "events": db.get_lead_events(ld["id"]),
             "messages": db.get_messages(ld["id"]),
             "visits": db.get_visits(ld["id"]),
+            "support": db.get_lead_support(ld["id"]),
         })
         db.mark_thread_read(ld["id"], "patient")
     return render_template("applications.html", apps=apps,
                            pipeline=db.LEAD_PIPELINE, labels=db.LEAD_LABELS,
-                           blurb=db.LEAD_BLURB, closed=db.LEAD_CLOSED)
+                           blurb=db.LEAD_BLURB, closed=db.LEAD_CLOSED,
+                           support_coverage_labels=SUPPORT_COVERAGE_LABELS,
+                           support_travel_labels=SUPPORT_TRAVEL_LABELS)
 
 
 @app.route("/applications/<token>/message", methods=["POST"])
@@ -1563,6 +1694,53 @@ def application_message(token):
         db.add_message(lead["id"], "patient", body)
         _notify_site_message(lead, body)
         flash("Message sent to the study team.", "success")
+    return redirect(url_for("applications") + f"#app-{lead['id']}")
+
+
+@app.route("/applications/<token>/coverage-check", methods=["POST"])
+def application_coverage_check(token):
+    if not g.patient_user:
+        flash("Sign in to update coverage.", "error")
+        return redirect(url_for("patient_login", next=url_for("applications")))
+    lead = db.get_lead_by_token(token)
+    if not lead or lead["applicant_token"] != get_applicant_token():
+        abort(403)
+    info = {
+        "payer_name": request.form.get("payer_name", "").strip(),
+        "member_id": request.form.get("member_id", "").strip(),
+        "group_id": request.form.get("group_id", "").strip(),
+        "zip": request.form.get("zip", "").strip(),
+        "dob_year": request.form.get("dob_year", "").strip(),
+    }
+    res = payer.check(lead, info)
+    db.set_lead_coverage_check(
+        lead["id"], res.get("status", ""), res.get("note", ""),
+        payload=res.get("payload"), provider=res.get("provider", ""),
+        ref=res.get("reference", ""))
+    flash("Coverage check updated.", "success")
+    return redirect(url_for("applications") + f"#app-{lead['id']}")
+
+
+@app.route("/applications/<token>/travel-support", methods=["POST"])
+def application_travel_support(token):
+    if not g.patient_user:
+        flash("Sign in to update travel support.", "error")
+        return redirect(url_for("patient_login", next=url_for("applications")))
+    lead = db.get_lead_by_token(token)
+    if not lead or lead["applicant_token"] != get_applicant_token():
+        abort(403)
+    info = {
+        "distance": request.form.get("distance", "").strip(),
+        "preferred_mode": request.form.get("preferred_mode", "").strip(),
+        "needs": request.form.get("needs", "").strip(),
+        "city": request.form.get("city", "").strip() or lead.get("location", ""),
+    }
+    res = logistics.plan(lead, info)
+    db.set_lead_travel_check(
+        lead["id"], res.get("status", ""), res.get("note", ""),
+        payload=res.get("payload"), provider=res.get("provider", ""),
+        ref=res.get("reference", ""))
+    flash("Travel support plan updated.", "success")
     return redirect(url_for("applications") + f"#app-{lead['id']}")
 
 
@@ -1589,7 +1767,7 @@ def records_connect():
         return redirect(url_for("patient_login", next=_safe_next(request.referrer) or url_for("applications")))
     applicant = g.patient_user["applicant_token"]
     try:
-        prof = records_mod.connect()
+        prof = records_mod.connect(g.patient_user, applicant)
     except fhir.FhirError as e:
         flash(str(e), "error")
         return redirect(request.referrer or url_for("applications"))
@@ -1599,9 +1777,27 @@ def records_connect():
               "error")
         return redirect(request.referrer or url_for("applications"))
 
+    provider = (prof.get("provider") or records_mod.provider_label()).strip()
+    sync_status = (prof.get("sync_status") or "").strip().lower()
+    if sync_status == "syncing":
+        db.set_records_sync_state(
+            applicant_token=applicant,
+            provider=provider,
+            sync_status="syncing",
+            source_status=prof.get("source_status", ""),
+            external_patient_id=prof.get("external_patient_id", ""),
+            external_query_id=prof.get("external_query_id", ""),
+            error_msg="",
+            allow_regress=True,
+        )
+        msg = (f"Connected to {provider}. Your records are syncing now - "
+               "this can take a few minutes. We'll auto-fill your applications "
+               "as soon as data is ready.")
+        flash(msg, "success")
+        return redirect(request.referrer or url_for("applications"))
+
     db.set_records_profile(applicant, prof)
     n = db.attach_records_to_open_leads(applicant, records_mod.summary_text(prof))
-    provider = (prof.get("provider") or "").strip()
     is_sandbox = "sandbox" in provider.lower()
     if is_sandbox:
         msg = ("Demo records connected (SMART sandbox). "
@@ -1616,6 +1812,41 @@ def records_connect():
     return redirect(request.referrer or url_for("applications"))
 
 
+@app.route("/records/refresh", methods=["POST"])
+def records_refresh():
+    if not g.patient_user:
+        flash("Sign in to refresh records.", "error")
+        return redirect(url_for("patient_login", next=url_for("applications")))
+    applicant = g.patient_user["applicant_token"]
+    prof = db.get_records_profile(applicant) or {}
+    ext_pid = (prof.get("external_patient_id") or "").strip()
+    if not ext_pid:
+        flash("Connect records first.", "error")
+        return redirect(request.referrer or url_for("applications"))
+    try:
+        qid = records_mod.refresh(ext_pid)
+    except fhir.FhirError as e:
+        flash(str(e), "error")
+        return redirect(request.referrer or url_for("applications"))
+    except Exception:
+        app.logger.exception("records refresh failed")
+        flash("Couldn't refresh records right now. Please try again.", "error")
+        return redirect(request.referrer or url_for("applications"))
+    db.set_records_sync_state(
+        applicant_token=applicant,
+        provider=prof.get("provider", ""),
+        sync_status="syncing",
+        source_status="network_query_started",
+        external_patient_id=ext_pid,
+        external_query_id=qid,
+        error_msg="",
+        allow_regress=True,
+    )
+    flash("Refreshing your records now. We'll update your applications when ready.",
+          "success")
+    return redirect(request.referrer or url_for("applications"))
+
+
 @app.route("/records/disconnect", methods=["POST"])
 def records_disconnect():
     if not g.patient_user:
@@ -1626,6 +1857,101 @@ def records_disconnect():
         db.clear_records_profile(applicant)
     flash("Disconnected your health records.", "success")
     return redirect(request.referrer or url_for("applications"))
+
+
+def _records_webhook_authorized():
+    key = os.environ.get("RECORDS_WEBHOOK_SECRET", "").strip()
+    if not key:
+        return True
+    sent = (request.args.get("key", "").strip()
+            or request.headers.get("X-Webhook-Key", "").strip()
+            or request.headers.get("x-webhook-key", "").strip())
+    if sent and hmac.compare_digest(sent, key):
+        return True
+    sig = (request.headers.get("X-Webhook-Signature", "").strip()
+           or request.headers.get("X-Metriport-Signature", "").strip()
+           or request.headers.get("x-webhook-signature", "").strip())
+    if not sig:
+        return False
+    body = request.get_data(cache=True, as_text=False) or b""
+    expected = hmac.new(key.encode("utf-8"), body, "sha256").hexdigest()
+    cand = sig.split("=", 1)[-1].strip()
+    return hmac.compare_digest(cand, expected)
+
+
+@app.route("/records/webhook/metriport", methods=["POST"])
+def records_metriport_webhook():
+    """Provider webhook: update sync state and pull latest consolidated data."""
+    if not _records_webhook_authorized():
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+    try:
+        payload = request.get_json(silent=True) or {}
+    except Exception:
+        payload = {}
+    ctx = records_mod.webhook_event_context(payload, headers=request.headers)
+    event = ctx.get("event", "")
+    source_status = ctx.get("source_status", "")
+    ext_qid = ctx.get("external_query_id", "")
+    ext_pid = ctx.get("external_patient_id", "")
+    applicant = db.find_applicant_by_external_query(ext_qid) or \
+        db.find_applicant_by_external_patient(ext_pid)
+    if not applicant:
+        return jsonify({"ok": True, "ignored": "no_matching_applicant"}), 200
+
+    prof = db.get_records_profile(applicant) or {}
+    provider = prof.get("provider", records_mod.provider_label())
+    if not db.record_records_webhook_event(
+            ctx.get("idempotency_key", ""),
+            applicant_token=applicant,
+            provider=provider,
+            event_type=event,
+            source_status=source_status):
+        return jsonify({"ok": True, "duplicate": True}), 200
+    if ctx.get("is_error"):
+        db.set_records_sync_state(
+            applicant_token=applicant,
+            provider=provider,
+            sync_status="error",
+            source_status=source_status or event or "provider_error",
+            external_patient_id=ext_pid or prof.get("external_patient_id", ""),
+            external_query_id=ext_qid or prof.get("external_query_id", ""),
+            error_msg=(source_status or event or "records sync failed")[:220],
+        )
+        return jsonify({"ok": True, "status": "error"}), 200
+    db.set_records_sync_state(
+        applicant_token=applicant,
+        provider=provider,
+        sync_status="syncing",
+        source_status=source_status or event or "provider_update",
+        external_patient_id=ext_pid or prof.get("external_patient_id", ""),
+        external_query_id=ext_qid or prof.get("external_query_id", ""),
+        error_msg="",
+    )
+    if not ctx.get("is_done"):
+        return jsonify({"ok": True, "status": "syncing"}), 200
+
+    try:
+        target_pid = ext_pid or prof.get("external_patient_id", "")
+        if not target_pid:
+            raise fhir.FhirError("Missing external patient id for consolidated pull.")
+        latest = records_mod.pull_latest(target_pid)
+        latest["external_query_id"] = ext_qid or prof.get("external_query_id", "")
+        latest["external_patient_id"] = target_pid
+        db.set_records_profile(applicant, latest)
+        n = db.attach_records_to_open_leads(applicant, records_mod.summary_text(latest))
+        return jsonify({"ok": True, "status": "connected", "backfilled": n}), 200
+    except Exception as e:
+        app.logger.exception("records webhook pull-latest failed")
+        db.set_records_sync_state(
+            applicant_token=applicant,
+            provider=provider,
+            sync_status="error",
+            source_status=source_status or event or "provider_error",
+            external_patient_id=ext_pid or prof.get("external_patient_id", ""),
+            external_query_id=ext_qid or prof.get("external_query_id", ""),
+            error_msg=str(e)[:220],
+        )
+        return jsonify({"ok": False, "status": "error"}), 200
 
 
 # --------------------------------------------------------------------------- #
@@ -1780,6 +2106,23 @@ SCREENER_LABELS = {
 }
 # Answers that are a yellow flag for the study team to look at.
 SCREENER_FLAGS = {"other_trial": "yes", "pregnancy": "yes", "consent_capable": "no"}
+SUPPORT_COVERAGE_LABELS = {
+    "": "Not checked",
+    "needs_info": "Need more insurance info",
+    "manual_review": "Manual payer check needed",
+    "likely_covered": "Likely covered",
+    "coverage_limited": "Coverage may be limited",
+    "api_error": "Payer API error",
+}
+SUPPORT_TRAVEL_LABELS = {
+    "": "Not planned",
+    "assist_required": "Assistance required",
+    "long_distance": "Long-distance planning needed",
+    "supported": "Transit support likely",
+    "basic_plan": "Basic travel plan ready",
+    "manual_review": "Manual planning needed",
+    "api_error": "Logistics API error",
+}
 
 
 def age_band(age):
@@ -1812,6 +2155,7 @@ def _decode_lead(row, recon=None):
         "events": db.get_lead_events(row["id"]),
         "elig": elig,
         "screener": scr,
+        "support": db.get_lead_support(row["id"]),
         "flags": flags,
         "code": candidate_code(row),
         "age_band": age_band(row["age"]),
@@ -1840,6 +2184,8 @@ def leads():
                            counts=counts, pipeline=db.LEAD_PIPELINE,
                            statuses=db.LEAD_STATUSES, labels=db.LEAD_LABELS,
                            screener_labels=SCREENER_LABELS,
+                           support_coverage_labels=SUPPORT_COVERAGE_LABELS,
+                           support_travel_labels=SUPPORT_TRAVEL_LABELS,
                            recon_labels=db.RECON_LABELS,
                            recon_outcomes=db.RECON_OUTCOMES,
                            redcap_on=redcap.configured(), claims=claims)
@@ -1851,9 +2197,131 @@ def recruitment_dashboard():
     """The recruitment plan + proof: live funnel, conversion, time-in-stage, and
     where candidates drop off - built from the data the pipeline already logs."""
     claims = _site_claims()
+    stats = analytics.funnel_stats(claims)
+    spend = db.spend_summary_for_user(g.user["id"], ncts=claims)
+    enrolled = int((stats.get("totals") or {}).get("enrolled") or 0)
+    screened = 0
+    for row in stats.get("source_breakdown", []):
+        screened += int(row.get("screening") or 0)
+    spend["cost_per_enrolled"] = round(spend["total_usd"] / enrolled, 2) \
+        if enrolled else None
+    spend["cost_per_screened"] = round(spend["total_usd"] / screened, 2) \
+        if screened else None
+    integration_rows = [
+        {
+            "name": "Internal EHR cohort feed",
+            "purpose": "Identify likely-eligible internal patients weekly",
+            "tools": "FHIR/Metriport + BridgeMD prescreen queue",
+            "status": "live" if records_mod.provider().strip().lower() != "sandbox" else "setup",
+            "next": "Set RECORDS_PROVIDER and API key for live sync",
+        },
+        {
+            "name": "Site intake website",
+            "purpose": "Capture self-referrals from community traffic",
+            "tools": "BridgeMD patient flow + application tracking",
+            "status": "live",
+            "next": "Share landing/search URL in outreach materials",
+        },
+        {
+            "name": "Physician/community referral channel",
+            "purpose": "Trusted introductions from clinicians/org partners",
+            "tools": "Invite links + source attribution + conversion",
+            "status": "live",
+            "next": "Expand partner list and add monthly source review",
+        },
+        {
+            "name": "Paid media campaigns",
+            "purpose": "Generate top-of-funnel awareness quickly",
+            "tools": "Meta/Google spend logs + BridgeMD ROI",
+            "status": "live" if spend.get("rows") else "setup",
+            "next": "Log campaign spend weekly for cost-per-enrolled proof",
+        },
+        {
+            "name": "Outcome reconciliation",
+            "purpose": "Prove enrolled/retained outcomes to sponsors",
+            "tools": "REDCap/CTMS refs + reconciliation audit trail",
+            "status": "live" if redcap.configured() else "setup",
+            "next": "Connect REDCap token or add CTMS source refs",
+        },
+    ]
     return render_template(
-        "recruitment.html", stats=analytics.funnel_stats(claims),
+        "recruitment.html", stats=stats, spend=spend,
+        integration_rows=integration_rows,
         labels=db.LEAD_LABELS, claims=db.list_study_claims(g.user["id"]))
+
+
+@app.route("/app/dashboard/spend", methods=["POST"])
+@login_required
+def recruitment_spend_add():
+    claims = _site_claims()
+    nct = request.form.get("nct", "").strip().upper()
+    if claims and nct and nct not in claims:
+        flash("Select a claimed study for spend tracking.", "error")
+        return redirect(url_for("recruitment_dashboard"))
+    source = request.form.get("source", "").strip().lower()
+    if not source:
+        source = "other"
+    try:
+        amt = float(request.form.get("amount_usd", "0").strip())
+    except Exception:
+        amt = -1
+    if amt <= 0:
+        flash("Add a valid spend amount in USD.", "error")
+        return redirect(url_for("recruitment_dashboard"))
+    db.add_recruitment_spend(
+        g.user["id"], nct, source,
+        request.form.get("campaign", "").strip(),
+        amt,
+        request.form.get("spend_date", "").strip(),
+        request.form.get("note", "").strip())
+    flash("Recruitment spend logged.", "success")
+    return redirect(url_for("recruitment_dashboard"))
+
+
+@app.route("/app/dashboard/export.csv")
+@login_required
+def recruitment_export_csv():
+    """Sponsor-facing export for cohort/source funnel reporting."""
+    stats = analytics.funnel_stats(_site_claims())
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["section", "key", "value"])
+    for s in stats.get("stages", []):
+        k = (s.get("key") or "").strip()
+        w.writerow(["stage_reached", k, s.get("reached", 0)])
+        w.writerow(["stage_conv_from_prev_pct", k, s.get("conv_from_prev", 0)])
+    t = stats.get("totals", {})
+    for k in ("total", "active", "enrolled", "verified_enrolled", "withdrawn", "closed"):
+        w.writerow(["totals", k, t.get(k, 0)])
+    for row in stats.get("source_breakdown", []):
+        src = row.get("source", "")
+        w.writerow(["source_total", src, row.get("total", 0)])
+        w.writerow(["source_screening", src, row.get("screening", 0)])
+        w.writerow(["source_enrolled", src, row.get("enrolled", 0)])
+        w.writerow(["source_enroll_conv_pct", src, row.get("enroll_conv", 0)])
+        w.writerow(["source_verified_enrolled", src, row.get("verified_enrolled", 0)])
+    spend = db.spend_summary_for_user(g.user["id"], ncts=_site_claims())
+    w.writerow(["spend_total_usd", "all", spend.get("total_usd", 0)])
+    for row in spend.get("by_source", []):
+        w.writerow(["spend_source_usd", row.get("source", ""),
+                    row.get("amount_usd", 0)])
+    resp = make_response(buf.getvalue())
+    resp.headers["Content-Type"] = "text/csv; charset=utf-8"
+    resp.headers["Content-Disposition"] = "attachment; filename=recruitment_export.csv"
+    return resp
+
+
+@app.route("/app/dashboard/summary.json")
+@login_required
+def recruitment_summary_json():
+    """JSON summary for sponsor/customer reporting integrations."""
+    stats = analytics.funnel_stats(_site_claims())
+    return jsonify({
+        "ok": True,
+        "generated_at": db.now(),
+        "claims": sorted(_site_claims()),
+        "stats": stats,
+    }), 200
 
 
 @app.route("/app/site", methods=["GET", "POST"])
@@ -1864,13 +2332,17 @@ def site_setup():
         f = request.form
         db.upsert_site_profile(
             g.user["id"], f.get("org_name", ""), f.get("contact_name", ""),
-            f.get("contact_email", ""), f.get("contact_phone", ""))
+            f.get("contact_email", ""), f.get("contact_phone", ""),
+            f.get("intake_sla_hours", ""), f.get("escalation_email", ""),
+            f.get("ctms_endpoint", ""), f.get("redcap_endpoint", ""),
+            f.get("redcap_project_label", ""))
         flash("Site profile saved.", "success")
         return redirect(url_for("site_setup"))
     return render_template(
         "site_setup.html",
         profile=db.get_site_profile(g.user["id"]),
-        claims=db.list_study_claims(g.user["id"]))
+        claims=db.list_study_claims(g.user["id"]),
+        redcap_on=redcap.configured())
 
 
 @app.route("/app/site/claim", methods=["POST"])
@@ -1966,6 +2438,62 @@ def message_lead(lead_id):
         flash("Message sent.", "success")
     else:
         flash("Write a message first.", "error")
+    return redirect(url_for("leads"))
+
+
+@app.route("/app/leads/<int:lead_id>/coverage-check", methods=["POST"])
+@login_required
+def coverage_check_lead(lead_id):
+    _ensure_site_access_for_lead(lead_id)
+    lead = db.get_lead(lead_id)
+    if not lead:
+        flash("Couldn't find that candidate.", "error")
+        return redirect(url_for("leads"))
+    existing = db.get_lead_support(lead_id).get("coverage_payload") or {}
+    info = {
+        "payer_name": request.form.get("payer_name", "").strip()
+        or existing.get("payer_name", ""),
+        "member_id": request.form.get("member_id", "").strip()
+        or existing.get("member_id", ""),
+        "group_id": request.form.get("group_id", "").strip()
+        or existing.get("group_id", ""),
+        "zip": request.form.get("zip", "").strip() or existing.get("patient_zip", ""),
+        "dob_year": request.form.get("dob_year", "").strip()
+        or existing.get("dob_year", ""),
+    }
+    res = payer.check(lead, info)
+    db.set_lead_coverage_check(
+        lead_id, res.get("status", ""), res.get("note", ""),
+        payload=res.get("payload"), provider=res.get("provider", ""),
+        ref=res.get("reference", ""))
+    flash("Coverage check refreshed.", "success")
+    return redirect(url_for("leads"))
+
+
+@app.route("/app/leads/<int:lead_id>/travel-plan", methods=["POST"])
+@login_required
+def travel_plan_lead(lead_id):
+    _ensure_site_access_for_lead(lead_id)
+    lead = db.get_lead(lead_id)
+    if not lead:
+        flash("Couldn't find that candidate.", "error")
+        return redirect(url_for("leads"))
+    existing = db.get_lead_support(lead_id).get("travel_payload") or {}
+    info = {
+        "distance": request.form.get("distance", "").strip()
+        or existing.get("distance", 0),
+        "preferred_mode": request.form.get("preferred_mode", "").strip()
+        or existing.get("preferred_mode", ""),
+        "needs": request.form.get("needs", "").strip() or existing.get("needs", ""),
+        "city": request.form.get("city", "").strip()
+        or existing.get("city", "") or lead.get("location", ""),
+    }
+    res = logistics.plan(lead, info)
+    db.set_lead_travel_check(
+        lead_id, res.get("status", ""), res.get("note", ""),
+        payload=res.get("payload"), provider=res.get("provider", ""),
+        ref=res.get("reference", ""))
+    flash("Travel planning refreshed.", "success")
     return redirect(url_for("leads"))
 
 
@@ -2229,6 +2757,63 @@ def nearby_sites(trial, lat, lon, unit, radius):
     return out
 
 
+_PAY_KEYWORDS = (
+    "compensation", "compensated", "stipend", "payment", "paid", "reimburse",
+    "reimbursement", "travel reimbursement", "gift card", "honorarium",
+)
+_HIGH_BURDEN_KEYWORDS = (
+    "inpatient", "residential", "overnight", "confinement",
+    "admit", "admission",
+)
+_EARLY_PHASE_KEYWORDS = ("phase 1", "phase i", "early phase 1", "first in human")
+_PAY_MONEY_RE = re.compile(r"\$\s?\d[\d,]*(?:\.\d+)?")
+
+
+def _pay_likelihood(trial):
+    """Conservative compensation-likelihood signal from CT.gov free text.
+
+    CT.gov has no reliable structured "payment amount" field, so we infer
+    likelihood from explicit wording and burden signals. This is intentionally
+    non-decisive (helper only), and default ranking remains unchanged.
+    """
+    text = " ".join([
+        trial.get("title", ""),
+        trial.get("briefSummary", ""),
+        trial.get("detailedDescription", ""),
+        trial.get("criteria", ""),
+    ])
+    low = text.lower()
+    score, notes = 0, []
+    if "no compensation" in low or "not compensated" in low:
+        return {"score": 0, "tier": "none", "label": "", "notes": []}
+    if _PAY_MONEY_RE.search(text):
+        score += 3
+        notes.append("Amount mentioned in study text")
+    if any(k in low for k in _PAY_KEYWORDS):
+        score += 2
+        notes.append("Compensation/reimbursement mentioned")
+    if any(k in low for k in _HIGH_BURDEN_KEYWORDS):
+        score += 2
+        notes.append("Higher-burden participation terms found")
+    phase = (trial.get("phase") or "").lower()
+    if any(k in phase for k in _EARLY_PHASE_KEYWORDS):
+        score += 2
+        notes.append("Early phase study")
+    if str(trial.get("healthyVolunteers", "")).upper() == "YES":
+        score += 1
+        notes.append("Healthy-volunteer study")
+
+    if score >= 7:
+        tier, label = "high", "Higher-pay potential"
+    elif score >= 4:
+        tier, label = "likely", "Compensation likely"
+    elif score >= 1:
+        tier, label = "mentioned", "Compensation mentioned"
+    else:
+        tier, label = "none", ""
+    return {"score": score, "tier": tier, "label": label, "notes": notes[:3]}
+
+
 # --------------------------------------------------------------------------- #
 # Search
 # --------------------------------------------------------------------------- #
@@ -2355,7 +2940,8 @@ def run_search(note, condition, country, require_site, coords=None, radius=50,
                         "coordinator": _coordinator(t, site),
                         "distance": dist, "unit": unit, "relevance": _rel(t),
                         "nearby": near[:8], "nearby_total": len(near),
-                        "other_count": len(others), "other_regions": other_regions[:5]})
+                        "other_count": len(others), "other_regions": other_regions[:5],
+                        "pay": _pay_likelihood(t)})
 
     def rank_key(r):
         t, m = r["trial"], r["match"]
@@ -2849,18 +3435,47 @@ def candidate_visit(token):
     note = request.form.get("note", "").strip()
     if raw:
         when = raw.replace("T", " ")            # datetime-local -> our format
-        db.add_visit(lead["id"], when, kind, location, note)
+        visit_id = db.add_visit(lead["id"], when, kind, location, note)
+        visit = db.get_visit(visit_id)
+        invite_url = _abs_url("visit_ics", token=lead["token"], visit_id=visit_id)
         db.update_lead_status(lead["id"], "screening",
                               f"{kind} visit booked for {when}", actor="site")
         sysmsg = f"Your {kind} visit is booked for {when}"
         sysmsg += f" at {location}." if location else "."
+        sysmsg += f" Add to your calendar: {invite_url}"
         sysmsg += " We'll remind you beforehand."
         db.add_message(lead["id"], "system", sysmsg)
-        _notify_applicant_visit(lead, when, location)
+        _notify_applicant_visit(lead, when, location, invite_url=invite_url)
+        sync = calendar_invites.maybe_sync_google_event(lead, visit, invite_url)
+        if sync.get("attempted") and not sync.get("ok"):
+            app.logger.warning("google calendar sync failed: %s",
+                               sync.get("detail", "unknown"))
         flash("Visit booked and shared with the applicant.", "ok")
     else:
         flash("Pick a date and time for the visit.", "error")
     return redirect(url_for("candidate_page", token=token))
+
+
+@app.route("/visit/<token>/<int:visit_id>.ics")
+def visit_ics(token, visit_id):
+    """Download a standard ICS invite for one visit."""
+    lead = db.get_lead_by_token(token)
+    if not lead:
+        lead = db.get_lead_by_site_token(token)
+        if not db.site_token_active(lead):
+            abort(410)
+    if not lead:
+        abort(404)
+    visit = db.get_visit(visit_id)
+    if not visit or int(visit["lead_id"]) != int(lead["id"]):
+        abort(404)
+    invite_url = _abs_url("visit_ics", token=lead["token"], visit_id=visit_id)
+    payload = calendar_invites.build_visit_ics(lead, visit, invite_url=invite_url)
+    res = make_response(payload)
+    res.headers["Content-Type"] = "text/calendar; charset=utf-8"
+    res.headers["Content-Disposition"] = (
+        f'attachment; filename="bridgemd-visit-{visit_id}.ics"')
+    return res
 
 
 @app.route("/c/<token>/status", methods=["POST"])

@@ -7,6 +7,9 @@
     <span class="hero-eyebrow">{{ ic.icon('sparkle') }} Live ClinicalTrials.gov search</span>
     <h1>Find recruiting trials near you.</h1>
     <p class="hero-sub">Enter condition and location, then apply to the best matches.</p>
+    <p class="hero-sub" style="margin-top:6px;font-size:14px;color:var(--muted);">
+      For sites and sponsors: track which channels actually convert to screened and enrolled patients.
+    </p>
 
     <form id="heroForm" method="post" action="{{ url_for('find') }}">
       <div class="hero-search">
@@ -97,41 +100,29 @@
   });
   window.addEventListener('pagehide', function () { if (bar) bar.style.width = '100%'; });
 
-  // Chips prefill the search box instead of navigating away. If a location is
-  // already set, run the search immediately; otherwise focus the location field.
+  // Chips prefill the search box instead of navigating away. We do NOT auto-run
+  // search on chip click; search only runs when user presses the button.
   var condInput = document.getElementById('conditionInput');
   var interv = document.getElementById('heroIntervention');
   var locInput = document.getElementById('location');
 
-  function prefillAndMaybeSearch(term, isDrug) {
+  function prefillOnly(term, isDrug) {
     if (!isDrug && condInput) condInput.value = term;
     if (interv) { interv.value = isDrug ? term : ''; }
-    if (locInput && locInput.value.trim()) {
-      if (typeof form.requestSubmit === 'function') { form.requestSubmit(); }
-      else { form.submit(); }
-    } else {
-      form.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      if (locInput) { locInput.focus(); }
-    }
+    form.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    if (locInput && !locInput.value.trim()) locInput.focus();
   }
 
   document.querySelectorAll('.cond-chip').forEach(function (chip) {
     chip.addEventListener('click', function (e) {
       e.preventDefault();
-      if (condInput) condInput.value = chip.getAttribute('data-cond') || '';
-      if (interv) interv.value = '';
-      if (locInput && locInput.value.trim()) {
-        if (typeof form.requestSubmit === 'function') { form.requestSubmit(); }
-        else { form.submit(); }
-      } else if (locInput) {
-        locInput.focus();
-      }
+      prefillOnly(chip.getAttribute('data-cond') || '', false);
     });
   });
   document.querySelectorAll('.drug-chip').forEach(function (chip) {
     chip.addEventListener('click', function (e) {
       e.preventDefault();
-      prefillAndMaybeSearch(chip.getAttribute('data-drug'), true);
+      prefillOnly(chip.getAttribute('data-drug') || '', true);
     });
   });
 
@@ -148,16 +139,24 @@
     navigator.geolocation.getCurrentPosition(function (pos) {
       var la = pos.coords.latitude.toFixed(6), lo = pos.coords.longitude.toFixed(6);
       locLat.value = la; locLon.value = lo;
+      // Ensure field has a visible value immediately so mobile users can submit.
+      if (loc && !loc.value.trim()) loc.value = 'Current location';
       fetch('{{ url_for("geo_reverse") }}?lat=' + la + '&lon=' + lo)
         .then(function (r) { return r.json(); })
         .then(function (d) {
-          if (d && d.ok) { loc.value = d.label; locCc.value = d.cc || '';
+          if (d && d.ok && d.label) { loc.value = d.label; locCc.value = d.cc || '';
             confirmEl.className = 'loc-confirm ok';
             confirmEl.innerHTML = '📍 Using your location: <b>' + d.label + '</b>'; }
-          else { loc.value = loc.value || 'Current location';
+          else { loc.value = (loc && loc.value && loc.value.trim()) ? loc.value : 'Current location';
             confirmEl.className = 'loc-confirm ok'; confirmEl.textContent = '📍 Using your current location.'; }
           confirmEl.style.display = 'block'; useLoc.disabled = false; useLoc.innerHTML = orig;
-        }).catch(function () { useLoc.disabled = false; useLoc.innerHTML = orig; });
+        }).catch(function () {
+          if (loc && !loc.value.trim()) loc.value = 'Current location';
+          confirmEl.className = 'loc-confirm ok';
+          confirmEl.textContent = '📍 Using your current location.';
+          confirmEl.style.display = 'block';
+          useLoc.disabled = false; useLoc.innerHTML = orig;
+        });
     }, function () {
       confirmEl.style.display = 'block'; confirmEl.className = 'loc-confirm err';
       confirmEl.textContent = 'Couldn’t get your location - type a city or postal code.';

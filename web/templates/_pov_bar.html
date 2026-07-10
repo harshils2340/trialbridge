@@ -1,7 +1,7 @@
 {% import "_icons.html" as ic %}
 <div class="pov-tools">
   <nav class="pov-switch" aria-label="View mode">
-    <a href="{{ url_for('home') }}" class="pov-pill{{ ' on' if pov == 'patient' }}">{{ ic.icon('user-plus') }} Patient</a>
+    <a href="{{ url_for('applications') if patient_user else url_for('find') }}" class="pov-pill{{ ' on' if pov == 'patient' }}">{{ ic.icon('user-plus') }} Patient</a>
     <a href="{{ url_for('dashboard') }}" class="pov-pill{{ ' on' if pov == 'clinician' }}">{{ ic.icon('award') }} Clinician</a>
     <a href="{{ url_for('leads') }}" class="pov-pill{{ ' on' if pov == 'study' }}">{{ ic.icon('activity') }} Study team</a>
   </nav>

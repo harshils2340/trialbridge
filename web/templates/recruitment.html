@@ -5,6 +5,10 @@
 <div class="page-head">
   <h1>Recruitment dashboard</h1>
   <p>Live funnel and conversion metrics for your claimed studies.</p>
+  <p class="site-hint">
+    <a href="{{ url_for('recruitment_export_csv') }}">Export CSV</a> ·
+    <a href="{{ url_for('recruitment_summary_json') }}" target="_blank" rel="noopener">Summary API (JSON)</a>
+  </p>
 </div>
 
 {% if not claims %}
@@ -119,6 +123,84 @@
   </table>
   {% else %}
   <div class="empty"><p>No channel data yet.</p></div>
+  {% endif %}
+</div>
+
+<div class="card dash-card">
+  <div class="section-title"><h2>Integration avenues (practical stack)</h2></div>
+  <p class="dash-hint">This is the day-to-day operating stack sites use to compare channel quality in one place.</p>
+  <table class="dash-table">
+    <thead><tr><th>Avenue</th><th>What it solves</th><th>Current stack</th><th>Status</th><th>Next step</th></tr></thead>
+    <tbody>
+      {% for r in integration_rows %}
+      <tr>
+        <td><b>{{ r.name }}</b></td>
+        <td>{{ r.purpose }}</td>
+        <td>{{ r.tools }}</td>
+        <td><span class="pill {{ 'pill-enrolled' if r.status == 'live' else 'pill-prescreen' }}">{{ 'Live' if r.status == 'live' else 'Needs setup' }}</span></td>
+        <td>{{ r.next }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="card dash-card">
+  <div class="section-title"><h2>Recruitment spend and ROI</h2></div>
+  {% if claims %}
+  <form method="post" action="{{ url_for('recruitment_spend_add') }}" class="site-form">
+    <label>Study (claimed NCT)
+      <select name="nct" required>
+        <option value="">Select study</option>
+        {% for c in claims %}<option value="{{ c.nct }}">{{ c.nct }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Channel source
+      <select name="source" required>
+        <option value="web">Web</option>
+        <option value="referral">Physician referral</option>
+        <option value="community">Community outreach</option>
+        <option value="media">Digital/traditional media</option>
+        <option value="emr">EMR/chart review</option>
+        <option value="other">Other</option>
+      </select>
+    </label>
+    <label>Campaign / vendor
+      <input type="text" name="campaign" placeholder="e.g. Meta July campaign">
+    </label>
+    <label>Amount (USD)
+      <input type="number" name="amount_usd" min="0.01" step="0.01" placeholder="2500.00" required>
+    </label>
+    <label>Spend date
+      <input type="date" name="spend_date">
+    </label>
+    <label>Note
+      <input type="text" name="note" placeholder="What this paid for">
+    </label>
+    <button class="btn btn-primary" type="submit">{{ ic.icon('check') }} Log spend</button>
+  </form>
+  {% else %}
+  <div class="empty"><p>Claim studies first to log recruitment spend by trial.</p></div>
+  {% endif %}
+
+  <div class="stats" style="margin-top:10px;">
+    <div class="stat"><div class="l">Total spend</div><div class="n">${{ spend.total_usd }}</div></div>
+    <div class="stat"><div class="l">Cost / screened</div><div class="n">{{ ('$' ~ spend.cost_per_screened) if spend.cost_per_screened is not none else '-' }}</div></div>
+    <div class="stat"><div class="l">Cost / enrolled</div><div class="n">{{ ('$' ~ spend.cost_per_enrolled) if spend.cost_per_enrolled is not none else '-' }}</div></div>
+  </div>
+
+  {% if spend.by_source %}
+  <table class="dash-table">
+    <thead><tr><th>Source</th><th>Spend (USD)</th></tr></thead>
+    <tbody>
+      {% for s in spend.by_source %}
+      <tr>
+        <td>{{ s.source|replace('_', ' ')|title }}</td>
+        <td>${{ s.amount_usd }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
   {% endif %}
 </div>
 

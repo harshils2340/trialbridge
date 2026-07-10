@@ -30,6 +30,8 @@ services:
         value: "0"
       - key: ALERTS_CRON_KEY
         sync: false
+      - key: OPS_READINESS_KEY
+        sync: false
       # --- Go-live notifications (OFF by default; ~2 min to enable) ------------
       # The full loop works without these (operator copies the /c/<token> link by
       # hand). To turn on real email delivery, set NOTIFY_LIVE=1 and the SMTP_*
@@ -49,6 +51,20 @@ services:
       - key: SMTP_PASS
         sync: false
       - key: SMTP_FROM
+        sync: false
+      - key: RECORDS_PROVIDER
+        value: "metriport"
+      - key: RECORDS_API_KEY
+        sync: false
+      - key: RECORDS_WEBHOOK_SECRET
+        sync: false
+      - key: PAYER_API_URL
+        sync: false
+      - key: PAYER_API_KEY
+        sync: false
+      - key: LOGISTICS_API_URL
+        sync: false
+      - key: LOGISTICS_API_KEY
         sync: false
       # For a real pilot, persist the SQLite DB so applications survive redeploys.
       # Render disks need a paid instance (change `plan: free` -> `plan: starter`),

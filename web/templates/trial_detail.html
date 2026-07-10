@@ -22,6 +22,7 @@
       <span class="fit fit-{{ lab[1] }}">{{ ic.icon('check') if lab[1]=='good' else ic.icon('sparkle') }}{{ lab[0] }}</span>
       {% if r.distance is not none %}<span class="pr-dist">{{ ic.icon('pin') }}{{ '%.0f'|format(r.distance) }} {{ r.unit }} away</span>{% endif %}
       {% if t.phase %}<span class="pr-phase">{{ t.phase.replace('_',' ')|title if t.phase != 'NA' else 'N/A' }}</span>{% endif %}
+      {% if r.pay and r.pay.label %}<span class="pr-pay pr-pay-{{ r.pay.tier }}">{{ ic.icon('activity') }}{{ r.pay.label }}</span>{% endif %}
       <span class="pr-recruiting">{{ ic.icon('check') }} Recruiting</span>
     </div>
 
@@ -73,6 +74,14 @@
       {% endif %}
     </div>
 
+    {% if r.pay and r.pay.label %}
+    <div class="td-section">
+      <h2>Compensation signal</h2>
+      <p class="td-pay-note">{{ r.pay.label }}{% if r.pay.notes %} · {{ r.pay.notes|join(' · ') }}{% endif %}.</p>
+      <p class="td-source">ClinicalTrials.gov does not provide a consistent structured pay field. Confirm compensation directly with the study site.</p>
+    </div>
+    {% endif %}
+
     <div class="td-facts">
       {% if t.leadSponsor %}<span>{{ ic.icon('award') }} Sponsor: {{ t.leadSponsor }}</span>{% endif %}
       <span><a href="https://clinicaltrials.gov/study/{{ t.nctId }}" target="_blank" rel="noopener">{{ ic.icon('external') }} {{ t.nctId }} on ClinicalTrials.gov</a></span>
@@ -103,7 +112,19 @@
 
       {% if records_profile %}
       {% set p = (records_profile.provider or '') %}
-      {% if 'sandbox' in p|lower %}
+      {% if records_profile.sync_status == 'syncing' %}
+      <div class="rec-banner connect">{{ ic.icon('activity') }}
+        <span><b>Records syncing via {{ records_profile.provider or records_provider }}.</b> We'll auto-fill this application when sync completes.</span></div>
+      <form method="post" action="{{ url_for('records_refresh') }}">
+        <button class="btn btn-ghost btn-block" type="submit">Refresh record status</button>
+      </form>
+      {% elif records_profile.sync_status == 'error' %}
+      <div class="rec-banner connect">{{ ic.icon('activity') }}
+        <span><b>Records sync needs retry.</b> {{ records_profile.last_sync_error or 'Please refresh and try again.' }}</span></div>
+      <form method="post" action="{{ url_for('records_refresh') }}">
+        <button class="btn btn-primary btn-block" type="submit">Retry records sync</button>
+      </form>
+      {% elif 'sandbox' in p|lower %}
       <div class="rec-banner ok">{{ ic.icon('check') }}
         <span><b>Demo record connected (SMART sandbox).</b> This is sample data to test the flow. In production, this will connect to your real record source and pre-fill your applications.</span></div>
       {% else %}

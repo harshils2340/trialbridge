@@ -120,6 +120,7 @@
     <ul class="visit-list">
       {% for v in visits %}
       <li>{{ ic.icon('activity') }} <b>{{ v['kind']|capitalize }}</b> · {{ v['visit_at'] }}{% if v['location'] %} · {{ v['location'] }}{% endif %}
+        · <a href="{{ url_for('visit_ics', token=lead['token'], visit_id=v['id']) }}">ICS</a>
         {% if v['reminded_at'] %}<span class="tag">reminder sent</span>{% endif %}</li>
       {% endfor %}
     </ul>
