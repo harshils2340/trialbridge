@@ -226,8 +226,6 @@ PATIENT_PENDING_KEY = "patient_pending_id"
 PATIENT_PENDING_PURPOSE_KEY = "patient_pending_purpose"
 PATIENT_NEXT_KEY = "patient_next"
 PATIENT_GOOGLE_STATE_KEY = "patient_google_state"
-LAST_LOCATION_KEY = "last_search_location"
-LAST_CONDITION_KEY = "last_search_condition"
 CSRF_SESSION_KEY = "_csrf_token"
 GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "").strip()
 GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "").strip()
@@ -1378,10 +1376,8 @@ def home():
 def _render_landing():
     condition_options = _merge_terms(
         trending_conditions(12), SEARCH_CONDITION_OPTIONS, 30)
-    condition_prefill = request.args.get("condition", "").strip() or \
-        session.get(LAST_CONDITION_KEY, "")
-    location_prefill = request.args.get("location", "").strip() or \
-        session.get(LAST_LOCATION_KEY, "")
+    condition_prefill = request.args.get("condition", "").strip()
+    location_prefill = request.args.get("location", "").strip()
     return render_template("landing.html", vertical=VERTICAL,
                            conditions=trending_conditions(8),
                            drugs=trending_drugs(6), slugify=slugify,
@@ -1554,9 +1550,6 @@ def find():
         flash("Enter your city or postal code so we only show trials near you.",
               "error")
         return redirect(url_for("home", condition=condition_label))
-    session[LAST_LOCATION_KEY] = location
-    if condition_label:
-        session[LAST_CONDITION_KEY] = condition_label
 
     coords, unit = None, "km"
     lat_in = request.form.get("lat", "").strip()
