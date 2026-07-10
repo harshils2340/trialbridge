@@ -82,3 +82,54 @@ threw, and the search box fell back to the literal string "Current location".
 | `test_results_hide_probably_not_by_default` | Results template renders the "no" fit checkbox unchecked, "good" checked, and applies the filter on load. |
 
 **Result:** `All 4 tests passed`; search-cache regression suite still `4/4`.
+
+---
+
+## 2026-07-10 — Mobile responsiveness, dark mode & accessibility
+
+**Feedback addressed:** the app was "whacky" on phones; red/green fit indicators
+are invisible to colorblind users; and white backgrounds with grey text are hard
+on the eyes (needed a clean dark mode).
+
+### 1. Mobile responsiveness (the "whacky" layouts)
+Measured every page at a 390px (iPhone) viewport with headless Chromium and
+checked `document.documentElement.scrollWidth > innerWidth` (horizontal
+overflow = the tell-tale sign of a broken mobile layout).
+
+- **Root cause:** the clinician/study **sidebar** (`base.html`) collapsed into a
+  non-wrapping horizontal row on mobile, running **240–320px off-screen**. Wide
+  tables (`.inv-table`) and the candidate-review tab bar (`.rev-tabs`) also
+  overflowed.
+- **Fix (`static/style.css`):** the mobile top bar now `flex-wrap`s (brand + sign
+  out on row 1, POV switch + nav links below); the theme toggle stays a compact
+  circle; wide tables and tab bars scroll instead of pushing the page.
+- **Before:** 10 pages overflowed by 66–320px. **After:** every tested page = **0px
+  overflow** in both light and dark.
+
+### 2. Clean dark mode
+- Set before first paint by an inline script in both base templates (honors a
+  saved choice, else the OS `prefers-color-scheme`) — no white flash on load.
+- A round **sun/moon toggle** (nav on public pages, sidebar on the app, floating
+  on auth pages) persists the choice in `localStorage`.
+- The theme is token-driven: `[data-theme="dark"]` redefines the CSS variables and
+  patches the ~80 places that hard-coded light colors (inputs, cards, tinted
+  pills, POV switcher, chat bubbles, etc.). Verified visually across landing,
+  results, applications, clinician dashboard and study-team board.
+
+### 3. Colorblind-safe status + other a11y
+- Fit badges now carry **distinct icons per verdict** (good = check, maybe =
+  sparkle, not-a-fit = ✕) — not hue alone — plus a defining border.
+- Match-quality filter dots use distinct **shapes** (circle / square / diamond).
+- Eligibility chips/criteria get a leading glyph (✓ / ? / ✕).
+- Added: visible `:focus-visible` rings on all controls, a **skip-to-content**
+  link, a `#main` landmark and `role="main"`, accessible name + `aria-pressed`
+  on the theme toggle, and `<meta name="color-scheme">`.
+
+**Tests:** `web/test_a11y_theme.py` (6 checks) — dark-mode wiring in both bases,
+skip link + `#main`, dark theme + focus/skip/toggle CSS, colorblind dot shapes,
+mobile sidebar-wrap + table/tab scroll rules, and distinct fit-badge icons.
+Visual verification (headless Chromium, 390px + 1280px, light + dark) confirmed
+**0px** horizontal overflow on all pages.
+
+**Result:** `All 6 tests passed`; prior suites still green
+(`test_ui_fixes.py` 4/4, `test_search_cache.py` 4/4).

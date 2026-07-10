@@ -4,6 +4,21 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="csrf-token" content="{{ csrf_token() }}">
+  <meta name="color-scheme" content="light dark">
+  <script>
+  /* Set theme before first paint (saved choice, else OS preference). */
+  (function () {
+    try {
+      var t = localStorage.getItem('theme');
+      if (t !== 'light' && t !== 'dark') {
+        t = (window.matchMedia &&
+             window.matchMedia('(prefers-color-scheme: dark)').matches)
+            ? 'dark' : 'light';
+      }
+      document.documentElement.setAttribute('data-theme', t);
+    } catch (e) {}
+  })();
+  </script>
   <title>{% block title %}BridgeMD{% endblock %}</title>
   <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='logo.svg') }}">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -13,6 +28,7 @@
 </head>
 <body>
 {% import "_icons.html" as ic %}
+<a class="skip-link" href="#main">Skip to main content</a>
 {% if user %}
 <div class="layout">
   <aside class="sidebar">
@@ -39,9 +55,12 @@
       <div class="who">{{ user['name'] }}{% if user['specialty'] %}<span>{{ user['specialty'] }}</span>{% endif %}</div>
       {% endif %}
       <a href="{{ url_for('logout') }}" class="side-link">{{ ic.icon('logout') }}Sign out</a>
+      <button type="button" class="theme-toggle side-theme-toggle" id="themeToggle" aria-label="Switch between light and dark theme" title="Toggle light / dark theme">
+        {{ ic.icon('sun', 'ico icon-sun') }}{{ ic.icon('moon', 'ico icon-moon') }}
+      </button>
     </div>
   </aside>
-  <main class="content">
+  <main class="content" id="main" role="main" tabindex="-1">
     <div class="toast-stack">
       {% with messages = get_flashed_messages(with_categories=true) %}
         {% for cat, msg in messages %}
@@ -56,7 +75,10 @@
   </main>
 </div>
 {% else %}
-<div class="{% block container %}wrap{% endblock %}">
+<button type="button" class="theme-toggle theme-toggle-float" id="themeToggle" aria-label="Switch between light and dark theme" title="Toggle light / dark theme">
+  {{ ic.icon('sun', 'ico icon-sun') }}{{ ic.icon('moon', 'ico icon-moon') }}
+</button>
+<div class="{% block container %}wrap{% endblock %}" id="main" role="main">
   <div class="toast-stack">
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% for cat, msg in messages %}
@@ -93,6 +115,24 @@
   } else {
     attachCsrf();
   }
+})();
+</script>
+<script>
+(function () {
+  var btn = document.getElementById('themeToggle');
+  if (!btn) return;
+  function sync() {
+    btn.setAttribute('aria-pressed',
+      document.documentElement.getAttribute('data-theme') === 'dark');
+  }
+  sync();
+  btn.addEventListener('click', function () {
+    var next = document.documentElement.getAttribute('data-theme') === 'dark'
+      ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    try { localStorage.setItem('theme', next); } catch (e) {}
+    sync();
+  });
 })();
 </script>
 <script>

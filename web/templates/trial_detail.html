@@ -20,7 +20,7 @@
 <section class="td-layout">
   <div class="td-main">
     <div class="td-badges">
-      <span class="fit fit-{{ lab[1] }}">{{ ic.icon('check') if lab[1]=='good' else ic.icon('sparkle') }}{{ lab[0] }}</span>
+      <span class="fit fit-{{ lab[1] }}">{{ ic.icon('check') if lab[1]=='good' else (ic.icon('x') if lab[1]=='no' else ic.icon('sparkle')) }}{{ lab[0] }}</span>
       {% if r.distance is not none %}<span class="pr-dist">{{ ic.icon('pin') }}{{ '%.0f'|format(r.distance) }} {{ r.unit }} away</span>{% endif %}
       {% if t.phase %}<span class="pr-phase">{{ t.phase.replace('_',' ')|title if t.phase != 'NA' else 'N/A' }}</span>{% endif %}
       {% if r.pay and r.pay.label %}<span class="pr-pay pr-pay-{{ r.pay.tier }}">{{ ic.icon('activity') }}{{ r.pay.label }}</span>{% endif %}

@@ -4,6 +4,22 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="csrf-token" content="{{ csrf_token() }}">
+  <meta name="color-scheme" content="light dark">
+  <script>
+  /* Set the theme before first paint to avoid a flash. Honors a saved choice,
+     otherwise follows the OS setting (prefers-color-scheme). */
+  (function () {
+    try {
+      var t = localStorage.getItem('theme');
+      if (t !== 'light' && t !== 'dark') {
+        t = (window.matchMedia &&
+             window.matchMedia('(prefers-color-scheme: dark)').matches)
+            ? 'dark' : 'light';
+      }
+      document.documentElement.setAttribute('data-theme', t);
+    } catch (e) {}
+  })();
+  </script>
   <title>{% block title %}BridgeMD - find a clinical trial near you{% endblock %}</title>
   <meta name="description" content="{% block description %}Find recruiting clinical trials and apply online.{% endblock %}">
   <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='logo.svg') }}">
@@ -15,6 +31,7 @@
 </head>
 <body class="pub">
 {% import "_icons.html" as ic %}
+<a class="skip-link" href="#main">Skip to main content</a>
 <header class="pub-nav">
   <a class="brand" href="{{ url_for('home') }}"><img class="brand-mark" src="{{ url_for('static', filename='logo.svg') }}" width="24" height="24" alt="">BridgeMD</a>
   <nav class="pub-nav-links">
@@ -31,6 +48,9 @@
     <a href="{{ url_for('patient_signup') }}">Sign up</a>
     {% endif %}
     <a href="{{ url_for('login') }}" class="pub-clin">For clinicians</a>
+    <button type="button" class="theme-toggle" id="themeToggle" aria-label="Switch between light and dark theme" title="Toggle light / dark theme">
+      {{ ic.icon('sun', 'ico icon-sun') }}{{ ic.icon('moon', 'ico icon-moon') }}
+    </button>
   </nav>
 </header>
 {% if request.endpoint == 'home' or (not patient_user and not user) %}
@@ -48,7 +68,7 @@
     {% endfor %}
   {% endwith %}
 </div>
-<main class="pub-main">
+<main class="pub-main" id="main" role="main" tabindex="-1">
   {% block body %}{% endblock %}
 </main>
 <footer class="pub-foot">
@@ -87,6 +107,24 @@
   } else {
     attachCsrf();
   }
+})();
+</script>
+<script>
+(function () {
+  var btn = document.getElementById('themeToggle');
+  if (!btn) return;
+  function sync() {
+    btn.setAttribute('aria-pressed',
+      document.documentElement.getAttribute('data-theme') === 'dark');
+  }
+  sync();
+  btn.addEventListener('click', function () {
+    var next = document.documentElement.getAttribute('data-theme') === 'dark'
+      ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    try { localStorage.setItem('theme', next); } catch (e) {}
+    sync();
+  });
 })();
 </script>
 <script>
