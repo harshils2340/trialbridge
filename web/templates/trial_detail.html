@@ -14,7 +14,7 @@
 
 {% block body %}
 <div class="td-back">
-  <a href="{{ url_for('find') }}" onclick="if(document.referrer){history.back();return false;}">&larr; Back to results</a>
+  <a href="{{ url_for('find_results', search_id=search_id) }}">&larr; Back to results</a>
 </div>
 
 <section class="td-layout">

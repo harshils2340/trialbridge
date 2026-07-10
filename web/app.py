@@ -1454,6 +1454,33 @@ def _get_cached_trial(sid, nct):
     return None, entry["ctx"]
 
 
+def _render_cached_results(search_id):
+    """Render one cached patient result set by id (GET-safe, no resubmission)."""
+    entry = _load_search(search_id)
+    if not entry:
+        flash("That search expired - please run it again.", "error")
+        return redirect(url_for("home"))
+    ctx = {
+        "condition": "",
+        "location": "",
+        "unit": "km",
+        "q_condition": "",
+        "q_intervention": "",
+        "q_age": "",
+        "q_sex": "",
+        "q_about": "",
+        "q_radius": 50,
+        "q_lat": "",
+        "q_lon": "",
+        "q_cc": "",
+    }
+    ctx.update(entry.get("ctx") or {})
+    results = entry.get("results") or []
+    applied = db.applied_ncts(get_applicant_token())
+    return render_template("patient_results.html", results=results,
+                           search_id=search_id, applied=applied, **ctx)
+
+
 @app.route("/find", methods=["GET", "POST"])
 def find():
     """Public, no-login patient search. The search form lives on the homepage;
@@ -1539,9 +1566,13 @@ def find():
            "q_age": age, "q_sex": sex, "q_about": about, "q_radius": radius,
            "q_lat": lat_in, "q_lon": lon_in, "q_cc": cc_in}
     search_id = _cache_search(results, ctx)
-    applied = db.applied_ncts(get_applicant_token())
-    return render_template("patient_results.html", results=results,
-                           search_id=search_id, applied=applied, **ctx)
+    return redirect(url_for("find_results", search_id=search_id))
+
+
+@app.route("/find/<search_id>")
+def find_results(search_id):
+    """GET endpoint for one cached result set (PRG target from POST /find)."""
+    return _render_cached_results(search_id)
 
 
 @app.route("/trial/<search_id>/<nct>")

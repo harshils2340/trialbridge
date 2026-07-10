@@ -8,6 +8,7 @@ Two levels, both following the structure in trial_summary.md:
     each study is only summarized once.
 """
 import html
+import os
 import pathlib
 import re
 
@@ -21,6 +22,7 @@ except OSError:
     _SPEC = ""
 
 KEYS = ["one_liner", "purpose", "who", "what", "commitment"]
+DETAIL_SUMMARY_LLM = os.environ.get("DETAIL_SUMMARY_LLM", "0") == "1"
 
 
 def tidy(text):
@@ -93,7 +95,7 @@ def plain(trial):
 
     data = _fallback(trial)
     source = tidy(trial.get("briefSummary") or "")
-    if mt.LLM_API_KEY and source:
+    if DETAIL_SUMMARY_LLM and mt.LLM_API_KEY and source:
         try:
             user = (f"TITLE: {trial.get('title', '')}\n"
                     f"PHASE: {trial.get('phase') or 'NA'}\n"
