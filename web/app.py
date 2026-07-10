@@ -16,6 +16,7 @@ Without an LLM key the app still fetches + gates trials (deterministic age/sex
 screening) but skips the per-trial eligibility reasoning.
 """
 import functools
+import hashlib
 import hmac
 import io
 import json
@@ -84,7 +85,7 @@ if os.environ.get("BEHIND_PROXY", "0") == "1":
 
 MAX_MATCH = int(os.environ.get("WEB_MAX_MATCH", "6"))  # LLM calls per search
 WEB_LLM_PARALLELISM = max(
-    1, min(8, int(os.environ.get("WEB_LLM_PARALLELISM", "3"))))
+    1, min(8, int(os.environ.get("WEB_LLM_PARALLELISM", "6"))))
 MATCH_QUALITY_MIN = max(
     0, min(100, int(os.environ.get("MATCH_QUALITY_MIN", "85"))))
 app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024    # 16 MB upload cap
@@ -1403,6 +1404,9 @@ def _render_landing():
 # --------------------------------------------------------------------------- #
 _SEARCH_CACHE = OrderedDict()
 _SEARCH_CACHE_MAX = 80
+_SEARCH_QUERY_CACHE = OrderedDict()   # query-key -> {"sid": str, "ts": float}
+_SEARCH_QUERY_CACHE_MAX = 250
+_SEARCH_QUERY_TTL_SECONDS = int(os.environ.get("SEARCH_QUERY_CACHE_TTL", "900"))
 
 
 def _cache_search(results, ctx):
@@ -1415,6 +1419,43 @@ def _cache_search(results, ctx):
         db.save_search(sid, json.dumps({"results": results, "ctx": ctx}))
     except Exception:
         app.logger.exception("search cache persist failed")
+    return sid
+
+
+def _cache_query_key(ctx):
+    """Stable key for a patient search input (for fast repeat-query hits)."""
+    payload = json.dumps({
+        "condition": (ctx.get("q_condition") or "").strip().lower(),
+        "intervention": (ctx.get("q_intervention") or "").strip().lower(),
+        "location": (ctx.get("location") or "").strip().lower(),
+        "age": (ctx.get("q_age") or "").strip(),
+        "sex": (ctx.get("q_sex") or "").strip().lower(),
+        "about": (ctx.get("q_about") or "").strip().lower(),
+        "radius": int(ctx.get("q_radius") or 0),
+        "lat": (ctx.get("q_lat") or "").strip(),
+        "lon": (ctx.get("q_lon") or "").strip(),
+        "cc": (ctx.get("q_cc") or "").strip().upper(),
+    }, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _remember_query_sid(key, sid):
+    _SEARCH_QUERY_CACHE[key] = {"sid": sid, "ts": time.time()}
+    while len(_SEARCH_QUERY_CACHE) > _SEARCH_QUERY_CACHE_MAX:
+        _SEARCH_QUERY_CACHE.popitem(last=False)
+
+
+def _lookup_query_sid(key):
+    hit = _SEARCH_QUERY_CACHE.get(key)
+    if not hit:
+        return ""
+    if (time.time() - float(hit.get("ts") or 0)) > _SEARCH_QUERY_TTL_SECONDS:
+        _SEARCH_QUERY_CACHE.pop(key, None)
+        return ""
+    sid = hit.get("sid") or ""
+    if not sid or not _load_search(sid):
+        _SEARCH_QUERY_CACHE.pop(key, None)
+        return ""
     return sid
 
 
@@ -1537,6 +1578,17 @@ def find():
             unit = units_for(geo[2])
 
     note = build_patient_note(label, age, sex, about)
+    # Fast path: identical recent search -> reuse cached result set instantly.
+    candidate_ctx = {
+        "condition": label, "location": location, "unit": unit,
+        "q_condition": condition_label, "q_intervention": intervention,
+        "q_age": age, "q_sex": sex, "q_about": about, "q_radius": radius,
+        "q_lat": lat_in, "q_lon": lon_in, "q_cc": cc_in,
+    }
+    qkey = _cache_query_key(candidate_ctx)
+    cached_sid = _lookup_query_sid(qkey)
+    if cached_sid:
+        return redirect(url_for("find_results", search_id=cached_sid))
     try:
         detected, results = run_search(note, condition_query, "", False, coords,
                                        radius, unit, interventional_only=True,
@@ -1566,6 +1618,7 @@ def find():
            "q_age": age, "q_sex": sex, "q_about": about, "q_radius": radius,
            "q_lat": lat_in, "q_lon": lon_in, "q_cc": cc_in}
     search_id = _cache_search(results, ctx)
+    _remember_query_sid(qkey, search_id)
     return redirect(url_for("find_results", search_id=search_id))
 
 
@@ -2772,6 +2825,20 @@ _PAY_KEYWORDS = (
     "compensation", "compensated", "stipend", "payment", "paid", "reimburse",
     "reimbursement", "travel reimbursement", "gift card", "honorarium",
 )
+_TRAVEL_SUPPORT_KEYWORDS = (
+    "travel reimbursement", "travel support", "travel assistance",
+    "transportation provided", "parking voucher", "hotel provided",
+    "lodging provided", "meal voucher", "ride share", "rideshare",
+)
+_COVERAGE_KEYWORDS = (
+    "study covers", "at no cost", "no cost to participant", "no-cost",
+    "costs covered", "covered by sponsor", "sponsor pays",
+    "insurance not required",
+)
+_STIPEND_KEYWORDS = (
+    "stipend", "gift card", "debit card", "honorarium", "paid per visit",
+    "payment per visit", "participant payment", "compensated",
+)
 _HIGH_BURDEN_KEYWORDS = (
     "inpatient", "residential", "overnight", "confinement",
     "admit", "admission",
@@ -2823,6 +2890,41 @@ def _pay_likelihood(trial):
     else:
         tier, label = "none", ""
     return {"score": score, "tier": tier, "label": label, "notes": notes[:3]}
+
+
+def _participant_support_signal(trial):
+    """Detect patient-friendly support signals from trial text."""
+    text = " ".join([
+        trial.get("title", ""),
+        trial.get("briefSummary", ""),
+        trial.get("detailedDescription", ""),
+        trial.get("criteria", ""),
+    ])
+    low = text.lower()
+    travel = any(k in low for k in _TRAVEL_SUPPORT_KEYWORDS)
+    coverage = any(k in low for k in _COVERAGE_KEYWORDS)
+    stipend = any(k in low for k in _STIPEND_KEYWORDS) or bool(_PAY_MONEY_RE.search(text))
+    notes = []
+    if travel:
+        notes.append("Travel help or reimbursement mentioned")
+    if coverage:
+        notes.append("Some study costs appear covered")
+    if stipend:
+        notes.append("Stipend/payment signal mentioned")
+    label_bits = []
+    if travel:
+        label_bits.append("Travel support")
+    if coverage:
+        label_bits.append("Cost coverage")
+    if stipend:
+        label_bits.append("Compensation")
+    return {
+        "travel": travel,
+        "coverage": coverage,
+        "stipend": stipend,
+        "label": " · ".join(label_bits),
+        "notes": notes[:3],
+    }
 
 
 def _match_quality(match):
@@ -3075,7 +3177,8 @@ def run_search(note, condition, country, require_site, coords=None, radius=50,
                 "distance": dist, "unit": unit, "relevance": _rel(t),
                 "nearby": near[:8], "nearby_total": len(near),
                 "other_count": len(others), "other_regions": other_regions[:5],
-                "pay": _pay_likelihood(t)}
+                "pay": _pay_likelihood(t),
+                "support": _participant_support_signal(t)}
 
     results = []
     if mt.LLM_API_KEY:
@@ -3157,6 +3260,7 @@ def run_search(note, condition, country, require_site, coords=None, radius=50,
             "other_regions": [],
             "pay": {"score": 0, "tier": "unknown", "label": "Compensation not listed",
                      "notes": ["Ask the site coordinator for details"]},
+            "support": _participant_support_signal(trial),
         })
 
     def rank_key(r):

@@ -148,6 +148,9 @@
         {% if r.distance is not none %}<span class="pr-dist">{{ ic.icon('pin') }}{{ '%.0f'|format(r.distance) }} {{ r.unit }} away</span>{% endif %}
         {% if t.phase %}<span class="pr-phase">{{ t.phase.replace('_',' ')|title if t.phase != 'NA' else 'N/A' }}</span>{% endif %}
         {% if r.pay and r.pay.label %}<span class="pr-pay pr-pay-{{ r.pay.tier }}">{{ ic.icon('activity') }}{{ r.pay.label }}</span>{% endif %}
+        {% if r.support and r.support.travel %}<span class="pr-benefit">{{ ic.icon('pin') }}Travel support</span>{% endif %}
+        {% if r.support and r.support.coverage %}<span class="pr-benefit">{{ ic.icon('check') }}Cost coverage</span>{% endif %}
+        {% if r.support and r.support.stipend %}<span class="pr-benefit pr-benefit-money">{{ ic.icon('activity') }}Stipend/compensation</span>{% endif %}
         <span class="pr-phase">{{ 'Site-posted' if t.source == 'site_posted' else 'ClinicalTrials.gov' }}</span>
         <span class="pr-recruiting">{{ ic.icon('check') }} Recruiting</span>
       </div>
@@ -156,6 +159,9 @@
       </h2>
       {% set blurb = card_blurb(t) %}
       {% if blurb %}<p class="pr-summary">{{ blurb }}</p>{% endif %}
+      {% if r.support and r.support.notes %}
+      <p class="pr-benefit-notes">{{ r.support.notes|join(' · ') }}</p>
+      {% endif %}
 
       <div class="pr-facts">
         {% if r.site_str %}<span><a href="https://www.google.com/maps/search/?api=1&query={{ r.site_str | urlencode }}" target="_blank" rel="noopener" title="Open in Google Maps">{{ ic.icon('pin') }} {{ r.site_str }}</a></span>{% endif %}

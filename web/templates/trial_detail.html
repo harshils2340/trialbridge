@@ -82,11 +82,21 @@
       {% endif %}
     </div>
 
-    {% if r.pay and r.pay.label %}
+    {% if (r.pay and r.pay.label) or (r.support and (r.support.travel or r.support.coverage or r.support.stipend)) %}
     <div class="td-section">
-      <h2>Compensation signal</h2>
+      <h2>Participant support</h2>
+      {% if r.support and (r.support.travel or r.support.coverage or r.support.stipend) %}
+      <p class="td-pay-note">
+        {% if r.support.travel %}Travel support may be available.{% endif %}
+        {% if r.support.coverage %} Some study costs may be covered.{% endif %}
+        {% if r.support.stipend %} Stipend/compensation may be offered.{% endif %}
+      </p>
+      {% if r.support.notes %}<p class="td-source">{{ r.support.notes|join(' · ') }}.</p>{% endif %}
+      {% endif %}
+      {% if r.pay and r.pay.label %}
       <p class="td-pay-note">{{ r.pay.label }}{% if r.pay.notes %} · {{ r.pay.notes|join(' · ') }}{% endif %}.</p>
-      <p class="td-source">ClinicalTrials.gov does not provide a consistent structured pay field. Confirm compensation directly with the study site.</p>
+      {% endif %}
+      <p class="td-source">ClinicalTrials.gov does not provide a reliable structured field for travel/cost support or payment. Confirm details directly with the study site.</p>
     </div>
     {% endif %}
 

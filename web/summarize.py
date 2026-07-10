@@ -11,6 +11,7 @@ import html
 import os
 import pathlib
 import re
+import json
 
 import match_trials as mt
 import db
@@ -23,6 +24,15 @@ except OSError:
 
 KEYS = ["one_liner", "purpose", "who", "what", "commitment"]
 DETAIL_SUMMARY_LLM = os.environ.get("DETAIL_SUMMARY_LLM", "0") == "1"
+SUMMARY_EVAL_LLM = os.environ.get("SUMMARY_EVAL_LLM", "0") == "1"
+_STOP = {
+    "the", "and", "for", "with", "that", "this", "from", "into", "your",
+    "their", "there", "about", "which", "when", "where", "what", "will",
+    "have", "has", "been", "are", "were", "can", "may", "might", "than",
+    "then", "also", "only", "some", "more", "most", "much", "many", "over",
+    "under", "into", "onto", "while", "after", "before", "each", "per",
+    "study", "trial", "participant", "participants", "patient", "patients",
+}
 
 
 def tidy(text):
@@ -84,6 +94,122 @@ def _system():
             "commitment.\n\n" + _SPEC)
 
 
+def _summary_text(summary):
+    return " ".join(str(summary.get(k, "") or "").strip() for k in KEYS).strip()
+
+
+def _content_tokens(text):
+    toks = re.findall(r"[a-z0-9]+", (text or "").lower())
+    return [t for t in toks if len(t) > 2 and t not in _STOP]
+
+
+def _jargon_terms(text):
+    out = []
+    for m in re.finditer(r"\b([A-Z]{2,}|[A-Za-z]+-\d+[A-Za-z0-9-]*)\b", text or ""):
+        out.append(m.group(1))
+    return out
+
+
+def _clarity_score(text):
+    """Cheap readability proxy for internal QA (0-100)."""
+    t = (text or "").strip()
+    if not t:
+        return {"score": 0, "flags": ["empty_summary"]}
+    flags = []
+    score = 100
+    sents = [s for s in re.split(r"(?<=[.!?])\s+", t) if s.strip()]
+    words = re.findall(r"\b[\w-]+\b", t)
+    avg_len = (len(words) / max(1, len(sents)))
+    if avg_len > 22:
+        score -= 20
+        flags.append("long_sentences")
+    elif avg_len > 18:
+        score -= 10
+        flags.append("some_long_sentences")
+    jargon = _jargon_terms(t)
+    if jargon:
+        score -= min(24, 4 * len(jargon))
+        flags.append("contains_jargon")
+    long_words = [w for w in words if len(w) >= 14]
+    if len(long_words) >= 3:
+        score -= 10
+        flags.append("many_long_words")
+    return {"score": max(0, min(100, score)),
+            "flags": flags,
+            "avg_words_per_sentence": round(avg_len, 1),
+            "jargon_terms": jargon[:8]}
+
+
+def _fidelity_score(summary_text, source_text):
+    """Groundedness proxy: how much summary language is supported by source text."""
+    summ = _content_tokens(summary_text)
+    src = set(_content_tokens(source_text))
+    if not summ:
+        return {"score": 0, "flags": ["empty_summary"]}
+    supported = sum(1 for t in summ if t in src)
+    score = int(round(100 * supported / len(summ)))
+    flags = []
+    if score < 60:
+        flags.append("low_grounding")
+    elif score < 75:
+        flags.append("medium_grounding")
+    return {"score": max(0, min(100, score)), "flags": flags}
+
+
+def _llm_eval(trial, summary_text, source_text):
+    if not (SUMMARY_EVAL_LLM and mt.LLM_API_KEY and summary_text and source_text):
+        return None
+    prompt = (
+        "You are evaluating a patient-facing clinical trial summary.\n"
+        "Score two things from 0-100 and return strict JSON only:\n"
+        "1) fidelity_score: factual alignment with the source text (no hallucinations)\n"
+        "2) clarity_score: understandable to a layperson (minimal jargon)\n"
+        "Also return short flags[] and one_sentence_feedback.\n\n"
+        f"TRIAL TITLE: {trial.get('title','')}\n\n"
+        f"SOURCE:\n{source_text[:7000]}\n\n"
+        f"SUMMARY:\n{summary_text[:3000]}"
+    )
+    try:
+        raw = mt.llm_chat(
+            "Return JSON only with keys: fidelity_score, clarity_score, flags, one_sentence_feedback.",
+            prompt,
+        )
+        obj = mt._extract_json(raw)
+        return {
+            "fidelity_score": int(max(0, min(100, float(obj.get("fidelity_score", 0))))),
+            "clarity_score": int(max(0, min(100, float(obj.get("clarity_score", 0))))),
+            "flags": [str(x) for x in (obj.get("flags") or [])][:6],
+            "one_sentence_feedback": str(obj.get("one_sentence_feedback", "")).strip(),
+        }
+    except Exception:
+        return None
+
+
+def evaluate_summary_quality(trial, summary):
+    """Internal QA: deterministic score + optional LLM judge."""
+    trial = trial or {}
+    summary = summary or {}
+    source_text = tidy(
+        f"{trial.get('briefSummary') or ''} {trial.get('detailedDescription') or ''}"
+    )
+    rendered = _summary_text(summary)
+    fidelity = _fidelity_score(rendered, source_text)
+    clarity = _clarity_score(rendered)
+    out = {
+        "deterministic": {
+            "fidelity_score": fidelity["score"],
+            "clarity_score": clarity["score"],
+            "flags": fidelity.get("flags", []) + clarity.get("flags", []),
+            "avg_words_per_sentence": clarity.get("avg_words_per_sentence", 0),
+            "jargon_terms": clarity.get("jargon_terms", []),
+        }
+    }
+    llm = _llm_eval(trial, rendered, source_text)
+    if llm:
+        out["llm_judge"] = llm
+    return out
+
+
 def plain(trial):
     """Structured plain-English summary for the detail page (LLM + cache)."""
     trial = trial or {}
@@ -112,6 +238,7 @@ def plain(trial):
 
     # Only cache polished (AI) results, so a fallback can upgrade later once a
     # key is configured.
+    data["_qa"] = evaluate_summary_quality(trial, data)
     if nct and data.get("_ai"):
         try:
             db.set_trial_summary(nct, data)
