@@ -31,6 +31,7 @@ import csv
 import urllib.parse
 import urllib.request
 from collections import OrderedDict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from flask import (Flask, abort, flash, g, jsonify, make_response, redirect,
                    render_template, request, session, url_for)
@@ -82,6 +83,8 @@ if os.environ.get("BEHIND_PROXY", "0") == "1":
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 
 MAX_MATCH = int(os.environ.get("WEB_MAX_MATCH", "6"))  # LLM calls per search
+WEB_LLM_PARALLELISM = max(
+    1, min(8, int(os.environ.get("WEB_LLM_PARALLELISM", "3"))))
 MATCH_QUALITY_MIN = max(
     0, min(100, int(os.environ.get("MATCH_QUALITY_MIN", "85"))))
 app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024    # 16 MB upload cap
@@ -155,12 +158,10 @@ def ops_readiness():
     if not _ops_key_ok():
         return jsonify({"ok": False, "error": "forbidden"}), 403
     db_path = os.environ.get("DB_PATH", "").strip()
-    rec_provider = records_mod.provider().strip().lower()
     readiness = {
         "ok": True,
         "integrations": {
-            "records_live": bool(rec_provider != "sandbox"
-                                 and os.environ.get("RECORDS_API_KEY", "").strip()),
+            "records_live": False,
             "payer_live": bool(os.environ.get("PAYER_API_URL", "").strip()
                                and os.environ.get("PAYER_API_KEY", "").strip()),
             "logistics_live": bool(os.environ.get("LOGISTICS_API_URL", "").strip()
@@ -184,7 +185,6 @@ def ops_readiness():
         "security": {
             "no_login_off": not NO_LOGIN,
             "secret_key_set": bool(os.environ.get("SECRET_KEY", "").strip()),
-            "webhook_secret_set": bool(os.environ.get("RECORDS_WEBHOOK_SECRET", "").strip()),
         },
     }
     gaps = []
@@ -200,8 +200,6 @@ def ops_readiness():
         gaps.append("persistent_db_not_configured")
     if not readiness["infra"]["cron_key_set"]:
         gaps.append("alerts_cron_key_missing")
-    if not readiness["security"]["webhook_secret_set"]:
-        gaps.append("records_webhook_secret_missing")
     readiness["gaps"] = gaps
     readiness["ok"] = not gaps
     return jsonify(readiness), 200
@@ -854,7 +852,7 @@ def _csrf_guard():
     _csrf_token()
     if request.method != "POST":
         return None
-    if request.endpoint in {"alerts_run", "reminders_run", "records_metriport_webhook"}:
+    if request.endpoint in {"alerts_run", "reminders_run"}:
         return None
     sent = (request.form.get("_csrf_token", "")
             or request.headers.get("X-CSRF-Token", ""))
@@ -1766,6 +1764,9 @@ def records_connect():
     nxt = _safe_next(request.form.get("next", "") or request.args.get("next", ""))
     if not nxt:
         nxt = _safe_next(request.referrer) or url_for("applications")
+    blocked = records_mod.live_blocked_reason()
+    if blocked:
+        flash(blocked, "error")
     return redirect(url_for("records_authorize", next=nxt))
 
 
@@ -1829,6 +1830,7 @@ def records_authorize():
                 "records_authorize.html",
                 records_provider=records_mod.provider_label(),
                 records_live=records_mod.is_live(),
+                records_live_blocked=records_mod.live_blocked_reason(),
                 next_url=nxt,
             )
         return _finalize_records_connect(nxt)
@@ -1837,6 +1839,7 @@ def records_authorize():
         "records_authorize.html",
         records_provider=records_mod.provider_label(),
         records_live=records_mod.is_live(),
+        records_live_blocked=records_mod.live_blocked_reason(),
         next_url=nxt,
     )
 
@@ -1847,6 +1850,9 @@ def records_refresh():
         flash("Sign in to refresh records.", "error")
         return redirect(url_for("patient_login", next=url_for("applications")))
     applicant = g.patient_user["applicant_token"]
+    if not records_mod.is_live():
+        flash("Preview records are already up to date in this environment.", "success")
+        return redirect(request.referrer or url_for("applications"))
     prof = db.get_records_profile(applicant) or {}
     ext_pid = (prof.get("external_patient_id") or "").strip()
     if not ext_pid:
@@ -1886,107 +1892,6 @@ def records_disconnect():
         db.clear_records_profile(applicant)
     flash("Disconnected your health records.", "success")
     return redirect(request.referrer or url_for("applications"))
-
-
-def _records_webhook_authorized():
-    key = os.environ.get("RECORDS_WEBHOOK_SECRET", "").strip()
-    if not key:
-        return True
-    sent = (request.args.get("key", "").strip()
-            or request.headers.get("X-Webhook-Key", "").strip()
-            or request.headers.get("x-webhook-key", "").strip())
-    if sent and hmac.compare_digest(sent, key):
-        return True
-    sig = (request.headers.get("X-Webhook-Signature", "").strip()
-           or request.headers.get("X-Metriport-Signature", "").strip()
-           or request.headers.get("x-webhook-signature", "").strip())
-    if not sig:
-        return False
-    body = request.get_data(cache=True, as_text=False) or b""
-    expected = hmac.new(key.encode("utf-8"), body, "sha256").hexdigest()
-    cand = sig.split("=", 1)[-1].strip()
-    return hmac.compare_digest(cand, expected)
-
-
-@app.route("/records/webhook/metriport", methods=["GET", "POST"])
-def records_metriport_webhook():
-    """Provider webhook: update sync state and pull latest consolidated data."""
-    if request.method == "GET":
-        # Some providers validate webhook destinations with a GET probe before
-        # sending real POST events. Return a simple 200 health response.
-        return jsonify({"ok": True, "webhook": "metriport"}), 200
-    if not _records_webhook_authorized():
-        # Keep a 2xx response for provider dashboards that classify any non-2xx
-        # as a dead webhook destination. Unauthorized events are safely ignored.
-        return jsonify({"ok": True, "ignored": "unauthorized"}), 200
-    try:
-        payload = request.get_json(silent=True) or {}
-    except Exception:
-        payload = {}
-    ctx = records_mod.webhook_event_context(payload, headers=request.headers)
-    event = ctx.get("event", "")
-    source_status = ctx.get("source_status", "")
-    ext_qid = ctx.get("external_query_id", "")
-    ext_pid = ctx.get("external_patient_id", "")
-    applicant = db.find_applicant_by_external_query(ext_qid) or \
-        db.find_applicant_by_external_patient(ext_pid)
-    if not applicant:
-        return jsonify({"ok": True, "ignored": "no_matching_applicant"}), 200
-
-    prof = db.get_records_profile(applicant) or {}
-    provider = prof.get("provider", records_mod.provider_label())
-    if not db.record_records_webhook_event(
-            ctx.get("idempotency_key", ""),
-            applicant_token=applicant,
-            provider=provider,
-            event_type=event,
-            source_status=source_status):
-        return jsonify({"ok": True, "duplicate": True}), 200
-    if ctx.get("is_error"):
-        db.set_records_sync_state(
-            applicant_token=applicant,
-            provider=provider,
-            sync_status="error",
-            source_status=source_status or event or "provider_error",
-            external_patient_id=ext_pid or prof.get("external_patient_id", ""),
-            external_query_id=ext_qid or prof.get("external_query_id", ""),
-            error_msg=(source_status or event or "records sync failed")[:220],
-        )
-        return jsonify({"ok": True, "status": "error"}), 200
-    db.set_records_sync_state(
-        applicant_token=applicant,
-        provider=provider,
-        sync_status="syncing",
-        source_status=source_status or event or "provider_update",
-        external_patient_id=ext_pid or prof.get("external_patient_id", ""),
-        external_query_id=ext_qid or prof.get("external_query_id", ""),
-        error_msg="",
-    )
-    if not ctx.get("is_done"):
-        return jsonify({"ok": True, "status": "syncing"}), 200
-
-    try:
-        target_pid = ext_pid or prof.get("external_patient_id", "")
-        if not target_pid:
-            raise fhir.FhirError("Missing external patient id for consolidated pull.")
-        latest = records_mod.pull_latest(target_pid)
-        latest["external_query_id"] = ext_qid or prof.get("external_query_id", "")
-        latest["external_patient_id"] = target_pid
-        db.set_records_profile(applicant, latest)
-        n = db.attach_records_to_open_leads(applicant, records_mod.summary_text(latest))
-        return jsonify({"ok": True, "status": "connected", "backfilled": n}), 200
-    except Exception as e:
-        app.logger.exception("records webhook pull-latest failed")
-        db.set_records_sync_state(
-            applicant_token=applicant,
-            provider=provider,
-            sync_status="error",
-            source_status=source_status or event or "provider_error",
-            external_patient_id=ext_pid or prof.get("external_patient_id", ""),
-            external_query_id=ext_qid or prof.get("external_query_id", ""),
-            error_msg=str(e)[:220],
-        )
-        return jsonify({"ok": False, "status": "error"}), 200
 
 
 # --------------------------------------------------------------------------- #
@@ -2344,7 +2249,60 @@ def site_setup():
         "site_setup.html",
         profile=db.get_site_profile(g.user["id"]),
         claims=db.list_study_claims(g.user["id"]),
+        posted=db.list_site_posted_studies(user_id=g.user["id"]),
         redcap_on=redcap.configured())
+
+
+@app.route("/app/site/post-study", methods=["POST"])
+@login_required
+def post_site_study():
+    title = request.form.get("title", "").strip()
+    condition = request.form.get("condition", "").strip()
+    location = request.form.get("location", "").strip()
+    if not title or not condition or not location:
+        flash("Add title, condition, and location before posting the study.", "error")
+        return redirect(url_for("site_setup"))
+    geo_lat, geo_lon = None, None
+    try:
+        geo = geocode(location)
+    except Exception:
+        geo = None
+    if geo:
+        geo_lat, geo_lon = geo[0], geo[1]
+    row = db.create_site_posted_study(g.user["id"], {
+        "title": title,
+        "condition": condition,
+        "location": location,
+        "brief_summary": request.form.get("brief_summary", "").strip(),
+        "eligibility": request.form.get("eligibility", "").strip(),
+        "site_name": request.form.get("site_name", "").strip(),
+        "contact_email": request.form.get("contact_email", "").strip(),
+        "contact_phone": request.form.get("contact_phone", "").strip(),
+        "phase": request.form.get("phase", "").strip(),
+        "status": request.form.get("status", "recruiting").strip().lower(),
+        "lat": geo_lat,
+        "lon": geo_lon,
+    })
+    if row:
+        flash("Study posted. It now appears in patient search and routes to your ATS.",
+              "success")
+    else:
+        flash("Couldn't post that study. Please try again.", "error")
+    return redirect(url_for("site_setup"))
+
+
+@app.route("/app/site/post-study/remove", methods=["POST"])
+@login_required
+def remove_posted_study():
+    try:
+        study_id = int(request.form.get("study_id", "0") or 0)
+    except ValueError:
+        study_id = 0
+    if study_id and db.remove_site_posted_study(g.user["id"], study_id):
+        flash("Site-posted study removed.", "success")
+    else:
+        flash("Couldn't remove that study.", "error")
+    return redirect(url_for("site_setup"))
 
 
 @app.route("/app/site/claim", methods=["POST"])
@@ -2352,9 +2310,10 @@ def site_setup():
 def add_study_claim():
     nct = request.form.get("nct", "").strip().upper()
     title = request.form.get("title", "").strip()
+    notify_email = request.form.get("notify_email", "").strip()
     if not nct:
         flash("Add an NCT number to claim a study.", "error")
-    elif db.add_study_claim(g.user["id"], nct, title):
+    elif db.add_study_claim(g.user["id"], nct, title, notify_email=notify_email):
         flash("Study claimed. New applicants for that NCT now route to your board.",
               "success")
     else:
@@ -2367,8 +2326,27 @@ def add_study_claim():
 def remove_study_claim():
     nct = request.form.get("nct", "").strip().upper()
     if nct:
+        if nct.startswith("SITE-"):
+            flash("Manage site-posted studies in the section below.", "error")
+            return redirect(url_for("site_setup"))
         db.remove_study_claim(g.user["id"], nct)
         flash("Study unclaimed.", "success")
+    return redirect(url_for("site_setup"))
+
+
+@app.route("/app/site/claim/notify-email", methods=["POST"])
+@login_required
+def update_study_claim_notify_email():
+    nct = request.form.get("nct", "").strip().upper()
+    notify_email = request.form.get("notify_email", "").strip()
+    if not nct:
+        flash("Missing study id.", "error")
+        return redirect(url_for("site_setup"))
+    if nct.startswith("SITE-"):
+        flash("Set routing email in the site-posted study section.", "error")
+        return redirect(url_for("site_setup"))
+    db.update_study_claim_notify_email(g.user["id"], nct, notify_email)
+    flash("Trial notification email updated.", "success")
     return redirect(url_for("site_setup"))
 
 
@@ -2894,6 +2872,54 @@ def _quality_gated_match(match):
     return out
 
 
+def _query_tokens(*parts):
+    txt = " ".join((p or "") for p in parts).strip().lower()
+    return {t for t in re.split(r"[^a-z0-9]+", txt) if len(t) >= 3}
+
+
+def _site_posted_rank(study, condition, intervention):
+    pool = _query_tokens(condition, intervention)
+    hay = _query_tokens(study.get("title", ""), study.get("condition", ""),
+                        study.get("brief_summary", ""),
+                        study.get("eligibility", ""))
+    if not pool:
+        return 0
+    overlap = pool & hay
+    if not overlap:
+        return 0
+    score = len(overlap) * 8
+    if (study.get("condition") or "").strip():
+        cond = (study.get("condition") or "").lower()
+        if any(tok in cond for tok in pool):
+            score += 12
+    title = (study.get("title") or "").lower()
+    if any(tok in title for tok in pool):
+        score += 10
+    return score
+
+
+def _site_posted_as_trial(study):
+    return {
+        "nctId": study["nct"],
+        "title": study["title"],
+        "phase": study.get("phase") or "",
+        "leadSponsor": study.get("org_name") or study.get("site_name") or "",
+        "studyType": "INTERVENTIONAL",
+        "overallStatus": "RECRUITING",
+        "briefSummary": study.get("brief_summary") or "",
+        "eligibilityCriteria": study.get("eligibility") or "",
+        "conditions": [study.get("condition")] if study.get("condition") else [],
+        "locations": [{
+            "facility": study.get("site_name") or study.get("org_name") or "",
+            "city": study.get("location") or "",
+            "status": "RECRUITING",
+            "lat": study.get("lat"),
+            "lon": study.get("lon"),
+        }],
+        "source": "site_posted",
+    }
+
+
 # --------------------------------------------------------------------------- #
 # Search
 # --------------------------------------------------------------------------- #
@@ -2976,18 +3002,9 @@ def run_search(note, condition, country, require_site, coords=None, radius=50,
         gated.sort(key=lambda t: -_rel(t))        # most on-topic into LLM budget
         picks = [(t, []) for t in gated[:MAX_MATCH]]
 
-    results = []
-    for t, near in picks:
-        if mt.LLM_API_KEY:
-            try:
-                m = mt.llm_match(note, t)
-            except Exception as e:
-                m = {"verdict": "error", "score": 0, "rationale": str(e)[:120],
-                     "met": [], "not_met": [], "unknown": []}
-        else:
-            m = {"verdict": "possible", "score": 0,
-                 "rationale": "Add an LLM key for eligibility reasoning.",
-                 "met": [], "not_met": [], "unknown": []}
+    def _build_result(t, near, m):
+        t = dict(t or {})
+        t.setdefault("source", "ctgov")
         m = _quality_gated_match(m)
         if not m.get("quality_ok", True):
             app.logger.warning(
@@ -3021,22 +3038,106 @@ def run_search(note, condition, country, require_site, coords=None, radius=50,
                 seen.add(reg)
                 other_regions.append(reg)
 
-        results.append({"trial": t, "match": m, "site": site,
-                        "site_str": _site_str(site),
-                        "coordinator": _coordinator(t, site),
-                        "distance": dist, "unit": unit, "relevance": _rel(t),
-                        "nearby": near[:8], "nearby_total": len(near),
-                        "other_count": len(others), "other_regions": other_regions[:5],
-                        "pay": _pay_likelihood(t)})
+        return {"trial": t, "match": m, "site": site,
+                "site_str": _site_str(site),
+                "coordinator": _coordinator(t, site),
+                "distance": dist, "unit": unit, "relevance": _rel(t),
+                "nearby": near[:8], "nearby_total": len(near),
+                "other_count": len(others), "other_regions": other_regions[:5],
+                "pay": _pay_likelihood(t)}
+
+    results = []
+    if mt.LLM_API_KEY:
+        max_workers = min(WEB_LLM_PARALLELISM, len(picks))
+        if max_workers <= 1:
+            for t, near in picks:
+                try:
+                    m = mt.llm_match(note, t)
+                except Exception as e:
+                    m = {"verdict": "error", "score": 0, "rationale": str(e)[:120],
+                         "met": [], "not_met": [], "unknown": []}
+                results.append(_build_result(t, near, m))
+        else:
+            future_map = {}
+            with ThreadPoolExecutor(max_workers=max_workers) as ex:
+                for t, near in picks:
+                    future_map[ex.submit(mt.llm_match, note, t)] = (t, near)
+                for fut in as_completed(future_map):
+                    t, near = future_map[fut]
+                    try:
+                        m = fut.result()
+                    except Exception as e:
+                        m = {"verdict": "error", "score": 0, "rationale": str(e)[:120],
+                             "met": [], "not_met": [], "unknown": []}
+                    results.append(_build_result(t, near, m))
+    else:
+        m = {"verdict": "possible", "score": 0,
+             "rationale": "Add an LLM key for eligibility reasoning.",
+             "met": [], "not_met": [], "unknown": []}
+        for t, near in picks:
+            results.append(_build_result(t, near, m))
+
+    # Also include studies posted directly by sites (not yet on CT.gov).
+    for row in db.list_site_posted_studies(status="recruiting"):
+        s = dict(row)
+        relevance = _site_posted_rank(s, condition, intervention)
+        if relevance <= 0:
+            continue
+        trial = _site_posted_as_trial(s)
+        m = {
+            "verdict": "possible",
+            "score": min(95, 35 + relevance),
+            "rationale": ("Posted directly by the study site. The coordinator can "
+                          "confirm full eligibility after your application."),
+            "met": [],
+            "not_met": [],
+            "unknown": [],
+            "quality_score": 100,
+            "quality_flags": [],
+            "quality_ok": True,
+        }
+        dist = None
+        loc = (s.get("lat"), s.get("lon"))
+        if coords and loc[0] is not None and loc[1] is not None:
+            try:
+                dist = haversine(coords[0], coords[1], float(loc[0]), float(loc[1]), unit)
+            except Exception:
+                dist = None
+        if coords and radius and dist is not None and dist > radius:
+            continue
+        site_name = (s.get("site_name") or s.get("org_name") or "").strip()
+        site_loc = (s.get("location") or "").strip()
+        site_str = ", ".join(x for x in (site_name, site_loc) if x)
+        coord_bits = [s.get("profile_contact_name"), s.get("contact_phone"),
+                      s.get("contact_email")]
+        coordinator = " · ".join(x for x in coord_bits if (x or "").strip())
+        results.append({
+            "trial": trial,
+            "match": m,
+            "site": {"facility": site_name, "city": site_loc},
+            "site_str": site_str,
+            "coordinator": coordinator,
+            "distance": dist,
+            "unit": unit,
+            "relevance": relevance,
+            "nearby": [],
+            "nearby_total": 0,
+            "other_count": 0,
+            "other_regions": [],
+            "pay": {"score": 0, "tier": "unknown", "label": "Compensation not listed",
+                     "notes": ["Ask the site coordinator for details"]},
+        })
 
     def rank_key(r):
         t, m = r["trial"], r["match"]
         obs = (t.get("studyType") or "").upper() == "OBSERVATIONAL"
+        source = (t.get("source") or "ctgov").lower()
         # 1st relevance (verdict), 2nd distance, then quality tiebreakers.
         dist_sort = r["distance"] if r["distance"] is not None else 1e9
-        local = bool(mt.sites_in_country(t, country)) if country else True
+        local = True if source == "site_posted" else (
+            bool(mt.sites_in_country(t, country)) if country else True)
         return (mt.VERDICT_RANK.get(m.get("verdict"), 3), round(dist_sort, 1),
-                0 if local else 1, 0 if not obs else 1,
+                0 if local else 1, 0 if not obs else 1, 0 if source == "ctgov" else 1,
                 -int(r.get("relevance") or 0),
                 len(m.get("not_met") or []), len(m.get("unknown") or []),
                 -int(m.get("score") or 0))

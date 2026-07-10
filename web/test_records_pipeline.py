@@ -34,7 +34,7 @@ def _fail(name: str, detail: str = ""):
 def test_records_profile_roundtrip():
     with webapp.app.app_context():
         prof = {
-            "provider": "Metriport",
+            "provider": "SMART Health IT (sandbox)",
             "age": 43,
             "sex": "female",
             "conditions": ["Type 2 diabetes"],
@@ -68,7 +68,7 @@ def test_sync_state_and_lookup():
     with webapp.app.app_context():
         db.set_records_sync_state(
             applicant_token="app_tok_2",
-            provider="Metriport",
+            provider="SMART Health IT (sandbox)",
             sync_status="syncing",
             source_status="network_query_started",
             external_patient_id="pt_abc",
@@ -86,7 +86,7 @@ def test_sync_state_transition_guard():
     with webapp.app.app_context():
         db.set_records_sync_state(
             applicant_token="app_tok_guard",
-            provider="Metriport",
+            provider="SMART Health IT (sandbox)",
             sync_status="connected",
             source_status="consolidated_ready",
             external_patient_id="pt_guard",
@@ -97,7 +97,7 @@ def test_sync_state_transition_guard():
         # Stale in-flight updates should not regress a terminal connected state.
         db.set_records_sync_state(
             applicant_token="app_tok_guard",
-            provider="Metriport",
+            provider="SMART Health IT (sandbox)",
             sync_status="syncing",
             source_status="provider_update",
             external_patient_id="pt_guard",
@@ -123,76 +123,6 @@ def test_sync_state_transition_guard():
         if got2.get("sync_status") != "syncing":
             _fail("sync transition guard", "allow_regress refresh did not apply")
     _pass("sync transition guard")
-
-
-def test_webhook_event_context_variants():
-    payload = {
-        "event": {"type": "medical.network-query.completed", "id": "evt_nested_1"},
-        "detail": {
-            "status": "SUCCEEDED",
-            "networkQueryId": "nq_nested_1",
-            "externalPatientId": "pt_nested_1",
-        },
-    }
-    ctx = records.webhook_event_context(payload, headers={})
-    if ctx.get("event") != "medical.network-query.completed":
-        _fail("webhook parser", f"event parse mismatch: {ctx}")
-    if ctx.get("external_query_id") != "nq_nested_1":
-        _fail("webhook parser", f"query id mismatch: {ctx}")
-    if ctx.get("external_patient_id") != "pt_nested_1":
-        _fail("webhook parser", f"patient id mismatch: {ctx}")
-    if not ctx.get("is_done"):
-        _fail("webhook parser", f"done signal not detected: {ctx}")
-    _pass("webhook event parser variants")
-
-
-def test_webhook_idempotency_duplicate_delivery():
-    with webapp.app.app_context():
-        db.set_records_sync_state(
-            applicant_token="app_tok_dup",
-            provider="Metriport",
-            sync_status="syncing",
-            source_status="network_query_started",
-            external_patient_id="pt_dup",
-            external_query_id="nq_dup",
-            error_msg="",
-            allow_regress=True,
-        )
-
-    original_pull_latest = records.pull_latest
-    records.pull_latest = lambda _pid: {
-        "provider": "Metriport",
-        "age": 44,
-        "sex": "female",
-        "conditions": ["Obesity"],
-        "meds": ["Semaglutide"],
-        "labs": ["Hemoglobin A1c: 7.1 % (2026-07-01)"],
-        "summary": "test profile summary",
-        "sync_status": "connected",
-        "source_status": "consolidated_ready",
-        "completeness_score": 80,
-        "last_sync_error": "",
-    }
-    try:
-        client = webapp.app.test_client()
-        payload = {
-            "type": "medical.network-query.completed",
-            "status": "completed",
-            "queryId": "nq_dup",
-            "patientId": "pt_dup",
-            "eventId": "evt_dup_1",
-        }
-        r1 = client.post("/records/webhook/metriport", json=payload)
-        r2 = client.post("/records/webhook/metriport", json=payload)
-        d1 = r1.get_json() or {}
-        d2 = r2.get_json() or {}
-        if r1.status_code != 200 or d1.get("status") != "connected":
-            _fail("webhook idempotency", f"first delivery failed: {r1.status_code} {d1}")
-        if r2.status_code != 200 or not d2.get("duplicate"):
-            _fail("webhook idempotency", f"duplicate not deduped: {r2.status_code} {d2}")
-    finally:
-        records.pull_latest = original_pull_latest
-    _pass("webhook idempotency duplicate delivery")
 
 
 def test_fhir_bundle_mapping_shape():
@@ -257,8 +187,6 @@ def main():
         test_records_profile_roundtrip,
         test_sync_state_and_lookup,
         test_sync_state_transition_guard,
-        test_webhook_event_context_variants,
-        test_webhook_idempotency_duplicate_delivery,
         test_fhir_bundle_mapping_shape,
         test_pay_signal_scoring,
     ]

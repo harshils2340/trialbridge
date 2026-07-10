@@ -47,6 +47,98 @@ or 2). See `.cursor/rules/enrollment-velocity.mdc` (always on).
 - The through-line: **failure = passivity + silence.** Patients drop out mostly because
   they stop hearing from anyone. Every fix = *be proactive + keep the communication loop alive.*
 
+## External signal log -> KPI map -> money map
+This section captures real operator feedback and translates it into
+prioritized, monetizable product work. Keep adding entries over time.
+
+### 2026-07-10 interview signal (Lora Giangregorio, UW)
+Raw themes from response:
+- Channels that currently work:
+  - social ads (geotargeted + boosted)
+  - clinician referrals (specialists, PTs)
+  - owned lists/networks (local list + partner org list)
+  - targeted partner outreach emails
+- Operational pattern:
+  - they usually hit targets eventually
+  - they run feasibility tests to validate channels before full trial launch
+- Biggest pain points:
+  - low male participation in their cohorts
+  - over-representation of white / higher-income / higher-education participants
+  - hard to reach less health-engaged populations outside healthcare networks
+
+### 2026-07-09 interview signal (Katherine Chan, KITE)
+Raw themes from response:
+- Channels that currently work:
+  - community outreach organizations (e.g., SCI Ontario, March of Dimes)
+  - KITE Research Institute recruitment website
+- Handoff/drop-off:
+  - in their current model, candidates mostly self-identify directly from outreach;
+    less explicit inter-team handoff in the intake path
+- What improved enrollment:
+  - moving away from passive clinic flyers toward community-org partnerships
+  - launch of a dedicated recruitment website increased inbound interest volume
+
+### Problem frequency map (from field signals so far)
+Use this simple scale each time: `high`, `medium`, `low`.
+
+- **High frequency**
+  - channel uncertainty before launch ("what will actually recruit?")
+  - leakage during handoff from outreach -> screening
+  - low diversity in final enrolled cohorts
+  - passive channel underperformance (flyers/general poster tactics)
+- **Medium frequency**
+  - under-recruitment in specific demographics (e.g., men for osteoporosis/exercise)
+  - over-reliance on existing health-aware networks
+  - weak community-partner distribution in early trial setup
+- **Low frequency (but still tracked)**
+  - total recruitment failure (many sites still eventually hit, but late)
+
+### Money map (how each problem hits revenue/cost)
+Use panel baselines already in this doc: ~$6K to recruit, ~$19K to replace dropout.
+
+- **Problem: channel uncertainty**
+  - Money impact: wasted spend on low-yield channels + slower enrollment velocity.
+  - KPI impact: lowers found->contacted and contacted->screened efficiency.
+  - Product response: per-channel attribution + feasibility mode + pre-launch channel scorecard.
+- **Problem: handoff/drop-off**
+  - Money impact: screened candidates fail to convert; replacement cost accumulates.
+  - KPI impact: biggest hit on screened->enrolled and enrolled->retained.
+  - Product response: ATS queue discipline, response-time SLA tracking, reminders, two-way messaging.
+- **Problem: passive channel underperformance**
+  - Money impact: low-yield outreach spend + slower top-of-funnel fill.
+  - KPI impact: slows found->contacted velocity and increases time-to-first-screen.
+  - Product response: community-partner templates, source-level conversion reporting, and channel playbooks that de-prioritize low-yield flyer-style tactics.
+- **Problem: low cohort diversity / demographic imbalance**
+  - Money impact: longer recruitment timelines, protocol amendment risk, sponsor dissatisfaction.
+  - KPI impact: slows contacted->screened throughput for underrepresented groups.
+  - Product response: demographic gap dashboard + targeted channel recommendations by missing segment.
+
+### "Switch if needed" decision rules (vendor/process)
+Keep decisions objective using KPI + cost signals:
+
+- **Keep current path** when:
+  - enrollment velocity improves for 2+ consecutive cycles, and
+  - cost per screened and cost per enrolled trend down or flat.
+- **Pilot alternative (tool/vendor/channel)** when:
+  - any stage conversion degrades for 2 consecutive cycles, or
+  - median time to enrolled increases while spend rises.
+- **Switch** when:
+  - pilot shows >=15% improvement in either screened->enrolled conversion or
+    time-to-enrolled, without hurting retention or compliance.
+
+### Flexpa fit in this map (plain)
+Which Flexpa connection type is useful first for this workflow:
+
+- **Use first: EHR connection**
+  - Why: most useful for fast pre-screen verification (diagnosis, meds, recent labs).
+  - KPI stage moved: contacted->screened, screened->enrolled.
+- **Use second: Payer connection**
+  - Why: supports utilization/coverage context and can reduce dead-end screenings.
+  - KPI stage moved: screened->enrolled (fewer late disqualifications).
+- **Use later: TEFCA / IAL2 flow**
+  - Why: broadest reach but higher identity friction; run after base funnel is stable.
+  - KPI risk: can hurt conversion if added too early in the flow.
+
 ## What already aligns (pre-build)
 - Acquisition of the "never-asked" 8%: patient finder + SEO condition pages + `alerts.py`.
 - Plain-language trial summaries: `summarize.py` + `trial_summary.md`.

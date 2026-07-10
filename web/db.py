@@ -164,8 +164,32 @@ CREATE TABLE IF NOT EXISTS study_claims (
     user_id     INTEGER NOT NULL,
     nct         TEXT NOT NULL,
     title       TEXT DEFAULT '',
+    notify_email TEXT DEFAULT '',
     created_at  TEXT NOT NULL,
     UNIQUE (user_id, nct),
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
+-- Studies posted directly by sites (not yet on ClinicalTrials.gov). These are
+-- surfaced in patient search and routed through the same lead pipeline.
+CREATE TABLE IF NOT EXISTS site_posted_studies (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id       INTEGER NOT NULL,
+    nct           TEXT UNIQUE NOT NULL,
+    title         TEXT NOT NULL,
+    condition     TEXT DEFAULT '',
+    brief_summary TEXT DEFAULT '',
+    eligibility   TEXT DEFAULT '',
+    location      TEXT DEFAULT '',
+    site_name     TEXT DEFAULT '',
+    contact_email TEXT DEFAULT '',
+    contact_phone TEXT DEFAULT '',
+    phase         TEXT DEFAULT '',
+    status        TEXT NOT NULL DEFAULT 'recruiting',
+    lat           REAL,
+    lon           REAL,
+    created_at    TEXT NOT NULL,
+    updated_at    TEXT NOT NULL,
     FOREIGN KEY (user_id) REFERENCES users(id)
 );
 
@@ -432,7 +456,9 @@ CREATE TABLE IF NOT EXISTS alerts (
     email           TEXT DEFAULT '',
     active          INTEGER DEFAULT 1,
     created_at      TEXT NOT NULL,
-    last_checked_at TEXT DEFAULT ''
+    last_checked_at TEXT DEFAULT '',
+    last_notified_at TEXT DEFAULT '',
+    notify_min_days INTEGER DEFAULT 7
 );
 
 -- Trials an alert has already seen. Baseline (is_new=0) is seeded at creation so
@@ -556,6 +582,9 @@ _MIGRATIONS = {
         "redcap_endpoint": "TEXT DEFAULT ''",
         "redcap_project_label": "TEXT DEFAULT ''",
     },
+    "study_claims": {
+        "notify_email": "TEXT DEFAULT ''",
+    },
     "records_profiles": {
         "sync_status": "TEXT DEFAULT ''",
         "source_status": "TEXT DEFAULT ''",
@@ -564,6 +593,10 @@ _MIGRATIONS = {
         "completeness_score": "INTEGER DEFAULT 0",
         "last_sync_error": "TEXT DEFAULT ''",
         "last_sync_at": "TEXT DEFAULT ''",
+    },
+    "alerts": {
+        "last_notified_at": "TEXT DEFAULT ''",
+        "notify_min_days": "INTEGER DEFAULT 7",
     },
     "leads": {
         "applicant_token": "TEXT DEFAULT ''",
@@ -639,6 +672,10 @@ def _migrate(con):
                 "ON records_profiles(external_patient_id)")
     con.execute("CREATE INDEX IF NOT EXISTS idx_records_external_query "
                 "ON records_profiles(external_query_id)")
+    con.execute("CREATE INDEX IF NOT EXISTS idx_site_posted_user "
+                "ON site_posted_studies(user_id, created_at)")
+    con.execute("CREATE INDEX IF NOT EXISTS idx_site_posted_status "
+                "ON site_posted_studies(status)")
 
 
 def init_db():
@@ -918,6 +955,8 @@ def _norm_nct(nct):
     nct = (nct or "").strip().upper()
     if not nct:
         return ""
+    if nct.startswith("SITE-"):
+        return nct
     if not nct.startswith("NCT"):
         nct = "NCT" + nct
     return nct
@@ -965,6 +1004,94 @@ def list_study_claims(user_id):
         (user_id,)).fetchall()
 
 
+def _gen_site_nct():
+    return "SITE-" + secrets.token_hex(5).upper()
+
+
+def create_site_posted_study(user_id, data):
+    """Create a direct site-posted study and auto-claim it for lead routing."""
+    title = (data.get("title") or "").strip()
+    if not title:
+        return None
+    ts = now()
+    nct = _gen_site_nct()
+    db = get_db()
+    for _ in range(5):
+        try:
+            db.execute(
+                "INSERT INTO site_posted_studies "
+                "(user_id, nct, title, condition, brief_summary, eligibility, "
+                "location, site_name, contact_email, contact_phone, phase, status, "
+                "lat, lon, created_at, updated_at) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (user_id, nct, title, (data.get("condition") or "").strip(),
+                 (data.get("brief_summary") or "").strip(),
+                 (data.get("eligibility") or "").strip(),
+                 (data.get("location") or "").strip(),
+                 (data.get("site_name") or "").strip(),
+                 (data.get("contact_email") or "").strip(),
+                 (data.get("contact_phone") or "").strip(),
+                 (data.get("phase") or "").strip(),
+                 (data.get("status") or "recruiting").strip().lower(),
+                 data.get("lat"), data.get("lon"), ts, ts))
+            db.execute(
+                "INSERT OR IGNORE INTO study_claims "
+                "(user_id, nct, title, notify_email, created_at) "
+                "VALUES (?,?,?,?,?)",
+                (user_id, nct, title, (data.get("contact_email") or "").strip(), ts))
+            db.commit()
+            return get_site_posted_study_by_nct(nct)
+        except sqlite3.IntegrityError:
+            nct = _gen_site_nct()
+    return None
+
+
+def list_site_posted_studies(user_id=None, status=""):
+    q = ("SELECT s.*, COALESCE(p.org_name, '') org_name, "
+         "COALESCE(p.contact_name, '') profile_contact_name "
+         "FROM site_posted_studies s "
+         "LEFT JOIN site_profiles p ON p.user_id = s.user_id")
+    vals = []
+    where = []
+    if user_id is not None:
+        where.append("s.user_id = ?")
+        vals.append(user_id)
+    if status:
+        where.append("s.status = ?")
+        vals.append((status or "").strip().lower())
+    if where:
+        q += " WHERE " + " AND ".join(where)
+    q += " ORDER BY s.updated_at DESC, s.id DESC"
+    return get_db().execute(q, vals).fetchall()
+
+
+def get_site_posted_study_by_nct(nct):
+    nct = _norm_nct(nct)
+    if not nct:
+        return None
+    return get_db().execute(
+        "SELECT * FROM site_posted_studies WHERE nct = ?", (nct,)).fetchone()
+
+
+def remove_site_posted_study(user_id, study_id):
+    db = get_db()
+    row = db.execute(
+        "SELECT nct FROM site_posted_studies WHERE id = ? AND user_id = ?",
+        (study_id, user_id)).fetchone()
+    if not row:
+        return False
+    nct = row["nct"]
+    db.execute("DELETE FROM site_posted_studies WHERE id = ? AND user_id = ?",
+               (study_id, user_id))
+    keep = db.execute(
+        "SELECT 1 FROM leads WHERE nct = ? LIMIT 1", (nct,)).fetchone()
+    if not keep:
+        db.execute("DELETE FROM study_claims WHERE user_id = ? AND nct = ?",
+                   (user_id, nct))
+    db.commit()
+    return True
+
+
 def user_claimed_ncts(user_id):
     rows = get_db().execute(
         "SELECT nct FROM study_claims WHERE user_id = ?", (user_id,)).fetchall()
@@ -988,13 +1115,13 @@ def site_contact_for_nct(nct):
     if not nct:
         return ""
     row = get_db().execute(
-        "SELECT p.contact_email, u.email FROM study_claims c "
+        "SELECT c.notify_email, p.contact_email, u.email FROM study_claims c "
         "JOIN users u ON u.id = c.user_id "
         "LEFT JOIN site_profiles p ON p.user_id = c.user_id "
         "WHERE c.nct = ? ORDER BY c.id DESC LIMIT 1", (nct,)).fetchone()
     if not row:
         return ""
-    return (row["contact_email"] or row["email"] or "").strip()
+    return (row["notify_email"] or row["contact_email"] or row["email"] or "").strip()
 
 
 def add_recruitment_spend(user_id, nct, source, campaign, amount_usd, spend_date,
@@ -1034,14 +1161,15 @@ def spend_summary_for_user(user_id, ncts=None):
     return {"total_usd": round(total, 2), "by_source": src_rows, "rows": rows}
 
 
-def add_study_claim(user_id, nct, title=""):
+def add_study_claim(user_id, nct, title="", notify_email=""):
     nct = _norm_nct(nct)
     if not nct:
         return False
     db = get_db()
     db.execute(
-        "INSERT OR IGNORE INTO study_claims (user_id, nct, title, created_at) "
-        "VALUES (?,?,?,?)", (user_id, nct, (title or "").strip(), now()))
+        "INSERT OR IGNORE INTO study_claims "
+        "(user_id, nct, title, notify_email, created_at) VALUES (?,?,?,?,?)",
+        (user_id, nct, (title or "").strip(), (notify_email or "").strip(), now()))
     db.commit()
     return True
 
@@ -1053,6 +1181,18 @@ def remove_study_claim(user_id, nct):
     db = get_db()
     db.execute("DELETE FROM study_claims WHERE user_id = ? AND nct = ?",
                (user_id, nct))
+    db.commit()
+    return True
+
+
+def update_study_claim_notify_email(user_id, nct, notify_email=""):
+    nct = _norm_nct(nct)
+    if not nct:
+        return False
+    db = get_db()
+    db.execute(
+        "UPDATE study_claims SET notify_email = ? WHERE user_id = ? AND nct = ?",
+        ((notify_email or "").strip(), user_id, nct))
     db.commit()
     return True
 
@@ -2769,13 +2909,14 @@ def create_alert(data):
     cur = db.execute(
         """INSERT INTO alerts
            (applicant_token, label, condition, intervention, location, lat, lon,
-            cc, radius, unit, email, active, created_at)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,1,?)""",
+            cc, radius, unit, email, active, created_at, notify_min_days)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,1,?,?)""",
         (data.get("applicant_token", ""), data.get("label", ""),
          data.get("condition", ""), data.get("intervention", ""),
          data.get("location", ""), data.get("lat"), data.get("lon"),
          data.get("cc", ""), int(data.get("radius") or 50),
-         data.get("unit", "km"), data.get("email", ""), now()))
+         data.get("unit", "km"), data.get("email", ""), now(),
+         int(data.get("notify_min_days") or 7)))
     db.commit()
     return cur.lastrowid
 
@@ -2845,6 +2986,36 @@ def get_alert_matches(alert_id, limit=20):
     return get_db().execute(
         "SELECT * FROM alert_matches WHERE alert_id = ? "
         "ORDER BY is_new DESC, id DESC LIMIT ?", (alert_id, limit)).fetchall()
+
+
+def get_new_alert_matches(alert_id, limit=100):
+    return get_db().execute(
+        "SELECT * FROM alert_matches WHERE alert_id = ? AND is_new = 1 "
+        "ORDER BY id DESC LIMIT ?", (alert_id, limit)).fetchall()
+
+
+def alert_notify_due(alert, min_days=7):
+    """Whether enough time has passed since the last alert email."""
+    a = alert
+    if isinstance(alert, int):
+        a = get_alert(alert)
+    if not a:
+        return False
+    try:
+        min_days = max(1, int(a["notify_min_days"] or min_days))
+    except Exception:
+        min_days = max(1, int(min_days or 7))
+    ts = _parse_ts(a.get("last_notified_at", ""))
+    if not ts:
+        return True
+    return (dt.datetime.now() - ts).total_seconds() >= (min_days * 86400)
+
+
+def mark_alert_notified(alert_id):
+    db = get_db()
+    db.execute("UPDATE alerts SET last_notified_at = ? WHERE id = ?",
+               (now(), alert_id))
+    db.commit()
 
 
 def new_matches_count(applicant_token):

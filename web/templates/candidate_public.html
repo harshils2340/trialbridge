@@ -32,7 +32,7 @@
 
     <dl class="kv" style="margin-top:20px;">
       <dt>Study</dt><dd>{{ lead['title'] or '-' }}</dd>
-      {% if lead['nct'] %}<dt>NCT</dt><dd><a class="ctlink mono" href="https://clinicaltrials.gov/study/{{ lead['nct'] }}" target="_blank" rel="noopener">{{ lead['nct'] }} {{ ic.icon('external') }}</a></dd>{% endif %}
+      {% if lead['nct'] %}<dt>NCT</dt><dd>{% if lead['nct'].startswith('NCT') %}<a class="ctlink mono" href="https://clinicaltrials.gov/study/{{ lead['nct'] }}" target="_blank" rel="noopener">{{ lead['nct'] }} {{ ic.icon('external') }}</a>{% else %}<span class="mono">{{ lead['nct'] }}</span>{% endif %}</dd>{% endif %}
       <dt>Applicant</dt><dd>{{ it.age_band }}{% if lead['sex'] %} · {{ lead['sex']|capitalize }}{% endif %}</dd>
       {% if lead['condition'] %}<dt>Condition</dt><dd>{{ lead['condition'] }}</dd>{% endif %}
       {% if lead['location'] %}<dt>Region</dt><dd>{{ lead['location'] }}</dd>{% endif %}

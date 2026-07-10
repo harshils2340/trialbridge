@@ -125,30 +125,51 @@ def build_applicant_message(lead, kind, link):
 
 
 def build_alert_message(alert, new_matches, link):
-    """Notify a patient that new trials matched their saved interest.
-    new_matches: list of (nct, title)."""
+    """Notify a patient with a concise, useful weekly digest.
+    `new_matches` accepts either [(nct, title)] or [{"nct","title"}, ...]."""
     what = alert["label"] or alert["condition"] or alert["intervention"] or "your interests"
-    n = len(new_matches)
-    subject = (f"{n} new clinical trial{'s' if n != 1 else ''} matching {what}")
+    rows = []
+    for m in new_matches or []:
+        if isinstance(m, dict):
+            nct = (m.get("nct") or "").strip()
+            title = (m.get("title") or nct).strip()
+        else:
+            try:
+                nct, title = m
+            except Exception:
+                continue
+            nct = (nct or "").strip()
+            title = (title or nct).strip()
+        if nct:
+            rows.append({"nct": nct, "title": title})
+    n = len(rows)
+    subject = f"BridgeMD weekly trial update: {n} new {what} match{'es' if n != 1 else ''}"
     lines = [
-        "Hi,",
+        "Hi there,",
         "",
-        f"{n} new recruiting trial{'s' if n != 1 else ''} just matched your "
-        f"saved interest ({what})"
-        + (f" near {alert['location']}" if alert["location"] else "") + ":",
+        f"Here are the strongest new recruiting trial match{'es' if n != 1 else ''} "
+        f"for your saved alert: {what}"
+        + (f" near {alert['location']}." if alert["location"] else "."),
+        "",
+        "Top new matches:",
         "",
     ]
-    for nct, title in new_matches[:10]:
-        lines.append(f"  - {title or nct} ({nct})")
-    if n > 10:
-        lines.append(f"  ...and {n - 10} more.")
+    for i, row in enumerate(rows, 1):
+        nct = row["nct"]
+        title = row["title"]
+        lines += [
+            f"{i}) {title}",
+            f"   NCT: {nct}",
+            f"   Details: https://clinicaltrials.gov/study/{nct}",
+            "",
+        ]
     lines += [
-        "",
-        "See them and ask to be contacted here:",
+        "Review these and apply from your alerts page:",
         link,
         "",
-        "You're getting this because you set up a trial alert on BridgeMD. "
-        "Manage or turn off alerts from the link above.",
+        "We keep this to a weekly cadence and only include high-signal new matches.",
+        "You're receiving this because you created a trial alert on BridgeMD.",
+        "You can manage or turn alerts off from the link above.",
     ]
     return subject, "\n".join(lines)
 

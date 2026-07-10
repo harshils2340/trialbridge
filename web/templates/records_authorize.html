@@ -10,16 +10,15 @@
     </a>
     <h1 class="auth-title">Connect your health records</h1>
     <p class="auth-sub">
-      This mirrors the real authorization step: confirm access once, then your future applications auto-fill.
+      Connect a preview health profile once, then your future applications auto-fill.
     </p>
 
     <div class="records-auth-provider">
       <div class="records-auth-label">{{ ic.icon('activity') }} Provider</div>
       <div class="records-auth-value">{{ records_provider }}</div>
-      {% if records_live %}
-      <p class="records-auth-note">You'll be redirected through a secure provider flow and returned here once authorized.</p>
-      {% else %}
-      <p class="records-auth-note">You're connecting through our secure health-data source for pre-screening and autofill.</p>
+      <p class="records-auth-note">This environment uses preview records for pre-screening and autofill.</p>
+      {% if records_live_blocked %}
+      <p class="records-auth-note">{{ records_live_blocked }}</p>
       {% endif %}
     </div>
 
@@ -27,7 +26,7 @@
       <input type="hidden" name="next" value="{{ next_url }}">
       <label class="if-consent records-auth-consent">
         <input type="checkbox" name="consent_records" required>
-        <span>I authorize BridgeMD to retrieve my records for trial pre-screening and application autofill.</span>
+        <span>I authorize BridgeMD to use preview records for trial pre-screening and application autofill.</span>
       </label>
       <button class="btn btn-primary btn-block" type="submit">{{ ic.icon('check') }} Authorize and continue</button>
       <a class="btn btn-ghost btn-block" href="{{ next_url }}">Cancel</a>

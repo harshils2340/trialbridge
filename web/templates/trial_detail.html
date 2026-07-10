@@ -24,6 +24,7 @@
       {% if r.distance is not none %}<span class="pr-dist">{{ ic.icon('pin') }}{{ '%.0f'|format(r.distance) }} {{ r.unit }} away</span>{% endif %}
       {% if t.phase %}<span class="pr-phase">{{ t.phase.replace('_',' ')|title if t.phase != 'NA' else 'N/A' }}</span>{% endif %}
       {% if r.pay and r.pay.label %}<span class="pr-pay pr-pay-{{ r.pay.tier }}">{{ ic.icon('activity') }}{{ r.pay.label }}</span>{% endif %}
+      <span class="pr-phase">{{ 'Site-posted' if t.source == 'site_posted' else 'ClinicalTrials.gov' }}</span>
       <span class="pr-recruiting">{{ ic.icon('check') }} Recruiting</span>
     </div>
 
@@ -53,8 +54,14 @@
       {% else %}
       <p class="td-summary">{{ summary.one_liner }}</p>
       {% endif %}
-      <p class="td-source">Summarized in plain language from the study's public
-        ClinicalTrials.gov listing.{% if t.nctId %} <a href="https://clinicaltrials.gov/study/{{ t.nctId }}" target="_blank" rel="noopener">Read the full description{{ ic.icon('external') }}</a>{% endif %}</p>
+      <p class="td-source">
+        {% if t.source == 'site_posted' %}
+        Summarized from the study details posted directly by the site.
+        {% else %}
+        Summarized in plain language from the study's public ClinicalTrials.gov listing.
+        {% if t.nctId %} <a href="https://clinicaltrials.gov/study/{{ t.nctId }}" target="_blank" rel="noopener">Read the full description{{ ic.icon('external') }}</a>{% endif %}
+        {% endif %}
+      </p>
     </div>
     {% endif %}
 
@@ -85,12 +92,15 @@
 
     <div class="td-facts">
       {% if t.leadSponsor %}<span>{{ ic.icon('award') }} Sponsor: {{ t.leadSponsor }}</span>{% endif %}
+      {% if t.source != 'site_posted' and t.nctId %}
       <span><a href="https://clinicaltrials.gov/study/{{ t.nctId }}" target="_blank" rel="noopener">{{ ic.icon('external') }} {{ t.nctId }} on ClinicalTrials.gov</a></span>
+      {% else %}
+      <span>{{ ic.icon('check') }} Site-posted study ID: {{ t.nctId }}</span>
+      {% endif %}
     </div>
 
-    <p class="pr-foot-note">BridgeMD shows public information from ClinicalTrials.gov and an
-      automated read of eligibility. It isn't medical advice - the study team makes the final
-      eligibility decision, and you should talk with your own doctor.</p>
+    <p class="pr-foot-note">BridgeMD combines public ClinicalTrials.gov listings with site-posted studies.
+      Eligibility hints are directional only - the study team makes the final decision, and you should talk with your own doctor.</p>
   </div>
 
   <aside class="td-aside">

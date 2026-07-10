@@ -54,7 +54,7 @@
       <div class="section-title"><h2>Trial</h2></div>
       <dl class="kv">
         <dt>Study</dt><dd>{{ d.get('title') }}</dd>
-        <dt>NCT</dt><dd><a class="ctlink mono" href="https://clinicaltrials.gov/study/{{ d.get('nct') }}" target="_blank" rel="noopener">{{ d.get('nct') }} {{ ic.icon('external') }}</a></dd>
+        <dt>NCT</dt><dd>{% if (d.get('nct') or '').startswith('NCT') %}<a class="ctlink mono" href="https://clinicaltrials.gov/study/{{ d.get('nct') }}" target="_blank" rel="noopener">{{ d.get('nct') }} {{ ic.icon('external') }}</a>{% else %}<span class="mono">{{ d.get('nct') }}</span>{% endif %}</dd>
         <dt>Site</dt><dd>{{ d.get('site') or '-' }}</dd>
         {% if d.get('verdict') %}<dt>Screen</dt><dd><span class="pill {{ d.get('verdict') }}">{{ d.get('verdict').replace('_',' ') }}{% if d.get('score') %}<span class="score">{{ d.get('score') }}</span>{% endif %}</span></dd>{% endif %}
       </dl>

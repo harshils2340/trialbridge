@@ -222,7 +222,7 @@
               data-trial="{{ l['nct'] or '' }}"
               data-attention="{{ 'needs' if needs_attention else 'clean' }}">
             <td><b>{{ it.code }}</b><div class="tag">{{ it.age_band }}{% if l['sex'] %} · {{ l['sex']|capitalize }}{% endif %}</div></td>
-            <td>{% if l['nct'] %}<a href="https://clinicaltrials.gov/study/{{ l['nct'] }}" target="_blank" rel="noopener">{{ l['nct'] }}</a>{% endif %}<div class="tag">{{ l['title'][:56] }}</div></td>
+            <td>{% if l['nct'] %}{% if l['nct'].startswith('NCT') %}<a href="https://clinicaltrials.gov/study/{{ l['nct'] }}" target="_blank" rel="noopener">{{ l['nct'] }}</a>{% else %}{{ l['nct'] }}{% endif %}{% endif %}<div class="tag">{{ l['title'][:56] }}</div></td>
             <td><span class="pill pill-{{ l['status'] }}">{{ labels.get(l['status'], l['status']) }}</span></td>
             <td>{% if it.unread %}<span class="msg-badge">{{ it.unread }} new</span>{% endif %}<span class="tag">{{ it.elig.get('met', [])|length }} met / {{ it.elig.get('unknown', [])|length }} confirm / {{ it.elig.get('not_met', [])|length }} not met</span></td>
             <td><span class="tag">{{ ('web' if (l['source'] or '') == 'demo' else (l['source'] or 'web'))|replace('_', ' ')|title }}</span><span class="tag">{{ 'Record' if l['records_connected'] else 'No record' }}</span></td>
@@ -248,7 +248,7 @@
               data-trial="{{ l['nct'] or '' }}"
               data-attention="{{ 'needs' if needs_attention else 'clean' }}">
             <td><b>{{ l['name'] or it.code }}</b><div class="tag">{{ it.code }} · {{ it.age_band }}</div></td>
-            <td>{% if l['nct'] %}<a href="https://clinicaltrials.gov/study/{{ l['nct'] }}" target="_blank" rel="noopener">{{ l['nct'] }}</a>{% endif %}<div class="tag">{{ l['title'][:56] }}</div></td>
+            <td>{% if l['nct'] %}{% if l['nct'].startswith('NCT') %}<a href="https://clinicaltrials.gov/study/{{ l['nct'] }}" target="_blank" rel="noopener">{{ l['nct'] }}</a>{% else %}{{ l['nct'] }}{% endif %}{% endif %}<div class="tag">{{ l['title'][:56] }}</div></td>
             <td><span class="pill pill-{{ l['status'] }}">{{ labels.get(l['status'], l['status']) }}</span></td>
             <td>{% if it.unread %}<span class="msg-badge">{{ it.unread }} new</span>{% endif %}<span class="tag">Coverage: {{ support_coverage_labels.get(it.support.coverage_status, it.support.coverage_status or 'Not checked') }}</span><span class="tag">Travel: {{ support_travel_labels.get(it.support.travel_status, it.support.travel_status or 'Not planned') }}</span></td>
             <td><span class="tag">{{ ('web' if (l['source'] or '') == 'demo' else (l['source'] or 'web'))|replace('_', ' ')|title }}</span><span class="tag">{{ 'Record' if l['records_connected'] else 'No record' }}</span></td>
@@ -272,7 +272,7 @@
               data-trial="{{ l['nct'] or '' }}"
               data-attention="{{ 'clean' }}">
             <td><b>{% if l['revealed'] %}{{ l['name'] }}{% else %}{{ it.code }}{% endif %}</b><div class="tag">{{ it.age_band }}{% if l['sex'] %} · {{ l['sex']|capitalize }}{% endif %}</div></td>
-            <td>{% if l['nct'] %}<a href="https://clinicaltrials.gov/study/{{ l['nct'] }}" target="_blank" rel="noopener">{{ l['nct'] }}</a>{% endif %}<div class="tag">{{ l['title'][:56] }}</div></td>
+            <td>{% if l['nct'] %}{% if l['nct'].startswith('NCT') %}<a href="https://clinicaltrials.gov/study/{{ l['nct'] }}" target="_blank" rel="noopener">{{ l['nct'] }}</a>{% else %}{{ l['nct'] }}{% endif %}{% endif %}<div class="tag">{{ l['title'][:56] }}</div></td>
             <td><span class="pill pill-{{ l['status'] }}">{{ labels.get(l['status'], l['status']) }}</span></td>
             <td>{% if it.recon %}<span class="tag recon-tag">{{ recon_labels.get(it.recon['outcome'], it.recon['outcome']) }}</span>{% endif %}<span class="tag">Coverage: {{ support_coverage_labels.get(it.support.coverage_status, it.support.coverage_status or 'Not checked') }}</span></td>
             <td><span class="tag">{{ ('web' if (l['source'] or '') == 'demo' else (l['source'] or 'web'))|replace('_', ' ')|title }}</span><span class="tag">{{ 'Record' if l['records_connected'] else 'No record' }}</span></td>
@@ -313,7 +313,7 @@
 
     <div class="cr-mid">
       <div class="cand-trial">
-        {% if l['nct'] %}<a href="https://clinicaltrials.gov/study/{{ l['nct'] }}" target="_blank" rel="noopener">{{ l['nct'] }}</a>{% endif %}
+        {% if l['nct'] %}{% if l['nct'].startswith('NCT') %}<a href="https://clinicaltrials.gov/study/{{ l['nct'] }}" target="_blank" rel="noopener">{{ l['nct'] }}</a>{% else %}{{ l['nct'] }}{% endif %}{% endif %}
         <div class="cand-title">{{ l['title'] }}</div>
       </div>
       <div class="cand-meta">
@@ -452,7 +452,7 @@
             <div class="tag">{{ it.age_band }}{% if l['sex'] %} · {{ l['sex']|capitalize }}{% endif %}</div>
             <a class="cand-open" href="{{ url_for('candidate_page', token=l['site_token']) }}">{{ ic.icon('external') }} Open workspace</a>
             <div class="tag">Link exp: {{ l['site_token_expires_at'] or '-' }}</div></td>
-          <td>{% if l['nct'] %}<a href="https://clinicaltrials.gov/study/{{ l['nct'] }}" target="_blank" rel="noopener">{{ l['nct'] }}</a>{% endif %}<div class="tag">{{ l['title'][:44] }}</div></td>
+          <td>{% if l['nct'] %}{% if l['nct'].startswith('NCT') %}<a href="https://clinicaltrials.gov/study/{{ l['nct'] }}" target="_blank" rel="noopener">{{ l['nct'] }}</a>{% else %}{{ l['nct'] }}{% endif %}{% endif %}<div class="tag">{{ l['title'][:44] }}</div></td>
           <td><span class="pill pill-{{ l['status'] }}">{{ labels.get(l['status'], l['status']) }}</span>
             {% if l['decision'] == 'declined' and l['decision_reason'] %}<div class="tag">{{ l['decision_reason'] }}</div>{% endif %}
             {% if it.recon %}<div class="tag recon-tag">{{ recon_labels.get(it.recon['outcome'], it.recon['outcome']) }}</div>{% endif %}

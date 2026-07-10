@@ -12,6 +12,7 @@ loop can be replaced by cron hitting /alerts/run; the daemon here means it works
 with zero extra infrastructure too.
 """
 import os
+import re
 import threading
 import time
 
@@ -21,6 +22,8 @@ import db
 _app = None
 _notifier = None
 INTERVAL = int(os.environ.get("ALERTS_INTERVAL_SECONDS", str(6 * 3600)))
+NOTIFY_MIN_DAYS = max(1, int(os.environ.get("ALERTS_NOTIFY_MIN_DAYS", "7")))
+EMAIL_MAX_MATCHES = max(1, int(os.environ.get("ALERTS_EMAIL_MAX_MATCHES", "2")))
 
 
 def configure(app, notifier=None):
@@ -57,6 +60,44 @@ def _match_ncts(alert):
     return out
 
 
+def _tokens(*parts):
+    txt = " ".join((p or "") for p in parts).strip().lower()
+    return {t for t in re.split(r"[^a-z0-9]+", txt) if len(t) >= 3}
+
+
+def _quality_score(alert, match):
+    """Simple relevance score so alert emails only include high-signal matches."""
+    title = (match.get("title") or "").strip()
+    if not title:
+        return 0
+    q = _tokens(alert.get("label"), alert.get("condition"), alert.get("intervention"))
+    t = _tokens(title)
+    overlap = len(q & t)
+    score = overlap * 12
+    if len(title) >= 24:
+        score += 10
+    if len(title) > 170:
+        score -= 8
+    return score
+
+
+def _curate_for_email(alert, rows):
+    """Pick a small, useful set of matches for an email digest."""
+    picks = []
+    for r in rows:
+        row = dict(r)
+        nct = (row.get("nct") or "").strip()
+        title = (row.get("title") or "").strip()
+        if not nct or not title:
+            continue
+        m = {"nct": nct, "title": title, "score": _quality_score(alert, row)}
+        picks.append(m)
+    picks.sort(key=lambda x: (-x["score"], x["nct"]))
+    # Require at least some relevance signal; otherwise skip the email.
+    strong = [x for x in picks if x["score"] >= 10]
+    return strong[:EMAIL_MAX_MATCHES]
+
+
 def seed_baseline(alert_id):
     """Record what already matches as seen (is_new=0), so only future trials
     trigger a notification. Call once, right after creating the alert."""
@@ -73,9 +114,13 @@ def check_alert(alert):
     new = [(n, t) for (n, t) in matches if n not in seen]
     if new:
         db.add_alert_matches(alert["id"], new, is_new=True)
-        if _notifier:
+    if _notifier and db.alert_notify_due(alert, min_days=NOTIFY_MIN_DAYS):
+        pending = db.get_new_alert_matches(alert["id"], limit=150)
+        curated = _curate_for_email(alert, pending)
+        if curated:
             try:
-                _notifier(alert, new)
+                _notifier(alert, curated)
+                db.mark_alert_notified(alert["id"])
             except Exception:
                 if _app is not None:
                     _app.logger.exception("alert notify failed")

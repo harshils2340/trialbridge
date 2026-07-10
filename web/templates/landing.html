@@ -38,13 +38,14 @@
       For sites and sponsors: track which channels actually convert to screened and enrolled patients.
     </p>
 
-    <form id="heroForm" method="post" action="{{ url_for('find') }}">
+    <form id="heroForm" method="post" action="{{ url_for('find') }}" autocomplete="off">
       <div class="hero-search">
         <div class="hero-field">
           {{ ic.icon('search') }}
           <input id="conditionInput" name="condition" type="text"
                  placeholder="Condition or treatment - e.g. type 2 diabetes"
-                 value="{{ condition_value|default('') }}" list="conditionOptions" required>
+                 value="{{ condition_value|default('') }}" list="conditionOptions"
+                 autocomplete="off" autocapitalize="off" spellcheck="false" required>
           <datalist id="conditionOptions">
             {% for option in condition_options[:20] %}
             <option value="{{ option }}"></option>
@@ -54,7 +55,8 @@
         <div class="hero-field">
           {{ ic.icon('pin') }}
           <input id="location" name="location" type="text" placeholder="City or postal code"
-                 value="{{ location_value|default('') }}" required>
+                 value="{{ location_value|default('') }}" autocomplete="off"
+                 autocapitalize="words" spellcheck="false" required>
         </div>
         <button class="btn btn-primary btn-lg" type="submit">Find trials{{ ic.icon('arrow-right') }}</button>
       </div>
@@ -132,6 +134,13 @@
   var condInput = document.getElementById('conditionInput');
   var interv = document.getElementById('heroIntervention');
   var locInput = document.getElementById('location');
+  var serverCond = {{ (condition_value|default('')|tojson) }};
+  var serverLoc = {{ (location_value|default('')|tojson) }};
+
+  // Keep first-load state blank unless the backend intentionally passed prefill
+  // values (e.g. query-driven navigation). This prevents browser autofill noise.
+  if (condInput && !serverCond) condInput.value = '';
+  if (locInput && !serverLoc) locInput.value = '';
 
   function prefillOnly(term, isDrug) {
     if (!isDrug && condInput) condInput.value = term;

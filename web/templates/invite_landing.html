@@ -19,7 +19,7 @@
     <div class="inv-actions">
       <a class="btn btn-primary btn-lg" href="{{ url_for('home', q=inv['condition'] or inv['title']) }}">
         {{ ic.icon('search') }} See this study &amp; apply</a>
-      {% if inv['nct'] %}
+      {% if inv['nct'] and inv['nct'].startswith('NCT') %}
       <a class="btn btn-ghost" href="https://clinicaltrials.gov/study/{{ inv['nct'] }}" target="_blank" rel="noopener">
         Read the full details {{ ic.icon('external') }}</a>
       {% endif %}

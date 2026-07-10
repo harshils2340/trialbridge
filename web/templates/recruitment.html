@@ -36,7 +36,7 @@
     <tbody>
       {% for t in stats.per_trial %}
       <tr>
-        <td>{% if t.nct %}<a href="https://clinicaltrials.gov/study/{{ t.nct }}" target="_blank" rel="noopener">{{ t.nct }}</a> {% endif %}
+        <td>{% if t.nct %}{% if t.nct.startswith('NCT') %}<a href="https://clinicaltrials.gov/study/{{ t.nct }}" target="_blank" rel="noopener">{{ t.nct }}</a>{% else %}{{ t.nct }}{% endif %} {% endif %}
           <span class="dash-trial-title">{{ t.title[:60] }}</span></td>
         <td>{{ t.total }}</td>
         <td>{{ t.enrolled }}</td>

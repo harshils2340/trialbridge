@@ -115,7 +115,11 @@
     </div>
 
     <div class="refer-panel">
+      {% if t.nctId and t.nctId.startswith('NCT') %}
       <a class="ctlink" href="https://clinicaltrials.gov/study/{{ t.nctId }}" target="_blank" rel="noopener">Full record on ClinicalTrials.gov {{ ic.icon('external') }}</a>
+      {% else %}
+      <span class="tag">Site-posted study {{ t.nctId }}</span>
+      {% endif %}
       <form method="post" action="{{ url_for('refer') }}" class="refer-form">
         <input type="hidden" name="nct" value="{{ t.nctId }}">
         <input type="hidden" name="title" value="{{ t.title }}">

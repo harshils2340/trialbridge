@@ -151,18 +151,9 @@ commented `disk:` block in `render.yaml`).
 | `GOOGLE_CALENDAR_API_BASE` | Optional Calendar API base override |
 | `VISIT_INVITE_DURATION_MINUTES` | Duration used for ICS/Google events (default `30`) |
 | `VISIT_ICS_ORGANIZER_NAME` | Organizer label in generated ICS files |
-| `RECORDS_PROVIDER` | `sandbox` (default) or `metriport` / `1uphealth` |
-| `RECORDS_API_KEY` | Live records provider API key |
-| `RECORDS_API_BASE` | Live provider base URL (default `https://api.metriport.com`) |
-| `RECORDS_API_KEY_HEADER` | Header name for API key (`Authorization` default) |
-| `RECORDS_API_KEY_PREFIX` | Prefix for auth header (`Bearer ` default) |
-| `METRIPORT_FACILITY_ID` | Optional Metriport facility id for patient creation |
-| `RECORDS_WEBHOOK_SECRET` | Shared secret for `/records/webhook/metriport?key=...` |
-| `METRIPORT_CREATE_PATIENT_PATH` | Override live patient-create path |
-| `METRIPORT_START_NETWORK_QUERY_PATH` | Override network-query path |
-| `METRIPORT_GET_CONSOLIDATED_PATH` | Override direct consolidated-data path |
-| `METRIPORT_START_CONSOLIDATED_PATH` | Override consolidated-query start path |
-| `METRIPORT_GET_CONSOLIDATED_QUERY_PATH` | Override consolidated-query status path |
+| `RECORDS_PROVIDER` | `sandbox` (default; preview records mode) |
+| `RECORDS_API_KEY` | Reserved for future live records integrations (unused in preview mode) |
+| `RECORDS_API_BASE` | Reserved for future live records integrations |
 | `PAYER_PROVIDER` | Payer check provider label (`sandbox` default) |
 | `PAYER_API_URL`, `PAYER_API_KEY` | Optional payer eligibility API endpoint + key |
 | `PAYER_API_KEY_HEADER`, `PAYER_API_KEY_PREFIX` | Optional payer auth header config |

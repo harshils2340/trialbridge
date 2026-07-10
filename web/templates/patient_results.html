@@ -81,7 +81,7 @@
     {% endif %}
 
     <div class="filt-group filt-note">
-      {{ ic.icon('check') }}<span>Every result is <b>actively recruiting</b> on ClinicalTrials.gov.</span>
+      {{ ic.icon('check') }}<span>Results include actively recruiting studies from ClinicalTrials.gov and directly posted site studies.</span>
     </div>
   </aside>
 
@@ -148,6 +148,7 @@
         {% if r.distance is not none %}<span class="pr-dist">{{ ic.icon('pin') }}{{ '%.0f'|format(r.distance) }} {{ r.unit }} away</span>{% endif %}
         {% if t.phase %}<span class="pr-phase">{{ t.phase.replace('_',' ')|title if t.phase != 'NA' else 'N/A' }}</span>{% endif %}
         {% if r.pay and r.pay.label %}<span class="pr-pay pr-pay-{{ r.pay.tier }}">{{ ic.icon('activity') }}{{ r.pay.label }}</span>{% endif %}
+        <span class="pr-phase">{{ 'Site-posted' if t.source == 'site_posted' else 'ClinicalTrials.gov' }}</span>
         <span class="pr-recruiting">{{ ic.icon('check') }} Recruiting</span>
       </div>
       <h2 class="pr-card-title">
@@ -176,9 +177,8 @@
       No trials match these filters. <button type="button" class="link-btn" id="filtReset2">Reset filters</button>
     </p>
 
-    <p class="pr-foot-note">BridgeMD shows public information from ClinicalTrials.gov and an
-      automated read of eligibility. It isn't medical advice - the study team makes the final
-      eligibility decision, and you should talk with your own doctor.</p>
+    <p class="pr-foot-note">BridgeMD combines public information from ClinicalTrials.gov with site-posted recruiting studies.
+      Eligibility hints are directional only - the study team makes the final decision, and you should talk with your own doctor.</p>
   </div>
 </section>
 

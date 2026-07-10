@@ -183,7 +183,13 @@
     <div class="app-foot">
       <span class="app-applied">Applied {{ ld.created_at }}</span>
       <div class="app-foot-actions">
-        {% if ld.nct %}<a class="app-link" href="https://clinicaltrials.gov/study/{{ ld.nct }}" target="_blank" rel="noopener">{{ ic.icon('external') }} {{ ld.nct }}</a>{% endif %}
+        {% if ld.nct %}
+          {% if ld.nct.startswith('NCT') %}
+          <a class="app-link" href="https://clinicaltrials.gov/study/{{ ld.nct }}" target="_blank" rel="noopener">{{ ic.icon('external') }} {{ ld.nct }}</a>
+          {% else %}
+          <span class="app-link">{{ ic.icon('check') }} {{ ld.nct }}</span>
+          {% endif %}
+        {% endif %}
         {% if a.events|length > 1 %}
         <details class="app-timeline">
           <summary>{{ ic.icon('chevron-down') }} History</summary>

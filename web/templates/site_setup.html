@@ -55,10 +55,54 @@
       <label>Study title (optional)
         <input type="text" name="title" placeholder="Once-Weekly Semaglutide in Adults With Obesity">
       </label>
+      <label>Notification email (optional)
+        <input type="email" name="notify_email" placeholder="trial-intake@site.org">
+      </label>
       <button class="btn btn-primary" type="submit">{{ ic.icon('award') }} Claim study</button>
     </form>
-    <p class="site-hint">No trial recreation needed. Claim by NCT.</p>
+    <p class="site-hint">No trial recreation needed. Claim by NCT. Leave notification email blank to use org profile contact email.</p>
   </div>
+</div>
+
+<div class="card">
+  <div class="section-title"><h2>Post a site study</h2></div>
+  <p class="site-hint">Use this when a study is actively enrolling at your site but not published on ClinicalTrials.gov yet.</p>
+  <form method="post" action="{{ url_for('post_site_study') }}" class="site-form">
+    <label>Study title
+      <input type="text" name="title" placeholder="e.g. Phase II Metabolic Health Study" required>
+    </label>
+    <label>Condition
+      <input type="text" name="condition" placeholder="e.g. Obesity" required>
+    </label>
+    <label>Location
+      <input type="text" name="location" placeholder="e.g. Toronto, ON" required>
+    </label>
+    <label>Site name
+      <input type="text" name="site_name" placeholder="e.g. BridgeMD Research Site">
+    </label>
+    <label>Brief summary
+      <textarea name="brief_summary" rows="3" placeholder="Short plain-language description shown on patient results cards."></textarea>
+    </label>
+    <label>Eligibility highlights
+      <textarea name="eligibility" rows="3" placeholder="Key inclusion/exclusion notes for coordinators and applicants."></textarea>
+    </label>
+    <label>Study phase (optional)
+      <input type="text" name="phase" placeholder="e.g. Phase 2">
+    </label>
+    <label>Coordinator email (optional)
+      <input type="email" name="contact_email" placeholder="coordinator@site.org">
+    </label>
+    <label>Coordinator phone (optional)
+      <input type="text" name="contact_phone" placeholder="+1 416 555 0100">
+    </label>
+    <label>Status
+      <select name="status">
+        <option value="recruiting" selected>Recruiting</option>
+        <option value="paused">Paused</option>
+      </select>
+    </label>
+    <button class="btn btn-primary" type="submit">{{ ic.icon('plus') }} Post study</button>
+  </form>
 </div>
 
 <div class="card">
@@ -67,16 +111,57 @@
   <div class="empty"><p>No claimed NCTs yet. Claim one above to start receiving applicants.</p></div>
   {% else %}
   <table class="claim-table">
-    <thead><tr><th>NCT</th><th>Title</th><th>Added</th><th></th></tr></thead>
+    <thead><tr><th>NCT</th><th>Title</th><th>Notification email</th><th>Added</th><th></th></tr></thead>
     <tbody>
       {% for c in claims %}
       <tr>
-        <td><a href="https://clinicaltrials.gov/study/{{ c['nct'] }}" target="_blank" rel="noopener">{{ c['nct'] }}</a></td>
+        <td>
+          {% if c['nct'].startswith('NCT') %}
+          <a href="https://clinicaltrials.gov/study/{{ c['nct'] }}" target="_blank" rel="noopener">{{ c['nct'] }}</a>
+          {% else %}
+          {{ c['nct'] }}
+          {% endif %}
+        </td>
         <td>{{ c['title'] or '-' }}</td>
+        <td>
+          <form method="post" action="{{ url_for('update_study_claim_notify_email') }}" class="site-form">
+            <input type="hidden" name="nct" value="{{ c['nct'] }}">
+            <input type="email" name="notify_email" value="{{ c['notify_email'] or '' }}" placeholder="Use org contact email">
+            <button class="btn btn-sm btn-ghost" type="submit">Save</button>
+          </form>
+        </td>
         <td>{{ c['created_at'] }}</td>
         <td>
           <form method="post" action="{{ url_for('remove_study_claim') }}">
             <input type="hidden" name="nct" value="{{ c['nct'] }}">
+            <button class="btn btn-sm btn-ghost" type="submit">Remove</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>
+
+<div class="card">
+  <div class="section-title"><h2>Your site-posted studies</h2></div>
+  {% if not posted %}
+  <div class="empty"><p>No site-posted studies yet.</p></div>
+  {% else %}
+  <table class="claim-table">
+    <thead><tr><th>ID</th><th>Title</th><th>Condition</th><th>Location</th><th>Status</th><th></th></tr></thead>
+    <tbody>
+      {% for s in posted %}
+      <tr>
+        <td>{{ s['nct'] }}</td>
+        <td>{{ s['title'] }}</td>
+        <td>{{ s['condition'] or '-' }}</td>
+        <td>{{ s['location'] or '-' }}</td>
+        <td>{{ s['status']|title }}</td>
+        <td>
+          <form method="post" action="{{ url_for('remove_posted_study') }}">
+            <input type="hidden" name="study_id" value="{{ s['id'] }}">
             <button class="btn btn-sm btn-ghost" type="submit">Remove</button>
           </form>
         </td>

@@ -4,7 +4,7 @@ Use this as the go/no-go sheet before onboarding paid site sponsors.
 
 ## 1) Live integrations (no sandbox fallbacks)
 
-- [ ] Records: `RECORDS_PROVIDER=metriport` + `RECORDS_API_KEY` + `RECORDS_WEBHOOK_SECRET`
+- [ ] Records: preview records mode enabled (`RECORDS_PROVIDER=sandbox`) and patient copy clearly labels this as preview data
 - [ ] Payer checks: `PAYER_API_URL` + `PAYER_API_KEY`
 - [ ] Travel/logistics: `LOGISTICS_API_URL` + `LOGISTICS_API_KEY`
 - [ ] Notifications email: `NOTIFY_LIVE=1`, verified sender domain, SMTP vars set
