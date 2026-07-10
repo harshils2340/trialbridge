@@ -184,6 +184,7 @@ commented `disk:` block in `render.yaml`).
 | `RATE_LIMIT_VERIFY_RESEND_MAX` | Max POSTs/IP/window for `/account/verify/resend` (default `5`) |
 | `RATE_LIMIT_INTEREST_MAX` | Max POSTs/IP/window for `/interest` (default `12`) |
 | `PORT`, `FLASK_DEBUG`, `WEB_MAX_MATCH` | Server port, debug, LLM calls per search |
+| `MATCH_QUALITY_MIN` | Minimum internal quality score (0-100) before LLM eligibility copy is shown as-is (default `85`) |
 
 ## Ops endpoints and drills
 

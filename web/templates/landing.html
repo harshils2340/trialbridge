@@ -4,9 +4,36 @@
 {% block body %}
 <section class="hero">
   <div class="hero-in">
+    {% if patient_user %}
+    <div class="home-profile-strip">
+      <div class="home-profile-main">
+        <span class="home-profile-eyebrow">{{ ic.icon('user-plus') }} Signed in</span>
+        <h2>Welcome back{% if patient_user.full_name %}, {{ patient_user.full_name.split(' ')[0] }}{% endif %}.</h2>
+        <p>
+          {{ applications_count }} application{{ '' if applications_count == 1 else 's' }}
+          {% if messages_unread %} · {{ messages_unread }} unread message{{ '' if messages_unread == 1 else 's' }}{% endif %}
+          · Records: {{ 'Connected' if records_profile else 'Not connected' }}
+        </p>
+      </div>
+      <div class="home-profile-actions">
+        <a class="btn btn-ghost btn-sm" href="{{ url_for('applications') }}">My applications</a>
+        <a class="btn btn-ghost btn-sm" href="{{ url_for('alerts') }}">Alerts{% if alerts_new_count %} ({{ alerts_new_count }}){% endif %}</a>
+        {% if records_profile %}
+        <form method="post" action="{{ url_for('records_refresh') }}">
+          <button class="btn btn-ghost btn-sm" type="submit">Refresh records</button>
+        </form>
+        {% else %}
+        <form method="post" action="{{ url_for('records_connect') }}">
+          <input type="hidden" name="next" value="{{ url_for('home') }}">
+          <button class="btn btn-primary btn-sm" type="submit">Connect records</button>
+        </form>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
     <span class="hero-eyebrow">{{ ic.icon('sparkle') }} Live ClinicalTrials.gov search</span>
-    <h1>Find recruiting trials near you.</h1>
-    <p class="hero-sub">Enter condition and location, then apply to the best matches.</p>
+    <h1>{{ 'Find your next trial match.' if patient_user else 'Find recruiting trials near you.' }}</h1>
+    <p class="hero-sub">{{ 'Search again with your saved context and keep applications moving.' if patient_user else 'Enter condition and location, then apply to the best matches.' }}</p>
     <p class="hero-sub" style="margin-top:6px;font-size:14px;color:var(--muted);">
       For sites and sponsors: track which channels actually convert to screened and enrolled patients.
     </p>

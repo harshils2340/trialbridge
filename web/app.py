@@ -82,6 +82,8 @@ if os.environ.get("BEHIND_PROXY", "0") == "1":
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 
 MAX_MATCH = int(os.environ.get("WEB_MAX_MATCH", "6"))  # LLM calls per search
+MATCH_QUALITY_MIN = max(
+    0, min(100, int(os.environ.get("MATCH_QUALITY_MIN", "85"))))
 app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024    # 16 MB upload cap
 app.teardown_appcontext(db.close_db)
 
@@ -1757,24 +1759,29 @@ def withdraw_application(token):
 
 @app.route("/records/connect", methods=["POST"])
 def records_connect():
-    """Patient authorizes their health records ONCE. We pull a de-identified
-    profile and store it against their applicant token, so every application
-    (past pending + future) auto-fills from it. Sandbox by default; a real
-    aggregator (Metriport/1upHealth) slots in behind the same call."""
+    """Entry point from forms/buttons: send patient to authorization step first."""
     if not g.patient_user:
         flash("Sign in to connect health records.", "error")
         return redirect(url_for("patient_login", next=_safe_next(request.referrer) or url_for("applications")))
+    nxt = _safe_next(request.form.get("next", "") or request.args.get("next", ""))
+    if not nxt:
+        nxt = _safe_next(request.referrer) or url_for("applications")
+    return redirect(url_for("records_authorize", next=nxt))
+
+
+def _finalize_records_connect(redirect_to):
+    """Run connection/sync and persist profile/state; returns a redirect response."""
     applicant = g.patient_user["applicant_token"]
     try:
         prof = records_mod.connect(g.patient_user, applicant)
     except fhir.FhirError as e:
         flash(str(e), "error")
-        return redirect(request.referrer or url_for("applications"))
+        return redirect(redirect_to)
     except Exception:
         app.logger.exception("records connect failed")
         flash("Couldn't connect your records right now. Please try again.",
               "error")
-        return redirect(request.referrer or url_for("applications"))
+        return redirect(redirect_to)
 
     provider = (prof.get("provider") or records_mod.provider_label()).strip()
     sync_status = (prof.get("sync_status") or "").strip().lower()
@@ -1793,7 +1800,7 @@ def records_connect():
                "this can take a few minutes. We'll auto-fill your applications "
                "as soon as data is ready.")
         flash(msg, "success")
-        return redirect(request.referrer or url_for("applications"))
+        return redirect(redirect_to)
 
     db.set_records_profile(applicant, prof)
     n = db.attach_records_to_open_leads(applicant, records_mod.summary_text(prof))
@@ -1808,7 +1815,36 @@ def records_connect():
                 if n else "New applications will auto-fill from your history - ")
         msg += "you won't have to re-enter your medical details."
     flash(msg, "success")
-    return redirect(request.referrer or url_for("applications"))
+    return redirect(redirect_to)
+
+
+@app.route("/records/authorize", methods=["GET", "POST"])
+def records_authorize():
+    """Patient-facing consent screen that mirrors real authorization flow."""
+    if not g.patient_user:
+        flash("Sign in to connect health records.", "error")
+        return redirect(url_for("patient_login", next=url_for("applications")))
+    nxt = _safe_next(request.form.get("next", "") or request.args.get("next", ""))
+    if not nxt:
+        nxt = _safe_next(request.referrer) or url_for("applications")
+
+    if request.method == "POST":
+        if not request.form.get("consent_records"):
+            flash("Please confirm consent to continue.", "error")
+            return render_template(
+                "records_authorize.html",
+                records_provider=records_mod.provider_label(),
+                records_live=records_mod.is_live(),
+                next_url=nxt,
+            )
+        return _finalize_records_connect(nxt)
+
+    return render_template(
+        "records_authorize.html",
+        records_provider=records_mod.provider_label(),
+        records_live=records_mod.is_live(),
+        next_url=nxt,
+    )
 
 
 @app.route("/records/refresh", methods=["POST"])
@@ -1878,11 +1914,17 @@ def _records_webhook_authorized():
     return hmac.compare_digest(cand, expected)
 
 
-@app.route("/records/webhook/metriport", methods=["POST"])
+@app.route("/records/webhook/metriport", methods=["GET", "POST"])
 def records_metriport_webhook():
     """Provider webhook: update sync state and pull latest consolidated data."""
+    if request.method == "GET":
+        # Some providers validate webhook destinations with a GET probe before
+        # sending real POST events. Return a simple 200 health response.
+        return jsonify({"ok": True, "webhook": "metriport"}), 200
     if not _records_webhook_authorized():
-        return jsonify({"ok": False, "error": "forbidden"}), 403
+        # Keep a 2xx response for provider dashboards that classify any non-2xx
+        # as a dead webhook destination. Unauthorized events are safely ignored.
+        return jsonify({"ok": True, "ignored": "unauthorized"}), 200
     try:
         payload = request.get_json(silent=True) or {}
     except Exception:
@@ -2166,6 +2208,11 @@ def _decode_lead(row, recon=None):
 @app.route("/app/leads")
 @login_required
 def leads():
+    if _demo_mode_enabled():
+        try:
+            db.ensure_demo_claim_volume(g.user["id"], minimum_rows=18)
+        except Exception:
+            app.logger.exception("demo claim volume seeding failed")
     rows = db.list_leads_for_user(g.user["id"])
     recon = db.latest_reconciliation_for_leads([r["id"] for r in rows])
     claims = db.list_study_claims(g.user["id"])
@@ -2813,6 +2860,84 @@ def _pay_likelihood(trial):
     return {"score": score, "tier": tier, "label": label, "notes": notes[:3]}
 
 
+def _match_quality(match):
+    """Internal quality score for LLM eligibility outputs.
+
+    This catches contradictions (e.g. "you may qualify" + clear blockers) and
+    low-signal model copy before it is shown to end users.
+    """
+    m = mt.normalize_match(match or {})
+    rationale = (m.get("rationale") or "").strip()
+    low = rationale.lower()
+    score = 100
+    flags = []
+
+    pos_terms = ("may qualify", "might qualify", "could qualify",
+                 "good fit", "likely eligible", "eligible")
+    neg_terms = ("disqualif", "ineligible", "not eligible", "fails", "barrier")
+    has_pos = any(t in low for t in pos_terms)
+    has_neg = any(t in low for t in neg_terms)
+    has_blockers = bool(m.get("not_met"))
+
+    if len(rationale) < 20:
+        score -= 35
+        flags.append("rationale_too_short")
+    if not (m.get("met") or m.get("unknown") or m.get("not_met")):
+        score -= 40
+        flags.append("no_criteria_breakdown")
+    if m.get("verdict") == "likely_eligible" and has_blockers:
+        score -= 45
+        flags.append("eligible_with_blockers")
+    if has_blockers and has_pos:
+        score -= 40
+        flags.append("positive_rationale_with_blockers")
+    if m.get("verdict") == "unlikely" and has_pos:
+        score -= 30
+        flags.append("unlikely_with_positive_rationale")
+    if m.get("verdict") == "likely_eligible" and has_neg:
+        score -= 35
+        flags.append("likely_with_negative_rationale")
+    if m.get("verdict") == "possible" and has_blockers:
+        score -= 10
+        flags.append("possible_despite_blockers")
+    if len(m.get("unknown") or []) > 8:
+        score -= 10
+        flags.append("too_many_unknowns")
+
+    return {"score": max(0, min(100, score)), "flags": flags}
+
+
+def _quality_gated_match(match):
+    """Return normalized + quality-gated eligibility output for UI safety."""
+    m = mt.normalize_match(match or {})
+    q = _match_quality(m)
+    out = dict(m)
+    out["quality_score"] = q["score"]
+    out["quality_flags"] = q["flags"]
+    out["quality_ok"] = q["score"] >= MATCH_QUALITY_MIN
+
+    if out["quality_ok"]:
+        return out
+
+    blockers = [x for x in (m.get("not_met") or []) if str(x).strip()]
+    unknown = [x for x in (m.get("unknown") or []) if str(x).strip()]
+    if blockers:
+        r = ("Potential blocker identified: "
+             f"{blockers[0]}. Please confirm eligibility with the study team.")
+        out.update({"verdict": "unlikely", "score": min(int(m.get("score") or 0), 35),
+                    "rationale": r})
+    elif unknown:
+        r = ("Eligibility needs confirmation: "
+             f"{unknown[0]}. The study team can verify this quickly.")
+        out.update({"verdict": "possible", "score": min(int(m.get("score") or 0), 55),
+                    "rationale": r})
+    else:
+        out.update({"verdict": "possible", "score": 45,
+                    "rationale": ("Eligibility needs manual confirmation with the "
+                                  "study team before applying.")})
+    return out
+
+
 # --------------------------------------------------------------------------- #
 # Search
 # --------------------------------------------------------------------------- #
@@ -2907,6 +3032,12 @@ def run_search(note, condition, country, require_site, coords=None, radius=50,
             m = {"verdict": "possible", "score": 0,
                  "rationale": "Add an LLM key for eligibility reasoning.",
                  "met": [], "not_met": [], "unknown": []}
+        m = _quality_gated_match(m)
+        if not m.get("quality_ok", True):
+            app.logger.warning(
+                "Eligibility output quality gated for %s (score=%s flags=%s)",
+                t.get("nctId", ""), m.get("quality_score"),
+                ",".join(m.get("quality_flags") or []))
         if near:
             site, dist = near[0], near[0]["distance"]
         else:

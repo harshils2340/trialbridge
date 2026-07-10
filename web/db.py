@@ -2232,6 +2232,110 @@ def seed_demo_engagement(clinician_id):
     db.commit()
 
 
+def ensure_demo_claim_volume(user_id, minimum_rows=18):
+    """Ensure demo study-team queues have enough rows for ATS walkthroughs.
+
+    Existing projects can already contain older/smaller demo datasets; this tops
+    up only the claimed studies for the current user so the board feels realistic.
+    """
+    try:
+        minimum_rows = max(0, int(minimum_rows))
+    except Exception:
+        minimum_rows = 18
+    if minimum_rows <= 0:
+        return 0
+    claims = list_study_claims(user_id)
+    ncts = [c["nct"] for c in claims if c["nct"]]
+    if not ncts:
+        return 0
+    db = get_db()
+    qs = ",".join("?" * len(ncts))
+    row = db.execute(
+        f"SELECT COUNT(*) n FROM leads WHERE nct IN ({qs})", ncts).fetchone()
+    have = int((row["n"] if row else 0) or 0)
+    if have >= minimum_rows:
+        return 0
+    need = minimum_rows - have
+    title_for = {c["nct"]: (c["title"] or f"Claimed study {c['nct']}") for c in claims}
+    statuses = ["prescreen", "prescreen", "eligible", "screening", "enrolled", "closed"]
+    ts = now()
+    added = 0
+    for i in range(need):
+        nct = ncts[i % len(ncts)]
+        status = statuses[i % len(statuses)]
+        idx = have + i + 1
+        token = gen_token()
+        site_token = gen_token()
+        decision = ""
+        decision_reason = ""
+        revealed = 0
+        if status in ("eligible", "screening", "enrolled"):
+            decision = "accepted"
+            revealed = 1
+        elif status == "closed":
+            decision = "declined"
+            decision_reason = "Protocol mismatch after coordinator review"
+        records_connected = 1 if (idx % 2 == 0) else 0
+        cond = "Type 2 Diabetes" if idx % 3 else "Obesity"
+        city = ["Toronto, ON", "Mississauga, ON", "Hamilton, ON", "Ottawa, ON"][idx % 4]
+        elig = {
+            "met": ["Age within protocol range", "Condition aligned with protocol intent"],
+            "unknown": ["One lab panel pending confirmation"],
+            "not_met": ["Potential protocol mismatch noted"] if status == "closed" else [],
+            "rationale": "Demo candidate auto-seeded for high-volume ATS walkthrough.",
+        }
+        rec = _demo_record(cond, str(30 + (idx % 35)), "female" if idx % 2 else "male") \
+            if records_connected else ""
+        db.execute(
+            """INSERT INTO leads
+               (token, site_token, site_token_expires_at, site_token_revoked,
+                applicant_token, nct, title, condition, location, site, name,
+                email, phone, age, sex, notes, consent, source, status, screener,
+                eligibility, records_connected, record_summary, decision,
+                decision_reason, decided_at, revealed, created_at, updated_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (token, site_token, _site_token_expiry(), 0,
+             f"demo-volume-{idx}", nct, title_for.get(nct, nct), cond, city,
+             "Demo Trial Site", f"Demo Candidate {idx}", f"demo.queue.{idx}@example.com",
+             f"+1 416 555 {2000 + idx:04d}", str(30 + (idx % 35)),
+             "female" if idx % 2 else "male", "", 1, "demo", status,
+             json.dumps({"travel": "yes", "other_trial": "no",
+                         "pregnancy": "no", "consent_capable": "yes"}),
+             json.dumps(elig), records_connected, rec, decision,
+             decision_reason, ts if decision else "", revealed, ts, ts))
+        lid = db.execute("SELECT last_insert_rowid() id").fetchone()["id"]
+        db.execute(
+            "INSERT INTO lead_events (lead_id, status, note, actor, created_at) "
+            "VALUES (?,?,?,?,?)", (lid, "submitted", "application received", "you", ts))
+        db.execute(
+            "INSERT INTO lead_events (lead_id, status, note, actor, created_at) "
+            "VALUES (?,?,?,?,?)", (lid, "prescreen", "ready for study-team review", "you", ts))
+        if decision == "accepted":
+            db.execute(
+                "INSERT INTO lead_events (lead_id, status, note, actor, created_at) "
+                "VALUES (?,?,?,?,?)",
+                (lid, "eligible", "accepted - likely eligible", "you", ts))
+        if status == "screening":
+            db.execute(
+                "INSERT INTO lead_events (lead_id, status, note, actor, created_at) "
+                "VALUES (?,?,?,?,?)",
+                (lid, "screening", "invited to screening visit", "site", ts))
+        if status == "enrolled":
+            db.execute(
+                "INSERT INTO lead_events (lead_id, status, note, actor, created_at) "
+                "VALUES (?,?,?,?,?)",
+                (lid, "enrolled", "enrolled in study", "site", ts))
+        if status == "closed":
+            db.execute(
+                "INSERT INTO lead_events (lead_id, status, note, actor, created_at) "
+                "VALUES (?,?,?,?,?)",
+                (lid, "closed", decision_reason, "you", ts))
+        added += 1
+    if added:
+        db.commit()
+    return added
+
+
 def seed_demo_patient_apps(applicant_token):
     """Seed realistic patient-facing applications for demo mode.
 
