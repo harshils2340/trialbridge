@@ -33,7 +33,7 @@
     <a href="{{ url_for('login') }}" class="pub-clin">For clinicians</a>
   </nav>
 </header>
-{% if not patient_user and not user %}
+{% if request.endpoint == 'home' or (not patient_user and not user) %}
 <div class="pub-nav-tools">
   {% include "_pov_bar.html" %}
 </div>
@@ -58,7 +58,7 @@
       <span class="pub-foot-note">Not medical advice.</span>
     </div>
     <div class="pub-foot-tools">
-      {% if not patient_user and not user %}
+      {% if request.endpoint == 'home' or (not patient_user and not user) %}
       {% include "_pov_bar.html" %}
       {% endif %}
     </div>

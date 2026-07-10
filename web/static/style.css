@@ -1369,6 +1369,13 @@ body.pub { background: var(--surface); }
   .ats-row { flex-direction: column; align-items: stretch; }
   .ats-row .btn { width: 100%; }
   .outreach-grid { grid-template-columns: 1fr; }
+  .dash-table, .claim-table, .pipeline-lane table {
+    display: block;
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    white-space: nowrap;
+  }
 }
 
 /* -------------------------------------------------------------------------- */

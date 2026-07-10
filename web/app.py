@@ -305,7 +305,12 @@ def _seed_demo_surfaces(user_id=None):
 
 def _demo_mode_enabled():
     """True when the temporary no-login preview shell should be enabled."""
-    return NO_LOGIN or bool(session.get(DEMO_SESSION_KEY))
+    if NO_LOGIN or bool(session.get(DEMO_SESSION_KEY)):
+        return True
+    # Default behavior for demos: anonymous visitors on study-team surfaces
+    # should see a working ATS without setup/login friction.
+    p = (request.path or "").strip()
+    return p.startswith("/app/leads") or p.startswith("/app/dashboard")
 
 
 # Seed the retention/engagement surfaces (messages, visits, a physician referral)
@@ -348,8 +353,6 @@ def load_user():
         _seed_demo_surfaces(g.user["id"])
     pid = session.get(PATIENT_SESSION_KEY)
     g.patient_user = db.get_patient_user(pid) if pid else None
-    if g.patient_user is None and _demo_mode_enabled():
-        g.patient_user = _ensure_demo_patient()
 
 
 APPLICANT_COOKIE = "tb_app"
@@ -1366,12 +1369,8 @@ def build_patient_note(condition, age="", sex="", about=""):
 
 @app.route("/")
 def home():
-    # Public marketing/search landing should be signed-out only.
-    # Logged-in users go straight to their working surfaces.
-    if g.patient_user:
-        return redirect(url_for("applications"))
-    if g.user:
-        return redirect(url_for("dashboard"))
+    # Home should always be the public search landing.
+    # Users can switch surfaces from the POV switcher.
     return _render_landing()
 
 

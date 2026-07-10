@@ -1834,7 +1834,7 @@ def _demo_lead_specs():
     plus accepted / declined / screening / enrolled so the board looks real."""
     scr_ok = {"travel": "yes", "other_trial": "no",
               "pregnancy": "no", "consent_capable": "yes"}
-    return [
+    specs = [
         # ---- Awaiting review (prescreen, no decision) ----------------------
         {"days": 1, "status": "prescreen", "records": 1,
          "nct": "NCT05869903",
@@ -1951,6 +1951,112 @@ def _demo_lead_specs():
                   "unknown": [], "not_met": [],
                   "rationale": "Completed screening and enrolled."}},
     ]
+
+    # Make the demo queue feel realistic for ATS walkthroughs: many candidates
+    # across review/active/done instead of a tiny sample.
+    extra = [
+        ("Ava", "Chen", "female", "34", "prescreen", 1, "NCT05869903",
+         "Once-Weekly Semaglutide in Adults With Obesity", "Obesity",
+         "Toronto, ON", "Toronto Metabolic Research Centre"),
+        ("Noah", "Singh", "male", "49", "prescreen", 0, "NCT06034262",
+         "Tirzepatide vs Placebo for Type 2 Diabetes and Weight",
+         "Type 2 Diabetes", "Mississauga, ON", "Trillium Clinical Trials"),
+        ("Mia", "Patel", "female", "57", "prescreen", 1, "NCT05442919",
+         "Resmetirom for Nonalcoholic Steatohepatitis (NASH)", "NASH (MASH)",
+         "Ottawa, ON", "Ottawa Liver Institute"),
+        ("Liam", "Khan", "male", "43", "prescreen", 0, "NCT05929066",
+         "Investigational GLP-1/GIP Co-agonist for Weight Management",
+         "Obesity", "Hamilton, ON", "Hamilton Health Research"),
+        ("Sofia", "Wong", "female", "39", "eligible", 1, "NCT05869903",
+         "Once-Weekly Semaglutide in Adults With Obesity", "Obesity",
+         "London, ON", "Western Metabolic Clinic"),
+        ("Ethan", "Brown", "male", "62", "screening", 1, "NCT06034262",
+         "Tirzepatide vs Placebo for Type 2 Diabetes and Weight",
+         "Type 2 Diabetes", "Kitchener, ON", "Grand River Trials"),
+        ("Isla", "Martin", "female", "46", "screening", 1, "NCT05869903",
+         "Once-Weekly Semaglutide in Adults With Obesity", "Obesity",
+         "Toronto, ON", "Toronto Metabolic Research Centre"),
+        ("Leo", "Davis", "male", "54", "enrolled", 1, "NCT06034262",
+         "Tirzepatide vs Placebo for Type 2 Diabetes and Weight",
+         "Type 2 Diabetes", "Mississauga, ON", "Trillium Clinical Trials"),
+        ("Chloe", "Wilson", "female", "31", "closed", 0, "NCT05929066",
+         "Investigational GLP-1/GIP Co-agonist for Weight Management",
+         "Obesity", "Waterloo, ON", "Waterloo Metabolic Clinic"),
+        ("Mason", "Taylor", "male", "58", "eligible", 1, "NCT05442919",
+         "Resmetirom for Nonalcoholic Steatohepatitis (NASH)", "NASH (MASH)",
+         "Ottawa, ON", "Ottawa Liver Institute"),
+        ("Ella", "Moore", "female", "42", "prescreen", 0, "NCT05869903",
+         "Once-Weekly Semaglutide in Adults With Obesity", "Obesity",
+         "Burlington, ON", "Halton Clinical Research"),
+        ("James", "Nguyen", "male", "50", "prescreen", 1, "NCT06034262",
+         "Tirzepatide vs Placebo for Type 2 Diabetes and Weight",
+         "Type 2 Diabetes", "Markham, ON", "York Region Trials"),
+        ("Zoe", "Hall", "female", "45", "eligible", 1, "NCT05869903",
+         "Once-Weekly Semaglutide in Adults With Obesity", "Obesity",
+         "Toronto, ON", "Toronto Metabolic Research Centre"),
+        ("Lucas", "Young", "male", "37", "screening", 0, "NCT05929066",
+         "Investigational GLP-1/GIP Co-agonist for Weight Management",
+         "Obesity", "Hamilton, ON", "Hamilton Health Research"),
+        ("Grace", "Allen", "female", "64", "closed", 0, "NCT05442919",
+         "Resmetirom for Nonalcoholic Steatohepatitis (NASH)", "NASH (MASH)",
+         "Ottawa, ON", "Ottawa Liver Institute"),
+    ]
+
+    for i, (first, last, sex, age, status, rec, nct, title, cond, loc, site) in enumerate(extra):
+        idx = i + 1
+        screener = {"travel": "yes", "other_trial": "no",
+                    "pregnancy": "no", "consent_capable": "yes"}
+        not_met = []
+        reason = ""
+        decision = "accepted" if status in ("eligible", "screening", "enrolled") else ""
+        revealed = 1 if decision else 0
+        accepted_days = 0
+        screening_days = 0
+        enrolled_days = 0
+        declined_days = 0
+        if status == "closed":
+            decision = "declined"
+            revealed = 0
+            reason = "Protocol mismatch after coordinator review"
+            not_met = ["Coordinator marked protocol mismatch"]
+            declined_days = max(1, 3 + (idx % 3))
+        if decision == "accepted":
+            accepted_days = max(1, 2 + (idx % 4))
+        if status == "screening":
+            screening_days = max(1, accepted_days - 1)
+        if status == "enrolled":
+            screening_days = max(1, accepted_days - 1)
+            enrolled_days = max(1, screening_days - 1)
+        specs.append({
+            "days": 10 + idx,
+            "status": status,
+            "decision": decision,
+            "revealed": revealed,
+            "records": rec,
+            "nct": nct,
+            "title": title,
+            "condition": cond,
+            "location": loc,
+            "site": site,
+            "name": f"{first} {last}.",
+            "email": f"demo.{first.lower()}.{last.lower()}@example.com",
+            "phone": f"+1 416 555 {1200 + idx:04d}",
+            "age": age,
+            "sex": sex,
+            "screener": screener,
+            "reason": reason,
+            "accepted_days": accepted_days,
+            "declined_days": declined_days,
+            "screening_days": screening_days,
+            "enrolled_days": enrolled_days,
+            "elig": {
+                "met": ["Age within range", "Condition aligns with protocol"],
+                "unknown": ["One lab panel pending site confirmation"],
+                "not_met": not_met,
+                "rationale": "Demo candidate seeded for realistic queue volume.",
+            },
+        })
+    return specs
 
 
 def seed_demo_leads():

@@ -35,6 +35,8 @@ or 2). See `.cursor/rules/enrollment-velocity.mdc` (always on).
 - After completing a requested implementation batch and validating it locally, **commit and push
   immediately by default** (unless the founder explicitly says not to push yet).
 - Always report clearly whether the latest changes are pushed or only local.
+- Treat "push everything" as the standing default: do not pause to ask for push
+  confirmation unless the founder explicitly says to hold.
 
 ## Why (evidence from the Rare Disease Day recruitment/retention panel)
 - 86% of trials miss recruitment deadlines.
