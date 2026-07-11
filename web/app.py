@@ -3036,6 +3036,15 @@ def _site_posted_rank(study, condition, intervention):
 
 
 def _site_posted_as_trial(study):
+    posted_contacts = []
+    if (study.get("profile_contact_name") or study.get("contact_email") or
+            study.get("contact_phone")):
+        posted_contacts.append({
+            "name": study.get("profile_contact_name") or "Study contact",
+            "email": study.get("contact_email") or "",
+            "phone": study.get("contact_phone") or "",
+            "role": "STUDY_COORDINATOR",
+        })
     return {
         "nctId": study["nct"],
         "title": study["title"],
@@ -3053,6 +3062,7 @@ def _site_posted_as_trial(study):
             "lat": study.get("lat"),
             "lon": study.get("lon"),
         }],
+        "centralContacts": posted_contacts,
         "source": "site_posted",
     }
 
@@ -3178,6 +3188,7 @@ def run_search(note, condition, country, require_site, coords=None, radius=50,
         return {"trial": t, "match": m, "site": site,
                 "site_str": _site_str(site),
                 "coordinator": _coordinator(t, site),
+                "public_contacts": _public_contacts(t, site),
                 "distance": dist, "unit": unit, "relevance": _rel(t),
                 "nearby": near[:8], "nearby_total": len(near),
                 "other_count": len(others), "other_regions": other_regions[:5],
@@ -3255,6 +3266,7 @@ def run_search(note, condition, country, require_site, coords=None, radius=50,
             "site": {"facility": site_name, "city": site_loc},
             "site_str": site_str,
             "coordinator": coordinator,
+            "public_contacts": _public_contacts(trial, {"contacts": []}),
             "distance": dist,
             "unit": unit,
             "relevance": relevance,
@@ -3309,6 +3321,31 @@ def _fmt_contact(c):
     phone = (c.get("phone") or "").strip()
     email = (c.get("email") or "").strip()
     return " · ".join(b for b in (name, phone, email) if b)
+
+
+def _public_contacts(trial, site, limit=4):
+    """Public trial contacts to show patients (from CT.gov or site-posted data)."""
+    out, seen = [], set()
+
+    def _push(c):
+        name = _clean_name(c.get("name")) or "Study contact"
+        email = (c.get("email") or "").strip()
+        phone = (c.get("phone") or "").strip()
+        role = (c.get("role") or "").strip().replace("_", " ").title()
+        if not (email or phone):
+            return
+        key = (name.lower(), email.lower(), phone)
+        if key in seen:
+            return
+        seen.add(key)
+        out.append({"name": name, "email": email, "phone": phone, "role": role})
+
+    for c in (site or {}).get("contacts", []):
+        if c.get("role") != "PRINCIPAL_INVESTIGATOR":
+            _push(c)
+    for c in (trial.get("centralContacts") or []):
+        _push(c)
+    return out[:limit]
 
 
 def _coordinator(trial, site):

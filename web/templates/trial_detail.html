@@ -82,6 +82,24 @@
       {% endif %}
     </div>
 
+    {% if r.public_contacts %}
+    <div class="td-section">
+      <h2>Public study contacts</h2>
+      <p class="td-source" style="margin-top:0;">These contacts come from public trial listings. You can reach out directly, or apply through BridgeMD to track updates in one place.</p>
+      <div class="td-contact-list">
+        {% for c in r.public_contacts %}
+        <div class="td-contact">
+          <p class="td-contact-name"><b>{{ c.name }}</b>{% if c.role %} <span>{{ c.role }}</span>{% endif %}</p>
+          <p class="td-contact-lines">
+            {% if c.email %}<a href="mailto:{{ c.email }}">{{ c.email }}</a>{% endif %}
+            {% if c.phone %}<a href="tel:{{ c.phone|replace(' ','')|replace('-','') }}">{{ c.phone }}</a>{% endif %}
+          </p>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
     {% if (r.pay and r.pay.label) or (r.support and (r.support.travel or r.support.coverage or r.support.stipend)) %}
     <div class="td-section">
       <h2>Participant support</h2>
@@ -120,6 +138,9 @@
       <p class="td-apply-sub">Create your patient account to apply and track status updates.</p>
       <a class="btn btn-primary btn-block" href="{{ url_for('patient_signup', next=request.path) }}">Sign up to apply</a>
       <a class="btn btn-ghost btn-block" href="{{ url_for('patient_login', next=request.path) }}">Sign in</a>
+      {% if r.public_contacts and r.public_contacts[0].email %}
+      <a class="btn btn-ghost btn-block" href="mailto:{{ r.public_contacts[0].email }}">Contact study directly</a>
+      {% endif %}
       {% elif applied and t.nctId in applied %}
       <div class="td-applied">
         <div class="td-applied-ic">{{ ic.icon('check') }}</div>

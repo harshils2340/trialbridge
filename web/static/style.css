@@ -2001,6 +2001,13 @@ h1, h2, h3 {
   margin: 0 0 8px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .td-site .ico { width: 15px; height: 15px; }
 .td-other { color: var(--muted); }
+.td-contact-list { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.td-contact { border: 1px solid var(--border); background: var(--surface-2); border-radius: 12px; padding: 12px; }
+.td-contact-name { margin: 0 0 6px; color: var(--ink); font-size: 14px; }
+.td-contact-name span { font-size: 11px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; margin-left: 5px; }
+.td-contact-lines { margin: 0; display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+.td-contact-lines a { color: var(--accent); text-decoration: none; }
+.td-contact-lines a:hover { text-decoration: underline; }
 .td-facts { display: flex; flex-direction: column; gap: 8px; font-size: 14px;
   color: var(--muted); margin-top: 20px; }
 .td-facts span { display: flex; align-items: center; gap: 6px; }
@@ -2026,6 +2033,7 @@ h1, h2, h3 {
   .td-layout { grid-template-columns: 1fr; gap: 24px; padding: 12px 24px 56px; }
   .td-back { padding: 0 24px; }
   .td-aside { position: static; }
+  .td-contact-list { grid-template-columns: 1fr; }
 }
 
 /* ==========================================================================
