@@ -1368,6 +1368,14 @@ body.pub { background: var(--surface); }
 .claims-link { margin-left: auto; font-size: 12.5px; color: var(--accent); text-decoration: none; }
 .claims-link:hover { text-decoration: underline; }
 
+.workflow-chips { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+.wf-chip { border: 1px solid var(--border); background: var(--surface-2); color: var(--muted);
+  border-radius: 999px; padding: 8px 12px; font-size: 12.5px; font-weight: 700; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 6px; }
+.wf-chip .ico { width: 14px; height: 14px; }
+.wf-chip.active { background: #fff; color: var(--ink); border-color: #d6dced; box-shadow: 0 1px 2px rgba(17,17,20,.08); }
+.wf-panel[hidden] { display: none !important; }
+
 @media (max-width: 720px) {
   .setup-tab { flex: 1 1 calc(50% - 8px); justify-content: center; }
 }

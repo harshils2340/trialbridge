@@ -58,7 +58,7 @@
     <tbody>
       {% for s in stats.source_breakdown %}
       <tr>
-        <td><span class="dash-src">{{ ('web' if (s.source or '') == 'demo' else (s.source or 'web'))|replace('_', ' ')|title }}</span></td>
+        <td><span class="dash-src">{{ 'Physician referrals' if (s.source or '') == 'physician' else 'Patient self-serve' }}</span></td>
         <td>{{ s.total }}</td>
         <td>{{ s.screening }}</td>
         <td>{{ s.enrolled }}</td>
@@ -85,12 +85,8 @@
     </label>
     <label>Channel source
       <select name="source" required>
-        <option value="web">Web</option>
-        <option value="referral">Physician referral</option>
-        <option value="community">Community outreach</option>
-        <option value="media">Digital/traditional media</option>
-        <option value="emr">EMR/chart review</option>
-        <option value="other">Other</option>
+        <option value="patient">Patient self-serve</option>
+        <option value="physician">Physician referrals</option>
       </select>
     </label>
     <label>Campaign / vendor
@@ -123,7 +119,7 @@
     <tbody>
       {% for s in spend.by_source %}
       <tr>
-        <td>{{ s.source|replace('_', ' ')|title }}</td>
+        <td>{{ 'Physician referrals' if (s.source or '') == 'physician' else 'Patient self-serve' }}</td>
         <td>${{ s.amount_usd }}</td>
       </tr>
       {% endfor %}

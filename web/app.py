@@ -1268,9 +1268,34 @@ def dashboard():
     referrals = db.list_referrals(g.user["id"])
     counts = db.status_counts(g.user["id"])
     enrolled = db.enrolled_count(g.user["id"])
+    invites = db.list_invites(g.user["id"])
+    proactive = [x for x in invites if (x.get("applied") or 0) > 0]
+    proactive.sort(
+        key=lambda x: (
+            -int(x.get("enrolled") or 0),
+            -int(x.get("active") or 0),
+            -int(x.get("applied") or 0),
+        )
+    )
+    if _demo_mode_enabled() and not proactive:
+        proactive = [
+            {"invite": {"nct": "NCT05869903", "title": "Semaglutide in Adults With Obesity",
+                        "condition": "Obesity"},
+             "applied": 3, "active": 2, "enrolled": 1},
+            {"invite": {"nct": "NCT06034262", "title": "Tirzepatide vs Placebo for Type 2 Diabetes and Weight",
+                        "condition": "Type 2 diabetes"},
+             "applied": 2, "active": 1, "enrolled": 0},
+        ]
+    proactive_summary = {
+        "trials": len(invites),
+        "applied": sum(int(x.get("applied") or 0) for x in invites),
+        "active": sum(int(x.get("active") or 0) for x in invites),
+        "enrolled": sum(int(x.get("enrolled") or 0) for x in invites),
+    }
     return render_template(
         "dashboard.html", referrals=referrals[:8], counts=counts,
-        total=len(referrals), enrolled=enrolled, statuses=db.STATUSES)
+        total=len(referrals), enrolled=enrolled, statuses=db.STATUSES,
+        proactive=proactive[:6], proactive_summary=proactive_summary)
 
 
 # --------------------------------------------------------------------------- #
@@ -2142,6 +2167,13 @@ SUPPORT_TRAVEL_LABELS = {
 }
 
 
+def _source_bucket(src):
+    s = (src or "").strip().lower()
+    return "physician" if s in {
+        "referral", "invite", "physician", "emr", "doctor_referral"
+    } else "patient"
+
+
 def age_band(age):
     try:
         a = int(str(age).strip())
@@ -2244,7 +2276,8 @@ def recruitment_spend_add():
         return redirect(url_for("recruitment_dashboard"))
     source = request.form.get("source", "").strip().lower()
     if not source:
-        source = "other"
+        source = "patient"
+    source = _source_bucket(source)
     try:
         amt = float(request.form.get("amount_usd", "0").strip())
     except Exception:

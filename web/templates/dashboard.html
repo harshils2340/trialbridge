@@ -6,14 +6,78 @@
 {% endif %}
 
 <div class="tool-head">
-  <h1>Find a trial</h1>
+  <h1>Physician matching workspace</h1>
   <div class="stat-strip">
-    <span class="s"><b>{{ total }}</b> referrals</span>
-    <span class="s"><b>{{ counts.get('referred',0) + counts.get('contacted',0) + counts.get('screened',0) }}</b> in pipeline</span>
+    <span class="s"><b>{{ total }}</b> physician referrals</span>
+    <span class="s"><b>{{ counts.get('referred',0) + counts.get('contacted',0) + counts.get('screened',0) }}</b> in physician pipeline</span>
     <span class="s accent"><b>{{ enrolled }}</b> enrolled</span>
     <a href="{{ url_for('referrals') }}" class="strip-link">Referrals →</a>
   </div>
 </div>
 
-{% include "_search_form.html" %}
+<div class="card">
+  <div class="section-title"><h2>Ideal workflow demo</h2></div>
+  <div class="workflow-chips">
+    <button type="button" class="wf-chip active" data-wf="passive">{{ ic.icon('search') }} Passive: doctor-triggered match</button>
+    <button type="button" class="wf-chip" data-wf="proactive">{{ ic.icon('activity') }} Proactive: background alerts</button>
+  </div>
+  <div class="site-hint">
+    Proactive alerts should route first to the practice's research coordinator (or designated triage nurse),
+    with digest visibility for the physician.
+  </div>
+</div>
+
+<section class="wf-panel" data-wf-panel="passive">
+  <div class="card">
+    <div class="section-title"><h2>Passive matching (in visit)</h2></div>
+    <p class="site-hint">Doctor (or staff) enters a note or pulls records, gets best-fit trials, then sends referral in one flow.</p>
+  </div>
+  {% include "_search_form.html" %}
+</section>
+
+<section class="wf-panel" data-wf-panel="proactive" hidden>
+  <div class="stats">
+    <div class="stat"><div class="l">{{ ic.icon('award', 'ico stat-ico') }}Tracked trials</div><div class="n">{{ proactive_summary.trials }}</div></div>
+    <div class="stat"><div class="l">{{ ic.icon('list', 'ico stat-ico') }}Applied</div><div class="n">{{ proactive_summary.applied }}</div></div>
+    <div class="stat"><div class="l">{{ ic.icon('activity', 'ico stat-ico') }}Active</div><div class="n">{{ proactive_summary.active }}</div></div>
+    <div class="stat accent"><div class="l">{{ ic.icon('user-plus', 'ico stat-ico') }}Enrolled</div><div class="n">{{ proactive_summary.enrolled }}</div></div>
+  </div>
+  <div class="card">
+    <div class="section-title"><h2>Proactive updates queue</h2></div>
+    {% if proactive %}
+    <table class="dash-table">
+      <thead><tr><th>Trial</th><th>Applied</th><th>Active</th><th>Enrolled</th><th>Action</th></tr></thead>
+      <tbody>
+        {% for it in proactive %}
+        <tr>
+          <td><b>{{ it.invite.title or it.invite.nct }}</b>{% if it.invite.condition %}<div class="tag">{{ it.invite.condition }}</div>{% endif %}</td>
+          <td>{{ it.applied }}</td>
+          <td>{{ it.active }}</td>
+          <td>{{ it.enrolled }}</td>
+          <td><a class="btn btn-sm btn-ghost" href="{{ url_for('invite_patient') }}">Open physician queue</a></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty"><p>No proactive alerts yet. Connect EHR sync + invite workflows to populate this queue.</p></div>
+    {% endif %}
+  </div>
+</section>
+
+<script>
+(function () {
+  var chips = document.querySelectorAll('.wf-chip');
+  var panels = document.querySelectorAll('.wf-panel');
+  if (!chips.length) return;
+  function activate(name) {
+    chips.forEach(function (c) { c.classList.toggle('active', c.getAttribute('data-wf') === name); });
+    panels.forEach(function (p) { p.hidden = p.getAttribute('data-wf-panel') !== name; });
+  }
+  chips.forEach(function (c) {
+    c.addEventListener('click', function () { activate(c.getAttribute('data-wf')); });
+  });
+  activate('passive');
+})();
+</script>
 {% endblock %}

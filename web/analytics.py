@@ -181,9 +181,15 @@ def _engagement(ncts=None):
 
 def _source_breakdown(leads, recon, pipeline):
     """Channel-level throughput/cohort quality by lead source."""
+    def _bucket(src):
+        s = (src or "web").strip().lower()
+        return "physician" if s in {
+            "referral", "invite", "physician", "emr", "doctor_referral"
+        } else "patient"
+
     out = {}
     for lead in leads:
-        src = (lead["source"] or "web").strip().lower()
+        src = _bucket(lead["source"])
         row = out.setdefault(src, {
             "source": src,
             "total": 0,
@@ -201,6 +207,18 @@ def _source_breakdown(leads, recon, pipeline):
         row["enrolled"] += 1 if mx >= _stage_index("enrolled", pipeline) else 0
         if (recon.get(lead["id"]) or {}).get("outcome") == "enrolled_verified":
             row["verified_enrolled"] += 1
+    rows = list(out.values())
+    # Keep the dashboard stable with exactly two platform sources.
+    for src in ("physician", "patient"):
+        out.setdefault(src, {
+            "source": src,
+            "total": 0,
+            "prescreen": 0,
+            "eligible": 0,
+            "screening": 0,
+            "enrolled": 0,
+            "verified_enrolled": 0,
+        })
     rows = list(out.values())
     for r in rows:
         r["enroll_conv"] = round((r["enrolled"] / r["total"] * 100.0), 1) \
