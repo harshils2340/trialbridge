@@ -11,22 +11,6 @@
   </p>
 </div>
 
-<div class="card">
-  <div class="section-title"><h2>Physician workflow demo</h2></div>
-  <div class="workflow-chips">
-    <button type="button" class="wf-chip active" data-phys-demo="passive">{{ ic.icon('search') }} Passive: doctor-triggered match</button>
-    <button type="button" class="wf-chip" data-phys-demo="proactive">{{ ic.icon('activity') }} Proactive: background alerts</button>
-  </div>
-  <section class="wf-panel" data-phys-demo-panel="passive">
-    <p class="site-hint">Doctor or staff enters/pulls patient data, gets ranked trials, then sends referral in one flow.</p>
-    <p class="site-hint"><a href="{{ url_for('dashboard') }}">Open clinician matching workspace</a></p>
-  </section>
-  <section class="wf-panel" data-phys-demo-panel="proactive" hidden>
-    <p class="site-hint">Your platform can pre-match patients in the background and send triage-ready updates to research staff, with physician visibility.</p>
-    <p class="site-hint"><a href="{{ url_for('invite_patient') }}">Open proactive invite queue</a></p>
-  </section>
-</div>
-
 {% if not claims %}
 <div class="card">
   <div class="empty">
@@ -89,79 +73,4 @@
   {% endif %}
 </div>
 
-<div class="card dash-card">
-  <div class="section-title"><h2>Recruitment spend and ROI</h2></div>
-  {% if claims %}
-  <form method="post" action="{{ url_for('recruitment_spend_add') }}" class="site-form">
-    <label>Study (claimed NCT)
-      <select name="nct" required>
-        <option value="">Select study</option>
-        {% for c in claims %}<option value="{{ c.nct }}">{{ c.nct }}</option>{% endfor %}
-      </select>
-    </label>
-    <label>Channel source
-      <select name="source" required>
-        <option value="patient">Patient self-serve</option>
-        <option value="physician">Physician referrals</option>
-      </select>
-    </label>
-    <label>Campaign / vendor
-      <input type="text" name="campaign" placeholder="e.g. Meta July campaign">
-    </label>
-    <label>Amount (USD)
-      <input type="number" name="amount_usd" min="0.01" step="0.01" placeholder="2500.00" required>
-    </label>
-    <label>Spend date
-      <input type="date" name="spend_date">
-    </label>
-    <label>Note
-      <input type="text" name="note" placeholder="What this paid for">
-    </label>
-    <button class="btn btn-primary" type="submit">{{ ic.icon('check') }} Log spend</button>
-  </form>
-  {% else %}
-  <div class="empty"><p>Claim studies first to log recruitment spend by trial.</p></div>
-  {% endif %}
-
-  <div class="stats" style="margin-top:10px;">
-    <div class="stat"><div class="l">Total spend</div><div class="n">${{ spend.total_usd }}</div></div>
-    <div class="stat"><div class="l">Cost / screened</div><div class="n">{{ ('$' ~ spend.cost_per_screened) if spend.cost_per_screened is not none else '-' }}</div></div>
-    <div class="stat"><div class="l">Cost / enrolled</div><div class="n">{{ ('$' ~ spend.cost_per_enrolled) if spend.cost_per_enrolled is not none else '-' }}</div></div>
-  </div>
-
-  {% if spend.by_source %}
-  <table class="dash-table">
-    <thead><tr><th>Source</th><th>Spend (USD)</th></tr></thead>
-    <tbody>
-      {% for s in spend.by_source %}
-      <tr>
-        <td>{{ 'Physician referrals' if (s.source or '') == 'physician' else 'Patient self-serve' }}</td>
-        <td>${{ s.amount_usd }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  {% endif %}
-</div>
-<script>
-(function () {
-  var chips = document.querySelectorAll('[data-phys-demo]');
-  var panels = document.querySelectorAll('[data-phys-demo-panel]');
-  if (!chips.length || !panels.length) return;
-  function activate(name) {
-    chips.forEach(function (c) {
-      c.classList.toggle('active', c.getAttribute('data-phys-demo') === name);
-    });
-    panels.forEach(function (p) {
-      p.hidden = p.getAttribute('data-phys-demo-panel') !== name;
-    });
-  }
-  chips.forEach(function (c) {
-    c.addEventListener('click', function () {
-      activate(c.getAttribute('data-phys-demo'));
-    });
-  });
-  activate('passive');
-})();
-</script>
 {% endblock %}

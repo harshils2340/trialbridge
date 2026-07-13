@@ -1,35 +1,38 @@
 {% import "_icons.html" as ic %}
-<div class="import-bar">
-  <form id="importForm" class="import-seg" method="post" action="{{ url_for('extract') }}" enctype="multipart/form-data">
-    <span class="import-label">Have a note already?</span>
-    <label class="file-btn">
-      <input id="fileInput" type="file" name="file" accept=".pdf,.docx,.txt,.md,.csv,.rtf,.png,.jpg,.jpeg,.webp">
-      {{ ic.icon('upload') }}Upload PDF, Word, image, or text
-    </label>
-    <span class="import-hint">Auto-extract text.</span>
-  </form>
+<details class="import-collapse">
+  <summary>{{ ic.icon('upload') }} Import patient context <span>(optional)</span></summary>
+  <div class="import-bar">
+    <form id="importForm" class="import-seg" method="post" action="{{ url_for('extract') }}" enctype="multipart/form-data">
+      <span class="import-label">Have a note already?</span>
+      <label class="file-btn">
+        <input id="fileInput" type="file" name="file" accept=".pdf,.docx,.txt,.md,.csv,.rtf,.png,.jpg,.jpeg,.webp">
+        {{ ic.icon('upload') }}Upload PDF, Word, image, or text
+      </label>
+      <span class="import-hint">Auto-extract text.</span>
+    </form>
 
-  <div class="import-divider"><span>or</span></div>
+    <div class="import-divider"><span>or</span></div>
 
-  {% if user.ehr_connected %}
-  <form id="ehrForm" class="import-seg" method="post" action="{{ url_for('ehr_import') }}">
-    <span class="import-label">Pull from your EHR
-      <span class="ehr-conn">{{ ic.icon('check') }}{{ user.ehr_provider or 'Connected' }}</span>
-    </span>
-    <input id="ehrId" name="patient_id" type="text" class="ehr-input" placeholder="Patient FHIR ID">
-    <button class="file-btn as-btn" type="submit">{{ ic.icon('activity') }}Load patient</button>
-    <button type="button" id="ehrSample" class="link-btn">try a sample patient</button>
-    <button type="submit" form="ehrDisconnect" class="link-btn ehr-disc">Disconnect</button>
-  </form>
-  <form id="ehrDisconnect" method="post" action="{{ url_for('ehr_disconnect') }}" hidden></form>
-  {% else %}
-  <form class="import-seg" method="post" action="{{ url_for('ehr_connect') }}">
-    <span class="import-label">Pull from your EHR</span>
-    <button class="file-btn as-btn" type="submit">{{ ic.icon('activity') }}Connect your EHR</button>
-    <span class="import-hint">Connect once, then load a patient by ID - no copy-paste.</span>
-  </form>
-  {% endif %}
-</div>
+    {% if user.ehr_connected %}
+    <form id="ehrForm" class="import-seg" method="post" action="{{ url_for('ehr_import') }}">
+      <span class="import-label">Pull from your EHR
+        <span class="ehr-conn">{{ ic.icon('check') }}{{ user.ehr_provider or 'Connected' }}</span>
+      </span>
+      <input id="ehrId" name="patient_id" type="text" class="ehr-input" placeholder="Patient FHIR ID">
+      <button class="file-btn as-btn" type="submit">{{ ic.icon('activity') }}Load patient</button>
+      <button type="button" id="ehrSample" class="link-btn">try a sample patient</button>
+      <button type="submit" form="ehrDisconnect" class="link-btn ehr-disc">Disconnect</button>
+    </form>
+    <form id="ehrDisconnect" method="post" action="{{ url_for('ehr_disconnect') }}" hidden></form>
+    {% else %}
+    <form class="import-seg" method="post" action="{{ url_for('ehr_connect') }}">
+      <span class="import-label">Pull from your EHR</span>
+      <button class="file-btn as-btn" type="submit">{{ ic.icon('activity') }}Connect your EHR</button>
+      <span class="import-hint">Connect once, then load a patient by ID - no copy-paste.</span>
+    </form>
+    {% endif %}
+  </div>
+</details>
 
 <form id="searchForm" class="tool-form" method="post" action="{{ url_for('search') }}" autocomplete="off">
   <div class="loc-strip">

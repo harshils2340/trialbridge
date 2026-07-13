@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% block title %}EHR matching · BridgeMD{% endblock %}
+{% block body %}
+{% import "_icons.html" as ic %}
+
+<div class="tool-head">
+  <h1>EHR background matching</h1>
+</div>
+<p class="wf-lead">Your clinic's records, screened against the trials you run — so new
+  candidates come to you instead of you hunting through charts.</p>
+
+{% if ehr and ehr.connected %}
+{# --- Make it obvious the EHR is wired into the platform, clinic-wide --- #}
+<div class="ehr-banner">
+  <span class="ehr-banner-dot" aria-hidden="true"></span>
+  <div class="ehr-banner-main">
+    <b>{{ ehr.system }} EHR connected — clinic-wide</b>
+    <span>{{ ehr.clinic }} · {{ ehr.records }} patient records screened · last sync {{ ehr.last_sync }}</span>
+  </div>
+  <span class="ehr-banner-live">{{ ic.icon('activity') }} Matching in the background</span>
+</div>
+
+{# --- The whole idea in three plain steps --- #}
+<div class="pr-how ehr-how">
+  <div class="pr-how-step"><b>1</b> Connect your EHR once — every patient record in the clinic.</div>
+  <span class="pr-how-arrow">{{ ic.icon('arrow-right') }}</span>
+  <div class="pr-how-step"><b>2</b> We continuously screen your patients against the trials you run.</div>
+  <span class="pr-how-arrow">{{ ic.icon('arrow-right') }}</span>
+  <div class="pr-how-step"><b>3</b> New matches appear here — review, then reach out.</div>
+</div>
+
+<div class="stats ehr-stats">
+  <div class="stat"><div class="l">{{ ic.icon('award', 'ico stat-ico') }}Active trials</div><div class="n">{{ ehr.active_trials }}</div></div>
+  <div class="stat"><div class="l">{{ ic.icon('search', 'ico stat-ico') }}Patients screened</div><div class="n">{{ ehr.records }}</div></div>
+  <div class="stat accent"><div class="l">{{ ic.icon('user-plus', 'ico stat-ico') }}New matches</div><div class="n" id="ehrNewCount">{{ ehr.new_matches }}</div></div>
+</div>
+
+<div class="section-title ehr-section-title">
+  <h2>New patient matches</h2>
+  <span class="ehr-section-note">{{ ic.icon('check') }} From your own patients · a physician reviews before anyone is contacted</span>
+</div>
+
+{% set flagcls = {'Strong match': 'good', 'Likely': 'likely', 'Review': 'review'} %}
+{% for t in ehr.trials %}
+<div class="ehr-trial" data-ehr-trial>
+  <div class="ehr-trial-head">
+    <span class="ehr-trial-badge" data-ehr-badge>{{ t.patients|length }} new</span>
+    <div class="ehr-trial-main">
+      <h3>{{ t.title }}</h3>
+      <div class="ehr-trial-meta">
+        <span>{{ ic.icon('activity') }} {{ t.condition }}</span>
+        <span>{{ ic.icon('user-plus') }} {{ t.lead }}</span>
+        <span class="mono">{{ t.nct }}</span>
+      </div>
+    </div>
+  </div>
+  <ul class="ehr-pt-list">
+    {% for p in t.patients %}
+    <li class="ehr-pt" data-ehr-pt>
+      <div class="ehr-pt-id">
+        <span class="ehr-pt-avatar" aria-hidden="true">{{ p.initials }}</span>
+        <div class="ehr-pt-idmain">
+          <b>{{ p.ref }}</b>
+          <span class="ehr-pt-demo">{{ p.age }}{{ p.sex }} · {{ p.seen }}</span>
+        </div>
+      </div>
+      <div class="ehr-pt-reason">
+        <span class="ehr-pt-flag flag-{{ flagcls.get(p.flag, 'review') }}">{{ p.flag }}</span>
+        <span>{{ p.reason }}</span>
+      </div>
+      <div class="ehr-pt-actions">
+        <button type="button" class="btn btn-sm btn-primary ehr-act" data-act="email">{{ ic.icon('arrow-right') }} Email patient</button>
+        <button type="button" class="btn btn-sm btn-ghost ehr-act" data-act="physician">Send to physician</button>
+      </div>
+      <div class="ehr-pt-done" hidden>{{ ic.icon('check') }} <span data-ehr-done-text></span></div>
+    </li>
+    {% endfor %}
+  </ul>
+</div>
+{% endfor %}
+
+<p class="ehr-foot-note">Demo data. In production, matches come from your live EHR feed
+  and stay inside your clinic — nothing is shared or sent without a clinician's action.</p>
+
+<script>
+(function () {
+  var counter = document.getElementById('ehrNewCount');
+  document.querySelectorAll('.ehr-act').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var row = btn.closest('[data-ehr-pt]');
+      if (!row || row.classList.contains('is-done')) return;
+      var act = btn.getAttribute('data-act');
+      var msg = act === 'email'
+        ? 'Email invite sent — awaiting patient reply'
+        : 'Sent to physician for review';
+      row.classList.add('is-done');
+      var actions = row.querySelector('.ehr-pt-actions');
+      var done = row.querySelector('.ehr-pt-done');
+      if (actions) actions.hidden = true;
+      if (done) {
+        var t = done.querySelector('[data-ehr-done-text]');
+        if (t) t.textContent = msg;
+        done.hidden = false;
+      }
+      // clear it from the "new matches" count + the trial's badge
+      if (counter) counter.textContent = Math.max(0, (parseInt(counter.textContent, 10) || 1) - 1);
+      var card = row.closest('[data-ehr-trial]');
+      var badge = card && card.querySelector('[data-ehr-badge]');
+      if (badge) {
+        var left = card.querySelectorAll('[data-ehr-pt]:not(.is-done)').length;
+        badge.textContent = left + ' new';
+        if (left === 0) { badge.textContent = 'All reviewed'; badge.classList.add('is-clear'); }
+      }
+    });
+  });
+})();
+</script>
+
+{% else %}
+<div class="card ehr-connect-card">
+  <div class="ehr-connect-ic">{{ ic.icon('activity') }}</div>
+  <h2>Turn your patient records into trial matches</h2>
+  <p>Connect your clinic's EHR once. We screen your existing patients against the
+    trials you run and surface new matches here for physician review — no chart
+    digging, no manual search.</p>
+  <div class="ehr-connect-actions">
+    <a class="btn btn-primary" href="{{ url_for('how_it_works') }}">See how it works</a>
+    <a class="btn btn-ghost" href="{{ url_for('dashboard') }}">Back to search</a>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

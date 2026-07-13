@@ -35,6 +35,70 @@ _STOP = {
 }
 
 
+def _first_condition(trial):
+    """Best-effort first condition label for patient-facing copy."""
+    c = (trial or {}).get("conditions") or []
+    if isinstance(c, str):
+        parts = [x.strip() for x in re.split(r"[;|,/]", c) if x.strip()]
+        return parts[0] if parts else ""
+    if isinstance(c, list):
+        for x in c:
+            s = str(x or "").strip()
+            if s:
+                return s
+    return ""
+
+
+def _plainify(text):
+    """Light deterministic jargon cleanup for patient-facing snippets."""
+    t = tidy(text)
+    if not t:
+        return ""
+    repl = [
+        (r"\befficacy\b", "how well it works"),
+        (r"\beffectiveness\b", "how well it works"),
+        (r"\btolerability\b", "side effects"),
+        (r"\binterventional\b", "treatment"),
+        (r"\brandomi[sz]ed\b", "assigned by chance"),
+        (r"\bplacebo-controlled\b", "compared with an inactive treatment"),
+        (r"\bdouble-blind\b", "blinded"),
+        (r"\bsingle-blind\b", "partly blinded"),
+        (r"\bsubjects\b", "people"),
+    ]
+    for pat, rep in repl:
+        t = re.sub(pat, rep, t, flags=re.IGNORECASE)
+    t = re.sub(r"\s+", " ", t).strip()
+    return t
+
+
+def patient_card_title(trial, limit=96):
+    """Short, plain-language heading for patient result cards."""
+    trial = trial or {}
+    raw = tidy(trial.get("title") or "")
+    if not raw:
+        return "Recruiting clinical trial"
+    if (trial.get("source") or "") == "site_posted" and len(raw) <= limit:
+        return raw
+
+    cond = _first_condition(trial)
+    low = raw.lower()
+    if cond:
+        if any(k in low for k in ("comparing", "compare", "versus", " vs ", "switching")):
+            base = f"Compares treatment options for {cond}"
+        elif "prevention" in low:
+            base = f"Prevention study for {cond}"
+        elif "safety" in low or "efficacy" in low or "effectiveness" in low:
+            base = f"Tests treatment safety and results for {cond}"
+        else:
+            base = f"New treatment option for {cond}"
+        return base if len(base) <= limit else base[:limit].rsplit(" ", 1)[0] + "..."
+
+    t = _plainify(raw)
+    if len(t) <= limit:
+        return t
+    return t[:limit].rsplit(" ", 1)[0].rstrip(" .") + "..."
+
+
 def tidy(text):
     """Clean raw source text: unescape, strip HTML, drop artifacts, collapse space."""
     if not text:
@@ -55,7 +119,7 @@ def _sentences(text):
 
 def card_blurb(trial, limit=170):
     """Short, clean teaser for a result card (about two lines). No LLM."""
-    txt = tidy((trial or {}).get("briefSummary") or "")
+    txt = _plainify((trial or {}).get("briefSummary") or "")
     if not txt:
         return ""
     if len(txt) <= limit:

@@ -13,11 +13,6 @@
   <a class="btn btn-ghost" href="{{ url_for('search') }}">{{ ic.icon('plus') }}New search</a>
 </div>
 
-{% if not llm_on %}
-<div class="banner">Showing trials that pass age/sex screening. Set
-  <span class="mono">LLM_API_KEY</span> for per-trial eligibility reasoning.</div>
-{% endif %}
-
 {% if located %}
 <div class="loc-note">Showing only trials with a site within {{ radius }} {{ unit }} of {{ location }}, nearest first.</div>
 {% else %}

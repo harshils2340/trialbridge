@@ -151,12 +151,16 @@
         {% if r.support and r.support.travel %}<span class="pr-benefit">{{ ic.icon('pin') }}Travel support</span>{% endif %}
         {% if r.support and r.support.coverage %}<span class="pr-benefit">{{ ic.icon('check') }}Cost coverage</span>{% endif %}
         {% if r.support and r.support.stipend %}<span class="pr-benefit pr-benefit-money">{{ ic.icon('activity') }}Stipend/compensation</span>{% endif %}
-        <span class="pr-phase">{{ 'Site-posted' if t.source == 'site_posted' else 'ClinicalTrials.gov' }}</span>
+        <span class="pr-phase">{{ 'Posted by study site' if t.source == 'site_posted' else 'Public listing' }}</span>
         <span class="pr-recruiting">{{ ic.icon('check') }} Recruiting</span>
       </div>
+      {% set friendly_title = patient_card_title(t) %}
       <h2 class="pr-card-title">
-        <a class="pr-card-link" href="{{ url_for('trial_detail', search_id=search_id, nct=t.nctId) }}">{{ t.title }}</a>
+        <a class="pr-card-link" href="{{ url_for('trial_detail', search_id=search_id, nct=t.nctId) }}">{{ friendly_title }}</a>
       </h2>
+      {% if t.title and friendly_title != t.title %}
+      <p class="pr-official-title">Official study title: {{ t.title }}</p>
+      {% endif %}
       {% set blurb = card_blurb(t) %}
       {% if blurb %}<p class="pr-summary">{{ blurb }}</p>{% endif %}
       {% if r.support and r.support.notes %}

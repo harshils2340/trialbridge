@@ -18,10 +18,10 @@
   <p class="setup-sub">One section open at a time. Switch tabs to keep the page focused.</p>
 </div>
 
-<div class="site-grid setup-panel" data-setup-panel="profile">
+<div class="setup-panel" data-setup-panel="profile">
   <div class="card">
     <div class="section-title"><h2>Organization profile</h2></div>
-    <form method="post" class="site-form">
+    <form method="post" class="site-form site-form-2col">
       <label>Organization name
         <input type="text" name="org_name" value="{{ profile['org_name'] if profile else '' }}" placeholder="e.g. Johns Hopkins Diabetes Center">
       </label>
@@ -78,7 +78,7 @@
 <div class="card setup-panel" data-setup-panel="post" hidden>
   <div class="section-title"><h2>Post a site study</h2></div>
   <p class="site-hint">Use this when a study is actively enrolling at your site but not published on ClinicalTrials.gov yet.</p>
-  <form method="post" action="{{ url_for('post_site_study') }}" class="site-form">
+  <form method="post" action="{{ url_for('post_site_study') }}" class="site-form site-form-2col">
     <label>Study title
       <input type="text" name="title" placeholder="e.g. Phase II Metabolic Health Study" required>
     </label>

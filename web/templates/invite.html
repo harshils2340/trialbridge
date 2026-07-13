@@ -8,56 +8,87 @@
     it shows up here - so you actually find out what happened, without touching their private details.</p>
 </div>
 
-{% if new_token %}
-<div class="card inv-new">
-  <div class="section-title"><h2>{{ ic.icon('check') }} Your invite link is ready</h2></div>
-  <div class="inv-link-row">
-    <input type="text" readonly value="{{ url_for('invite_landing', token=new_token, _external=True) }}"
-      onclick="this.select()">
-    <button type="button" class="btn btn-primary"
-      onclick="navigator.clipboard.writeText(this.previousElementSibling.value);this.textContent='Copied'">Copy</button>
+<div class="card setup-shell">
+  <nav class="setup-tabs" aria-label="Invite sections">
+    <button type="button" class="setup-tab{{ '' if new_token else ' on' }}" data-setup-tab="invite">{{ ic.icon('plus') }} Invite someone</button>
+    <button type="button" class="setup-tab{{ ' on' if new_token else '' }}" data-setup-tab="people">{{ ic.icon('list') }} Your people {% if invites %}<span class="setup-count">{{ invites|length }}</span>{% endif %}</button>
+  </nav>
+</div>
+
+<div class="setup-panel" data-setup-panel="invite"{{ ' hidden' if new_token else '' }}>
+  <div class="card">
+    <div class="section-title"><h2>New invite</h2></div>
+    <form method="post" class="inv-form">
+      <label>Trial NCT number<input type="text" name="nct" placeholder="e.g. NCT05869903"></label>
+      <label>Trial title<input type="text" name="title" placeholder="e.g. Once-Weekly Semaglutide in Adults With Obesity"></label>
+      <label>Condition<input type="text" name="condition" placeholder="e.g. Obesity"></label>
+      <label>Personal note to your patient (optional)
+        <textarea name="note" rows="2" placeholder="I think this could be a good option for you - worth a look."></textarea></label>
+      <button class="btn btn-primary" type="submit">{{ ic.icon('external') }} Create invite link</button>
+    </form>
   </div>
-  <p class="inv-hint">Send this to your patient. They'll see "Referred by {{ user['name'] }}" and can apply in two minutes.</p>
-</div>
-{% endif %}
-
-<div class="card">
-  <div class="section-title"><h2>New invite</h2></div>
-  <form method="post" class="inv-form">
-    <label>Trial NCT number<input type="text" name="nct" placeholder="e.g. NCT05869903"></label>
-    <label>Trial title<input type="text" name="title" placeholder="e.g. Once-Weekly Semaglutide in Adults With Obesity"></label>
-    <label>Condition<input type="text" name="condition" placeholder="e.g. Obesity"></label>
-    <label>Personal note to your patient (optional)
-      <textarea name="note" rows="2" placeholder="I think this could be a good option for you - worth a look."></textarea></label>
-    <button class="btn btn-primary" type="submit">{{ ic.icon('external') }} Create invite link</button>
-  </form>
 </div>
 
-<div class="card">
-  <div class="section-title"><h2>Your invites</h2></div>
-  {% if not invites %}
-  <div class="empty"><p>No invites yet. Create one above to share a trial with a patient.</p></div>
-  {% else %}
-  <table class="inv-table">
-    <thead><tr><th>Trial</th><th>Opened</th><th>Applied</th><th>Active</th><th>Enrolled</th><th>Link</th></tr></thead>
-    <tbody>
-      {% for it in invites %}
-      {% set inv = it.invite %}
-      <tr>
-        <td><b>{{ inv['title'] or inv['nct'] or 'Trial' }}</b>
-          {% if inv['condition'] %}<div class="tag">{{ inv['condition'] }}</div>{% endif %}</td>
-        <td>{{ inv['clicks'] }}</td>
-        <td>{{ it.applied }}</td>
-        <td>{{ it.active }}</td>
-        <td><b class="{{ 'inv-enrolled' if it.enrolled }}">{{ it.enrolled }}</b></td>
-        <td>
-          <button type="button" class="btn btn-sm btn-ghost"
-            onclick="navigator.clipboard.writeText('{{ url_for('invite_landing', token=inv['token'], _external=True) }}');this.textContent='Copied'">Copy link</button>
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+<div class="setup-panel" data-setup-panel="people"{{ '' if new_token else ' hidden' }}>
+  {% if new_token %}
+  <div class="card inv-new">
+    <div class="section-title"><h2>{{ ic.icon('check') }} Your invite link is ready</h2></div>
+    <div class="inv-link-row">
+      <input type="text" readonly value="{{ url_for('invite_landing', token=new_token, _external=True) }}"
+        onclick="this.select()">
+      <button type="button" class="btn btn-primary"
+        onclick="navigator.clipboard.writeText(this.previousElementSibling.value);this.textContent='Copied'">Copy</button>
+    </div>
+    <p class="inv-hint">Send this to your patient. They'll see "Referred by {{ user['name'] }}" and can apply in two minutes.</p>
+  </div>
   {% endif %}
+  <div class="card">
+    <div class="section-title"><h2>Your invites</h2></div>
+    {% if not invites %}
+    <div class="empty"><p>No invites yet. Switch to <b>Invite someone</b> to share a trial with a patient.</p></div>
+    {% else %}
+    <table class="inv-table">
+      <thead><tr><th>Trial</th><th>Opened</th><th>Applied</th><th>Active</th><th>Enrolled</th><th>Link</th></tr></thead>
+      <tbody>
+        {% for it in invites %}
+        {% set inv = it.invite %}
+        <tr>
+          <td><b>{{ inv['title'] or inv['nct'] or 'Trial' }}</b>
+            {% if inv['condition'] %}<div class="tag">{{ inv['condition'] }}</div>{% endif %}</td>
+          <td>{{ inv['clicks'] }}</td>
+          <td>{{ it.applied }}</td>
+          <td>{{ it.active }}</td>
+          <td><b class="{{ 'inv-enrolled' if it.enrolled }}">{{ it.enrolled }}</b></td>
+          <td>
+            <button type="button" class="btn btn-sm btn-ghost"
+              onclick="navigator.clipboard.writeText('{{ url_for('invite_landing', token=inv['token'], _external=True) }}');this.textContent='Copied'">Copy link</button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+  </div>
 </div>
+
+<script>
+(function () {
+  var tabs = Array.prototype.slice.call(document.querySelectorAll('.setup-tab'));
+  var panels = Array.prototype.slice.call(document.querySelectorAll('[data-setup-panel]'));
+  if (!tabs.length || !panels.length) return;
+  function activate(name) {
+    tabs.forEach(function (tab) {
+      var on = tab.getAttribute('data-setup-tab') === name;
+      tab.classList.toggle('on', on);
+      tab.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+    panels.forEach(function (panel) {
+      panel.hidden = panel.getAttribute('data-setup-panel') !== name;
+    });
+  }
+  tabs.forEach(function (tab) {
+    tab.addEventListener('click', function () { activate(tab.getAttribute('data-setup-tab')); });
+  });
+})();
+</script>
 {% endblock %}

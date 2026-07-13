@@ -133,3 +133,51 @@ Visual verification (headless Chromium, 390px + 1280px, light + dark) confirmed
 
 **Result:** `All 6 tests passed`; prior suites still green
 (`test_ui_fixes.py` 4/4, `test_search_cache.py` 4/4).
+
+---
+
+## 2026-07-13 — Demo lane 4: EHR background matching
+
+**Goal:** the 4th demo lane ("EHR background matching") deep-linked to the plain
+physician search view, so there was nothing showing the clinic-wide EHR story.
+Build a clear, self-explanatory demo of it.
+
+**The workflow it now shows (simple, one screen):**
+1. The clinic's EHR is **connected clinic-wide** (green banner: system + clinic +
+   records screened + last sync).
+2. The platform **continuously screens the clinic's own patients** against the
+   trials that clinic runs (3-step "how it works" strip + summary stats).
+3. **New matches surface grouped by trial** — each patient shown de-identified
+   (`PT-####` + initials, age/sex, last seen) with a plain-language "why matched"
+   reason and a match-strength flag.
+4. Staff **moves forward in one click**: *Email patient* or *Send to physician*.
+   In the demo those actions mark the row done and clear it from the "new
+   matches" count + the trial's badge.
+
+- `web/app.py`: `dashboard()` branches on `wf=proactive` to render a dedicated
+  view; `_ehr_matching_demo()` supplies the demo payload (gated on preview mode).
+- `web/templates/ehr_matching.html`: the new view.
+- `web/static/style.css`: `.ehr-*` styles — token-driven so dark mode themes it
+  automatically; stacks on mobile.
+
+**Compliance:** this is clinical decision support for the treating clinic (their
+physicians, their patients). Patients are de-identified; the UI states a
+physician reviews before anyone is contacted; no referral is bought/sold
+(see `matcher/COMPLIANCE.md`).
+
+**Tests:** `web/test_ehr_lane.py`
+
+| Test | What it proves |
+|------|----------------|
+| `test_demo_payload_shape` | Demo payload is well-formed; `new_matches` equals the patients listed; every match has a reason. |
+| `test_proactive_renders_ehr_view` | `/app?wf=proactive` renders the EHR view: connection state, match queue, per-trial NCTs, and both actions. |
+| `test_plain_dashboard_is_search` | Plain `/app` still renders the physician search dashboard (not the EHR view). |
+| `test_compliance_deidentified_and_review_note` | Patients use de-identified `PT-####` refs and the "physician reviews before anyone is contacted" note is present. |
+
+Visual + interaction check (headless Chromium): **0px** horizontal overflow at
+390px and 1280px in light and dark; clicking *Email patient* marks the row
+"Email invite sent" and decrements the new-match count (6→5) and trial badge
+(3 new → 2 new).
+
+**Result:** `All 4 tests passed`; prior suites still green
+(`test_a11y_theme.py` 6/6, `test_ui_fixes.py` 4/4, `test_search_cache.py` 4/4).

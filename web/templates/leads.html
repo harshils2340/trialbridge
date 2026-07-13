@@ -511,9 +511,8 @@
       window.scrollTo({ top: 0, behavior: 'smooth' });
     });
   });
-  // Operator default: jump straight into active outreach if work exists.
-  var hasActive = {{ 1 if active|length else 0 }};
-  activateTab(hasActive ? 'active' : 'review');
+  // Default view should always open on Awaiting review.
+  activateTab('review');
 
   var rows = Array.prototype.slice.call(document.querySelectorAll('.ats-row-item'));
   if (!rows.length) return;

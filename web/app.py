@@ -65,6 +65,7 @@ app = Flask(__name__)
 trends.configure(app)
 # Short, plain-English card teaser (deterministic) available in every template.
 app.jinja_env.globals["card_blurb"] = summarize.card_blurb
+app.jinja_env.globals["patient_card_title"] = summarize.patient_card_title
 
 # Stable secret so sessions survive restarts. Prefer an env var (set this on any
 # host so logins survive redeploys); otherwise generate + store one locally.
@@ -215,6 +216,7 @@ def ops_readiness():
 NO_LOGIN = os.environ.get("NO_LOGIN", "0") == "1"
 _DEMO_EMAIL = "demo@bridgemd.local"
 _DEMO_PATIENT_EMAIL = "demo.patient@bridgemd.local"
+_DEMO_PATIENT_NAME = os.environ.get("DEMO_PATIENT_NAME", "Harshil Test User").strip() or "Harshil Test User"
 DEMO_SESSION_KEY = "demo_mode"
 USER_SESSION_KEY = "user_id"
 USER_PENDING_KEY = "user_pending_id"
@@ -265,7 +267,7 @@ def _ensure_demo_patient():
     if not p:
         pw = generate_password_hash("demo-patient", method="pbkdf2:sha256")
         pid = db.create_patient_user(
-            _DEMO_PATIENT_EMAIL, pw, "Demo Patient", verified=True)
+            _DEMO_PATIENT_EMAIL, pw, _DEMO_PATIENT_NAME, verified=True)
         db.set_patient_onboarding(
             pid, primary_interest="Obesity", notify_email=_DEMO_PATIENT_EMAIL,
             email_alerts=True)
@@ -273,6 +275,17 @@ def _ensure_demo_patient():
     elif not p["verified"]:
         db.mark_patient_verified(p["id"])
         p = db.get_patient_user(p["id"])
+    # Keep demo identity human-readable in previews instead of generic "Demo".
+    try:
+        cur_name = (p["full_name"] or "").strip() if p else ""
+        if p and (not cur_name or cur_name.lower().startswith("demo")):
+            conn = db.get_db()
+            conn.execute("UPDATE patient_users SET full_name = ? WHERE id = ?",
+                         (_DEMO_PATIENT_NAME, p["id"]))
+            conn.commit()
+            p = db.get_patient_user(p["id"])
+    except Exception:
+        app.logger.exception("demo patient rename failed")
     db.seed_demo_patient_apps(p["applicant_token"] if p else "")
     return p
 
@@ -304,7 +317,11 @@ def _seed_demo_surfaces(user_id=None):
 
 def _demo_mode_enabled():
     """True when the temporary no-login preview shell should be enabled."""
-    if NO_LOGIN or bool(session.get(DEMO_SESSION_KEY)):
+    # Session override always wins so the preview toggle is reliable even when
+    # NO_LOGIN is enabled for local demos.
+    if DEMO_SESSION_KEY in session:
+        return bool(session.get(DEMO_SESSION_KEY))
+    if NO_LOGIN:
         return True
     # Default behavior for demos: anonymous visitors on study-team surfaces
     # should see a working ATS without setup/login friction.
@@ -352,6 +369,10 @@ def load_user():
         _seed_demo_surfaces(g.user["id"])
     pid = session.get(PATIENT_SESSION_KEY)
     g.patient_user = db.get_patient_user(pid) if pid else None
+    # In preview mode, show patient-side flows as already signed in so demos can
+    # focus on product behavior (apply/message tracking) instead of auth prompts.
+    if g.patient_user is None and _demo_mode_enabled():
+        g.patient_user = _ensure_demo_patient()
 
 
 APPLICANT_COOKIE = "tb_app"
@@ -572,19 +593,26 @@ def set_demo_mode():
     """Allow quick POV testing without creating accounts in local demos."""
     vals = request.form.getlist("enabled")
     enabled = "1" in vals
+    session[DEMO_SESSION_KEY] = bool(enabled)
     if enabled:
-        session[DEMO_SESSION_KEY] = True
         try:
             actor = g.user if g.user else _ensure_demo_user()
             _seed_demo_surfaces(actor["id"] if actor else None)
         except Exception:
             app.logger.exception("demo engagement seeding failed")
-    else:
-        session.pop(DEMO_SESSION_KEY, None)
     nxt = request.form.get("next", "").strip()
     if not nxt.startswith("/"):
         nxt = url_for("home")
     return redirect(nxt)
+
+
+@app.route("/demo-lane")
+def demo_lane_redirect():
+    """Safe lane switch target for demo picker."""
+    lane = request.args.get("lane", "").strip()
+    if lane.startswith("/") and not lane.startswith("//"):
+        return redirect(lane)
+    return redirect(url_for("home"))
 
 
 def _site_claims():
@@ -1292,10 +1320,86 @@ def dashboard():
         "active": sum(int(x.get("active") or 0) for x in invites),
         "enrolled": sum(int(x.get("enrolled") or 0) for x in invites),
     }
+    # Lane 4 of the demo: "EHR background matching". Same route so the POV
+    # switcher's deep link (wf=proactive) keeps working, but a dedicated view
+    # that clearly shows the clinic-wide EHR feeding new patient matches.
+    wf = (request.args.get("wf") or "").strip().lower()
+    if wf == "proactive":
+        return render_template(
+            "ehr_matching.html",
+            ehr=(_ehr_matching_demo() if _demo_mode_enabled() else None))
     return render_template(
         "dashboard.html", referrals=referrals[:8], counts=counts,
         total=len(referrals), enrolled=enrolled, statuses=db.STATUSES,
         proactive=proactive[:6], proactive_summary=proactive_summary)
+
+
+def _ehr_matching_demo():
+    """Demo payload for lane 4 (EHR background matching). Tells one clear story:
+    the clinic's EHR is connected clinic-wide, the platform continuously screens
+    the clinic's OWN patients against the trials that clinic is running, and new
+    matches surface here for a physician to review and reach out.
+
+    Compliance note: this is clinical decision support for the treating clinic
+    (their physicians, their patients). Patients are shown de-identified; a
+    clinician reviews before any contact; no referral is bought or sold. See
+    matcher/COMPLIANCE.md.
+    """
+    trials = [
+        {
+            "nct": "NCT05869903",
+            "title": "Once-Weekly Semaglutide in Adults With Obesity",
+            "condition": "Obesity",
+            "lead": "Dr. Alvarez (Endocrinology)",
+            "patients": [
+                {"ref": "PT-4821", "initials": "J.M.", "age": 54, "sex": "F",
+                 "reason": "BMI 38, HbA1c 6.1%, no prior GLP-1 - meets key criteria",
+                 "seen": "Seen 3 days ago", "flag": "Strong match"},
+                {"ref": "PT-3910", "initials": "R.K.", "age": 47, "sex": "M",
+                 "reason": "BMI 34, prediabetes, stable meds - likely eligible",
+                 "seen": "Seen 2 weeks ago", "flag": "Likely"},
+                {"ref": "PT-5567", "initials": "D.O.", "age": 61, "sex": "F",
+                 "reason": "BMI 41, hypertension controlled - confirm exclusion labs",
+                 "seen": "Seen 1 month ago", "flag": "Review"},
+            ],
+        },
+        {
+            "nct": "NCT06034262",
+            "title": "Tirzepatide vs Placebo for Type 2 Diabetes and Weight",
+            "condition": "Type 2 diabetes",
+            "lead": "Dr. Alvarez (Endocrinology)",
+            "patients": [
+                {"ref": "PT-2244", "initials": "S.P.", "age": 58, "sex": "M",
+                 "reason": "HbA1c 8.2% on metformin, BMI 31 - meets key criteria",
+                 "seen": "Seen 5 days ago", "flag": "Strong match"},
+                {"ref": "PT-6620", "initials": "A.L.", "age": 63, "sex": "F",
+                 "reason": "T2D 6 yrs, HbA1c 7.9%, eGFR 74 - likely eligible",
+                 "seen": "Seen 3 weeks ago", "flag": "Likely"},
+            ],
+        },
+        {
+            "nct": "NCT05813233",
+            "title": "Resmetirom for Nonalcoholic Steatohepatitis (NASH)",
+            "condition": "Fatty liver disease (NASH)",
+            "lead": "Dr. Chen (Hepatology)",
+            "patients": [
+                {"ref": "PT-7788", "initials": "M.T.", "age": 52, "sex": "M",
+                 "reason": "Elevated ALT, FibroScan F2-F3, T2D - confirm biopsy window",
+                 "seen": "Seen 8 days ago", "flag": "Review"},
+            ],
+        },
+    ]
+    new_matches = sum(len(t["patients"]) for t in trials)
+    return {
+        "connected": True,
+        "system": "Epic",
+        "clinic": "Riverside Family Medicine",
+        "records": "2,431",
+        "last_sync": "12 min ago",
+        "active_trials": len(trials),
+        "new_matches": new_matches,
+        "trials": trials,
+    }
 
 
 # --------------------------------------------------------------------------- #
@@ -2750,6 +2854,49 @@ def _nominatim(query):
     return None
 
 
+def _nominatim_suggest(query, limit=6):
+    """Free-text location suggestions for typeahead address entry."""
+    q = (query or "").strip()
+    if len(q) < 3:
+        return []
+    try:
+        params = urllib.parse.urlencode({
+            "q": q,
+            "format": "json",
+            "limit": str(max(1, min(limit, 10))),
+            "addressdetails": "1",
+        })
+        req = urllib.request.Request(
+            f"https://nominatim.openstreetmap.org/search?{params}",
+            headers={"User-Agent": "BridgeMD/1.0 (clinical trial finder)"})
+        with urllib.request.urlopen(req, timeout=15) as r:
+            data = json.load(r)
+        out = []
+        for it in data or []:
+            a = it.get("address", {})
+            city = (a.get("city") or a.get("town") or a.get("village")
+                    or a.get("municipality") or a.get("county") or "")
+            cc = (a.get("country_code") or "").upper()
+            region = a.get("state") or a.get("country") or ""
+            parts = [p for p in (city, region) if p]
+            label = ", ".join(parts)
+            postcode = a.get("postcode") or ""
+            if cc == "US" and postcode:
+                label = (label + " " + postcode).strip(", ").strip()
+            if not label:
+                label = (it.get("display_name") or "").split(",")[0:3]
+                label = ", ".join([x.strip() for x in label if str(x).strip()])
+            out.append({
+                "label": label or it.get("display_name") or "",
+                "lat": float(it.get("lat")),
+                "lon": float(it.get("lon")),
+                "cc": cc,
+            })
+        return [x for x in out if x.get("label")]
+    except Exception:
+        return []
+
+
 def geocode(place):
     """City / postal code / ZIP / address -> (lat, lon, country_code) or None.
     Postal codes are handled first (Nominatim is unreliable for them)."""
@@ -2827,6 +2974,15 @@ def geo_reverse():
     label, cc = _nominatim_reverse(lat, lon)
     return jsonify({"ok": bool(label), "label": label, "cc": cc,
                     "unit": units_for(cc)})
+
+
+@app.route("/geo/suggest")
+def geo_suggest():
+    # Public helper for patient search: lightweight typeahead while entering a
+    # location manually. Returns best-effort address suggestions with coords.
+    q = request.args.get("q", "")
+    items = _nominatim_suggest(q, limit=6)
+    return jsonify({"ok": True, "items": items})
 
 
 def haversine(lat1, lon1, lat2, lon2, unit="km"):

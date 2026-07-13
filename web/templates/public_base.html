@@ -29,12 +29,14 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
   {% block head_extra %}{% endblock %}
 </head>
-<body class="pub">
 {% import "_icons.html" as ic %}
+{% set demo_home = (request.endpoint == 'home' and pov_demo) %}
+<body class="pub{{ ' demo-home' if demo_home else '' }}">
 <a class="skip-link" href="#main">Skip to main content</a>
 <header class="pub-nav">
   <a class="brand" href="{{ url_for('home') }}"><img class="brand-mark" src="{{ url_for('static', filename='logo.svg') }}" width="24" height="24" alt="">BridgeMD</a>
   <nav class="pub-nav-links">
+    {% if not demo_home %}
     <a href="{{ url_for('find') }}">Find a trial</a>
     <a href="{{ url_for('how_it_works') }}">How it works</a>
     <a href="{{ url_for('alerts') }}" class="pub-apps">Alerts{% if alerts_new_count %} <span class="nav-badge nav-badge-new">{{ alerts_new_count }}</span>{% endif %}</a>
@@ -47,6 +49,8 @@
     <a href="{{ url_for('patient_login') }}">Sign in</a>
     <a href="{{ url_for('patient_signup') }}">Sign up</a>
     {% endif %}
+    {% endif %}
+    {% block pub_nav_extra %}{% endblock %}
     <a href="{{ url_for('login') }}" class="pub-clin">For clinicians</a>
     <button type="button" class="theme-toggle" id="themeToggle" aria-label="Switch between light and dark theme" title="Toggle light / dark theme">
       {{ ic.icon('sun', 'ico icon-sun') }}{{ ic.icon('moon', 'ico icon-moon') }}
@@ -71,6 +75,7 @@
 <main class="pub-main" id="main" role="main" tabindex="-1">
   {% block body %}{% endblock %}
 </main>
+{% if request.endpoint != 'home' %}
 <footer class="pub-foot">
   <div class="pub-foot-in">
     <div class="pub-foot-brand">
@@ -78,12 +83,13 @@
       <span class="pub-foot-note">Not medical advice.</span>
     </div>
     <div class="pub-foot-tools">
-      {% if request.endpoint == 'home' or (not patient_user and not user) %}
+      {% if request.endpoint != 'home' and (not patient_user and not user) %}
       {% include "_pov_bar.html" %}
       {% endif %}
     </div>
   </div>
 </footer>
+{% endif %}
 <script>
 (function () {
   function attachCsrf() {

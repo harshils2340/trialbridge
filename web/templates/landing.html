@@ -1,42 +1,39 @@
 {% extends "public_base.html" %}
 {% block title %}BridgeMD - find recruiting clinical trials{% endblock %}
 
+{% block pub_nav_extra %}
+{% if patient_user %}
+{% set welcome_name = (patient_user.full_name.split(' ')[0] if patient_user.full_name else 'Patient') %}
+{% if pov_demo and (welcome_name|lower in ['demo', 'patient']) %}
+  {% set welcome_name = 'Harshil' %}
+{% endif %}
+<a class="pub-apps" href="{{ url_for('applications') }}">My applications{% if messages_unread %} <span class="nav-badge nav-badge-new">{{ messages_unread }}</span>{% elif applications_count %} <span class="nav-badge">{{ applications_count }}</span>{% endif %}</a>
+<a class="pub-apps" href="{{ url_for('alerts') }}">Alerts{% if alerts_new_count %} <span class="nav-badge nav-badge-new">{{ alerts_new_count }}</span>{% endif %}</a>
+{% if records_profile %}
+<form method="post" action="{{ url_for('records_refresh') }}" style="margin:0;">
+  <button class="btn btn-ghost btn-sm" type="submit">Refresh records</button>
+</form>
+{% else %}
+<form method="post" action="{{ url_for('records_connect') }}" style="margin:0;">
+  <input type="hidden" name="next" value="{{ url_for('home') }}">
+  <button class="btn btn-primary btn-sm" type="submit">Connect records</button>
+</form>
+{% endif %}
+<span class="nav-user" title="Records: {{ 'Connected' if records_profile else 'Not connected' }}">{{ ic.icon('user-plus') }} <b>{{ welcome_name }}</b>{% if pov_demo %} <em>Test user</em>{% endif %}</span>
+{% endif %}
+{% endblock %}
+
 {% block body %}
 <section class="hero">
   <div class="hero-in">
-    {% if patient_user %}
-    <div class="home-profile-strip">
-      <div class="home-profile-main">
-        <span class="home-profile-eyebrow">{{ ic.icon('user-plus') }} Signed in</span>
-        <h2>Welcome back{% if patient_user.full_name %}, {{ patient_user.full_name.split(' ')[0] }}{% endif %}.</h2>
-        <p>
-          {{ applications_count }} application{{ '' if applications_count == 1 else 's' }}
-          {% if messages_unread %} · {{ messages_unread }} unread message{{ '' if messages_unread == 1 else 's' }}{% endif %}
-          · Records: {{ 'Connected' if records_profile else 'Not connected' }}
-        </p>
-      </div>
-      <div class="home-profile-actions">
-        <a class="btn btn-ghost btn-sm" href="{{ url_for('applications') }}">My applications</a>
-        <a class="btn btn-ghost btn-sm" href="{{ url_for('alerts') }}">Alerts{% if alerts_new_count %} ({{ alerts_new_count }}){% endif %}</a>
-        {% if records_profile %}
-        <form method="post" action="{{ url_for('records_refresh') }}">
-          <button class="btn btn-ghost btn-sm" type="submit">Refresh records</button>
-        </form>
-        {% else %}
-        <form method="post" action="{{ url_for('records_connect') }}">
-          <input type="hidden" name="next" value="{{ url_for('home') }}">
-          <button class="btn btn-primary btn-sm" type="submit">Connect records</button>
-        </form>
-        {% endif %}
-      </div>
-    </div>
-    {% endif %}
-    <span class="hero-eyebrow">{{ ic.icon('sparkle') }} Live ClinicalTrials.gov search</span>
+    <span class="hero-eyebrow">{{ ic.icon('sparkle') }} Real-time recruiting trials, updated continuously</span>
     <h1>{{ 'Find your next trial match.' if patient_user else 'Find recruiting trials near you.' }}</h1>
     <p class="hero-sub">{{ 'Search again with your saved context and keep applications moving.' if patient_user else 'Enter condition and location, then apply to the best matches.' }}</p>
+    {% if not pov_demo %}
     <p class="hero-sub" style="margin-top:6px;font-size:14px;color:var(--muted);">
       For sites and sponsors: track which channels actually convert to screened and enrolled patients.
     </p>
+    {% endif %}
 
     <form id="heroForm" method="post" action="{{ url_for('find') }}" autocomplete="off">
       <div class="hero-search">
@@ -44,19 +41,16 @@
           {{ ic.icon('search') }}
           <input id="conditionInput" name="condition" type="text"
                  placeholder="Condition or treatment - e.g. type 2 diabetes"
-                 value="{{ condition_value|default('') }}" list="conditionOptions"
+                 value="{{ condition_value|default('') }}"
                  autocomplete="off" autocapitalize="off" spellcheck="false" required>
-          <datalist id="conditionOptions">
-            {% for option in condition_options[:20] %}
-            <option value="{{ option }}"></option>
-            {% endfor %}
-          </datalist>
+          <div id="heroCondSuggest" class="hero-suggest" hidden></div>
         </div>
         <div class="hero-field">
           {{ ic.icon('pin') }}
           <input id="location" name="location" type="text" placeholder="City or postal code"
                  value="{{ location_value|default('') }}" autocomplete="off"
                  autocapitalize="words" spellcheck="false" required>
+          <div id="heroLocSuggest" class="hero-loc-suggest" hidden></div>
         </div>
         <button class="btn btn-primary btn-lg" type="submit">Find trials{{ ic.icon('arrow-right') }}</button>
       </div>
@@ -87,6 +81,7 @@
       <div id="locConfirm" class="loc-confirm" style="display:none;"></div>
     </div>
 
+    {% if not pov_demo %}
     <div class="chips-block">
       <div class="chip-row">
         <span class="chip-label">Quick picks</span>
@@ -97,6 +92,7 @@
         </div>
       </div>
     </div>
+    {% endif %}
   </div>
 </section>
 
@@ -132,10 +128,14 @@
   // Chips prefill the search box instead of navigating away. We do NOT auto-run
   // search on chip click; search only runs when user presses the button.
   var condInput = document.getElementById('conditionInput');
+  var condSuggest = document.getElementById('heroCondSuggest');
   var interv = document.getElementById('heroIntervention');
   var locInput = document.getElementById('location');
+  var locSuggest = document.getElementById('heroLocSuggest');
+  var conditionOptions = {{ (condition_options[:80] if condition_options else [])|tojson }};
   var serverCond = {{ (condition_value|default('')|tojson) }};
   var serverLoc = {{ (location_value|default('')|tojson) }};
+  var condActiveIdx = -1;
 
   // Keep first-load state blank unless the backend intentionally passed prefill
   // values (e.g. query-driven navigation). This prevents browser autofill noise.
@@ -147,6 +147,65 @@
     if (interv) { interv.value = isDrug ? term : ''; }
     form.scrollIntoView({ behavior: 'smooth', block: 'center' });
     if (locInput && !locInput.value.trim()) locInput.focus();
+  }
+  function hideCondSuggest() {
+    if (!condSuggest) return;
+    condSuggest.hidden = true;
+    condSuggest.innerHTML = '';
+    condActiveIdx = -1;
+  }
+  function condItems() {
+    if (!condSuggest) return [];
+    return Array.prototype.slice.call(condSuggest.querySelectorAll('.hero-suggest-item'));
+  }
+  function setCondActive(idx) {
+    var items = condItems();
+    if (!items.length) { condActiveIdx = -1; return; }
+    if (idx < 0) idx = items.length - 1;
+    if (idx >= items.length) idx = 0;
+    condActiveIdx = idx;
+    items.forEach(function (el, i) {
+      el.classList.toggle('is-active', i === condActiveIdx);
+    });
+    if (items[condActiveIdx]) {
+      items[condActiveIdx].scrollIntoView({ block: 'nearest' });
+    }
+  }
+  function pickCondActive() {
+    var items = condItems();
+    if (condActiveIdx < 0 || condActiveIdx >= items.length) return false;
+    items[condActiveIdx].click();
+    return true;
+  }
+  function showCondSuggest() {
+    if (!condInput || !condSuggest) return;
+    var q = (condInput.value || '').trim().toLowerCase();
+    var list = [];
+    if (!q) { hideCondSuggest(); return; }
+    var starts = conditionOptions.filter(function (o) {
+      return (o || '').toLowerCase().indexOf(q) === 0;
+    });
+    var contains = conditionOptions.filter(function (o) {
+      var lo = (o || '').toLowerCase();
+      return lo.indexOf(q) > 0;
+    });
+    list = starts.concat(contains).slice(0, 8);
+    if (!list.length) { hideCondSuggest(); return; }
+    condSuggest.innerHTML = '';
+    list.forEach(function (label) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'hero-suggest-item';
+      b.textContent = label;
+      b.addEventListener('click', function () {
+        condInput.value = label;
+        hideCondSuggest();
+        if (locInput && !locInput.value.trim()) locInput.focus();
+      });
+      condSuggest.appendChild(b);
+    });
+    condSuggest.hidden = false;
+    condActiveIdx = -1;
   }
 
   document.querySelectorAll('.cond-chip').forEach(function (chip) {
@@ -161,14 +220,78 @@
       prefillOnly(chip.getAttribute('data-drug') || '', true);
     });
   });
+  if (condInput) {
+    condInput.addEventListener('input', showCondSuggest);
+    condInput.addEventListener('keydown', function (e) {
+      if (!condSuggest || condSuggest.hidden) return;
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setCondActive(condActiveIdx + 1);
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setCondActive(condActiveIdx - 1);
+      } else if (e.key === 'Enter') {
+        if (pickCondActive()) e.preventDefault();
+      } else if (e.key === 'Escape') {
+        hideCondSuggest();
+      }
+    });
+    condInput.addEventListener('blur', function () { setTimeout(hideCondSuggest, 120); });
+  }
 
   var useLoc = document.getElementById('useLoc');
   var loc = document.getElementById('location');
   var locLat = document.getElementById('locLat'), locLon = document.getElementById('locLon'),
       locCc = document.getElementById('locCc'), confirmEl = document.getElementById('locConfirm');
+  var suggestTimer = null;
+  var lastSuggestQuery = '';
+
+  function hideLocSuggest() {
+    if (!locSuggest) return;
+    locSuggest.hidden = true;
+    locSuggest.innerHTML = '';
+  }
+  function applyLocSuggestion(item) {
+    if (!loc) return;
+    loc.value = item.label || '';
+    if (locLat) locLat.value = item.lat || '';
+    if (locLon) locLon.value = item.lon || '';
+    if (locCc) locCc.value = item.cc || '';
+    hideLocSuggest();
+  }
+  function renderLocSuggest(items) {
+    if (!locSuggest) return;
+    if (!items || !items.length) { hideLocSuggest(); return; }
+    locSuggest.innerHTML = '';
+    items.forEach(function (it) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'hero-loc-item';
+      b.textContent = it.label || '';
+      b.addEventListener('click', function () { applyLocSuggestion(it); });
+      locSuggest.appendChild(b);
+    });
+    locSuggest.hidden = false;
+  }
+  function requestLocSuggest() {
+    if (!loc) return;
+    var q = (loc.value || '').trim();
+    if (q.length < 3) { hideLocSuggest(); return; }
+    lastSuggestQuery = q;
+    fetch('{{ url_for("geo_suggest") }}?q=' + encodeURIComponent(q))
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!loc || (loc.value || '').trim() !== lastSuggestQuery) return;
+        renderLocSuggest((d && d.items) ? d.items : []);
+      })
+      .catch(function () { hideLocSuggest(); });
+  }
   if (loc) loc.addEventListener('input', function () {
     if (locLat.value) { locLat.value = locLon.value = locCc.value = ''; confirmEl.style.display = 'none'; }
+    if (suggestTimer) clearTimeout(suggestTimer);
+    suggestTimer = setTimeout(requestLocSuggest, 180);
   });
+  if (loc) loc.addEventListener('blur', function () { setTimeout(hideLocSuggest, 120); });
   if (useLoc) useLoc.addEventListener('click', function () {
     if (!navigator.geolocation) { return; }
     var orig = useLoc.innerHTML; useLoc.textContent = 'Locating…'; useLoc.disabled = true;
@@ -186,12 +309,14 @@
           else { loc.value = (loc && loc.value && loc.value.trim()) ? loc.value : 'Current location';
             confirmEl.className = 'loc-confirm ok'; confirmEl.textContent = '📍 Using your current location.'; }
           confirmEl.style.display = 'block'; useLoc.disabled = false; useLoc.innerHTML = orig;
+          hideLocSuggest();
         }).catch(function () {
           if (loc && !loc.value.trim()) loc.value = 'Current location';
           confirmEl.className = 'loc-confirm ok';
           confirmEl.textContent = '📍 Using your current location.';
           confirmEl.style.display = 'block';
           useLoc.disabled = false; useLoc.innerHTML = orig;
+          hideLocSuggest();
         });
     }, function () {
       confirmEl.style.display = 'block'; confirmEl.className = 'loc-confirm err';
