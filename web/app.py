@@ -3808,6 +3808,38 @@ def invite_patient():
                            new_token=request.args.get("new", ""))
 
 
+@app.route("/app/campaign", methods=["GET", "POST"])
+@login_required
+def ad_campaign():
+    """Build a recruitment ad for any channel with a BridgeMD prefill link, then
+    preview the post-click apply experience. The prefill link reuses the invite
+    mechanism, so an ad click lands on a trusted-messenger page and converts
+    straight into an application - and every click/apply is tracked back here.
+
+    KPI: this is the top of the funnel - it speeds up `found` (an ad reaches
+    matched patients) and `contacted` (the prefill link turns a click into an
+    application instead of a dead end). Compliance: recruitment ad copy must be
+    IRB/REB-approved and truthful - see .cursor/rules/compliance.mdc."""
+    if request.method == "POST":
+        f = request.form
+        nct = f.get("nct", "").strip()
+        title = f.get("title", "").strip()
+        condition = f.get("condition", "").strip()
+        if not (nct or title or condition):
+            flash("Add a trial title, NCT number, or condition for the ad to point at.",
+                  "error")
+        else:
+            tok = db.create_invite(
+                g.user["id"], g.user["name"] or "the study team",
+                nct, title, condition, f.get("note", "").strip())
+            flash("Prefill link generated - drop it into your ad, then preview the "
+                  "post-click experience.", "ok")
+            return redirect(url_for("ad_campaign", new=tok))
+    invites = db.list_invites(g.user["id"])
+    return render_template("campaign.html", invites=invites,
+                           new_token=request.args.get("new", ""))
+
+
 @app.route("/i/<token>")
 def invite_landing(token):
     """Public patient landing for a physician invite. Sets an attribution cookie,

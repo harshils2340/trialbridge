@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+{% block title %}Ad campaign · BridgeMD{% endblock %}
+
+{% block body %}
+<div class="page-head">
+  <h1>Ad campaign</h1>
+  <p>Design a recruitment ad for any platform, drop in your BridgeMD prefill link, and see exactly
+    what a patient lands on after they click - so an ad click turns into an application, not a dead end.</p>
+</div>
+
+<div class="camp-grid">
+  <div class="card">
+    <div class="section-title"><h2>{{ ic.icon('sparkle') }} Ad creative</h2></div>
+    <form method="post" class="inv-form camp-form">
+      <label>Platform
+        <select name="platform" id="cPlatform">
+          <option value="Meta">Facebook / Instagram</option>
+          <option value="Google">Google Search</option>
+          <option value="TikTok">TikTok</option>
+          <option value="Reddit">Reddit</option>
+          <option value="Flyer">Clinic flyer / QR</option>
+        </select></label>
+      <label>Ad headline
+        <input type="text" id="cHeadline" maxlength="60"
+          value="Living with obesity? A new study may be an option."></label>
+      <label>Primary text
+        <textarea id="cText" rows="2" maxlength="180">Adults 18+ may qualify for a clinical research study near you. See if you're a fit in about 2 minutes - no cost, no obligation.</textarea></label>
+      <label>Button label
+        <select id="cCta">
+          <option>Apply now</option>
+          <option>See if you qualify</option>
+          <option>Check eligibility</option>
+          <option>Learn more</option>
+        </select></label>
+
+      <div class="camp-dest">
+        <span class="camp-dest-title">Where the button sends them</span>
+        <label>Trial title<input type="text" name="title" placeholder="e.g. Once-Weekly Semaglutide in Adults With Obesity"></label>
+        <div class="camp-dest-row">
+          <label>NCT number<input type="text" name="nct" placeholder="NCT05869903"></label>
+          <label>Condition<input type="text" name="condition" placeholder="Obesity"></label>
+        </div>
+        <label>Note shown on the landing page (optional)
+          <textarea name="note" rows="2" placeholder="What patients see when they arrive - keep it neutral and IRB/REB-approved."></textarea></label>
+      </div>
+
+      <button class="btn btn-primary" type="submit">{{ ic.icon('external') }} Generate prefill link</button>
+      <p class="camp-compliance">{{ ic.icon('help') }} Ad copy must be truthful and IRB/REB-approved before it runs. BridgeMD only pulls neutral trial facts.</p>
+    </form>
+  </div>
+
+  <div class="card camp-preview-card">
+    <div class="section-title"><h2>{{ ic.icon('activity') }} Live preview</h2></div>
+
+    <div class="ad-preview" id="adPreview">
+      <div class="ad-top">
+        <span class="ad-avatar">Rx</span>
+        <div class="ad-meta"><b>Your Clinic</b><span class="ad-sponsored" id="pvPlatform">Sponsored · Meta</span></div>
+      </div>
+      <div class="ad-text" id="pvText"></div>
+      <div class="ad-media">{{ ic.icon('activity') }}</div>
+      <div class="ad-card-foot">
+        <div class="ad-headline" id="pvHeadline"></div>
+        <button type="button" class="ad-cta" id="pvCta" disabled>Apply now</button>
+      </div>
+    </div>
+
+    {% if new_token %}
+    <div class="camp-link">
+      <span class="camp-link-title">{{ ic.icon('check') }} Prefill link ready - paste it into your ad's destination URL</span>
+      <div class="inv-link-row">
+        <input type="text" readonly value="{{ url_for('invite_landing', token=new_token, _external=True) }}" onclick="this.select()">
+        <button type="button" class="btn btn-primary"
+          onclick="navigator.clipboard.writeText(this.previousElementSibling.value);this.textContent='Copied'">Copy</button>
+      </div>
+      <a class="btn btn-ghost btn-block" href="{{ url_for('invite_landing', token=new_token) }}" target="_blank" rel="noopener">
+        {{ ic.icon('arrow-right') }} Preview the post-click apply page</a>
+    </div>
+    {% else %}
+    <p class="camp-hint">Fill in a trial destination and generate your prefill link. Then preview what a patient
+      sees the moment they tap the ad - the same page that converts the click into an application.</p>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card">
+  <div class="section-title"><h2>Your campaigns</h2></div>
+  {% if not invites %}
+  <div class="empty"><p>No campaigns yet. Build an ad above to get a trackable prefill link.</p></div>
+  {% else %}
+  <table class="inv-table">
+    <thead><tr><th>Destination</th><th>Clicks</th><th>Applied</th><th>Active</th><th>Enrolled</th><th>Link</th></tr></thead>
+    <tbody>
+      {% for it in invites %}
+      {% set inv = it.invite %}
+      <tr>
+        <td><b>{{ inv['title'] or inv['nct'] or 'Trial' }}</b>
+          {% if inv['condition'] %}<div class="tag">{{ inv['condition'] }}</div>{% endif %}</td>
+        <td>{{ inv['clicks'] }}</td>
+        <td>{{ it.applied }}</td>
+        <td>{{ it.active }}</td>
+        <td><b class="{{ 'inv-enrolled' if it.enrolled }}">{{ it.enrolled }}</b></td>
+        <td class="camp-link-cell">
+          <button type="button" class="btn btn-sm btn-ghost"
+            onclick="navigator.clipboard.writeText('{{ url_for('invite_landing', token=inv['token'], _external=True) }}');this.textContent='Copied'">Copy link</button>
+          <a class="btn btn-sm btn-ghost" href="{{ url_for('invite_landing', token=inv['token']) }}" target="_blank" rel="noopener">Preview</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>
+
+<script>
+(function () {
+  var headline = document.getElementById('cHeadline');
+  var text = document.getElementById('cText');
+  var cta = document.getElementById('cCta');
+  var platform = document.getElementById('cPlatform');
+  var pvHeadline = document.getElementById('pvHeadline');
+  var pvText = document.getElementById('pvText');
+  var pvCta = document.getElementById('pvCta');
+  var pvPlatform = document.getElementById('pvPlatform');
+  if (!headline || !pvHeadline) return;
+  function sync() {
+    pvHeadline.textContent = headline.value || 'Your ad headline';
+    pvText.textContent = text.value || 'Your ad text will appear here.';
+    pvCta.textContent = cta.value;
+    pvPlatform.textContent = 'Sponsored · ' + platform.options[platform.selectedIndex].text;
+  }
+  [headline, text, cta, platform].forEach(function (el) {
+    el.addEventListener('input', sync);
+    el.addEventListener('change', sync);
+  });
+  sync();
+})();
+</script>
+{% endblock %}

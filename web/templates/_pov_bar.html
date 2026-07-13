@@ -3,8 +3,8 @@
   {% set is_home = request.endpoint == 'home' %}
   {% set p = request.path or '/' %}
   {% set wf = request.args.get('wf', '').strip().lower() %}
-  {% if p.startswith('/app/invite') or p.startswith('/i/') %}
-    {% set demo_lane = 'prescreener' %}
+  {% if p.startswith('/app/campaign') or p.startswith('/app/invite') or p.startswith('/i/') %}
+    {% set demo_lane = 'ad' %}
   {% elif p.startswith('/app/leads') or p.startswith('/app/site') or p.startswith('/app/dashboard') or p.startswith('/c/') %}
     {% set demo_lane = 'site' %}
   {% elif p.startswith('/app') or p.startswith('/referral') %}
@@ -31,7 +31,7 @@
         <option value="{{ url_for('leads') }}" {{ 'selected' if demo_lane == 'site' else '' }}>2) Site intake queue</option>
         <option value="{{ url_for('dashboard', wf='passive') }}" {{ 'selected' if demo_lane == 'physician' else '' }}>3) Physician referral</option>
         <option value="{{ url_for('dashboard', wf='proactive') }}" {{ 'selected' if demo_lane == 'ehr' else '' }}>4) EHR background matching</option>
-        <option value="{{ url_for('invite_patient') }}" {{ 'selected' if demo_lane == 'prescreener' else '' }}>5) Post-click pre-screener</option>
+        <option value="{{ url_for('ad_campaign') }}" {{ 'selected' if demo_lane == 'ad' else '' }}>5) Ad campaign &rarr; apply</option>
       </select>
       <button type="submit" class="demo-lane-go" aria-label="Switch lane">{{ ic.icon('arrow-right') }}</button>
     </form>

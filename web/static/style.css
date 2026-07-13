@@ -1424,6 +1424,44 @@ body.demo-home .hero-search { max-width: 860px; margin-top: 28px; }
 .inv-table { width: 100%; }
 .inv-enrolled { color: var(--ok, #16a34a); }
 
+/* Ad campaign builder + live post-click preview */
+.camp-grid { display: grid; grid-template-columns: 1.05fr .95fr; gap: 18px; margin-bottom: 18px; align-items: start; }
+@media (max-width: 900px) { .camp-grid { grid-template-columns: 1fr; } }
+.camp-form { max-width: none; }
+.camp-form select { padding: 10px 13px; border: 1px solid var(--border-strong); border-radius: 10px;
+  font: inherit; font-size: 14px; background: #fff; }
+.camp-dest { border: 1px dashed var(--border-strong); border-radius: 12px; padding: 13px 14px; display: flex;
+  flex-direction: column; gap: 12px; background: var(--surface-2); }
+.camp-dest-title { font-size: 12px; font-weight: 800; letter-spacing: .02em; text-transform: uppercase; color: var(--muted); }
+.camp-dest-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 520px) { .camp-dest-row { grid-template-columns: 1fr; } }
+.camp-compliance { margin: 2px 0 0; font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 6px; line-height: 1.4; }
+.camp-compliance .ico { width: 14px; height: 14px; flex: none; }
+
+.camp-preview-card { position: sticky; top: 16px; }
+.ad-preview { border: 1px solid var(--border-strong); border-radius: 14px; overflow: hidden;
+  background: #fff; box-shadow: 0 1px 3px rgba(17,17,20,.07); }
+.ad-top { display: flex; align-items: center; gap: 10px; padding: 12px 14px; }
+.ad-avatar { width: 36px; height: 36px; border-radius: 50%; background: var(--accent); color: #fff;
+  display: inline-flex; align-items: center; justify-content: center; font-weight: 800; font-size: 13px; flex: none; }
+.ad-meta { display: flex; flex-direction: column; line-height: 1.25; }
+.ad-meta b { font-size: 13.5px; color: var(--ink); }
+.ad-sponsored { font-size: 11.5px; color: var(--muted); }
+.ad-preview .ad-text { padding: 0 14px 12px; font-size: 13.5px; color: var(--ink); line-height: 1.5; }
+.ad-media { height: 150px; background: linear-gradient(135deg, var(--accent-soft), #e8ecff);
+  display: flex; align-items: center; justify-content: center; }
+.ad-media .ico { width: 40px; height: 40px; color: var(--accent); opacity: .7; }
+.ad-card-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 12px 14px; background: var(--surface-2); border-top: 1px solid var(--border); }
+.ad-headline { font-size: 13.5px; font-weight: 800; color: var(--ink); line-height: 1.3; }
+.ad-cta { flex: none; border: none; border-radius: 8px; padding: 8px 14px; font: inherit; font-size: 12.5px;
+  font-weight: 800; background: var(--accent); color: #fff; cursor: default; }
+.camp-link { margin-top: 14px; display: flex; flex-direction: column; gap: 8px; }
+.camp-link-title { font-size: 12.5px; font-weight: 700; color: var(--ink); display: flex; align-items: center; gap: 6px; }
+.camp-link-title .ico { width: 15px; height: 15px; color: var(--ok, #16a34a); }
+.camp-hint { margin: 14px 0 0; font-size: 12.5px; color: var(--muted); line-height: 1.5; }
+.camp-link-cell { display: flex; gap: 6px; flex-wrap: wrap; }
+
 /* Study-team setup + claimed-study scoping */
 .site-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-bottom: 18px; }
 @media (max-width: 900px) { .site-grid { grid-template-columns: 1fr; } }
@@ -2325,12 +2363,16 @@ main:focus { outline: none; }
 [data-theme="dark"] .interest-form input,
 [data-theme="dark"] .lead-status-form select,
 [data-theme="dark"] .lead-status-form input,
+[data-theme="dark"] .camp-form select,
+[data-theme="dark"] .ad-preview,
 [data-theme="dark"] .loading-card,
 [data-theme="dark"] .msg-site {
   background: var(--surface);
   border-color: var(--border-strong);
   color: var(--ink);
 }
+[data-theme="dark"] .camp-dest { background: var(--surface-2); }
+[data-theme="dark"] .ad-card-foot { background: var(--surface-2); }
 [data-theme="dark"] .step { background: var(--surface-2); }
 [data-theme="dark"] input::placeholder,
 [data-theme="dark"] textarea::placeholder { color: var(--faint); }
