@@ -303,6 +303,60 @@ CREATE TABLE IF NOT EXISTS messages (
     FOREIGN KEY (lead_id) REFERENCES leads(id)
 );
 
+-- Files shared inside a candidate's private thread (consent forms, insurance
+-- cards, questionnaires). Scoped to one lead so a document only ever crosses
+-- between that patient and their study team - never a shared/participant view.
+CREATE TABLE IF NOT EXISTS message_attachments (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    lead_id      INTEGER NOT NULL,
+    uploaded_by  TEXT NOT NULL,          -- 'site' | 'patient'
+    orig_name    TEXT NOT NULL,
+    stored_name  TEXT NOT NULL,
+    mime         TEXT DEFAULT '',
+    size_bytes   INTEGER DEFAULT 0,
+    note         TEXT DEFAULT '',
+    created_at   TEXT NOT NULL,
+    FOREIGN KEY (lead_id) REFERENCES leads(id)
+);
+
+-- Per-candidate to-do checklist. The study team assigns action items ("sign
+-- consent", "upload insurance card") to a patient so both sides can track what
+-- is outstanding without email ping-pong. assigned_to = who must act.
+CREATE TABLE IF NOT EXISTS lead_tasks (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    lead_id      INTEGER NOT NULL,
+    title        TEXT NOT NULL,
+    assigned_to  TEXT DEFAULT 'patient', -- 'patient' | 'site'
+    status       TEXT DEFAULT 'open',    -- 'open' | 'done'
+    created_by   TEXT DEFAULT 'site',
+    created_at   TEXT NOT NULL,
+    done_at      TEXT DEFAULT '',
+    FOREIGN KEY (lead_id) REFERENCES leads(id)
+);
+
+-- Internal team room: staff-only collaboration keyed by trial (NCT). Not
+-- patient-visible. Lets recruiters/coordinators coordinate and share working
+-- documents among the study team.
+CREATE TABLE IF NOT EXISTS team_messages (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    nct          TEXT NOT NULL,
+    sender_user_id INTEGER,
+    sender_name  TEXT DEFAULT '',
+    body         TEXT DEFAULT '',
+    created_at   TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS team_message_attachments (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    team_message_id INTEGER NOT NULL,
+    orig_name    TEXT NOT NULL,
+    stored_name  TEXT NOT NULL,
+    mime         TEXT DEFAULT '',
+    size_bytes   INTEGER DEFAULT 0,
+    created_at   TEXT NOT NULL,
+    FOREIGN KEY (team_message_id) REFERENCES team_messages(id)
+);
+
 -- Scheduled visits (screening, follow-up) a site books for a candidate. Drives
 -- automatic reminders (see reminders.py) and the patient's "upcoming visit" view.
 CREATE TABLE IF NOT EXISTS lead_visits (
@@ -1672,6 +1726,136 @@ def lead_unread_for_site(lead_id):
     return r["n"] if r else 0
 
 
+# --------------------------------------------------------------------------- #
+# Thread documents + per-candidate task checklist (collaboration layer)
+# --------------------------------------------------------------------------- #
+def add_attachment(lead_id, uploaded_by, orig_name, stored_name, mime="",
+                   size_bytes=0, note=""):
+    if uploaded_by not in ("site", "patient"):
+        return None
+    db = get_db()
+    cur = db.execute(
+        "INSERT INTO message_attachments (lead_id, uploaded_by, orig_name, "
+        "stored_name, mime, size_bytes, note, created_at) VALUES (?,?,?,?,?,?,?,?)",
+        (lead_id, uploaded_by, orig_name, stored_name, mime, int(size_bytes or 0),
+         (note or "").strip(), now()))
+    db.execute("UPDATE leads SET updated_at = ? WHERE id = ?", (now(), lead_id))
+    db.commit()
+    return cur.lastrowid
+
+
+def list_attachments(lead_id):
+    return get_db().execute(
+        "SELECT * FROM message_attachments WHERE lead_id = ? ORDER BY id DESC",
+        (lead_id,)).fetchall()
+
+
+def get_attachment(att_id):
+    return get_db().execute(
+        "SELECT * FROM message_attachments WHERE id = ?", (att_id,)).fetchone()
+
+
+def add_task(lead_id, title, assigned_to="patient", created_by="site"):
+    title = (title or "").strip()
+    if not title:
+        return None
+    if assigned_to not in ("patient", "site"):
+        assigned_to = "patient"
+    db = get_db()
+    cur = db.execute(
+        "INSERT INTO lead_tasks (lead_id, title, assigned_to, status, created_by, "
+        "created_at) VALUES (?,?,?,?,?,?)",
+        (lead_id, title, assigned_to, "open", created_by, now()))
+    db.execute("UPDATE leads SET updated_at = ? WHERE id = ?", (now(), lead_id))
+    db.commit()
+    return cur.lastrowid
+
+
+def list_tasks(lead_id):
+    return get_db().execute(
+        "SELECT * FROM lead_tasks WHERE lead_id = ? ORDER BY status ASC, id ASC",
+        (lead_id,)).fetchall()
+
+
+def get_task(task_id):
+    return get_db().execute(
+        "SELECT * FROM lead_tasks WHERE id = ?", (task_id,)).fetchone()
+
+
+def set_task_status(task_id, status):
+    status = "done" if status == "done" else "open"
+    db = get_db()
+    db.execute(
+        "UPDATE lead_tasks SET status = ?, done_at = ? WHERE id = ?",
+        (status, now() if status == "done" else "", task_id))
+    db.commit()
+
+
+def open_task_count(lead_id, assigned_to=None):
+    q = "SELECT COUNT(*) n FROM lead_tasks WHERE lead_id = ? AND status = 'open'"
+    args = [lead_id]
+    if assigned_to:
+        q += " AND assigned_to = ?"
+        args.append(assigned_to)
+    r = get_db().execute(q, args).fetchone()
+    return r["n"] if r else 0
+
+
+# --------------------------------------------------------------------------- #
+# Internal team room (staff-only, keyed by trial NCT). Never patient-visible.
+# --------------------------------------------------------------------------- #
+def add_team_message(nct, user_id, sender_name, body):
+    body = (body or "").strip()
+    if not (nct and body):
+        return None
+    db = get_db()
+    cur = db.execute(
+        "INSERT INTO team_messages (nct, sender_user_id, sender_name, body, "
+        "created_at) VALUES (?,?,?,?,?)",
+        (nct, user_id, (sender_name or "").strip(), body, now()))
+    db.commit()
+    return cur.lastrowid
+
+
+def list_team_messages(nct, limit=200):
+    return get_db().execute(
+        "SELECT * FROM team_messages WHERE nct = ? ORDER BY id ASC LIMIT ?",
+        (nct, limit)).fetchall()
+
+
+def add_team_attachment(team_message_id, orig_name, stored_name, mime="",
+                        size_bytes=0):
+    db = get_db()
+    cur = db.execute(
+        "INSERT INTO team_message_attachments (team_message_id, orig_name, "
+        "stored_name, mime, size_bytes, created_at) VALUES (?,?,?,?,?,?)",
+        (team_message_id, orig_name, stored_name, mime, int(size_bytes or 0),
+         now()))
+    db.commit()
+    return cur.lastrowid
+
+
+def list_team_attachments(team_message_ids):
+    ids = [i for i in (team_message_ids or []) if i]
+    if not ids:
+        return {}
+    qs = ",".join("?" * len(ids))
+    rows = get_db().execute(
+        f"SELECT * FROM team_message_attachments WHERE team_message_id IN ({qs}) "
+        "ORDER BY id ASC", ids).fetchall()
+    out = {}
+    for r in rows:
+        out.setdefault(r["team_message_id"], []).append(r)
+    return out
+
+
+def get_team_attachment(att_id):
+    return get_db().execute(
+        "SELECT a.*, m.nct AS nct FROM team_message_attachments a "
+        "JOIN team_messages m ON m.id = a.team_message_id WHERE a.id = ?",
+        (att_id,)).fetchone()
+
+
 def engagement_for_ncts(ncts):
     """Message/visit counts scoped to a list/set of NCT ids."""
     ncts = sorted({x for x in (ncts or []) if x})
@@ -2369,6 +2553,61 @@ def seed_demo_engagement(clinician_id):
             db.execute("UPDATE leads SET referred_by = 'Referring Clinician', "
                        "invite_token = ?, source = 'referral' WHERE id = ?",
                        (tok, target["id"]))
+    db.commit()
+
+
+def seed_demo_collaboration(clinician_id=None):
+    """Seed the collaboration layer (per-candidate to-dos + internal team room)
+    so a fresh demo shows it working. Idempotent per-surface."""
+    db = get_db()
+    base = dt.datetime.now()
+
+    def ts(days=0, hours=0):
+        return (base + dt.timedelta(days=days, hours=hours)).strftime("%Y-%m-%d %H:%M")
+
+    # Per-candidate checklists on the first couple of accepted candidates.
+    if not db.execute("SELECT COUNT(*) n FROM lead_tasks").fetchone()["n"]:
+        revealed = db.execute(
+            "SELECT id FROM leads WHERE revealed = 1 ORDER BY id LIMIT 3").fetchall()
+        seed_tasks = [
+            ("Sign the consent form we shared", "patient", "done"),
+            ("Upload a photo of your insurance card", "patient", "open"),
+            ("Confirm you can travel to the study site", "patient", "open"),
+        ]
+        for ld in revealed:
+            for title, who, status in seed_tasks:
+                db.execute(
+                    "INSERT INTO lead_tasks (lead_id, title, assigned_to, status, "
+                    "created_by, created_at, done_at) VALUES (?,?,?,?,?,?,?)",
+                    (ld["id"], title, who, status, "site", ts(hours=-24),
+                     ts(hours=-6) if status == "done" else ""))
+
+    # Internal team room chatter on the demo's claimed trials. Seeded per-NCT so
+    # every room a coordinator can open has content (idempotent per room).
+    if clinician_id:
+        claims = db.execute(
+            "SELECT nct, title FROM study_claims WHERE user_id = ?",
+            (clinician_id,)).fetchall()
+        room_seed = [
+            ("Coordinator", "Kicking off recruitment for this cohort - shared the "
+             "latest consent packet and the pre-screen checklist here."),
+            ("Recruiter", "Two strong applicants came in overnight. Booking screening "
+             "calls for Thursday - will drop the visit prep doc in the thread."),
+            ("Coordinator", "Reminder: only IRB-approved materials go in patient "
+             "threads. Working drafts stay in here."),
+        ]
+        for c in claims:
+            has = db.execute(
+                "SELECT COUNT(*) n FROM team_messages WHERE nct = ?",
+                (c["nct"],)).fetchone()["n"]
+            if has:
+                continue
+            for i, (who, body) in enumerate(room_seed):
+                db.execute(
+                    "INSERT INTO team_messages (nct, sender_user_id, sender_name, "
+                    "body, created_at) VALUES (?,?,?,?,?)",
+                    (c["nct"], clinician_id if i == 0 else None, who, body,
+                     ts(hours=-20 + i)))
     db.commit()
 
 

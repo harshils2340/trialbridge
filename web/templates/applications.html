@@ -154,6 +154,48 @@
     </div>
     {% endif %}
 
+    {% if a.tasks %}
+    <div class="app-tasks">
+      <div class="thread-head">{{ ic.icon('check') }} Your to-do list
+        {% set open_tasks = a.tasks | selectattr('status','equalto','open') | list %}
+        {% if open_tasks %}<span class="task-open-badge">{{ open_tasks|length }} to do</span>{% else %}<span class="task-done-badge">All done</span>{% endif %}
+      </div>
+      <ul class="ptask-list">
+        {% for t in a.tasks %}
+        <li class="ptask {{ 'ptask-done' if t.status == 'done' else '' }}">
+          <form method="post" action="{{ url_for('application_toggle_task', token=ld.token, task_id=t.id) }}">
+            <button type="submit" class="ptask-check" aria-label="Toggle done">{% if t.status == 'done' %}{{ ic.icon('check') }}{% endif %}</button>
+          </form>
+          <span class="ptask-title">{{ t.title }}</span>
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+
+    <div class="app-docs">
+      <div class="thread-head">{{ ic.icon('upload') }} Shared documents</div>
+      {% if a.files %}
+      <ul class="pdoc-list">
+        {% for f in a.files %}
+        <li class="pdoc">
+          <span class="pdoc-tag">{{ 'You shared' if f.uploaded_by == 'patient' else 'Study team' }}</span>
+          <a href="{{ url_for('download_lead_file', att_id=f.id) }}" class="pdoc-link">{{ f.orig_name }}</a>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="thread-empty">No documents yet. When the study team sends a form, it shows up here.</p>
+      {% endif %}
+      {% if not is_closed %}
+      <form class="pdoc-form" method="post" action="{{ url_for('application_attach', token=ld.token) }}" enctype="multipart/form-data" data-doc-drop>
+        <input type="file" name="file" id="pfile-{{ ld.id }}" class="doc-file" data-doc-input>
+        <label for="pfile-{{ ld.id }}" class="doc-drop-label" data-doc-label>{{ ic.icon('upload') }} Drag &amp; drop or choose a file to send</label>
+        <button class="btn btn-primary btn-sm" type="submit">Upload</button>
+      </form>
+      {% endif %}
+    </div>
+
     <div class="thread">
       <div class="thread-head">{{ ic.icon('activity') }} Messages with the study team
         {% set unread = a.messages | selectattr('sender','ne','patient') | selectattr('read_patient','equalto',0) | list %}
@@ -216,4 +258,29 @@
     application. BridgeMD isn't the study sponsor and doesn't make eligibility decisions.</p>
   {% endif %}
 </section>
+<script>
+(function () {
+  document.querySelectorAll('[data-doc-drop]').forEach(function (form) {
+    var input = form.querySelector('[data-doc-input]');
+    var label = form.querySelector('[data-doc-label]');
+    if (!input || !label) return;
+    function setName() {
+      if (input.files && input.files.length) {
+        label.textContent = input.files[0].name;
+        form.classList.add('has-file');
+      }
+    }
+    input.addEventListener('change', setName);
+    ['dragenter', 'dragover'].forEach(function (ev) {
+      form.addEventListener(ev, function (e) { e.preventDefault(); form.classList.add('drag'); });
+    });
+    ['dragleave', 'drop'].forEach(function (ev) {
+      form.addEventListener(ev, function (e) { e.preventDefault(); form.classList.remove('drag'); });
+    });
+    form.addEventListener('drop', function (e) {
+      if (e.dataTransfer && e.dataTransfer.files.length) { input.files = e.dataTransfer.files; setName(); }
+    });
+  });
+})();
+</script>
 {% endblock %}

@@ -10,3 +10,7 @@ web/bridgemd.db
 web/.secret
 .venv/
 __pycache__/
+
+# Uploaded documents (candidate-thread + team-room files) — runtime data,
+# may contain PHI. The directory is auto-created by the app on startup.
+web/uploads/

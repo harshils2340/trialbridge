@@ -87,6 +87,59 @@
     </div>
   </details>
 
+  {% if l['revealed'] %}
+  <details class="ats-advanced collab-block">
+    <summary>{{ ic.icon('list') }} Documents &amp; checklist
+      {% if it.files %}<span class="collab-count">{{ it.files|length }} file{{ 's' if it.files|length != 1 else '' }}</span>{% endif %}
+      {% set open_tasks = it.tasks|selectattr('status','equalto','open')|list %}
+      {% if open_tasks %}<span class="collab-count collab-open">{{ open_tasks|length }} open to-do{{ 's' if open_tasks|length != 1 else '' }}</span>{% endif %}
+    </summary>
+    <div class="collab-grid">
+      <div class="collab-col">
+        <label class="collab-h">{{ ic.icon('upload') }} Shared documents</label>
+        {% if it.files %}
+        <ul class="doc-list">
+          {% for f in it.files %}
+          <li class="doc-item">
+            <span class="doc-tag {{ 'doc-in' if f['uploaded_by'] == 'patient' else 'doc-out' }}">{{ 'From applicant' if f['uploaded_by'] == 'patient' else 'Sent' }}</span>
+            <a href="{{ url_for('download_lead_file', att_id=f['id']) }}" class="doc-link">{{ f['orig_name'] }}</a>
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}<p class="collab-empty">No documents shared yet.</p>{% endif %}
+        <form method="post" action="{{ url_for('attach_lead_file', lead_id=l['id']) }}" enctype="multipart/form-data" class="doc-drop" data-doc-drop>
+          <input type="file" name="file" id="file-{{ l['id'] }}" class="doc-file" data-doc-input>
+          <label for="file-{{ l['id'] }}" class="doc-drop-label" data-doc-label>{{ ic.icon('upload') }} Drag &amp; drop a file, or click to choose</label>
+          <div class="doc-drop-row">
+            <input type="text" name="note" placeholder="Optional note" class="doc-note">
+            <button class="btn btn-sm btn-primary" type="submit">Share</button>
+          </div>
+        </form>
+      </div>
+      <div class="collab-col">
+        <label class="collab-h">{{ ic.icon('check') }} Patient checklist</label>
+        {% if it.tasks %}
+        <ul class="task-list">
+          {% for t in it.tasks %}
+          <li class="task-item {{ 'task-done' if t['status'] == 'done' else '' }}">
+            <form method="post" action="{{ url_for('toggle_lead_task', lead_id=l['id'], task_id=t['id']) }}" class="task-toggle">
+              <button type="submit" class="task-check" title="Toggle done" aria-label="Toggle done">{% if t['status'] == 'done' %}{{ ic.icon('check') }}{% endif %}</button>
+            </form>
+            <span class="task-title">{{ t['title'] }}</span>
+            <span class="task-who">{{ 'you' if t['assigned_to'] == 'site' else 'patient' }}</span>
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}<p class="collab-empty">No to-dos assigned yet.</p>{% endif %}
+        <form method="post" action="{{ url_for('add_lead_task', lead_id=l['id']) }}" class="task-add">
+          <input type="text" name="title" placeholder="Add a to-do for the patient..." required>
+          <button class="btn btn-sm btn-ghost" type="submit">{{ ic.icon('plus') }} Add</button>
+        </form>
+      </div>
+    </div>
+  </details>
+  {% endif %}
+
   <div class="outreach-foot">
     <a class="cand-open" href="{{ url_for('candidate_page', token=l['site_token']) }}">{{ ic.icon('external') }} Open full workspace</a>
     {% if l['email'] %}<a class="cand-open" href="mailto:{{ l['email'] }}">{{ ic.icon('activity') }} Email</a>{% endif %}
@@ -144,6 +197,21 @@
   <div class="stat compact"><div class="l">Enrolled</div><div class="n">{{ counts.get('enrolled', 0) }}</div></div>
   <div class="stat compact {{ 'accent' if site_unread }}"><div class="l">Unread</div><div class="n">{{ site_unread }}</div></div>
 </div>
+
+<details class="card broadcast-card">
+  <summary class="broadcast-sum">{{ ic.icon('user-plus') }} Message everyone
+    <span class="broadcast-hint">Send an update, a to-do, or a document to every accepted candidate</span>
+  </summary>
+  <form method="post" action="{{ url_for('broadcast_leads') }}" enctype="multipart/form-data" class="broadcast-form">
+    <textarea name="body" rows="2" placeholder="Message to all accepted candidates (e.g. 'Reminder: bring your ID to your visit.')"></textarea>
+    <div class="broadcast-row">
+      <input type="text" name="task" placeholder="Optional to-do for everyone (e.g. 'Sign the consent form')">
+      <label class="broadcast-file">{{ ic.icon('upload') }} <span>Attach doc</span><input type="file" name="file"></label>
+      <button class="btn btn-primary btn-sm" type="submit">Send to all</button>
+    </div>
+    <p class="broadcast-note">{{ ic.icon('help') }} Delivered privately to each candidate's own thread - candidates never see each other.</p>
+  </form>
+</details>
 
 {% set trial_set = [] %}
 {% set source_set = [] %}
@@ -570,6 +638,39 @@
     });
   }
   applyAtsFilters();
+})();
+</script>
+<script>
+// Drag-and-drop affordance for candidate-thread document uploads.
+(function () {
+  document.querySelectorAll('[data-doc-drop]').forEach(function (form) {
+    var input = form.querySelector('[data-doc-input]');
+    var label = form.querySelector('[data-doc-label]');
+    if (!input || !label) return;
+    function setName() {
+      if (input.files && input.files.length) {
+        label.textContent = input.files[0].name;
+        form.classList.add('has-file');
+      }
+    }
+    input.addEventListener('change', setName);
+    ['dragenter', 'dragover'].forEach(function (ev) {
+      form.addEventListener(ev, function (e) {
+        e.preventDefault(); form.classList.add('drag');
+      });
+    });
+    ['dragleave', 'drop'].forEach(function (ev) {
+      form.addEventListener(ev, function (e) {
+        e.preventDefault(); form.classList.remove('drag');
+      });
+    });
+    form.addEventListener('drop', function (e) {
+      if (e.dataTransfer && e.dataTransfer.files.length) {
+        input.files = e.dataTransfer.files;
+        setName();
+      }
+    });
+  });
 })();
 </script>
 {% endblock %}

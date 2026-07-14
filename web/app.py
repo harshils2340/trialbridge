@@ -29,14 +29,16 @@ import sys
 import time
 import datetime as dt
 import csv
+import mimetypes
 import urllib.parse
 import urllib.request
 from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from flask import (Flask, abort, flash, g, jsonify, make_response, redirect,
-                   render_template, request, session, url_for)
+                   render_template, request, send_file, session, url_for)
 from werkzeug.security import check_password_hash, generate_password_hash
+from werkzeug.utils import secure_filename
 
 # Reuse the matching engine + referral helpers from the parent package.
 HERE = pathlib.Path(__file__).resolve().parent
@@ -91,6 +93,65 @@ MATCH_QUALITY_MIN = max(
     0, min(100, int(os.environ.get("MATCH_QUALITY_MIN", "85"))))
 app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024    # 16 MB upload cap
 app.teardown_appcontext(db.close_db)
+
+# Uploaded documents (candidate-thread files + team room). Stored on disk (not
+# in the DB) so production can point UPLOAD_DIR at a persistent disk. The name
+# on disk is randomized; the human filename lives only in the DB row.
+UPLOAD_DIR = pathlib.Path(os.environ.get("UPLOAD_DIR") or (HERE / "uploads"))
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+_ALLOWED_UPLOAD_EXT = {
+    ".pdf", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".doc", ".docx",
+    ".txt", ".csv", ".xls", ".xlsx", ".rtf", ".heic",
+}
+
+
+def _save_upload(file_storage):
+    """Persist an uploaded file under a random name. Returns
+    (orig_name, stored_name, mime, size) or None if missing/disallowed."""
+    if not file_storage or not file_storage.filename:
+        return None
+    orig = secure_filename(file_storage.filename) or "file"
+    ext = pathlib.Path(orig).suffix.lower()
+    if ext and ext not in _ALLOWED_UPLOAD_EXT:
+        return None
+    stored = secrets.token_hex(16) + ext
+    dest = UPLOAD_DIR / stored
+    file_storage.save(str(dest))
+    try:
+        size = dest.stat().st_size
+    except OSError:
+        size = 0
+    return orig, stored, (file_storage.mimetype or ""), size
+
+
+def _copy_stored_file(stored_name, orig_name):
+    """Duplicate an already-stored upload under a fresh random name so each
+    broadcast recipient owns an independent copy. Returns the same tuple as
+    _save_upload, or None on failure."""
+    safe = os.path.basename(stored_name or "")
+    src = UPLOAD_DIR / safe
+    if not safe or not src.exists():
+        return None
+    ext = pathlib.Path(safe).suffix.lower()
+    new_stored = secrets.token_hex(16) + ext
+    dest = UPLOAD_DIR / new_stored
+    try:
+        dest.write_bytes(src.read_bytes())
+        size = dest.stat().st_size
+    except OSError:
+        return None
+    mime = mimetypes.guess_type(orig_name or safe)[0] or ""
+    return orig_name or safe, new_stored, mime, size
+
+
+def _send_stored_file(stored_name, orig_name):
+    """Serve a stored upload as an attachment, guarding against path escape."""
+    safe = os.path.basename(stored_name or "")
+    path = UPLOAD_DIR / safe
+    if not safe or not path.exists():
+        abort(404)
+    return send_file(str(path), as_attachment=True,
+                     download_name=orig_name or safe)
 
 # Create tables on import so the app is safe under any launcher (flask run, wsgi).
 db.init_db()
@@ -313,6 +374,52 @@ def _seed_demo_surfaces(user_id=None):
         _ensure_demo_patient()
     except Exception:
         app.logger.exception("demo patient seeding failed")
+    try:
+        db.seed_demo_collaboration(user_id)
+    except Exception:
+        app.logger.exception("demo collaboration seeding failed")
+    try:
+        _seed_demo_documents()
+    except Exception:
+        app.logger.exception("demo document seeding failed")
+
+
+def _seed_demo_documents():
+    """Drop one real sample file on disk + attachment rows so the demo's
+    'Shared documents' panel has a working download. Idempotent."""
+    sample = UPLOAD_DIR / "sample-consent-form.txt"
+    if not sample.exists():
+        sample.write_text(
+            "SAMPLE - Informed Consent Summary\n\n"
+            "This is a demo document shared through BridgeMD's secure candidate "
+            "thread. In production this would be your IRB/REB-approved consent "
+            "form or intake packet.\n")
+
+    def _share_doc(lead_id):
+        if not db.list_attachments(lead_id):
+            db.add_attachment(lead_id, "site", "sample-consent-form.txt",
+                              sample.name, "text/plain",
+                              sample.stat().st_size, "Please review and sign.")
+
+    # Study-team side: docs on the first couple of accepted candidates.
+    revealed = [ld for ld in db.list_leads() if ld["revealed"]]
+    for ld in revealed[:2]:
+        _share_doc(ld["id"])
+
+    # Patient side: seed a doc + checklist on the demo patient's own active
+    # application so the "My applications" view demos the full loop too.
+    patient = db.get_patient_by_email(_DEMO_PATIENT_EMAIL)
+    if patient:
+        p_leads = [ld for ld in db.list_leads_by_applicant(patient["applicant_token"])
+                   if ld["status"] not in db.LEAD_CLOSED]
+        if p_leads:
+            ld = p_leads[0]
+            _share_doc(ld["id"])
+            if not db.list_tasks(ld["id"]):
+                db.add_task(ld["id"], "Review and sign the consent form",
+                            assigned_to="patient", created_by="site")
+                db.add_task(ld["id"], "Upload a photo of your insurance card",
+                            assigned_to="patient", created_by="site")
 
 
 def _demo_mode_enabled():
@@ -1951,6 +2058,8 @@ def applications():
             "messages": db.get_messages(ld["id"]),
             "visits": db.get_visits(ld["id"]),
             "support": db.get_lead_support(ld["id"]),
+            "files": db.list_attachments(ld["id"]),
+            "tasks": db.list_tasks(ld["id"]),
         })
         db.mark_thread_read(ld["id"], "patient")
     return render_template("applications.html", apps=apps,
@@ -1974,6 +2083,46 @@ def application_message(token):
         db.add_message(lead["id"], "patient", body)
         _notify_site_message(lead, body)
         flash("Message sent to the study team.", "success")
+    return redirect(url_for("applications") + f"#app-{lead['id']}")
+
+
+@app.route("/applications/<token>/attach", methods=["POST"])
+def application_attach(token):
+    """Patient uploads a document (e.g. a signed form) into their own thread."""
+    if not g.patient_user:
+        flash("Sign in to share a document.", "error")
+        return redirect(url_for("patient_login", next=url_for("applications")))
+    lead = db.get_lead_by_token(token)
+    if not lead or lead["applicant_token"] != get_applicant_token():
+        abort(403)
+    saved = _save_upload(request.files.get("file"))
+    if not saved:
+        flash("Attach a supported file (PDF, image, doc, spreadsheet).", "error")
+        return redirect(url_for("applications") + f"#app-{lead['id']}")
+    orig, stored, mime, size = saved
+    db.add_attachment(lead["id"], "patient", orig, stored, mime, size)
+    db.add_message(lead["id"], "patient", f"Shared a document: {orig}")
+    _notify_site_message(lead, f"The applicant shared a document: {orig}")
+    flash("Document shared with the study team.", "success")
+    return redirect(url_for("applications") + f"#app-{lead['id']}")
+
+
+@app.route("/applications/<token>/task/<int:task_id>", methods=["POST"])
+def application_toggle_task(token, task_id):
+    """Patient checks off (or reopens) one of their assigned to-dos."""
+    if not g.patient_user:
+        flash("Sign in to update your checklist.", "error")
+        return redirect(url_for("patient_login", next=url_for("applications")))
+    lead = db.get_lead_by_token(token)
+    if not lead or lead["applicant_token"] != get_applicant_token():
+        abort(403)
+    task = db.get_task(task_id)
+    if not task or task["lead_id"] != lead["id"]:
+        abort(404)
+    new_status = "open" if task["status"] == "done" else "done"
+    db.set_task_status(task_id, new_status)
+    flash("Nice - checked off your list." if new_status == "done"
+          else "Reopened - back on your to-do list.", "success")
     return redirect(url_for("applications") + f"#app-{lead['id']}")
 
 
@@ -2389,6 +2538,9 @@ def _decode_lead(row, recon=None):
         "age_band": age_band(row["age"]),
         "unread": db.lead_unread_for_site(row["id"]),
         "recon": recon or db.latest_reconciliation(row["id"]),
+        "messages": db.get_messages(row["id"]),
+        "files": db.list_attachments(row["id"]),
+        "tasks": db.list_tasks(row["id"]),
     }
 
 
@@ -2708,6 +2860,176 @@ def message_lead(lead_id):
     else:
         flash("Write a message first.", "error")
     return redirect(url_for("leads"))
+
+
+@app.route("/app/leads/<int:lead_id>/attach", methods=["POST"])
+@login_required
+def attach_lead_file(lead_id):
+    """Study team drops a document into a candidate's private thread."""
+    _ensure_site_access_for_lead(lead_id)
+    lead = db.get_lead(lead_id)
+    if not lead:
+        flash("Couldn't find that candidate.", "error")
+        return redirect(url_for("leads"))
+    if not lead["revealed"]:
+        flash("Accept the candidate first to share documents.", "error")
+        return redirect(url_for("leads"))
+    saved = _save_upload(request.files.get("file"))
+    if not saved:
+        flash("Attach a supported file (PDF, image, doc, spreadsheet).", "error")
+        return redirect(url_for("leads"))
+    orig, stored, mime, size = saved
+    note = request.form.get("note", "").strip()
+    db.add_attachment(lead_id, "site", orig, stored, mime, size, note)
+    db.add_message(lead_id, "site", f"Shared a document: {orig}"
+                   + (f" - {note}" if note else ""))
+    _notify_applicant_message(lead, f"Your study team shared a document: {orig}")
+    flash("Document shared with the applicant.", "success")
+    return redirect(url_for("leads"))
+
+
+@app.route("/app/leads/<int:lead_id>/task", methods=["POST"])
+@login_required
+def add_lead_task(lead_id):
+    """Study team adds a to-do item for the candidate to complete."""
+    _ensure_site_access_for_lead(lead_id)
+    lead = db.get_lead(lead_id)
+    if not lead:
+        flash("Couldn't find that candidate.", "error")
+        return redirect(url_for("leads"))
+    if not lead["revealed"]:
+        flash("Accept the candidate first to assign tasks.", "error")
+        return redirect(url_for("leads"))
+    title = request.form.get("title", "").strip()
+    if not title:
+        flash("Describe the task first.", "error")
+        return redirect(url_for("leads"))
+    db.add_task(lead_id, title, assigned_to="patient", created_by="site")
+    db.add_message(lead_id, "site", f"New to-do for you: {title}")
+    _notify_applicant_message(lead, f"New to-do from your study team: {title}")
+    flash("Task added to the candidate's checklist.", "success")
+    return redirect(url_for("leads"))
+
+
+@app.route("/app/leads/<int:lead_id>/task/<int:task_id>", methods=["POST"])
+@login_required
+def toggle_lead_task(lead_id, task_id):
+    _ensure_site_access_for_lead(lead_id)
+    task = db.get_task(task_id)
+    if not task or task["lead_id"] != lead_id:
+        abort(404)
+    new_status = "open" if task["status"] == "done" else "done"
+    db.set_task_status(task_id, new_status)
+    flash("To-do marked done." if new_status == "done"
+          else "To-do reopened.", "success")
+    return redirect(url_for("leads"))
+
+
+@app.route("/app/leads/broadcast", methods=["POST"])
+@login_required
+def broadcast_leads():
+    """Fan a message (and optional task/document) out to every accepted
+    candidate on the account's trials - delivered to each private thread, never
+    a shared room (who else is enrolled is PHI)."""
+    body = request.form.get("body", "").strip()
+    task_title = request.form.get("task", "").strip()
+    saved = _save_upload(request.files.get("file"))
+    if not (body or task_title or saved):
+        flash("Add a message, a to-do, or a document to send.", "error")
+        return redirect(url_for("leads"))
+    leads = [ld for ld in db.list_leads_for_user(g.user["id"])
+             if ld["revealed"] and ld["status"] not in db.LEAD_CLOSED]
+    if not leads:
+        flash("No accepted candidates to message yet.", "error")
+        return redirect(url_for("leads"))
+    for ld in leads:
+        if body:
+            db.add_message(ld["id"], "site", body)
+            _notify_applicant_message(ld, body)
+        if task_title:
+            db.add_task(ld["id"], task_title, assigned_to="patient",
+                        created_by="site")
+            db.add_message(ld["id"], "site", f"New to-do for you: {task_title}")
+        if saved:
+            orig, stored, mime, size = saved
+            # Each recipient gets their own stored copy so deletes never leak.
+            copy_saved = _copy_stored_file(stored, orig)
+            if copy_saved:
+                c_orig, c_stored, c_mime, c_size = copy_saved
+                db.add_attachment(ld["id"], "site", c_orig, c_stored, c_mime,
+                                  c_size)
+                db.add_message(ld["id"], "site", f"Shared a document: {c_orig}")
+    if saved:
+        # Remove the original temp copy; recipients hold their own copies.
+        try:
+            (UPLOAD_DIR / os.path.basename(saved[1])).unlink(missing_ok=True)
+        except OSError:
+            pass
+    flash(f"Sent to {len(leads)} accepted candidate"
+          f"{'s' if len(leads) != 1 else ''}.", "success")
+    return redirect(url_for("leads"))
+
+
+@app.route("/files/lead/<int:att_id>")
+def download_lead_file(att_id):
+    """Serve a thread document to either side, access-controlled per lead."""
+    att = db.get_attachment(att_id)
+    if not att:
+        abort(404)
+    lead = db.get_lead(att["lead_id"])
+    if not lead:
+        abort(404)
+    site_ok = bool(g.user and db.lead_belongs_to_user(lead["id"], g.user["id"]))
+    patient_ok = bool(g.patient_user
+                      and lead["applicant_token"] == get_applicant_token())
+    if not (site_ok or patient_ok):
+        abort(403)
+    return _send_stored_file(att["stored_name"], att["orig_name"])
+
+
+@app.route("/app/team", methods=["GET", "POST"])
+@login_required
+def team_room():
+    """Staff-only collaboration room, one per claimed trial (NCT). Not
+    patient-visible - purely for the study team to coordinate + share files."""
+    claims = db.list_study_claims(g.user["id"])
+    rooms = [{"nct": c["nct"], "title": c["title"] or c["nct"]} for c in claims]
+    if not rooms:
+        return render_template("team_room.html", rooms=[], active=None,
+                               active_room=None, messages=[], attachments={})
+    valid = {r["nct"] for r in rooms}
+    active = request.values.get("nct") or rooms[0]["nct"]
+    if active not in valid:
+        active = rooms[0]["nct"]
+    if request.method == "POST":
+        body = request.form.get("body", "").strip()
+        saved = _save_upload(request.files.get("file"))
+        if body or saved:
+            label = body or (f"Shared a file: {saved[0]}" if saved else "")
+            mid = db.add_team_message(active, g.user["id"], g.user["name"], label)
+            if saved and mid:
+                orig, stored, mime, size = saved
+                db.add_team_attachment(mid, orig, stored, mime, size)
+        else:
+            flash("Write a message or attach a file.", "error")
+        return redirect(url_for("team_room", nct=active))
+    messages = db.list_team_messages(active)
+    attachments = db.list_team_attachments([m["id"] for m in messages])
+    active_room = next((r for r in rooms if r["nct"] == active), rooms[0])
+    return render_template("team_room.html", rooms=rooms, active=active,
+                           active_room=active_room, messages=messages,
+                           attachments=attachments, me_id=g.user["id"])
+
+
+@app.route("/files/team/<int:att_id>")
+@login_required
+def download_team_file(att_id):
+    att = db.get_team_attachment(att_id)
+    if not att:
+        abort(404)
+    if att["nct"] not in db.user_claimed_ncts(g.user["id"]):
+        abort(403)
+    return _send_stored_file(att["stored_name"], att["orig_name"])
 
 
 @app.route("/app/leads/<int:lead_id>/coverage-check", methods=["POST"])
