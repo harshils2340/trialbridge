@@ -593,7 +593,7 @@ body.pub { background: var(--surface); }
 .btn-lg { padding: 13px 22px; font-size: 15px; border-radius: 12px; }
 
 .pub-nav { display: flex; align-items: center; justify-content: space-between;
-  max-width: 1180px; margin: 0 auto; padding: 20px 32px; flex-wrap: wrap; row-gap: 10px; }
+  padding: 20px 40px; flex-wrap: wrap; row-gap: 10px; }
 .pub-nav-links { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; justify-content: flex-end; }
 .nav-user { display: inline-flex; align-items: center; gap: 6px; font-size: 13px;
   color: var(--ink-soft); padding-left: 4px; }
@@ -651,7 +651,20 @@ body.pub { background: var(--surface); }
 .side-pov .demo-lane-select { width: 100%; border-radius: 10px; min-width: 0; }
 .side-pov .demo-lane-go { flex: 0 0 auto; border-radius: 10px; }
 .pub-main { min-height: 60vh; }
-body.demo-home .pub-nav { max-width: 1120px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
+
+/* Simple traction cards (home) */
+.traction { padding: 8px 32px 52px; }
+.traction-in { max-width: 1120px; margin: 0 auto; }
+.traction-eyebrow { text-align: center; font-size: 12px; font-weight: 700;
+  letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin: 0 0 16px; }
+.traction-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+.traction-card { border: 1px solid var(--border); border-radius: 14px;
+  padding: 24px 20px; background: var(--surface); text-align: center; }
+.traction-num { display: block; font-family: 'Manrope', system-ui, sans-serif;
+  font-size: 34px; font-weight: 800; letter-spacing: -.02em; color: var(--ink); line-height: 1; }
+.traction-label { display: block; margin-top: 8px; font-size: 13px; color: var(--muted); line-height: 1.4; }
+@media (max-width: 720px) { .traction-grid { grid-template-columns: 1fr 1fr; } }
+body.demo-home .pub-nav { padding-bottom: 12px; border-bottom: 1px solid var(--border); }
 body.demo-home .pub-nav-tools { max-width: 1120px; padding-top: 8px; padding-bottom: 6px; }
 body.demo-home .pov-tools { background: var(--surface); border: 1px solid var(--border);
   border-radius: 999px; padding: 6px 10px; box-shadow: var(--shadow); }
