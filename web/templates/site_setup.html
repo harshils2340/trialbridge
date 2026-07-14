@@ -1,4 +1,6 @@
 {% extends "base.html" %}
+{% import "_icons.html" as ic %}
+{% import "_ui.html" as ui %}
 {% block title %}Site setup · BridgeMD{% endblock %}
 
 {% block body %}
@@ -44,7 +46,7 @@
       <label>CTMS endpoint / workspace URL
         <input type="url" name="ctms_endpoint" value="{{ profile['ctms_endpoint'] if profile else '' }}" placeholder="https://ctms.yoursite.org/studies/...">
       </label>
-      <button class="btn btn-primary" type="submit">{{ ic.icon('check') }} Save profile</button>
+      {{ ui.btn('Save profile', 'primary', type='submit', icon='check') }}
     </form>
     <p class="site-hint">
       REDCap connection status: <b>{{ 'Connected' if redcap_on else 'Not connected' }}</b>.
@@ -194,8 +196,8 @@
     <label>Notification email (optional)
       <input type="email" name="notify_email" placeholder="trial-intake@site.org">
     </label>
-    <button class="btn btn-primary" type="submit">{{ ic.icon('award') }} Claim study</button>
-  </form>
+      {{ ui.btn('Claim study', 'primary', type='submit', icon='award') }}
+    </form>
   <p class="site-hint">No trial recreation needed. Claim by NCT. Leave notification email blank to use org profile contact email.</p>
 </div>
 
@@ -236,14 +238,14 @@
         <option value="paused">Paused</option>
       </select>
     </label>
-    <button class="btn btn-primary" type="submit">{{ ic.icon('plus') }} Post study</button>
-  </form>
+      {{ ui.btn('Post study', 'primary', type='submit', icon='plus') }}
+    </form>
 </div>
 
 <div class="card setup-panel" data-setup-panel="claimed" hidden>
   <div class="section-title"><h2>Your claimed studies</h2></div>
   {% if not claims %}
-  <div class="empty"><p>No claimed NCTs yet. Claim one above to start receiving applicants.</p></div>
+  {{ ui.empty('No claimed NCTs yet', 'Claim one above to start receiving applicants.', icon='list') }}
   {% else %}
   <table class="claim-table">
     <thead><tr><th>NCT</th><th>Title</th><th>Notification email</th><th>Added</th><th></th></tr></thead>
@@ -262,14 +264,14 @@
           <form method="post" action="{{ url_for('update_study_claim_notify_email') }}" class="site-form">
             <input type="hidden" name="nct" value="{{ c['nct'] }}">
             <input type="email" name="notify_email" value="{{ c['notify_email'] or '' }}" placeholder="Use org contact email">
-            <button class="btn btn-sm btn-ghost" type="submit">Save</button>
+            {{ ui.btn('Save', 'ghost', 'sm', type='submit') }}
           </form>
         </td>
         <td>{{ c['created_at'] }}</td>
         <td>
           <form method="post" action="{{ url_for('remove_study_claim') }}">
             <input type="hidden" name="nct" value="{{ c['nct'] }}">
-            <button class="btn btn-sm btn-ghost" type="submit">Remove</button>
+            {{ ui.btn('Remove', 'ghost', 'sm', type='submit') }}
           </form>
         </td>
       </tr>
@@ -282,7 +284,7 @@
 <div class="card setup-panel" data-setup-panel="posted" hidden>
   <div class="section-title"><h2>Your site-posted studies</h2></div>
   {% if not posted %}
-  <div class="empty"><p>No site-posted studies yet.</p></div>
+  {{ ui.empty('No site-posted studies yet', icon='activity') }}
   {% else %}
   <table class="claim-table">
     <thead><tr><th>ID</th><th>Title</th><th>Condition</th><th>Location</th><th>Status</th><th></th></tr></thead>
@@ -297,7 +299,7 @@
         <td>
           <form method="post" action="{{ url_for('remove_posted_study') }}">
             <input type="hidden" name="study_id" value="{{ s['id'] }}">
-            <button class="btn btn-sm btn-ghost" type="submit">Remove</button>
+            {{ ui.btn('Remove', 'ghost', 'sm', type='submit') }}
           </form>
         </td>
       </tr>

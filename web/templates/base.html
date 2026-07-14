@@ -148,5 +148,33 @@
   });
 })();
 </script>
+<script>
+/* Shared modal behavior for ui.modal() (templates/_ui.html).
+   Open:  any [data-ui-open="modalId"] element, or window.uiOpenModal(id).
+   Close: any [data-ui-close] element, Esc key, or window.uiCloseModal(). */
+(function () {
+  function open(id) {
+    var m = document.getElementById(id);
+    if (m) m.hidden = false;
+  }
+  function close(m) {
+    if (m) m.hidden = true;
+  }
+  document.addEventListener('click', function (e) {
+    var opener = e.target.closest('[data-ui-open]');
+    if (opener) { open(opener.getAttribute('data-ui-open')); return; }
+    var closer = e.target.closest('[data-ui-close]');
+    if (closer) { close(closer.closest('.ui-modal')); }
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape') return;
+    document.querySelectorAll('.ui-modal:not([hidden])').forEach(close);
+  });
+  window.uiOpenModal = open;
+  window.uiCloseModal = function (id) {
+    close(id ? document.getElementById(id) : document.querySelector('.ui-modal:not([hidden])'));
+  };
+})();
+</script>
 </body>
 </html>

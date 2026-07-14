@@ -1,5 +1,7 @@
 {% extends "public_base.html" %}
 {% block title %}My applications · BridgeMD{% endblock %}
+{% import "_icons.html" as ic %}
+{% import "_ui.html" as ui %}
 
 {% block body %}
 <section class="apps-wrap">
@@ -8,7 +10,7 @@
       <h1>My applications</h1>
       <p class="apps-sub">Track every trial you've asked to be contacted about.</p>
     </div>
-    <a class="btn btn-primary" href="{{ url_for('find') }}">{{ ic.icon('search') }} Find more trials</a>
+    {{ ui.btn('Find more trials', 'primary', icon='search', href=url_for('find')) }}
   </div>
 
   {% if records_profile %}
@@ -26,7 +28,7 @@
     <span><b>Records sync needs attention.</b>
       {{ records_profile.last_sync_error or 'The provider sync did not complete yet.' }}</span>
     <form method="post" action="{{ url_for('records_refresh') }}">
-      <button class="btn btn-primary" type="submit">Retry sync</button>
+      {{ ui.btn('Retry sync', 'primary', type='submit') }}
     </form>
   </div>
   {% else %}
@@ -44,7 +46,7 @@
   <form method="post" action="{{ url_for('records_connect') }}" class="rec-banner connect wide js-pending-submit" data-pending-text="Connecting records...">
     {{ ic.icon('activity') }}
     <span><b>Connect records once.</b> Future applications auto-fill from your chart. This may take a few seconds.</span>
-    <button class="btn btn-primary" type="submit">Connect records</button>
+    {{ ui.btn('Connect records', 'primary', type='submit') }}
   </form>
   {% endif %}
 
@@ -70,9 +72,7 @@
           {% if ld.site %}{{ ld.site }}{% elif ld.location %}Near {{ ld.location }}{% endif %}
         </p>
       </div>
-      <span class="app-status app-status-{{ 'closed' if is_closed else 'open' }}">
-        {{ labels.get(ld.status, ld.status) }}
-      </span>
+      {{ ui.badge(labels.get(ld.status, ld.status), 'neutral' if is_closed else 'brand') }}
     </div>
     {% if ld.referred_by %}
     <div class="app-referred">{{ ic.icon('award') }} Referred by {{ ld.referred_by }}</div>
@@ -106,7 +106,7 @@
         <span><b>Complete your screening form.</b>
           The study team needs a few details to confirm you qualify. It's pre-filled
           from what you already shared - just review and submit.</span></div>
-      <a class="btn btn-primary" href="{{ url_for('application_screening', token=ld.token) }}">Complete screening form</a>
+      {{ ui.btn('Complete screening form', 'primary', href=url_for('application_screening', token=ld.token)) }}
     </div>
     {% endif %}
 
@@ -115,7 +115,7 @@
       <div class="app-book-copy">{{ ic.icon('activity') }}
         <span><b>The study team invited you to book your screening call.</b>
           Pick a time that works - it's the quick first step to see if you qualify.</span></div>
-      <a class="btn btn-primary" href="{{ ld.schedule_url }}" target="_blank" rel="noopener">Book your call</a>
+      {{ ui.btn('Book your call', 'primary', href=ld.schedule_url, extra='target="_blank" rel="noopener"') }}
     </div>
     {% endif %}
 
@@ -147,7 +147,7 @@
           <input type="text" name="group_id" value="{{ sup.coverage_payload.group_id or '' }}" placeholder="Group ID">
           <input type="text" name="zip" value="{{ sup.coverage_payload.patient_zip or '' }}" placeholder="ZIP / Postal">
           <input class="support-span" type="text" name="dob_year" value="{{ sup.coverage_payload.dob_year or '' }}" placeholder="Birth year">
-          <div class="support-actions"><button class="btn btn-sm btn-ghost" type="submit">Run check</button></div>
+          <div class="support-actions">{{ ui.btn('Run check', 'ghost', 'sm', type='submit') }}</div>
         </div>
       </form>
 
@@ -160,7 +160,7 @@
           <input type="text" name="preferred_mode" value="{{ sup.travel_payload.preferred_mode or '' }}" placeholder="Car, transit, rideshare">
           <input class="support-span" type="text" name="needs" value="{{ sup.travel_payload.needs or '' }}" placeholder="Mobility / schedule needs">
           <input class="support-span" type="text" name="city" value="{{ sup.travel_payload.city or ld.location or '' }}" placeholder="City">
-          <div class="support-actions"><button class="btn btn-sm btn-ghost" type="submit">Plan travel</button></div>
+          <div class="support-actions">{{ ui.btn('Plan travel', 'ghost', 'sm', type='submit') }}</div>
         </div>
       </form>
     </div>
@@ -170,7 +170,7 @@
     <div class="app-tasks">
       <div class="thread-head">{{ ic.icon('check') }} Your to-do list
         {% set open_tasks = a.tasks | selectattr('status','equalto','open') | list %}
-        {% if open_tasks %}<span class="task-open-badge">{{ open_tasks|length }} to do</span>{% else %}<span class="task-done-badge">All done</span>{% endif %}
+        {% if open_tasks %}{{ ui.badge(open_tasks|length ~ ' to do', 'brand') }}{% else %}{{ ui.badge('All done', 'ok') }}{% endif %}
       </div>
       <ul class="ptask-list">
         {% for t in a.tasks %}
@@ -179,6 +179,38 @@
             <button type="submit" class="ptask-check" aria-label="Toggle done">{% if t.status == 'done' %}{{ ic.icon('check') }}{% endif %}</button>
           </form>
           <span class="ptask-title">{{ t.title }}</span>
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+
+    {% if a.doc_requests %}
+    <div class="app-reqs">
+      <div class="thread-head">{{ ic.icon('list') }} Records the study team asked for
+        {% set open_reqs = a.doc_requests | rejectattr('status','equalto','accepted') | list %}
+        {% if open_reqs %}{{ ui.badge(open_reqs|length ~ ' needed', 'brand') }}{% else %}{{ ui.badge('All in', 'ok') }}{% endif %}
+      </div>
+      <ul class="req-list">
+        {% for r in a.doc_requests %}
+        <li class="req req-{{ r.status }}">
+          <div class="req-main">
+            <span class="req-title">{{ r.title }}</span>
+            {% if r.status == 'accepted' %}{{ ui.badge('Accepted', 'ok') }}
+            {% elif r.status == 'received' %}{{ ui.badge('Sent - in review', 'neutral') }}
+            {% elif r.status == 'rejected' %}{{ ui.badge('Please re-send', 'warn') }}
+            {% else %}{{ ui.badge('Needed', 'brand') }}{% endif %}
+          </div>
+          {% if r.note %}<p class="req-note">{{ r.note }}</p>{% endif %}
+          {% if r.status == 'rejected' and r.review_note %}<p class="req-reject">{{ r.review_note }}</p>{% endif %}
+          {% if r.file_name %}<a href="{{ url_for('download_lead_file', att_id=r.attachment_id) }}" class="pdoc-link">{{ r.file_name }}</a>{% endif %}
+          {% if not is_closed and r.status in ['requested', 'rejected'] %}
+          <form class="req-up" method="post" action="{{ url_for('application_doc_upload', token=ld.token, req_id=r.id) }}" enctype="multipart/form-data">
+            <input type="file" name="file" id="req-{{ r.id }}" class="doc-file" data-doc-input>
+            <label for="req-{{ r.id }}" class="doc-drop-label" data-doc-label>{{ ic.icon('upload') }} Choose a file to send</label>
+            {{ ui.btn('Send', 'primary', 'sm', type='submit') }}
+          </form>
+          {% endif %}
         </li>
         {% endfor %}
       </ul>
@@ -203,7 +235,7 @@
       <form class="pdoc-form" method="post" action="{{ url_for('application_attach', token=ld.token) }}" enctype="multipart/form-data" data-doc-drop>
         <input type="file" name="file" id="pfile-{{ ld.id }}" class="doc-file" data-doc-input>
         <label for="pfile-{{ ld.id }}" class="doc-drop-label" data-doc-label>{{ ic.icon('upload') }} Drag &amp; drop or choose a file to send</label>
-        <button class="btn btn-primary btn-sm" type="submit">Upload</button>
+        {{ ui.btn('Upload', 'primary', 'sm', type='submit') }}
       </form>
       {% endif %}
     </div>
@@ -229,7 +261,7 @@
       {% if not is_closed %}
       <form class="thread-form" method="post" action="{{ url_for('application_message', token=ld.token) }}">
         <input type="text" name="body" placeholder="Write a message..." required autocomplete="off">
-        <button class="btn btn-primary btn-sm" type="submit">Send</button>
+        {{ ui.btn('Send', 'primary', 'sm', type='submit') }}
       </form>
       {% endif %}
     </div>

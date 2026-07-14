@@ -1,7 +1,9 @@
 {% extends "base.html" %}
 {% import "_icons.html" as ic %}
+{% import "_ui.html" as ui %}
 {% block title %}Referrals · BridgeMD{% endblock %}
 {% block body %}
+{% set status_tones = {'referred':'brand','received':'info','contacted':'violet','screened':'violet','enrolled':'ok','screen_failed':'neutral','declined':'neutral','withdrawn':'neutral'} %}
 <div class="page-head">
   <h1>Your referrals</h1>
   <p>Every patient you referred, with live status for follow-up.</p>
@@ -24,7 +26,7 @@
     {% for s in statuses %}<option value="{{ s }}">{{ s.replace('_',' ') }}</option>{% endfor %}
   </select>
   <div class="spacer"></div>
-  <a class="btn btn-ghost btn-sm" href="{{ url_for('referrals_csv') }}">{{ ic.icon('upload') }}Export CSV</a>
+  {{ ui.btn('Export CSV', 'ghost', 'sm', icon='upload', href=url_for('referrals_csv')) }}
 </div>
 
 <div class="card">
@@ -38,14 +40,14 @@
         <td><b>{{ r['patient_label'] }}</b>{% if r['consent'] %} <span class="mini-tag">consent</span>{% endif %}</td>
         <td>{{ r['title'][:56] }}<div class="tag mono">{{ r['nct'] }}</div></td>
         <td class="tag">{{ r['site'][:40] or '-' }}</td>
-        <td><span class="status {{ r['status'] }}">{{ r['status'].replace('_',' ') }}</span></td>
+        <td>{{ ui.badge(r['status'].replace('_',' '), status_tones.get(r['status'], 'neutral')) }}</td>
         <td>{% if r['notified_at'] %}<span class="sent-dot" title="Sent {{ r['notified_at'] }}">{{ ic.icon('check', 'ico') }}</span>{% else %}<span class="tag">-</span>{% endif %}</td>
         <td class="tag">{{ r['updated_at'] }}</td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
-  <div id="refEmpty" class="empty" style="display:none;"><p>No referrals match your filter.</p></div>
+  <div id="refEmpty" style="display:none;">{{ ui.empty('No referrals match your filter.', icon='search') }}</div>
 </div>
 
 <script>
@@ -66,10 +68,9 @@
 </script>
 {% else %}
 <div class="card">
-  <div class="empty">
-    <h3>No referrals yet</h3>
-    <p>Find a trial and refer a patient to start tracking here.</p>
-    <a class="btn btn-primary" href="{{ url_for('search') }}" style="margin-top:8px;">{{ ic.icon('search') }}Find trials</a>
+  {{ ui.empty('No referrals yet', 'Find a trial and refer a patient to start tracking here.', icon='search') }}
+  <div style="text-align:center;">
+    {{ ui.btn('Find trials', 'primary', icon='search', href=url_for('search'), extra='style="margin-top:8px;"') }}
   </div>
 </div>
 {% endif %}

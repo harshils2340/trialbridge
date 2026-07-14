@@ -340,6 +340,24 @@ CREATE TABLE IF NOT EXISTS lead_tasks (
     FOREIGN KEY (lead_id) REFERENCES leads(id)
 );
 
+-- Specific records the study team asks a candidate for (e.g. "pathology report
+-- confirming diagnosis", "records of prior therapy"). Unlike a free-text to-do,
+-- each request tracks a status and links the uploaded file, so a coordinator can
+-- see at a glance what is still outstanding before the screening window closes.
+CREATE TABLE IF NOT EXISTS doc_requests (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    lead_id       INTEGER NOT NULL,
+    title         TEXT NOT NULL,
+    note          TEXT DEFAULT '',
+    status        TEXT DEFAULT 'requested', -- requested | received | accepted | rejected
+    attachment_id INTEGER,                  -- message_attachments.id once uploaded
+    review_note   TEXT DEFAULT '',          -- reason shown to patient on reject
+    created_by    TEXT DEFAULT 'site',
+    created_at    TEXT NOT NULL,
+    updated_at    TEXT NOT NULL,
+    FOREIGN KEY (lead_id) REFERENCES leads(id)
+);
+
 -- Internal team room: staff-only collaboration keyed by trial (NCT). Not
 -- patient-visible. Lets recruiters/coordinators coordinate and share working
 -- documents among the study team.
@@ -1910,6 +1928,70 @@ def open_task_count(lead_id, assigned_to=None):
         q += " AND assigned_to = ?"
         args.append(assigned_to)
     r = get_db().execute(q, args).fetchone()
+    return r["n"] if r else 0
+
+
+# --------------------------------------------------------------------------- #
+# Document requests (specific records the study team asks a candidate for)
+# --------------------------------------------------------------------------- #
+DOC_REQUEST_OPEN = ("requested", "rejected")  # patient/coordinator may still upload
+
+
+def add_doc_request(lead_id, title, note="", created_by="site"):
+    title = (title or "").strip()
+    if not title:
+        return None
+    db = get_db()
+    cur = db.execute(
+        "INSERT INTO doc_requests (lead_id, title, note, status, created_by, "
+        "created_at, updated_at) VALUES (?,?,?,?,?,?,?)",
+        (lead_id, title, (note or "").strip(), "requested", created_by,
+         now(), now()))
+    db.execute("UPDATE leads SET updated_at = ? WHERE id = ?", (now(), lead_id))
+    db.commit()
+    return cur.lastrowid
+
+
+def list_doc_requests(lead_id):
+    return get_db().execute(
+        "SELECT d.*, a.orig_name AS file_name FROM doc_requests d "
+        "LEFT JOIN message_attachments a ON a.id = d.attachment_id "
+        "WHERE d.lead_id = ? ORDER BY "
+        "CASE d.status WHEN 'requested' THEN 0 WHEN 'rejected' THEN 1 "
+        "WHEN 'received' THEN 2 ELSE 3 END, d.id ASC",
+        (lead_id,)).fetchall()
+
+
+def get_doc_request(req_id):
+    return get_db().execute(
+        "SELECT * FROM doc_requests WHERE id = ?", (req_id,)).fetchone()
+
+
+def set_doc_request_upload(req_id, attachment_id):
+    """A file was uploaded against this request -> awaiting study-team review."""
+    db = get_db()
+    db.execute(
+        "UPDATE doc_requests SET attachment_id = ?, status = 'received', "
+        "review_note = '', updated_at = ? WHERE id = ?",
+        (attachment_id, now(), req_id))
+    db.commit()
+
+
+def set_doc_request_review(req_id, accepted, review_note=""):
+    """Study team accepts (done) or rejects (patient must re-upload)."""
+    status = "accepted" if accepted else "rejected"
+    db = get_db()
+    db.execute(
+        "UPDATE doc_requests SET status = ?, review_note = ?, updated_at = ? "
+        "WHERE id = ?",
+        (status, (review_note or "").strip(), now(), req_id))
+    db.commit()
+
+
+def open_doc_request_count(lead_id):
+    r = get_db().execute(
+        "SELECT COUNT(*) n FROM doc_requests WHERE lead_id = ? AND status IN "
+        "('requested', 'rejected')", (lead_id,)).fetchone()
     return r["n"] if r else 0
 
 

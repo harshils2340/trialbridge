@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% import "_icons.html" as ic %}
+{% import "_ui.html" as ui %}
 {% block title %}Results · BridgeMD{% endblock %}
 {% block body %}
 <div class="page-head" style="display:flex;justify-content:space-between;align-items:flex-end;">
@@ -10,7 +11,7 @@
       · patient age {{ profile['age'] or '?' }} {{ profile['sex'] or '' }}
     </p>
   </div>
-  <a class="btn btn-ghost" href="{{ url_for('search') }}">{{ ic.icon('plus') }}New search</a>
+  {{ ui.btn('New search', variant='ghost', icon='plus', href=url_for('search')) }}
 </div>
 
 {% if located %}
@@ -20,15 +21,11 @@
 {% endif %}
 
 {% if not results %}
-<div class="card"><div class="empty">
-  <h3>No matching recruiting trials{{ ' nearby' if located }}</h3>
-  {% if located %}
-  <p>Nothing within {{ radius }} {{ unit }} of {{ location }}. Try a larger radius, broaden the condition{{ ', or tick “Include registries & observational studies”' if not include_obs }}.</p>
-  {% else %}
-  <p>Try broadening the condition{{ ', or tick “Include registries & observational studies”' if not include_obs }}.</p>
-  {% endif %}
-  <a class="btn btn-ghost" href="{{ url_for('search') }}" style="margin-top:8px;">New search</a>
-</div></div>
+<div class="card">
+  {% set empty_body %}{% if located %}Nothing within {{ radius }} {{ unit }} of {{ location }}. Try a larger radius, broaden the condition{{ ', or tick “Include registries & observational studies”' if not include_obs }}.{% else %}Try broadening the condition{{ ', or tick “Include registries & observational studies”' if not include_obs }}.{% endif %}{% endset %}
+  {{ ui.empty('No matching recruiting trials' ~ (' nearby' if located else ''), empty_body, 'search') }}
+  <div style="text-align:center;margin-top:8px;">{{ ui.btn('New search', variant='ghost', href=url_for('search')) }}</div>
+</div>
 {% endif %}
 
 {% for r in results %}
@@ -40,14 +37,15 @@
       <div class="rh-title">{{ t.title }}</div>
       <div class="rh-meta">
         <span class="mono">{{ t.nctId }}</span>
-        {% if obs %}· <span class="type-badge obs">Registry</span>{% else %}· phase {{ t.phase or 'NA' }}{% endif %}
-        · <span class="status-tag">Recruiting</span>
+        {% if obs %}· {{ ui.badge('Registry', 'warn') }}{% else %}· phase {{ t.phase or 'NA' }}{% endif %}
+        · {{ ui.badge('Recruiting', 'ok') }}
         {% if r.distance is not none %}· <span class="dist">{{ r.distance | round | int }} {{ r.unit }} away</span>{% endif %}
       </div>
       {% if m.rationale %}<div class="rh-why">{{ m.rationale }}</div>{% endif %}
     </div>
     <div class="rh-side">
-      <span class="pill {{ m.verdict }}">{{ m.verdict.replace('_',' ') }}{% if m.score %}<span class="score">{{ m.score }}</span>{% endif %}</span>
+      {% set verdict_tone = 'ok' if m.verdict == 'likely_eligible' else ('warn' if m.verdict == 'possible' else 'neutral') %}
+      {{ ui.badge(m.verdict.replace('_',' ') ~ (' ' ~ m.score if m.score else ''), verdict_tone) }}
       <span class="chev" aria-hidden="true">Details {{ ic.icon('chevron-down', 'ico chev-ico') }}</span>
     </div>
   </summary>
@@ -94,7 +92,7 @@
           </div>
           <div class="s-side">
             <span class="dist">{{ s.distance | round | int }} {{ r.unit }}</span>
-            <span class="site-status">Recruiting</span>
+            {{ ui.badge('Recruiting', 'ok') }}
           </div>
         </li>
         {% endfor %}
@@ -113,7 +111,7 @@
       {% if t.nctId and t.nctId.startswith('NCT') %}
       <a class="ctlink" href="https://clinicaltrials.gov/study/{{ t.nctId }}" target="_blank" rel="noopener">Full record on ClinicalTrials.gov {{ ic.icon('external') }}</a>
       {% else %}
-      <span class="tag">Site-posted study {{ t.nctId }}</span>
+      {{ ui.badge('Site-posted study ' ~ t.nctId, 'neutral') }}
       {% endif %}
       <form method="post" action="{{ url_for('refer') }}" class="refer-form">
         <input type="hidden" name="nct" value="{{ t.nctId }}">
@@ -127,7 +125,7 @@
         <input type="hidden" name="score" value="{{ m.score }}">
         <input type="hidden" name="rationale" value="{{ m.rationale }}">
         <input type="text" name="patient_label" placeholder="Patient tag (e.g. 61M-T2D)" style="max-width:200px;">
-        <button class="btn btn-primary btn-sm" type="submit">{{ ic.icon('user-plus') }}Refer this patient</button>
+        {{ ui.btn('Refer this patient', variant='primary', size='sm', icon='user-plus', type='submit') }}
       </form>
     </div>
   </div>

@@ -1,5 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Candidate review · BridgeMD{% endblock %}
+{% import "_icons.html" as ic %}
+{% import "_ui.html" as ui %}
 
 {% macro active_card(it, labels, statuses, recon_labels, recon_outcomes, support_coverage_labels, support_travel_labels, redcap_on) %}
 {% set l = it.lead %}
@@ -11,9 +13,9 @@
       <p class="tagline">{% if l['nct'] %}{{ l['nct'] }} · {% endif %}{{ l['title'] }}</p>
     </div>
     <div class="ats-badges">
-      <span class="pill pill-{{ l['status'] }}">{{ labels.get(l['status'], l['status']) }}</span>
-      {% if it.unread %}<span class="msg-badge">{{ it.unread }} new</span>{% endif %}
-      {% if it.recon %}<span class="tag recon-tag">{{ recon_labels.get(it.recon['outcome'], it.recon['outcome']) }}</span>{% endif %}
+      {{ ui.badge(labels.get(l['status'], l['status']), {'submitted':'brand','screening':'warn','enrolled':'ok'}.get(l['status'], 'neutral')) }}
+      {% if it.unread %}{{ ui.badge(it.unread ~ ' new', 'danger') }}{% endif %}
+      {% if it.recon %}{{ ui.badge(recon_labels.get(it.recon['outcome'], it.recon['outcome']), 'ok') }}{% endif %}
       <span class="tag">Coverage: {{ support_coverage_labels.get(it.support.coverage_status, it.support.coverage_status or 'Not checked') }}</span>
       <span class="tag">Travel: {{ support_travel_labels.get(it.support.travel_status, it.support.travel_status or 'Not planned') }}</span>
     </div>
@@ -24,7 +26,7 @@
       <label>Message</label>
       <div class="ats-row">
         <input type="text" name="body" placeholder="Message candidate..." required>
-        <button class="btn btn-primary btn-sm" type="submit">Send</button>
+        {{ ui.btn('Send', 'primary', 'sm', type='submit') }}
       </div>
     </form>
 
@@ -32,7 +34,7 @@
       <label>Scheduling link</label>
       <div class="ats-row">
         <input type="url" name="schedule_url" value="{{ l['schedule_url'] }}" placeholder="https://calendly.com/...">
-        <button class="btn btn-ghost btn-sm" type="submit">{{ 'Update link' if l['schedule_url'] else 'Send link' }}</button>
+        {{ ui.btn(('Update link' if l['schedule_url'] else 'Send link'), 'ghost', 'sm', type='submit') }}
       </div>
     </form>
 
@@ -56,7 +58,7 @@
         <input type="text" name="source_system" placeholder="Source (REDCap/CTMS)">
         <input type="text" name="source_ref" placeholder="Ref ID">
         <input type="text" name="note" placeholder="Evidence note">
-        <button class="btn btn-sm btn-ghost" type="submit">Save proof</button>
+        {{ ui.btn('Save proof', 'ghost', 'sm', type='submit') }}
       </div>
     </form>
   </div>
@@ -71,7 +73,7 @@
         <form method="post" action="{{ url_for('coverage_check_lead', lead_id=l['id']) }}" class="status-row">
           <input type="text" name="payer_name" value="{{ it.support.coverage_payload.payer_name or '' }}" placeholder="Payer">
           <input type="text" name="member_id" value="{{ it.support.coverage_payload.member_id or '' }}" placeholder="Member ID">
-          <button class="btn btn-sm btn-ghost" type="submit">Refresh</button>
+          {{ ui.btn('Refresh', 'ghost', 'sm', type='submit') }}
         </form>
       </div>
       <div class="outreach-form">
@@ -81,7 +83,7 @@
         <form method="post" action="{{ url_for('travel_plan_lead', lead_id=l['id']) }}" class="status-row">
           <input type="text" name="distance" value="{{ it.support.travel_payload.distance or '' }}" placeholder="Distance">
           <input type="text" name="preferred_mode" value="{{ it.support.travel_payload.preferred_mode or '' }}" placeholder="Travel mode">
-          <button class="btn btn-sm btn-ghost" type="submit">Refresh</button>
+          {{ ui.btn('Refresh', 'ghost', 'sm', type='submit') }}
         </form>
       </div>
     </div>
@@ -93,6 +95,9 @@
       {% if it.files %}<span class="collab-count">{{ it.files|length }} file{{ 's' if it.files|length != 1 else '' }}</span>{% endif %}
       {% set open_tasks = it.tasks|selectattr('status','equalto','open')|list %}
       {% if open_tasks %}<span class="collab-count collab-open">{{ open_tasks|length }} open to-do{{ 's' if open_tasks|length != 1 else '' }}</span>{% endif %}
+      {% set open_reqs = it.doc_requests|selectattr('status','in',['requested','rejected'])|list %}
+      {% set review_reqs = it.doc_requests|selectattr('status','equalto','received')|list %}
+      {% if review_reqs %}<span class="collab-count collab-review">{{ review_reqs|length }} to review</span>{% elif open_reqs %}<span class="collab-count collab-open">{{ open_reqs|length }} record{{ 's' if open_reqs|length != 1 else '' }} awaited</span>{% endif %}
     </summary>
     <div class="collab-grid">
       <div class="collab-col">
@@ -112,7 +117,7 @@
           <label for="file-{{ l['id'] }}" class="doc-drop-label" data-doc-label>{{ ic.icon('upload') }} Drag &amp; drop a file, or click to choose</label>
           <div class="doc-drop-row">
             <input type="text" name="note" placeholder="Optional note" class="doc-note">
-            <button class="btn btn-sm btn-primary" type="submit">Share</button>
+            {{ ui.btn('Share', 'primary', 'sm', type='submit') }}
           </div>
         </form>
       </div>
@@ -133,9 +138,47 @@
         {% else %}<p class="collab-empty">No to-dos assigned yet.</p>{% endif %}
         <form method="post" action="{{ url_for('add_lead_task', lead_id=l['id']) }}" class="task-add">
           <input type="text" name="title" placeholder="Add a to-do for the patient..." required>
-          <button class="btn btn-sm btn-ghost" type="submit">{{ ic.icon('plus') }} Add</button>
+          {{ ui.btn('Add', 'ghost', 'sm', icon='plus', type='submit') }}
         </form>
       </div>
+    </div>
+    <div class="collab-reqs">
+      <label class="collab-h">{{ ic.icon('list') }} Requested records</label>
+      {% if it.doc_requests %}
+      <ul class="req-list">
+        {% for r in it.doc_requests %}
+        <li class="req req-{{ r['status'] }}">
+          <div class="req-main">
+            <span class="req-title">{{ r['title'] }}</span>
+            {% if r['status'] == 'accepted' %}{{ ui.badge('Accepted', 'ok') }}
+            {% elif r['status'] == 'received' %}{{ ui.badge('In review', 'brand') }}
+            {% elif r['status'] == 'rejected' %}{{ ui.badge('Sent back', 'warn') }}
+            {% else %}{{ ui.badge('Awaiting', 'neutral') }}{% endif %}
+          </div>
+          {% if r['note'] %}<p class="req-note">{{ r['note'] }}</p>{% endif %}
+          {% if r['file_name'] %}<a href="{{ url_for('download_lead_file', att_id=r['attachment_id']) }}" class="doc-link">{{ r['file_name'] }}</a>{% endif %}
+          {% if r['status'] == 'received' %}
+          <form method="post" action="{{ url_for('review_lead_doc', lead_id=l['id'], req_id=r['id']) }}" class="req-review">
+            <input type="text" name="review_note" placeholder="Reason (if sending back)" class="doc-note">
+            {{ ui.btn('Accept', 'primary', 'sm', type='submit', name='decision', value='accept') }}
+            {{ ui.btn('Send back', 'ghost', 'sm', type='submit', name='decision', value='reject') }}
+          </form>
+          {% elif r['status'] in ['requested', 'rejected'] %}
+          <form method="post" action="{{ url_for('upload_lead_doc', lead_id=l['id'], req_id=r['id']) }}" enctype="multipart/form-data" class="req-up">
+            <input type="file" name="file" id="reqfile-{{ r['id'] }}" class="doc-file" data-doc-input>
+            <label for="reqfile-{{ r['id'] }}" class="doc-drop-label doc-drop-mini" data-doc-label>{{ ic.icon('upload') }} Upload on their behalf</label>
+            {{ ui.btn('Add', 'ghost', 'sm', type='submit') }}
+          </form>
+          {% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}<p class="collab-empty">No records requested yet.</p>{% endif %}
+      <form method="post" action="{{ url_for('request_lead_doc', lead_id=l['id']) }}" class="req-add">
+        <input type="text" name="title" placeholder="Request a record (e.g. pathology report confirming diagnosis)" required>
+        <input type="text" name="note" placeholder="Optional detail" class="doc-note">
+        {{ ui.btn('Request', 'ghost', 'sm', icon='plus', type='submit') }}
+      </form>
     </div>
   </details>
   {% endif %}
@@ -146,10 +189,10 @@
     {% if l['phone'] %}<a class="cand-open" href="tel:{{ l['phone'] }}">{{ ic.icon('activity') }} Call</a>{% endif %}
     <form method="post" action="{{ url_for('extend_lead_site_token', lead_id=l['id']) }}" class="lead-redcap-form">
       <input type="hidden" name="days" value="30">
-      <button class="btn btn-sm btn-ghost" type="submit">Extend link 30d</button>
+      {{ ui.btn('Extend link 30d', 'ghost', 'sm', type='submit') }}
     </form>
     <form method="post" action="{{ url_for('revoke_lead_site_token', lead_id=l['id']) }}" class="lead-redcap-form">
-      <button class="btn btn-sm btn-ghost" type="submit">Revoke link</button>
+      {{ ui.btn('Revoke link', 'ghost', 'sm', type='submit') }}
     </form>
     {% if l['redcap_survey_status'] == 'complete' %}
     <span class="tag">{{ ic.icon('check') }} Screening form complete</span>
@@ -158,10 +201,10 @@
     {% endif %}
     {% if redcap_on %}
     <form method="post" action="{{ url_for('push_lead_redcap', lead_id=l['id']) }}" class="lead-redcap-form">
-      <button class="btn btn-sm btn-ghost" type="submit">{{ ic.icon('external') }} Push to REDCap</button>
+      {{ ui.btn('Push to REDCap', 'ghost', 'sm', icon='external', type='submit') }}
     </form>
     <form method="post" action="{{ url_for('refresh_lead_redcap', lead_id=l['id']) }}" class="lead-redcap-form" title="Check whether this candidate finished their REDCap screening form">
-      <button class="btn btn-sm btn-ghost" type="submit">{{ ic.icon('activity') }} Check screening status</button>
+      {{ ui.btn('Check screening status', 'ghost', 'sm', icon='activity', type='submit') }}
     </form>
     {% endif %}
   </div>
@@ -182,7 +225,7 @@
 {% if claims %}
 <div class="claims-strip">
   <span class="claims-label">{{ ic.icon('award') }} Claimed studies</span>
-  {% for c in claims %}<span class="claims-pill">{{ c.nct }}</span>{% endfor %}
+  {% for c in claims %}{{ ui.badge(c.nct, 'brand') }}{% endfor %}
   <a href="{{ url_for('site_setup') }}" class="claims-link">Manage</a>
 </div>
 {% else %}
@@ -220,7 +263,7 @@
     <div class="broadcast-row">
       <input type="text" name="task" placeholder="Optional to-do for everyone (e.g. 'Sign the consent form')">
       <label class="broadcast-file">{{ ic.icon('upload') }} <span>Attach doc</span><input type="file" name="file"></label>
-      <button class="btn btn-primary btn-sm" type="submit">Send to all</button>
+      {{ ui.btn('Send to all', 'primary', 'sm', type='submit') }}
     </div>
     <p class="broadcast-note">{{ ic.icon('help') }} Delivered privately to each candidate's own thread - candidates never see each other.</p>
   </form>
@@ -306,8 +349,8 @@
               data-attention="{{ 'needs' if needs_attention else 'clean' }}">
             <td><b>{{ it.code }}</b><div class="tag">{{ it.age_band }}{% if l['sex'] %} · {{ l['sex']|capitalize }}{% endif %}</div></td>
             <td>{% if l['nct'] %}{% if l['nct'].startswith('NCT') %}<a href="https://clinicaltrials.gov/study/{{ l['nct'] }}" target="_blank" rel="noopener">{{ l['nct'] }}</a>{% else %}{{ l['nct'] }}{% endif %}{% endif %}<div class="tag">{{ l['title'][:56] }}</div></td>
-            <td><span class="pill pill-{{ l['status'] }}">{{ labels.get(l['status'], l['status']) }}</span></td>
-            <td>{% if it.unread %}<span class="msg-badge">{{ it.unread }} new</span>{% endif %}<span class="tag">{{ it.elig.get('met', [])|length }} met / {{ it.elig.get('unknown', [])|length }} confirm / {{ it.elig.get('not_met', [])|length }} not met</span></td>
+            <td>{{ ui.badge(labels.get(l['status'], l['status']), {'submitted':'brand','screening':'warn','enrolled':'ok'}.get(l['status'], 'neutral')) }}</td>
+            <td>{% if it.unread %}{{ ui.badge(it.unread ~ ' new', 'danger') }}{% endif %}<span class="tag">{{ it.elig.get('met', [])|length }} met / {{ it.elig.get('unknown', [])|length }} confirm / {{ it.elig.get('not_met', [])|length }} not met</span></td>
             <td><span class="tag">{{ 'Physician referral' if src_bucket == 'physician' else 'Patient self-serve' }}</span><span class="tag">{{ 'Record' if l['records_connected'] else 'No record' }}</span></td>
             <td><a class="cand-open" href="{{ url_for('candidate_page', token=l['site_token']) }}">{{ ic.icon('external') }} Open</a></td>
           </tr>
@@ -333,8 +376,8 @@
               data-attention="{{ 'needs' if needs_attention else 'clean' }}">
             <td><b>{{ l['name'] or it.code }}</b><div class="tag">{{ it.code }} · {{ it.age_band }}</div></td>
             <td>{% if l['nct'] %}{% if l['nct'].startswith('NCT') %}<a href="https://clinicaltrials.gov/study/{{ l['nct'] }}" target="_blank" rel="noopener">{{ l['nct'] }}</a>{% else %}{{ l['nct'] }}{% endif %}{% endif %}<div class="tag">{{ l['title'][:56] }}</div></td>
-            <td><span class="pill pill-{{ l['status'] }}">{{ labels.get(l['status'], l['status']) }}</span></td>
-            <td>{% if it.unread %}<span class="msg-badge">{{ it.unread }} new</span>{% endif %}<span class="tag">Coverage: {{ support_coverage_labels.get(it.support.coverage_status, it.support.coverage_status or 'Not checked') }}</span><span class="tag">Travel: {{ support_travel_labels.get(it.support.travel_status, it.support.travel_status or 'Not planned') }}</span></td>
+            <td>{{ ui.badge(labels.get(l['status'], l['status']), {'submitted':'brand','screening':'warn','enrolled':'ok'}.get(l['status'], 'neutral')) }}</td>
+            <td>{% if it.unread %}{{ ui.badge(it.unread ~ ' new', 'danger') }}{% endif %}<span class="tag">Coverage: {{ support_coverage_labels.get(it.support.coverage_status, it.support.coverage_status or 'Not checked') }}</span><span class="tag">Travel: {{ support_travel_labels.get(it.support.travel_status, it.support.travel_status or 'Not planned') }}</span></td>
             <td><span class="tag">{{ 'Physician referral' if src_bucket == 'physician' else 'Patient self-serve' }}</span><span class="tag">{{ 'Record' if l['records_connected'] else 'No record' }}</span></td>
             <td><a class="cand-open" href="{{ url_for('candidate_page', token=l['site_token']) }}">{{ ic.icon('external') }} Open</a></td>
           </tr>
@@ -358,8 +401,8 @@
               data-attention="{{ 'clean' }}">
             <td><b>{% if l['revealed'] %}{{ l['name'] }}{% else %}{{ it.code }}{% endif %}</b><div class="tag">{{ it.age_band }}{% if l['sex'] %} · {{ l['sex']|capitalize }}{% endif %}</div></td>
             <td>{% if l['nct'] %}{% if l['nct'].startswith('NCT') %}<a href="https://clinicaltrials.gov/study/{{ l['nct'] }}" target="_blank" rel="noopener">{{ l['nct'] }}</a>{% else %}{{ l['nct'] }}{% endif %}{% endif %}<div class="tag">{{ l['title'][:56] }}</div></td>
-            <td><span class="pill pill-{{ l['status'] }}">{{ labels.get(l['status'], l['status']) }}</span></td>
-            <td>{% if it.recon %}<span class="tag recon-tag">{{ recon_labels.get(it.recon['outcome'], it.recon['outcome']) }}</span>{% endif %}<span class="tag">Coverage: {{ support_coverage_labels.get(it.support.coverage_status, it.support.coverage_status or 'Not checked') }}</span></td>
+            <td>{{ ui.badge(labels.get(l['status'], l['status']), {'submitted':'brand','screening':'warn','enrolled':'ok'}.get(l['status'], 'neutral')) }}</td>
+            <td>{% if it.recon %}{{ ui.badge(recon_labels.get(it.recon['outcome'], it.recon['outcome']), 'ok') }}{% endif %}<span class="tag">Coverage: {{ support_coverage_labels.get(it.support.coverage_status, it.support.coverage_status or 'Not checked') }}</span></td>
             <td><span class="tag">{{ 'Physician referral' if src_bucket == 'physician' else 'Patient self-serve' }}</span><span class="tag">{{ 'Record' if l['records_connected'] else 'No record' }}</span></td>
             <td><a class="cand-open" href="{{ url_for('candidate_page', token=l['site_token']) }}">{{ ic.icon('external') }} Open</a></td>
           </tr>
@@ -377,7 +420,7 @@
     <span class="lane-n">{{ review|length }}</span>
   </div>
   {% if not review %}
-  <div class="card"><div class="empty"><h3>All caught up</h3><p>New candidates will appear here.</p></div></div>
+  <div class="card">{{ ui.empty('All caught up', 'New candidates will appear here.', 'check') }}</div>
   {% endif %}
 
   {% for it in review %}
@@ -495,24 +538,24 @@
   </div>
 
   {% if not active %}
-  <div class="card"><div class="empty"><p>No active outreach candidates yet.</p></div></div>
+  <div class="card">{{ ui.empty('No active outreach candidates yet.', icon='user-plus') }}</div>
   {% endif %}
 
   <div class="active-group">
     <div class="active-group-head"><h3>{{ ic.icon('activity') }} Needs attention</h3><span>{{ active_needs|length }}</span></div>
-    {% if not active_needs %}<div class="card"><div class="empty"><p>No urgent follow-ups right now.</p></div></div>{% endif %}
+    {% if not active_needs %}<div class="card">{{ ui.empty('No urgent follow-ups right now.', icon='check') }}</div>{% endif %}
     {% for it in active_needs %}{{ active_card(it, labels, statuses, recon_labels, recon_outcomes, support_coverage_labels, support_travel_labels, redcap_on) }}{% endfor %}
   </div>
 
   <details class="active-group active-fold" {% if active_ready|length <= 3 %}open{% endif %}>
     <summary class="active-group-head"><h3>{{ ic.icon('check') }} Ready to schedule / advance</h3><span>{{ active_ready|length }}</span></summary>
-    {% if not active_ready %}<div class="card"><div class="empty"><p>No candidates waiting on scheduling.</p></div></div>{% endif %}
+    {% if not active_ready %}<div class="card">{{ ui.empty('No candidates waiting on scheduling.', icon='check') }}</div>{% endif %}
     {% for it in active_ready %}{{ active_card(it, labels, statuses, recon_labels, recon_outcomes, support_coverage_labels, support_travel_labels, redcap_on) }}{% endfor %}
   </details>
 
   <details class="active-group active-fold">
     <summary class="active-group-head"><h3>{{ ic.icon('list') }} In progress</h3><span>{{ active_pipeline|length }}</span></summary>
-    {% if not active_pipeline %}<div class="card"><div class="empty"><p>No remaining active candidates.</p></div></div>{% endif %}
+    {% if not active_pipeline %}<div class="card">{{ ui.empty('No remaining active candidates.', icon='list') }}</div>{% endif %}
     {% for it in active_pipeline %}{{ active_card(it, labels, statuses, recon_labels, recon_outcomes, support_coverage_labels, support_travel_labels, redcap_on) }}{% endfor %}
   </details>
 </section>
@@ -524,7 +567,7 @@
   </div>
   <div class="card">
     {% if not done %}
-    <div class="empty"><p>No completed or closed candidates yet.</p></div>
+    {{ ui.empty('No completed or closed candidates yet.', icon='list') }}
     {% else %}
     <table>
       <thead><tr><th>Candidate</th><th>Trial</th><th>Status</th><th>Contact</th><th>Update</th></tr></thead>
@@ -533,14 +576,14 @@
         {% set l = it.lead %}
         <tr>
           <td><b>{% if l['revealed'] %}{{ l['name'] }}{% else %}{{ it.code }}{% endif %}</b>
-            {% if it.unread %}<span class="msg-badge">{{ it.unread }} new</span>{% endif %}
+            {% if it.unread %}{{ ui.badge(it.unread ~ ' new', 'danger') }}{% endif %}
             <div class="tag">{{ it.age_band }}{% if l['sex'] %} · {{ l['sex']|capitalize }}{% endif %}</div>
             <a class="cand-open" href="{{ url_for('candidate_page', token=l['site_token']) }}">{{ ic.icon('external') }} Open workspace</a>
             <div class="tag">Link exp: {{ l['site_token_expires_at'] or '-' }}</div></td>
           <td>{% if l['nct'] %}{% if l['nct'].startswith('NCT') %}<a href="https://clinicaltrials.gov/study/{{ l['nct'] }}" target="_blank" rel="noopener">{{ l['nct'] }}</a>{% else %}{{ l['nct'] }}{% endif %}{% endif %}<div class="tag">{{ l['title'][:44] }}</div></td>
-          <td><span class="pill pill-{{ l['status'] }}">{{ labels.get(l['status'], l['status']) }}</span>
+          <td>{{ ui.badge(labels.get(l['status'], l['status']), {'submitted':'brand','screening':'warn','enrolled':'ok'}.get(l['status'], 'neutral')) }}
             {% if l['decision'] == 'declined' and l['decision_reason'] %}<div class="tag">{{ l['decision_reason'] }}</div>{% endif %}
-            {% if it.recon %}<div class="tag recon-tag">{{ recon_labels.get(it.recon['outcome'], it.recon['outcome']) }}</div>{% endif %}
+            {% if it.recon %}{{ ui.badge(recon_labels.get(it.recon['outcome'], it.recon['outcome']), 'ok') }}{% endif %}
             <div class="tag">Coverage: {{ support_coverage_labels.get(it.support.coverage_status, it.support.coverage_status or 'Not checked') }}</div>
             <div class="tag">Travel: {{ support_travel_labels.get(it.support.travel_status, it.support.travel_status or 'Not planned') }}</div></td>
           <td class="tag">
@@ -559,11 +602,11 @@
             </form>
             {% if l['revealed'] %}
             <form method="post" action="{{ url_for('push_lead_redcap', lead_id=l['id']) }}" class="lead-redcap-form" title="{{ 'Push this candidate into your REDCap project' if redcap_on else 'Connect REDCap (REDCAP_API_URL/TOKEN) to enable' }}">
-              <button class="btn btn-sm btn-ghost" type="submit">{{ ic.icon('external') }} Push to REDCap</button>
+              {{ ui.btn('Push to REDCap', 'ghost', 'sm', icon='external', type='submit') }}
             </form>
             <form method="post" action="{{ url_for('schedule_lead', lead_id=l['id']) }}" class="lead-sched-form" title="Send the applicant a link to book their screening call">
               <input type="url" name="schedule_url" value="{{ l['schedule_url'] }}" placeholder="Booking link (Calendly, Cal.com...)">
-              <button class="btn btn-sm btn-ghost" type="submit">{{ ic.icon('activity') }} {{ 'Update link' if l['schedule_url'] else 'Send booking link' }}</button>
+              {{ ui.btn(('Update link' if l['schedule_url'] else 'Send booking link'), 'ghost', 'sm', icon='activity', type='submit') }}
             </form>
             {% endif %}
             {% else %}<span class="tag">-</span>{% endif %}

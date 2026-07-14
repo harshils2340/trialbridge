@@ -1,11 +1,14 @@
 {% extends "base.html" %}
 {% import "_icons.html" as ic %}
+{% import "_ui.html" as ui %}
 {% block title %}{{ ref['patient_label'] }} · Referral · BridgeMD{% endblock %}
 {% block body %}
+{% set status_tones = {'referred':'brand','received':'info','contacted':'violet','screened':'violet','enrolled':'ok','screen_failed':'neutral','declined':'neutral','withdrawn':'neutral'} %}
+{% set verdict_tones = {'likely_eligible':'ok','possible':'warn','unlikely':'neutral','error':'neutral'} %}
 <div class="page-head">
   <a href="{{ url_for('referrals') }}" class="tag">← All referrals</a>
   <h1 style="margin-top:8px;">Referral · {{ ref['patient_label'] }}</h1>
-  <p><span class="status {{ ref['status'] }}">{{ ref['status'].replace('_',' ') }}</span>
+  <p>{{ ui.badge(ref['status'].replace('_',' '), status_tones.get(ref['status'], 'neutral')) }}
      &nbsp; Created {{ ref['created_at'] }}</p>
 </div>
 
@@ -18,7 +21,7 @@
         <dt>NCT</dt><dd>{% if (ref['nct'] or '').startswith('NCT') %}<a class="ctlink mono" href="https://clinicaltrials.gov/study/{{ ref['nct'] }}" target="_blank" rel="noopener">{{ ref['nct'] }} {{ ic.icon('external') }}</a>{% else %}<span class="mono">{{ ref['nct'] }}</span>{% endif %}</dd>
         <dt>Site</dt><dd>{{ ref['site'] or '-' }}</dd>
         {% if ref['coordinator'] %}<dt>Coordinator</dt><dd>{{ ref['coordinator'] }}</dd>{% endif %}
-        {% if ref['verdict'] %}<dt>Screen verdict</dt><dd><span class="pill {{ ref['verdict'] }}">{{ ref['verdict'].replace('_',' ') }}{% if ref['score'] %}<span class="score">{{ ref['score'] }}</span>{% endif %}</span></dd>{% endif %}
+        {% if ref['verdict'] %}<dt>Screen verdict</dt><dd>{{ ui.badge(ref['verdict'].replace('_',' ') ~ (' · ' ~ ref['score'] if ref['score'] else ''), verdict_tones.get(ref['verdict'], 'neutral')) }}</dd>{% endif %}
         {% if ref['rationale'] %}<dt>Why</dt><dd>{{ ref['rationale'] }}</dd>{% endif %}
       </dl>
     </div>
@@ -28,8 +31,8 @@
       <dl class="kv">
         <dt>Reference</dt><dd>{{ ref['patient_label'] }}</dd>
         <dt>Consent</dt><dd>
-          {% if ref['consent'] %}<span class="status enrolled">consented</span> {{ ref['consent_at'] }}
-          {% else %}<span class="status declined">not recorded</span>{% endif %}</dd>
+          {% if ref['consent'] %}{{ ui.badge('consented', 'ok') }} {{ ref['consent_at'] }}
+          {% else %}{{ ui.badge('not recorded', 'neutral') }}{% endif %}</dd>
         {% if ref['patient_name'] %}<dt>Name</dt><dd>{{ ref['patient_name'] }}</dd>{% endif %}
         {% if ref['patient_contact'] %}<dt>Contact</dt><dd>{{ ref['patient_contact'] }}</dd>{% endif %}
       </dl>
@@ -47,7 +50,7 @@
       <ul class="timeline">
         {% for e in events %}
         <li>
-          <div><span class="status {{ e['status'] }}">{{ e['status'].replace('_',' ') }}</span>
+          <div>{{ ui.badge(e['status'].replace('_',' '), status_tones.get(e['status'], 'neutral')) }}
             <span class="actor-tag">{{ 'site' if e['actor'] == 'site' else 'you' }}</span></div>
           {% if e['note'] %}<div style="font-size:14px;margin-top:4px;">{{ e['note'] }}</div>{% endif %}
           <div class="t">{{ e['created_at'] }}</div>
@@ -60,7 +63,7 @@
   <div>
     <div class="card">
       <div class="section-title"><h2>Send to coordinator</h2>
-        {% if ref['notified_at'] %}<span class="status received">sent</span>{% endif %}
+        {% if ref['notified_at'] %}{{ ui.badge('sent', 'info') }}{% endif %}
       </div>
       <p class="tag" style="margin-top:0;">
         {% if ref['notified_at'] %}Sent {{ ref['notified_at'] }}. Resend or copy the link anytime.
@@ -74,23 +77,23 @@
       {% if smtp_on %}
       <form method="post" action="{{ url_for('referral_notify', ref_id=ref['id']) }}">
         <input type="hidden" name="coordinator_email" id="notifyEmail" value="{{ ref['coordinator_email'] }}">
-        <button class="btn btn-primary btn-block" type="submit">{{ ic.icon('arrow-right') }}{{ 'Resend referral email' if ref['notified_at'] else 'Send referral email' }}</button>
+        {{ ui.btn('Resend referral email' if ref['notified_at'] else 'Send referral email', 'primary', 'block', type='submit', icon='arrow-right') }}
       </form>
       <div class="or-line"><span>or send from your own mail app</span></div>
       {% endif %}
 
       <div style="display:flex; gap:10px; flex-wrap:wrap;">
-        <a class="btn {{ 'btn-ghost' if smtp_on else 'btn-primary' }} btn-sm" id="composeBtn" href="{{ mailto }}">{{ ic.icon('arrow-right') }}Compose email</a>
+        {{ ui.btn('Compose email', ('ghost' if smtp_on else 'primary'), 'sm', icon='arrow-right', href=mailto, extra='id="composeBtn"') }}
         <form method="post" action="{{ url_for('referral_mark_sent', ref_id=ref['id']) }}" id="markSentForm">
           <input type="hidden" name="coordinator_email" id="markSentEmail" value="{{ ref['coordinator_email'] }}">
-          <button class="btn btn-ghost btn-sm" type="submit">{{ ic.icon('check') }}Mark as sent</button>
+          {{ ui.btn('Mark as sent', 'ghost', 'sm', type='submit', icon='check') }}
         </form>
       </div>
 
       <label style="margin-top:16px;">Secure status link for the site</label>
       <div class="copy-row">
         <input id="shareUrl" type="text" readonly value="{{ share_url }}">
-        <button type="button" class="btn btn-ghost btn-sm" id="copyBtn" data-copy="#shareUrl">Copy</button>
+        {{ ui.btn('Copy', 'ghost', 'sm', type='button', extra='id="copyBtn" data-copy="#shareUrl"') }}
       </div>
     </div>
 
@@ -109,7 +112,7 @@
           <label for="note">Note <span class="hint">(optional)</span></label>
           <input id="note" name="note" type="text" placeholder="e.g. coordinator called patient">
         </div>
-        <button class="btn btn-primary btn-block" type="submit">{{ ic.icon('check') }}Save update</button>
+        {{ ui.btn('Save update', 'primary', 'block', type='submit', icon='check') }}
       </form>
     </div>
   </div>

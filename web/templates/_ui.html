@@ -1,0 +1,76 @@
+{# =========================================================================
+   BridgeMD shared UI components  ·  import as:  {% import "_ui.html" as ui %}
+
+   These are the ONLY sanctioned building blocks for buttons, badges, chips,
+   empty states, and modals. Do not hand-roll new one-off classes for these
+   concepts - extend a macro here so every screen stays consistent.
+
+   All visuals come from tokens in static/style.css (:root). See the strict
+   rule in .cursor/rules/ui-components.mdc.
+   ========================================================================= #}
+{% import "_icons.html" as ic %}
+
+{# --- Button ---------------------------------------------------------------
+   variant: primary | ghost | ok | danger | link    size: '' | sm | lg | block
+   'link' renders a borderless text button (.link-btn).
+   Renders <a> when href is given, else <button>. #}
+{% macro btn(label, variant="primary", size="", icon="", href="", type="button", name="", value="", extra="", disabled=False) -%}
+  {%- if variant == "link" -%}
+    {%- set cls = "link-btn" ~ (" btn-" ~ size if size else "") -%}
+  {%- else -%}
+    {%- set cls = "btn btn-" ~ variant ~ (" btn-" ~ size if size else "") -%}
+  {%- endif -%}
+  {%- if href -%}
+  <a class="{{ cls }}" href="{{ href }}" {{ extra|safe }}>{% if icon %}{{ ic.icon(icon) }}{% endif %}{{ label }}</a>
+  {%- else -%}
+  <button class="{{ cls }}" type="{{ type }}"{% if name %} name="{{ name }}"{% endif %}{% if value %} value="{{ value }}"{% endif %}{% if disabled %} disabled{% endif %} {{ extra|safe }}>{% if icon %}{{ ic.icon(icon) }}{% endif %}{{ label }}</button>
+  {%- endif -%}
+{%- endmacro %}
+
+{# --- Badge ----------------------------------------------------------------
+   Small status label. tone: neutral | brand | ok | warn | danger | info | violet #}
+{% macro badge(label, tone="neutral", icon="") -%}
+  <span class="ui-badge ui-badge-{{ tone }}">{% if icon %}{{ ic.icon(icon) }}{% endif %}{{ label }}</span>
+{%- endmacro %}
+
+{# --- Count badge (e.g. unread) -------------------------------------------- #}
+{% macro count(n, tone="brand") -%}
+  <span class="ui-count ui-count-{{ tone }}">{{ n }}</span>
+{%- endmacro %}
+
+{# --- Chip / toggle --------------------------------------------------------
+   A pressable filter chip. Use inside a <button>/form as needed. #}
+{% macro chip(label, active=False, icon="", extra="") -%}
+  <span class="ui-chip{{ ' is-active' if active else '' }}" {{ extra|safe }}>{% if icon %}{{ ic.icon(icon) }}{% endif %}{{ label }}</span>
+{%- endmacro %}
+
+{# --- Empty state ----------------------------------------------------------
+   action: optional raw HTML for a CTA (e.g. action=ui.btn('Find trials', href=...)). #}
+{% macro empty(title, body="", icon="inbox", action="") -%}
+  <div class="ui-empty">
+    <span class="ui-empty-ico">{{ ic.icon(icon) }}</span>
+    <p class="ui-empty-title">{{ title }}</p>
+    {% if body %}<p class="ui-empty-body">{{ body }}</p>{% endif %}
+    {% if action %}<div class="ui-empty-action">{{ action|safe }}</div>{% endif %}
+  </div>
+{%- endmacro %}
+
+{# --- Modal ----------------------------------------------------------------
+   Usage:
+     {% call ui.modal("myId", "Title", icon="send") %}
+       ...body / form...
+     {% endcall %}
+   JS opens it by removing the [hidden] attribute; any [data-ui-close]
+   element (handled globally in base.html) closes it. #}
+{% macro modal(id, title, icon="", size="") -%}
+  <div class="ui-modal{{ ' ui-modal-' ~ size if size else '' }}" id="{{ id }}" hidden>
+    <div class="ui-modal-backdrop" data-ui-close></div>
+    <div class="ui-modal-card card">
+      <div class="ui-modal-head">
+        <h3>{% if icon %}{{ ic.icon(icon) }}{% endif %}{{ title }}</h3>
+        <button type="button" class="ui-modal-x" data-ui-close aria-label="Close">{{ ic.icon('x') }}</button>
+      </div>
+      <div class="ui-modal-body">{{ caller() }}</div>
+    </div>
+  </div>
+{%- endmacro %}

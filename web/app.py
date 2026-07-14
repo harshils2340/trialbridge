@@ -2060,6 +2060,7 @@ def applications():
             "support": db.get_lead_support(ld["id"]),
             "files": db.list_attachments(ld["id"]),
             "tasks": db.list_tasks(ld["id"]),
+            "doc_requests": db.list_doc_requests(ld["id"]),
         })
         db.mark_thread_read(ld["id"], "patient")
     return render_template("applications.html", apps=apps,
@@ -2104,6 +2105,35 @@ def application_attach(token):
     db.add_message(lead["id"], "patient", f"Shared a document: {orig}")
     _notify_site_message(lead, f"The applicant shared a document: {orig}")
     flash("Document shared with the study team.", "success")
+    return redirect(url_for("applications") + f"#app-{lead['id']}")
+
+
+@app.route("/applications/<token>/doc-request/<int:req_id>/upload",
+           methods=["POST"])
+def application_doc_upload(token, req_id):
+    """Patient uploads a record the study team specifically asked for."""
+    if not g.patient_user:
+        flash("Sign in to share a record.", "error")
+        return redirect(url_for("patient_login", next=url_for("applications")))
+    lead = db.get_lead_by_token(token)
+    if not lead or lead["applicant_token"] != get_applicant_token():
+        abort(403)
+    req = db.get_doc_request(req_id)
+    if not req or req["lead_id"] != lead["id"]:
+        abort(404)
+    saved = _save_upload(request.files.get("file"))
+    if not saved:
+        flash("Attach a supported file (PDF, image, doc, spreadsheet).", "error")
+        return redirect(url_for("applications") + f"#app-{lead['id']}")
+    orig, stored, mime, size = saved
+    att_id = db.add_attachment(lead["id"], "patient", orig, stored, mime, size,
+                               note=f"Record: {req['title']}")
+    db.set_doc_request_upload(req_id, att_id)
+    db.add_message(lead["id"], "patient",
+                   f"Uploaded the requested record ({req['title']}): {orig}")
+    _notify_site_message(lead, f"The applicant uploaded a requested record: "
+                               f"{req['title']}")
+    flash("Record sent to the study team.", "success")
     return redirect(url_for("applications") + f"#app-{lead['id']}")
 
 
@@ -2740,6 +2770,7 @@ def _decode_lead(row, recon=None):
         "messages": db.get_messages(row["id"]),
         "files": db.list_attachments(row["id"]),
         "tasks": db.list_tasks(row["id"]),
+        "doc_requests": db.list_doc_requests(row["id"]),
     }
 
 
@@ -3202,6 +3233,87 @@ def toggle_lead_task(lead_id, task_id):
     db.set_task_status(task_id, new_status)
     flash("To-do marked done." if new_status == "done"
           else "To-do reopened.", "success")
+    return redirect(back)
+
+
+@app.route("/app/leads/<int:lead_id>/doc-request", methods=["POST"])
+@login_required
+def request_lead_doc(lead_id):
+    """Study team asks the candidate for a specific record (e.g. a pathology
+    report confirming diagnosis). Tracked with its own status so the coordinator
+    can see what's still outstanding before the screening window closes."""
+    _ensure_site_access_for_lead(lead_id)
+    back = _lead_action_return()
+    lead = db.get_lead(lead_id)
+    if not lead:
+        flash("Couldn't find that candidate.", "error")
+        return redirect(back)
+    if not lead["revealed"]:
+        flash("Accept the candidate first to request records.", "error")
+        return redirect(back)
+    title = request.form.get("title", "").strip()
+    note = request.form.get("note", "").strip()
+    if not title:
+        flash("Name the record you need first.", "error")
+        return redirect(back)
+    db.add_doc_request(lead_id, title, note, created_by="site")
+    ask = f"Please send: {title}" + (f" - {note}" if note else "")
+    db.add_message(lead_id, "site", ask)
+    _notify_applicant_message(lead, f"Your study team requested a record: {title}")
+    flash("Record request sent to the candidate.", "success")
+    return redirect(back)
+
+
+@app.route("/app/leads/<int:lead_id>/doc-request/<int:req_id>/upload",
+           methods=["POST"])
+@login_required
+def upload_lead_doc(lead_id, req_id):
+    """Coordinator uploads a requested record on the candidate's behalf (e.g.
+    something they collected via a records request)."""
+    _ensure_site_access_for_lead(lead_id)
+    back = _lead_action_return()
+    req = db.get_doc_request(req_id)
+    if not req or req["lead_id"] != lead_id:
+        abort(404)
+    saved = _save_upload(request.files.get("file"))
+    if not saved:
+        flash("Attach a supported file (PDF, image, doc, spreadsheet).", "error")
+        return redirect(back)
+    orig, stored, mime, size = saved
+    att_id = db.add_attachment(lead_id, "site", orig, stored, mime, size,
+                               note=f"Record: {req['title']}")
+    db.set_doc_request_upload(req_id, att_id)
+    db.add_message(lead_id, "site",
+                   f"Added the requested record ({req['title']}): {orig}")
+    flash("Record uploaded and marked received.", "success")
+    return redirect(back)
+
+
+@app.route("/app/leads/<int:lead_id>/doc-request/<int:req_id>/review",
+           methods=["POST"])
+@login_required
+def review_lead_doc(lead_id, req_id):
+    """Study team accepts a submitted record or rejects it (patient re-uploads)."""
+    _ensure_site_access_for_lead(lead_id)
+    back = _lead_action_return()
+    lead = db.get_lead(lead_id)
+    req = db.get_doc_request(req_id)
+    if not lead or not req or req["lead_id"] != lead_id:
+        abort(404)
+    accepted = request.form.get("decision") == "accept"
+    review_note = request.form.get("review_note", "").strip()
+    db.set_doc_request_review(req_id, accepted, review_note)
+    if accepted:
+        db.add_message(lead_id, "site",
+                       f"Accepted your record: {req['title']}. Thank you.")
+        flash("Record accepted.", "success")
+    else:
+        msg = (f"We need a new copy of: {req['title']}."
+               + (f" {review_note}" if review_note else
+                  " Please re-upload when you can."))
+        db.add_message(lead_id, "site", msg)
+        _notify_applicant_message(lead, msg)
+        flash("Record sent back for re-upload.", "success")
     return redirect(back)
 
 

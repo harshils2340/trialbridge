@@ -1,4 +1,6 @@
 {% extends "base.html" %}
+{% import "_icons.html" as ic %}
+{% import "_ui.html" as ui %}
 {% block title %}Recruitment dashboard · BridgeMD{% endblock %}
 
 {% block body %}
@@ -13,11 +15,8 @@
 
 {% if not claims %}
 <div class="card">
-  <div class="empty">
-    <h3>Claim studies to activate analytics</h3>
-    <p>Claim at least one NCT to start tracking metrics.</p>
-    <a class="btn btn-primary" href="{{ url_for('site_setup') }}">{{ ic.icon('award') }} Go to site setup</a>
-  </div>
+  {{ ui.empty('Claim studies to activate analytics', 'Claim at least one NCT to start tracking metrics.', 'award') }}
+  <div style="text-align:center;">{{ ui.btn('Go to site setup', variant='primary', icon='award', href=url_for('site_setup')) }}</div>
 </div>
 {% endif %}
 
@@ -46,7 +45,7 @@
     </tbody>
   </table>
   {% else %}
-  <div class="empty"><p>No applicants yet. As people apply, this fills in per trial.</p></div>
+  {{ ui.empty('No applicants yet', 'As people apply, this fills in per trial.', 'list') }}
   {% endif %}
 </div>
 
@@ -69,7 +68,7 @@
     </tbody>
   </table>
   {% else %}
-  <div class="empty"><p>No channel data yet.</p></div>
+  {{ ui.empty('No channel data yet', '', 'activity') }}
   {% endif %}
 </div>
 

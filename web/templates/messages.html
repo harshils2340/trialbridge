@@ -10,7 +10,10 @@
   'followup': {'label': 'Follow up',     'icon': 'arrow-right'}
 } %}
 <div class="chat-topbar">
-  <div class="chat-topbar-title">Conversations{% if trials %}<span class="chat-space" id="chatSpace" title="You're viewing this trial"></span>{% endif %}</div>
+  {% if trials %}<div class="chat-space-pill" title="You're viewing this trial">
+    <span class="chat-space-dot"></span>
+    <span class="chat-space" id="chatSpace"></span>
+  </div>{% endif %}
   <div class="chat-omni">
     <span class="chat-omni-ico">{{ ic.icon('search') }}</span>
     <input type="text" id="inboxSearch" placeholder="Search everyone - patients, trials, messages..." autocomplete="off" {{ '' if trials else 'disabled' }}>
@@ -370,16 +373,20 @@
         </div>
         <ul class="confirm-list">
           <li id="confMsgRow"><span class="confirm-k">Message</span><span class="confirm-v" id="confMsg"></span></li>
-          <li id="confFileRow" hidden><span class="confirm-k">Document</span><span class="confirm-v" id="confFile"></span></li>
           <li id="confTaskRow" hidden><span class="confirm-k">To-do</span><span class="confirm-v" id="confTask"></span></li>
         </ul>
-        <label class="confirm-ack">
+        <div class="confirm-doc" id="confDoc" hidden>
+          <span class="confirm-doc-lbl">{{ ic.icon('paperclip') }} Attachment</span>
+          <div id="confPreview"></div>
+        </div>
+        <label class="confirm-ack" id="confAckBox">
           <input type="checkbox" id="confAck">
           <span>I confirm this is IRB/REB-approved, correct for this trial, and appropriate to send to the patients above.</span>
         </label>
+        <p class="confirm-gate-msg" id="confGateMsg" hidden>{{ ic.icon('help') }} Please tick the box above to confirm, then send.</p>
         <div class="msgall-actions">
           <button type="button" class="btn btn-ghost btn-sm" id="confBack">Back</button>
-          <button type="submit" class="btn btn-primary btn-sm" id="confSend" disabled>{{ ic.icon('send') }} Confirm &amp; send</button>
+          <button type="submit" class="btn btn-primary btn-sm" id="confSend">{{ ic.icon('send') }} Confirm &amp; send</button>
         </div>
         <p class="broadcast-note">{{ ic.icon('help') }} Patients never see each other. This send is logged to the study record.</p>
       </div>
@@ -414,6 +421,7 @@
       <button type="button" class="msgall-x" data-dc-close aria-label="Close">{{ ic.icon('x') }}</button>
     </div>
     <p class="dc-line" id="dcLine"></p>
+    <div class="dc-preview" id="dcPreview" hidden></div>
     <p class="broadcast-note">{{ ic.icon('help') }} Share only IRB/REB-approved materials. It's logged to the study record.</p>
     <div class="msgall-actions">
       <button type="button" class="btn btn-ghost btn-sm" data-dc-close>Cancel</button>
@@ -615,11 +623,52 @@
     });
   });
 
+  // ---- Shared: render a preview of a staged file (thumbnail for images) ---- //
+  function fmtBytes(n) {
+    if (n < 1024) return n + ' B';
+    if (n < 1048576) return Math.round(n / 1024) + ' KB';
+    return (n / 1048576).toFixed(1) + ' MB';
+  }
+  function renderDocPreview(file, el) {
+    if (!el) return;
+    el.innerHTML = '';
+    var wrap = document.createElement('div');
+    wrap.className = 'doc-prev';
+    if (file.type && file.type.indexOf('image/') === 0) {
+      var img = document.createElement('img');
+      img.className = 'doc-prev-img';
+      img.alt = file.name;
+      var url = URL.createObjectURL(file);
+      img.src = url;
+      img.addEventListener('load', function () { URL.revokeObjectURL(url); });
+      wrap.appendChild(img);
+    } else {
+      var ext = (file.name.split('.').pop() || 'file');
+      var badge = document.createElement('span');
+      badge.className = 'doc-prev-ico';
+      badge.textContent = ext.toUpperCase().slice(0, 4);
+      wrap.appendChild(badge);
+    }
+    var meta = document.createElement('div');
+    meta.className = 'doc-prev-meta';
+    var nm = document.createElement('div');
+    nm.className = 'doc-prev-name';
+    nm.textContent = file.name;
+    var sz = document.createElement('div');
+    sz.className = 'doc-prev-size';
+    sz.textContent = fmtBytes(file.size);
+    meta.appendChild(nm);
+    meta.appendChild(sz);
+    wrap.appendChild(meta);
+    el.appendChild(wrap);
+  }
+
   // ---- Document safety gate (single thread): confirm before any doc send ---- //
   var main = document.querySelector('.inbox-main');
   var clip = main ? main.querySelector('.inbox-clip-input') : null;
   var docModal = document.getElementById('docConfirm');
   var dcLine = document.getElementById('dcLine');
+  var dcPreview = document.getElementById('dcPreview');
   var dcSend = document.getElementById('dcSend');
   var recipient = main ? main.getAttribute('data-recipient') : '';
   var trialLabel = main ? main.getAttribute('data-trial') : '';
@@ -630,8 +679,9 @@
   }
   function askDoc() {
     if (!docModal || !clip || !clip.files || !clip.files.length) return;
-    dcLine.innerHTML = 'Send <b>"' + clip.files[0].name + '"</b> to <b>' + recipient +
+    dcLine.innerHTML = 'Send this document to <b>' + recipient +
       '</b><br><span class="dc-trial">' + trialLabel + '</span>';
+    if (dcPreview) { renderDocPreview(clip.files[0], dcPreview); dcPreview.hidden = false; }
     docModal.hidden = false;
   }
   if (clip) {
@@ -693,7 +743,10 @@
   var reviewBtn = document.getElementById('msgAllReview');
   var backBtn = document.getElementById('confBack');
   var ack = document.getElementById('confAck');
+  var ackBox = document.getElementById('confAckBox');
+  var gateMsg = document.getElementById('confGateMsg');
   var confSend = document.getElementById('confSend');
+  var msgAllForm = document.getElementById('msgAllForm');
   var errEl = document.getElementById('msgAllError');
   var mBody = modal ? modal.querySelector('textarea[name=body]') : null;
   var mTask = modal ? modal.querySelector('input[name=task]') : null;
@@ -738,15 +791,30 @@
     document.getElementById('confPlural').textContent = count === 1 ? '' : 's';
     document.getElementById('confTrial').textContent = opt.getAttribute('data-title') || opt.value;
     setRow('confMsgRow', 'confMsg', body || '(no message)');
-    setRow('confFileRow', 'confFile', hasFile ? mFile.files[0].name : '');
     setRow('confTaskRow', 'confTask', task);
+    var confDoc = document.getElementById('confDoc');
+    if (hasFile) { renderDocPreview(mFile.files[0], document.getElementById('confPreview')); if (confDoc) confDoc.hidden = false; }
+    else if (confDoc) { confDoc.hidden = true; }
     if (ack) ack.checked = false;
-    if (confSend) confSend.disabled = true;
+    if (gateMsg) gateMsg.hidden = true;
+    if (ackBox) ackBox.classList.remove('confirm-ack-warn');
     if (composeView) composeView.hidden = true;
     if (confirmView) confirmView.hidden = false;
   });
   if (backBtn) backBtn.addEventListener('click', showCompose);
-  if (ack) ack.addEventListener('change', function () { if (confSend) confSend.disabled = !ack.checked; });
+  if (ack) ack.addEventListener('change', function () {
+    if (ack.checked) { if (ackBox) ackBox.classList.remove('confirm-ack-warn'); if (gateMsg) gateMsg.hidden = true; }
+  });
+  // Gate the send on the acknowledgment, but with clear feedback (never a
+  // silent, dead-looking button).
+  if (msgAllForm) msgAllForm.addEventListener('submit', function (e) {
+    if (confirmView && !confirmView.hidden && ack && !ack.checked) {
+      e.preventDefault();
+      if (ackBox) ackBox.classList.add('confirm-ack-warn');
+      if (gateMsg) gateMsg.hidden = false;
+      ack.focus();
+    }
+  });
   if (openBtn) openBtn.addEventListener('click', openModal);
   if (modal) modal.querySelectorAll('[data-close]').forEach(function (el) { el.addEventListener('click', closeModal); });
   document.addEventListener('keydown', function (e) {

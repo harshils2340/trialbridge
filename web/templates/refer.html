@@ -1,7 +1,9 @@
 {% extends "base.html" %}
 {% import "_icons.html" as ic %}
+{% import "_ui.html" as ui %}
 {% block title %}Confirm referral · BridgeMD{% endblock %}
 {% block body %}
+{% set verdict_tones = {'likely_eligible':'ok','possible':'warn','unlikely':'neutral','error':'neutral'} %}
 <div class="page-head">
   <a href="{{ url_for('dashboard') }}" class="tag">← Back to search</a>
   <h1 style="margin-top:8px;">Confirm referral</h1>
@@ -45,7 +47,7 @@
         </label>
       </div>
 
-      <button class="btn btn-primary" type="submit" style="margin-top:18px;">{{ ic.icon('user-plus') }}Save referral</button>
+      {{ ui.btn('Save referral', 'primary', type='submit', icon='user-plus', extra='style="margin-top:18px;"') }}
     </form>
   </div>
 
@@ -56,7 +58,7 @@
         <dt>Study</dt><dd>{{ d.get('title') }}</dd>
         <dt>NCT</dt><dd>{% if (d.get('nct') or '').startswith('NCT') %}<a class="ctlink mono" href="https://clinicaltrials.gov/study/{{ d.get('nct') }}" target="_blank" rel="noopener">{{ d.get('nct') }} {{ ic.icon('external') }}</a>{% else %}<span class="mono">{{ d.get('nct') }}</span>{% endif %}</dd>
         <dt>Site</dt><dd>{{ d.get('site') or '-' }}</dd>
-        {% if d.get('verdict') %}<dt>Screen</dt><dd><span class="pill {{ d.get('verdict') }}">{{ d.get('verdict').replace('_',' ') }}{% if d.get('score') %}<span class="score">{{ d.get('score') }}</span>{% endif %}</span></dd>{% endif %}
+        {% if d.get('verdict') %}<dt>Screen</dt><dd>{{ ui.badge(d.get('verdict').replace('_',' ') ~ (' · ' ~ d.get('score') if d.get('score') else ''), verdict_tones.get(d.get('verdict'), 'neutral')) }}</dd>{% endif %}
       </dl>
     </div>
     {% if d.get('note') %}
