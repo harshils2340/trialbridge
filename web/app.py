@@ -1503,7 +1503,7 @@ SEARCH_CONDITION_OPTIONS = [
     "Heart failure", "Coronary artery disease", "Atrial fibrillation",
     "Stroke recovery", "Sleep apnea", "Migraine", "Depression", "Anxiety",
     "Alzheimer's disease", "Parkinson's disease", "Multiple sclerosis",
-    "Rheumatoid arthritis", "Psoriasis", "Crohn's disease", "Ulcerative colitis",
+    "Rheumatoid arthritis", "Osteoporosis", "Psoriasis", "Crohn's disease", "Ulcerative colitis",
     "COPD", "Asthma", "Long COVID", "Endometriosis", "Lupus",
     "Breast cancer", "Prostate cancer", "Lung cancer", "Colon cancer",
 ]

@@ -119,10 +119,17 @@
 <!-- Click-to-apply walkthrough: simulates what a patient experiences after
      tapping the ad, all the way to a submitted application. Demo only - no
      real lead is created here. -->
-<div class="flow-demo" id="flowDemo" hidden>
+<div class="flow-demo" id="flowDemo" hidden data-token="{{ new_token[:8] if new_token else '' }}">
   <div class="flow-backdrop" data-flow-close></div>
   <div class="flow-phone" role="dialog" aria-modal="true" aria-label="Click-to-apply demo">
     <button type="button" class="flow-x" data-flow-close aria-label="Close demo">{{ ic.icon('x') }}</button>
+    <div class="flow-omni">
+      <svg class="flow-lock" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor"
+        stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <rect x="4" y="10" width="16" height="10" rx="2"></rect><path d="M8 10V7a4 4 0 0 1 8 0v3"></path></svg>
+      <span class="flow-url" id="flowUrl">instagram.com</span>
+    </div>
+    <div class="flow-progress" id="flowProgress"></div>
     <div class="flow-steps" id="flowSteps">
       <span class="flow-dot" data-dot="1"></span><span class="flow-dot" data-dot="2"></span>
       <span class="flow-dot" data-dot="3"></span><span class="flow-dot" data-dot="4"></span>
@@ -137,9 +144,9 @@
           <div class="ad-text" id="fText"></div>
           <div class="ad-media">{{ ic.icon('activity') }}</div>
           <div class="ad-card-foot"><div class="ad-headline" id="fHeadline"></div>
-            <button type="button" class="ad-cta" id="fCta" data-flow-next>Apply now</button></div>
+            <button type="button" class="ad-cta flow-tap" id="fCta" data-flow-next>Apply now</button></div>
         </div>
-        <p class="flow-note">They tap your prefill link - no forms lost, no dead end.</p>
+        <p class="flow-note">Tap the button to load exactly what they see next - no dead end, no lost form.</p>
       </section>
 
       <section class="flow-screen" data-step="2" hidden>
@@ -219,13 +226,33 @@
 
   // ---- click-to-apply walkthrough ----
   var demo = document.getElementById('flowDemo');
+  var phone = demo.querySelector('.flow-phone');
   var screens = Array.prototype.slice.call(demo.querySelectorAll('.flow-screen'));
   var dots = Array.prototype.slice.call(demo.querySelectorAll('.flow-dot'));
+  var omniUrl = document.getElementById('flowUrl');
+  var progress = document.getElementById('flowProgress');
+  var token = (demo.getAttribute('data-token') || '').trim() || 'a1b2c3d4';
   var step = 1;
 
+  function platformHost() {
+    var m = { Meta: 'instagram.com', Google: 'google.com', TikTok: 'tiktok.com',
+      Reddit: 'reddit.com', Flyer: 'scanned clinic QR' };
+    return m[platform && platform.value] || 'instagram.com';
+  }
+  function urlForStep(s) {
+    var base = 'app.bridgemd.health/j/' + token;
+    if (s === 1) return platformHost();
+    if (s === 2) return base;
+    if (s === 3) return base + '/apply';
+    return base + '/submitted';
+  }
   function render() {
     screens.forEach(function (s) { s.hidden = (+s.getAttribute('data-step') !== step); });
     dots.forEach(function (d) { d.classList.toggle('on', +d.getAttribute('data-dot') <= step); });
+    if (omniUrl) omniUrl.textContent = urlForStep(step);
+    // Replay the load-bar so each step reads like a real page navigating in.
+    if (progress) { progress.classList.remove('loading'); void progress.offsetWidth; progress.classList.add('loading'); }
+    if (phone) phone.scrollTop = 0;
   }
   function hydrate() {
     document.getElementById('fHeadline').textContent = pvHeadline.textContent;

@@ -657,7 +657,7 @@ body.pub { background: var(--surface); }
 .traction-in { max-width: 1120px; margin: 0 auto; }
 .traction-eyebrow { text-align: center; font-size: 12px; font-weight: 700;
   letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin: 0 0 16px; }
-.traction-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+.traction-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
 .traction-card { border: 1px solid var(--border); border-radius: 14px;
   padding: 24px 20px; background: var(--surface); text-align: center; }
 .traction-num { display: block; font-family: 'Manrope', system-ui, sans-serif;
@@ -1494,6 +1494,17 @@ body.demo-home .hero-search { max-width: 860px; margin-top: 28px; }
   display: inline-flex; align-items: center; justify-content: center; }
 .flow-x:hover { color: var(--ink); }
 .flow-x .ico { width: 15px; height: 15px; }
+.flow-omni { display: flex; align-items: center; gap: 7px; margin: 0 36px 8px 2px; padding: 7px 12px;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 999px; min-width: 0; }
+.flow-lock { flex: none; color: var(--muted); }
+.flow-url { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.flow-progress { height: 2px; border-radius: 999px; margin: 0 2px 12px; overflow: hidden; }
+.flow-progress.loading::after { content: ""; display: block; height: 100%; border-radius: 999px;
+  background: var(--accent); animation: flowLoad .5s ease forwards; }
+@keyframes flowLoad { from { width: 8%; opacity: 1; } to { width: 100%; opacity: .2; } }
+.flow-tap { transition: transform .08s ease; }
+.flow-tap:active { transform: scale(.97); }
 .flow-steps { display: flex; gap: 6px; justify-content: center; margin: 2px 0 14px; }
 .flow-dot { width: 22px; height: 4px; border-radius: 999px; background: var(--border-strong); transition: background .2s; }
 .flow-dot.on { background: var(--accent); }
