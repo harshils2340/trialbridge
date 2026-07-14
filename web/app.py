@@ -2045,6 +2045,14 @@ def _redcap_cfg_for_lead(lead):
     return redcap.config_from_profile(prof)
 
 
+def _url_host(url):
+    """Bare host (e.g. redcap.institution.edu) for display in the embed chrome."""
+    try:
+        return urllib.parse.urlparse(url or "").netloc or ""
+    except Exception:
+        return ""
+
+
 def _mark_screening_complete(lead, actor="patient",
                              note="screening intake form completed"):
     """Move the lead into a screening-complete state and notify both sides."""
@@ -2087,13 +2095,17 @@ def application_screening(token):
                                   "screening form link generated", actor="you")
             return render_template(
                 "screening_form.html", lead=lead, survey_url=url,
-                simulated=False, project_label=cfg.project_label)
+                simulated=False, project_label=cfg.project_label,
+                redcap_host=_url_host(url))
         flash(msg, "error")
         return redirect(url_for("applications"))
+    # Simulated: show a realistic host in the branded chrome (from the site's
+    # configured endpoint if any) without calling a real REDCap.
+    sim_host = _url_host(cfg.api_url) or "redcap.your-institution.edu"
     return render_template(
         "screening_form.html", lead=lead, survey_url="", simulated=True,
         project_label=cfg.project_label or "Site intake project",
-        instruments=redcap.SIMULATED_INSTRUMENTS)
+        redcap_host=sim_host, instruments=redcap.SIMULATED_INSTRUMENTS)
 
 
 @app.route("/applications/<token>/screening/complete", methods=["POST"])

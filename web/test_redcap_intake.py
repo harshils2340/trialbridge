@@ -205,7 +205,10 @@ def test_screening_flow():
         _fail("screening form", f"status {r.status_code}")
     if "Demo screening form" not in body:
         _fail("screening form", "simulated form not rendered")
-    _pass("simulated screening form served")
+    # Level 2: the simulated form is wrapped in the branded embed chrome.
+    if "screening-frame" not in body or "powered by your study team's REDCap" not in body:
+        _fail("screening form", "branded embed chrome not rendered")
+    _pass("simulated screening form served (branded embed chrome)")
 
     # Submit the simulated form -> screening-complete state.
     r = _post(client, f"/applications/{lead_token}/screening/complete", data={
