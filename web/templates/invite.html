@@ -20,11 +20,11 @@
     <div class="section-title"><h2>New invite</h2></div>
     <form method="post" class="inv-form">
       <label>Trial NCT number<input type="text" name="nct" placeholder="e.g. NCT05869903"></label>
-      <label>Trial title<input type="text" name="title" placeholder="e.g. Once-Weekly Semaglutide in Adults With Obesity"></label>
       <label>Condition<input type="text" name="condition" placeholder="e.g. Obesity"></label>
-      <label>Personal note to your patient (optional)
-        <textarea name="note" rows="2" placeholder="I think this could be a good option for you - worth a look."></textarea></label>
-      <button class="btn btn-primary" type="submit">{{ ic.icon('external') }} Create invite link</button>
+      <label class="inv-span">Trial title<input type="text" name="title" placeholder="e.g. Once-Weekly Semaglutide in Adults With Obesity"></label>
+      <label class="inv-span">Personal note to your patient (optional)
+        <textarea name="note" rows="3" placeholder="I think this could be a good option for you - worth a look."></textarea></label>
+      <button class="btn btn-primary inv-span" type="submit">{{ ic.icon('external') }} Create invite link</button>
     </form>
   </div>
 </div>

@@ -1427,11 +1427,14 @@ body.demo-home .hero-search { max-width: 860px; margin-top: 28px; }
 .inv-link-row input { flex: 1; padding: 10px 13px; border: 1px solid var(--border-strong);
   border-radius: 10px; font: inherit; font-size: 13.5px; background: #fff; }
 .inv-hint { font-size: 12.5px; color: var(--muted); margin: 0; }
-.inv-form { display: flex; flex-direction: column; gap: 12px; max-width: 560px; }
+.inv-form { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 18px; align-items: start; }
 .inv-form label { display: flex; flex-direction: column; gap: 5px; font-size: 13px;
   font-weight: 600; color: var(--muted); }
-.inv-form input, .inv-form textarea { padding: 10px 13px; border: 1px solid var(--border-strong);
-  border-radius: 10px; font: inherit; font-size: 14px; background: #fff; }
+.inv-form .inv-span { grid-column: 1 / -1; }
+.inv-form button.inv-span { justify-self: start; }
+.inv-form input, .inv-form textarea { width: 100%; box-sizing: border-box; padding: 10px 13px;
+  border: 1px solid var(--border-strong); border-radius: 10px; font: inherit; font-size: 14px; background: #fff; }
+@media (max-width: 640px) { .inv-form { grid-template-columns: 1fr; } }
 .inv-form input:focus, .inv-form textarea:focus { outline: none; border-color: var(--accent);
   box-shadow: 0 0 0 3px rgba(90,101,240,.15); }
 .inv-table { width: 100%; }
