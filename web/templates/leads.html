@@ -169,9 +169,14 @@
 {% endmacro %}
 
 {% block body %}
-<div class="page-head">
-  <h1>Intake queue</h1>
-  <p>Review and approve candidates.</p>
+<div class="page-head page-head-row">
+  <div>
+    <h1>Intake queue</h1>
+    <p>Review and approve candidates.</p>
+  </div>
+  {% if claims %}
+  <a class="btn btn-ghost btn-sm" href="{{ url_for('patient_inbox') }}">{{ ic.icon('chat') }} Conversations{% if site_unread %} <span class="nav-badge nav-badge-new">{{ site_unread }}</span>{% endif %}</a>
+  {% endif %}
 </div>
 
 {% if claims %}

@@ -1,0 +1,757 @@
+{% extends "base.html" %}
+{% block title %}Conversations · BridgeMD{% endblock %}
+{% block content_class %}content-chat{% endblock %}
+
+{% block body %}
+{% set TAGMETA = {
+  'pinned':   {'label': 'Pinned',        'icon': 'pin'},
+  'consent':  {'label': 'Needs consent', 'icon': 'check'},
+  'docs':     {'label': 'Awaiting docs', 'icon': 'paperclip'},
+  'followup': {'label': 'Follow up',     'icon': 'arrow-right'}
+} %}
+<div class="chat-topbar">
+  <div class="chat-topbar-title">Conversations{% if trials %}<span class="chat-space" id="chatSpace" title="You're viewing this trial"></span>{% endif %}</div>
+  <div class="chat-omni">
+    <span class="chat-omni-ico">{{ ic.icon('search') }}</span>
+    <input type="text" id="inboxSearch" placeholder="Search everyone - patients, trials, messages..." autocomplete="off" {{ '' if trials else 'disabled' }}>
+    <kbd class="chat-omni-kbd">/</kbd>
+  </div>
+  <div class="chat-topbar-actions">
+    {% if trials %}<button type="button" class="btn btn-primary btn-sm" id="msgAllBtn">{{ ic.icon('send') }} Message a trial</button>{% endif %}
+    <a class="btn btn-ghost btn-sm" href="{{ url_for('leads') }}">{{ ic.icon('user-plus') }} Candidate review</a>
+  </div>
+</div>
+
+{% if not trials %}
+<div class="chat-empty-wrap">
+  <div class="card">
+    <div class="empty">
+      <h3>No trials yet</h3>
+      <p>Claim a study to open its team channel, then accept candidates to start private patient threads.</p>
+      <a class="btn btn-primary" href="{{ url_for('site_setup') }}">{{ ic.icon('award') }} Set up site and claim studies</a>
+    </div>
+  </div>
+</div>
+{% else %}
+
+{% if active and active.kind == 'patient' %}
+  {% set nxt = url_for('patient_inbox', lead_id=active.lead.id) %}
+{% elif active %}
+  {% set nxt = url_for('patient_inbox', nct=active.nct, team=1) %}
+{% else %}
+  {% set nxt = url_for('patient_inbox') %}
+{% endif %}
+{% set active_nct = active.nct if active else trials[0].nct %}
+
+<div class="inbox-shell inbox-shell-full">
+  <aside class="inbox-list card">
+    <div class="trial-switch {{ 'single' if trials|length == 1 else '' }}">
+      <button type="button" class="trial-switch-btn" id="trialSwitchBtn"
+              aria-haspopup="true" aria-expanded="false" {{ 'disabled' if trials|length == 1 else '' }}>
+        <span class="trial-switch-eye">Trial</span>
+        <span class="trial-switch-name" id="trialSwitchName"></span>
+        {% if trials|length > 1 %}<span class="trial-switch-caret" aria-hidden="true">&#9662;</span>{% endif %}
+      </button>
+      {% if trials|length > 1 %}
+      <div class="trial-switch-menu" id="trialSwitchMenu" role="listbox" hidden>
+        {% for t in trials %}
+        {% set tu = t.patients | sum(attribute='unread') %}
+        <button type="button" class="trial-switch-opt {{ 'on' if t.nct == active_nct else '' }}"
+                role="option" data-trial-tab="{{ t.nct }}">
+          <span class="tso-main">
+            <span class="tso-title">{{ t.title }}</span>
+            <span class="tso-nct">{{ t.nct }}</span>
+          </span>
+          {% if tu %}<span class="trial-tab-badge">{{ tu }}</span>{% endif %}
+        </button>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div>
+    <div class="inbox-filters">
+      <div class="inbox-chips" role="tablist" aria-label="Filter conversations">
+        <button type="button" class="inbox-chip on" data-status="all">All</button>
+        <button type="button" class="inbox-chip" data-status="unread">Unread</button>
+        <button type="button" class="inbox-chip" data-status="turn">Your turn</button>
+        <button type="button" class="inbox-chip" data-status="todo">To-dos</button>
+        <button type="button" class="inbox-chip" data-status="pinned">{{ ic.icon('pin') }} Pinned</button>
+      </div>
+    </div>
+    <div class="inbox-convos" id="inboxConvos">
+      {% for t in trials %}
+      <div class="chan-group" data-nct="{{ t.nct }}" {{ 'hidden' if t.nct != active_nct else '' }}>
+        <div class="chan-trial">
+          <div class="chan-trial-main">
+            <span class="chan-title-lg">{{ t.title }}</span>
+            <span class="chan-nct">{{ t.nct }}</span>
+          </div>
+          {% if t.patients|length %}
+          <button type="button" class="chan-intake-all" data-nct="{{ t.nct }}"
+                  data-count="{{ t.patients|length }}" data-trial="{{ t.title }}">
+            {{ ic.icon('activity') }} Send intake form to all {{ t.patients|length }}
+          </button>
+          {% endif %}
+        </div>
+
+        <a class="inbox-convo chan-row {{ 'on' if active and active.kind == 'team' and active.nct == t.nct else '' }}"
+           data-name="team {{ t.title | lower }} {{ t.nct | lower }}" data-unread="0" data-nct="{{ t.nct }}" data-keep
+           href="{{ url_for('patient_inbox', nct=t.nct, team=1) }}">
+          <span class="inbox-avatar team">{{ ic.icon('list') }}</span>
+          <span class="inbox-convo-main">
+            <span class="inbox-convo-top"><span class="inbox-name">Team channel</span></span>
+            <span class="inbox-preview">Staff only &middot; not visible to patients</span>
+          </span>
+        </a>
+
+        <div class="chan-lane">Patients &middot; {{ t.patients|length }}</div>
+        {% for c in t.patients %}
+        {% set initials = (c.lead.name or c.code).split()[:2] | map('first') | join | upper %}
+        <a class="inbox-convo chan-row {{ 'on' if active and active.kind == 'patient' and active.lead.id == c.lead.id else '' }}"
+           data-name="{{ (c.lead.name or c.code) | lower }}" data-unread="{{ 1 if c.unread else 0 }}"
+           data-nct="{{ t.nct }}" data-turn="{{ 1 if c.awaiting_reply else 0 }}"
+           data-todo="{{ 1 if c.open_tasks else 0 }}" data-pinned="{{ 1 if c.pinned else 0 }}"
+           href="{{ url_for('patient_inbox', lead_id=c.lead.id) }}">
+          <span class="inbox-avatar">{{ initials or 'C' }}</span>
+          <span class="inbox-convo-main">
+            <span class="inbox-convo-top">
+              <span class="inbox-name">{% if c.pinned %}<span class="inbox-pin">{{ ic.icon('pin') }}</span>{% endif %}{{ c.lead.name or c.code }}</span>
+              <span class="inbox-when">{{ c.last_label }}</span>
+            </span>
+            <span class="inbox-preview {{ 'unread' if c.unread else '' }}">
+              {% if c.preview_mine %}<span class="inbox-you">You:</span> {% endif %}{{ c.preview }}</span>
+            <span class="inbox-convo-tags">
+              <span class="inbox-stage stage-{{ c.lead.status }}">{{ labels.get(c.lead.status, c.lead.status) }}</span>
+              {% if c.awaiting_reply and not c.unread %}<span class="inbox-turn">{{ ic.icon('arrow-right') }} Your turn</span>{% endif %}
+              {% if c.open_tasks %}<span class="inbox-todo">{{ c.open_tasks }} to-do{{ 's' if c.open_tasks != 1 else '' }}</span>{% endif %}
+              {% for tg in c.tags if tg != 'pinned' %}<span class="inbox-tagchip">{{ TAGMETA[tg].label }}</span>{% endfor %}
+            </span>
+          </span>
+          {% if c.unread %}<span class="inbox-unread">{{ c.unread }}</span>{% endif %}
+        </a>
+        {% else %}
+        <p class="chan-empty">No accepted patients yet.</p>
+        {% endfor %}
+      </div>
+      {% endfor %}
+    </div>
+    <p class="inbox-empty-search" id="inboxNoMatch" hidden>No patients match.</p>
+  </aside>
+
+  <div class="col-resizer" id="colResizer" role="separator" aria-orientation="vertical"
+       title="Drag to resize" tabindex="0"></div>
+
+  {% if active and active.kind == 'team' %}
+  {# ---- Internal team channel (staff only) ---- #}
+  <section class="inbox-main card" data-recipient="your study team (internal)" data-trial="{{ active.nct }} - {{ active.title }}">
+    <div class="inbox-head">
+      <span class="inbox-avatar lg team">{{ ic.icon('list') }}</span>
+      <div class="inbox-head-main">
+        <h2>Team channel</h2>
+        <p class="inbox-head-sub">
+          <span class="inbox-stage stage-internal">Internal &middot; staff only</span>
+          <span class="inbox-head-nct">{{ active.nct }} &middot; {{ active.title }}</span>
+        </p>
+      </div>
+    </div>
+
+    <div class="inbox-thread" id="inboxThread">
+      {% set day = namespace(cur='') %}
+      {% for m in active.messages %}
+      {% set mday = (m.created_at or '').split(' ')[0] %}
+      {% if mday and mday != day.cur %}
+      <div class="inbox-day"><span>{{ mday }}</span></div>
+      {% set day.cur = mday %}
+      {% endif %}
+      {% set mine = (m.sender_user_id == me_id) %}
+      <div class="inbox-msg {{ 'mine' if mine else 'theirs' }}">
+        <div class="inbox-bubble">
+          {% if not mine %}<div class="inbox-msg-who">{{ m.sender_name or 'Team member' }}</div>{% endif %}
+          {% if m.body %}<div class="inbox-msg-body">{{ m.body }}</div>{% endif %}
+          {% for f in active.attachments.get(m.id, []) %}
+          <a class="inbox-msg-file" href="{{ url_for('download_team_file', att_id=f.id) }}">{{ ic.icon('file') }}<span>{{ f.orig_name }}</span></a>
+          {% endfor %}
+          <div class="inbox-msg-time">{{ m.created_at.split(' ')[1] if ' ' in (m.created_at or '') else m.created_at }}</div>
+        </div>
+      </div>
+      {% else %}
+      <p class="thread-empty">No messages yet. Post an update or drop a working document for your study team.</p>
+      {% endfor %}
+    </div>
+
+    <div class="inbox-compose">
+      <form class="inbox-clip-form" method="post" enctype="multipart/form-data"
+            action="{{ url_for('team_channel_post', nct=active.nct) }}">
+        <input type="hidden" name="next" value="{{ nxt }}">
+        <label class="inbox-clip" title="Attach a document" aria-label="Attach a document">
+          {{ ic.icon('paperclip') }}
+          <input type="file" name="file" class="inbox-clip-input">
+        </label>
+      </form>
+      <form class="inbox-send-form" method="post" action="{{ url_for('team_channel_post', nct=active.nct) }}">
+        <input type="hidden" name="next" value="{{ nxt }}">
+        <textarea name="body" rows="1" placeholder="Message your study team..." data-grow required></textarea>
+        <button class="inbox-send" type="submit" aria-label="Send">{{ ic.icon('send') }}</button>
+      </form>
+    </div>
+    <p class="inbox-note">{{ ic.icon('help') }} Staff-only working channel for this trial - patients never see it. Already living in Slack? Use whichever fits; this keeps trial docs next to the people.</p>
+  </section>
+
+  {% elif active %}
+  {# ---- External: private patient thread ---- #}
+  <section class="inbox-main card" data-recipient="{{ active.lead.name or active.code }}" data-trial="{{ active.lead.nct }}">
+    {% set aname = active.lead.name or active.code %}
+    {% set ainit = aname.split()[:2] | map('first') | join | upper %}
+    <div class="inbox-head">
+      <span class="inbox-avatar lg">{{ ainit or 'C' }}</span>
+      <div class="inbox-head-main">
+        <h2>{{ aname }}</h2>
+        <p class="inbox-head-sub">
+          <span class="inbox-stage stage-{{ active.lead.status }}">{{ labels.get(active.lead.status, active.lead.status) }}</span>
+          <span class="inbox-head-nct">{{ active.lead.nct }}</span>
+        </p>
+      </div>
+      {% if active.lead.redcap_survey_status == 'complete' %}
+      <span class="intake-badge done">{{ ic.icon('check') }} Intake complete</span>
+      {% else %}
+      <form method="post" action="{{ url_for('send_lead_intake', lead_id=active.lead.id) }}" class="intake-send-form">
+        <input type="hidden" name="next" value="{{ nxt }}">
+        <button type="submit" class="btn btn-primary btn-sm">{{ ic.icon('activity') }} {{ 'Resend intake form' if active.lead.redcap_survey_status == 'sent' else 'Send intake form' }}</button>
+      </form>
+      {% endif %}
+      <div class="inbox-tagbar">
+        {% for key, meta in TAGMETA.items() %}
+        <form method="post" action="{{ url_for('toggle_conv_tag', lead_id=active.lead.id) }}">
+          <input type="hidden" name="next" value="{{ nxt }}">
+          <input type="hidden" name="tag" value="{{ key }}">
+          <button type="submit" class="tagbtn {{ 'on' if key in active.tags else '' }}"
+                  title="{{ meta.label }}">{{ ic.icon(meta.icon) }} <span>{{ meta.label }}</span></button>
+        </form>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="inbox-context">
+      <details class="inbox-panel">
+        <summary>{{ ic.icon('paperclip') }} Shared documents
+          {% if active.files %}<span class="inbox-chip-count">{{ active.files|length }}</span>{% endif %}</summary>
+        <div class="inbox-panel-body">
+          {% if active.files %}
+          <ul class="inbox-doc-list">
+            {% for f in active.files %}
+            <li class="inbox-doc">
+              <span class="inbox-doc-tag {{ 'in' if f.uploaded_by == 'patient' else 'out' }}">{{ 'From patient' if f.uploaded_by == 'patient' else 'Sent' }}</span>
+              <a class="inbox-doc-link" href="{{ url_for('download_lead_file', att_id=f.id) }}">{{ ic.icon('file') }} {{ f.orig_name }}</a>
+            </li>
+            {% endfor %}
+          </ul>
+          {% else %}
+          <p class="inbox-empty-note">No documents yet. Use the clip in the message box to send a consent form or intake sheet.</p>
+          {% endif %}
+        </div>
+      </details>
+
+      <details class="inbox-panel">
+        <summary>{{ ic.icon('check') }} Patient checklist
+          {% set open_t = active.tasks | selectattr('status','equalto','open') | list %}
+          {% if open_t %}<span class="inbox-chip-count open">{{ open_t|length }} open</span>
+          {% elif active.tasks %}<span class="inbox-chip-count done">All done</span>{% endif %}</summary>
+        <div class="inbox-panel-body">
+          {% if active.tasks %}
+          <ul class="inbox-task-list">
+            {% for t in active.tasks %}
+            <li class="inbox-task {{ 'done' if t.status == 'done' else '' }}">
+              <form method="post" action="{{ url_for('toggle_lead_task', lead_id=active.lead.id, task_id=t.id) }}">
+                <input type="hidden" name="next" value="{{ nxt }}">
+                <button type="submit" class="inbox-check" aria-label="Toggle done">{% if t.status == 'done' %}{{ ic.icon('check') }}{% endif %}</button>
+              </form>
+              <span class="inbox-task-title">{{ t.title }}</span>
+            </li>
+            {% endfor %}
+          </ul>
+          {% endif %}
+          <form method="post" action="{{ url_for('add_lead_task', lead_id=active.lead.id) }}" class="inbox-task-add">
+            <input type="hidden" name="next" value="{{ nxt }}">
+            <input type="text" name="title" placeholder="Add a to-do for {{ (active.lead.name or 'the patient').split()[0] }}..." required>
+            <button class="btn btn-sm btn-ghost" type="submit">{{ ic.icon('plus') }} Add</button>
+          </form>
+        </div>
+      </details>
+    </div>
+
+    <div class="inbox-thread" id="inboxThread">
+      {% set day = namespace(cur='') %}
+      {% for m in active.messages %}
+      {% set mday = (m.created_at or '').split(' ')[0] %}
+      {% if mday and mday != day.cur %}
+      <div class="inbox-day"><span>{{ mday }}</span></div>
+      {% set day.cur = mday %}
+      {% endif %}
+      {% if m.sender == 'system' %}
+      <div class="inbox-sys">{{ ic.icon('activity') }} {{ m.body }}</div>
+      {% else %}
+      {% set mine = (m.sender != 'patient') %}
+      {% set is_doc = m.body.startswith('Shared a document: ') %}
+      <div class="inbox-msg {{ 'mine' if mine else 'theirs' }}">
+        <div class="inbox-bubble">
+          {% if is_doc %}
+          {% set fname = m.body[19:].split(' - ')[0] %}
+          {% set match = active.files | selectattr('orig_name','equalto',fname) | first %}
+          <a class="inbox-msg-file" href="{{ url_for('download_lead_file', att_id=match.id) if match else '#' }}">
+            {{ ic.icon('file') }}<span>{{ fname }}</span></a>
+          {% if ' - ' in m.body %}<div class="inbox-msg-note">{{ m.body.split(' - ', 1)[1] }}</div>{% endif %}
+          {% else %}
+          <div class="inbox-msg-body">{{ m.body }}</div>
+          {% endif %}
+          <div class="inbox-msg-time">{{ m.created_at.split(' ')[1] if ' ' in (m.created_at or '') else m.created_at }}</div>
+        </div>
+      </div>
+      {% endif %}
+      {% else %}
+      <p class="thread-empty">No messages yet. Say hello, share a form, or assign a to-do to get {{ (active.lead.name or 'the patient').split()[0] }} moving.</p>
+      {% endfor %}
+    </div>
+
+    <div class="inbox-compose">
+      <form class="inbox-clip-form" method="post" enctype="multipart/form-data"
+            action="{{ url_for('attach_lead_file', lead_id=active.lead.id) }}">
+        <input type="hidden" name="next" value="{{ nxt }}">
+        <label class="inbox-clip" title="Attach a document" aria-label="Attach a document">
+          {{ ic.icon('paperclip') }}
+          <input type="file" name="file" class="inbox-clip-input">
+        </label>
+      </form>
+      <form class="inbox-send-form" method="post" action="{{ url_for('message_lead', lead_id=active.lead.id) }}">
+        <input type="hidden" name="next" value="{{ nxt }}">
+        <textarea name="body" rows="1" placeholder="Message {{ (active.lead.name or 'this candidate').split()[0] }}..." data-grow required></textarea>
+        <button class="inbox-send" type="submit" aria-label="Send">{{ ic.icon('send') }}</button>
+      </form>
+    </div>
+    <p class="inbox-note">{{ ic.icon('help') }} Private to this patient and logged for the study record. Share only IRB/REB-approved materials - no PHI you aren't cleared to send.</p>
+  </section>
+  {% endif %}
+</div>
+
+<div class="msgall-modal" id="msgAllModal" hidden>
+  <div class="msgall-backdrop" data-close></div>
+  <div class="msgall-card card">
+    <div class="msgall-head">
+      <h3>{{ ic.icon('send') }} Message a trial</h3>
+      <button type="button" class="msgall-x" data-close aria-label="Close">{{ ic.icon('x') }}</button>
+    </div>
+    <form method="post" action="{{ url_for('broadcast_leads') }}" enctype="multipart/form-data" class="broadcast-form" id="msgAllForm">
+      <input type="hidden" name="next" value="{{ url_for('patient_inbox') }}">
+
+      {# ---- Step 1: compose ---- #}
+      <div class="msgall-compose">
+        <p class="msgall-sub">Reaches every accepted patient in one trial - delivered privately to each person's own thread.</p>
+        <label class="msgall-label">Trial</label>
+        <select name="nct" class="broadcast-trial" id="msgAllTrial" required>
+          {% for t in trials %}<option value="{{ t.nct }}" data-count="{{ t.patients|length }}" data-title="{{ t.title }}" {{ 'selected' if t.nct == active_nct else '' }}>{{ t.nct }} - {{ t.title }}</option>{% endfor %}
+        </select>
+        <label class="msgall-label">Message</label>
+        <textarea name="body" rows="3" placeholder="e.g. 'Please complete the attached consent form before your visit.'"></textarea>
+        <div class="broadcast-row">
+          <input type="text" name="task" placeholder="Optional to-do for everyone (e.g. 'Sign the consent form')">
+          <label class="broadcast-file">{{ ic.icon('paperclip') }} <span id="msgAllFileLabel">Attach doc</span><input type="file" name="file" id="msgAllFile"></label>
+        </div>
+        <p class="msgall-error" id="msgAllError" hidden></p>
+        <div class="msgall-actions">
+          <button type="button" class="btn btn-ghost btn-sm" data-close>Cancel</button>
+          <button type="button" class="btn btn-primary btn-sm" id="msgAllReview">Review before sending</button>
+        </div>
+      </div>
+
+      {# ---- Step 2: confirm gate ---- #}
+      <div class="msgall-confirm" hidden>
+        <div class="confirm-callout">
+          {{ ic.icon('activity') }}
+          <div>You're about to message <b><span id="confCount">0</span> patient<span id="confPlural">s</span></b>
+          in <b><span id="confTrial"></span></b>.</div>
+        </div>
+        <ul class="confirm-list">
+          <li id="confMsgRow"><span class="confirm-k">Message</span><span class="confirm-v" id="confMsg"></span></li>
+          <li id="confFileRow" hidden><span class="confirm-k">Document</span><span class="confirm-v" id="confFile"></span></li>
+          <li id="confTaskRow" hidden><span class="confirm-k">To-do</span><span class="confirm-v" id="confTask"></span></li>
+        </ul>
+        <label class="confirm-ack">
+          <input type="checkbox" id="confAck">
+          <span>I confirm this is IRB/REB-approved, correct for this trial, and appropriate to send to the patients above.</span>
+        </label>
+        <div class="msgall-actions">
+          <button type="button" class="btn btn-ghost btn-sm" id="confBack">Back</button>
+          <button type="submit" class="btn btn-primary btn-sm" id="confSend" disabled>{{ ic.icon('send') }} Confirm &amp; send</button>
+        </div>
+        <p class="broadcast-note">{{ ic.icon('help') }} Patients never see each other. This send is logged to the study record.</p>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="msgall-modal doc-confirm-modal" id="intakeConfirm" hidden>
+  <div class="msgall-backdrop" data-ic-close></div>
+  <div class="msgall-card card doc-confirm-card">
+    <div class="msgall-head">
+      <h3>{{ ic.icon('activity') }} Send the intake form?</h3>
+      <button type="button" class="msgall-x" data-ic-close aria-label="Close">{{ ic.icon('x') }}</button>
+    </div>
+    <p class="dc-line" id="icLine"></p>
+    <form method="post" id="intakeAllForm" action="">
+      <input type="hidden" name="next" value="{{ url_for('patient_inbox') }}">
+      <div class="msgall-actions">
+        <button type="button" class="btn btn-ghost btn-sm" data-ic-close>Cancel</button>
+        <button type="submit" class="btn btn-primary btn-sm">{{ ic.icon('send') }} Send to all</button>
+      </div>
+    </form>
+    <p class="broadcast-note">{{ ic.icon('help') }} Each patient gets their own pre-filled form in their private thread. IRB/REB-approved intake only.</p>
+  </div>
+</div>
+
+<div class="msgall-modal doc-confirm-modal" id="docConfirm" hidden>
+  <div class="msgall-backdrop" data-dc-close></div>
+  <div class="msgall-card card doc-confirm-card">
+    <div class="msgall-head">
+      <h3>{{ ic.icon('paperclip') }} Send this document?</h3>
+      <button type="button" class="msgall-x" data-dc-close aria-label="Close">{{ ic.icon('x') }}</button>
+    </div>
+    <p class="dc-line" id="dcLine"></p>
+    <p class="broadcast-note">{{ ic.icon('help') }} Share only IRB/REB-approved materials. It's logged to the study record.</p>
+    <div class="msgall-actions">
+      <button type="button" class="btn btn-ghost btn-sm" data-dc-close>Cancel</button>
+      <button type="button" class="btn btn-primary btn-sm" id="dcSend">{{ ic.icon('send') }} Send document</button>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<script>
+(function () {
+  var thread = document.getElementById('inboxThread');
+  if (thread) thread.scrollTop = thread.scrollHeight;
+
+  // Prettify day dividers: 2026-07-13 -> Today / Yesterday / Mon, Jul 13
+  (function () {
+    var today = new Date(); today.setHours(0, 0, 0, 0);
+    document.querySelectorAll('.inbox-day span').forEach(function (el) {
+      var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec((el.textContent || '').trim());
+      if (!m) return;
+      var d = new Date(+m[1], +m[2] - 1, +m[3]);
+      var days = Math.round((today - d) / 86400000);
+      if (days === 0) { el.textContent = 'Today'; return; }
+      if (days === 1) { el.textContent = 'Yesterday'; return; }
+      var opts = { weekday: 'short', month: 'short', day: 'numeric' };
+      if (d.getFullYear() !== today.getFullYear()) opts.year = 'numeric';
+      el.textContent = d.toLocaleDateString(undefined, opts);
+    });
+  })();
+
+  // ---- Trial switcher: one trial at a time, clearly labelled ---- //
+  var opts = Array.prototype.slice.call(document.querySelectorAll('.trial-switch-opt'));
+  var groups = Array.prototype.slice.call(document.querySelectorAll('#inboxConvos .chan-group'));
+  var search = document.getElementById('inboxSearch');
+  var chips = Array.prototype.slice.call(document.querySelectorAll('.inbox-chip'));
+  var noMatch = document.getElementById('inboxNoMatch');
+  var switchBtn = document.getElementById('trialSwitchBtn');
+  var switchMenu = document.getElementById('trialSwitchMenu');
+  var switchName = document.getElementById('trialSwitchName');
+  var spaceChip = document.getElementById('chatSpace');
+  var status = 'all';
+  var onOpt = document.querySelector('.trial-switch-opt.on');
+  var activeTrial = onOpt ? onOpt.getAttribute('data-trial-tab')
+                          : (groups[0] && groups[0].getAttribute('data-nct'));
+  function trialTitle(nct) {
+    var g = document.querySelector('.chan-group[data-nct="' + nct + '"] .chan-title-lg');
+    return (g && g.textContent.trim()) || nct || '';
+  }
+  function updateSpace() {
+    var title = trialTitle(activeTrial);
+    if (spaceChip) spaceChip.textContent = title;
+    if (switchName) switchName.textContent = title;
+  }
+  function closeSwitch() {
+    if (switchMenu) { switchMenu.hidden = true; }
+    if (switchBtn) switchBtn.setAttribute('aria-expanded', 'false');
+  }
+
+  function matchStatus(el) {
+    if (status === 'all') return true;
+    if (status === 'unread') return el.getAttribute('data-unread') === '1';
+    if (status === 'turn') return el.getAttribute('data-turn') === '1';
+    if (status === 'todo') return el.getAttribute('data-todo') === '1';
+    if (status === 'pinned') return el.getAttribute('data-pinned') === '1';
+    return true;
+  }
+  function applyFilter() {
+    var q = (search && search.value || '').trim().toLowerCase();
+    var searching = !!q;                     // global search spans every trial
+    var narrowing = q || status !== 'all';
+    var shownPatients = 0;
+    groups.forEach(function (g) {
+      var isActive = g.getAttribute('data-nct') === activeTrial;
+      var groupHasMatch = false;
+      g.querySelectorAll('.inbox-convo').forEach(function (el) {
+        if (el.hasAttribute('data-keep')) {  // team channel row
+          el.hidden = narrowing || !isActive;
+          return;
+        }
+        var okName = !q || (el.getAttribute('data-name') || '').indexOf(q) !== -1;
+        var okScope = searching || isActive;
+        var show = okScope && okName && matchStatus(el);
+        el.hidden = !show;
+        if (show) { shownPatients++; groupHasMatch = true; }
+      });
+      g.hidden = searching ? !groupHasMatch : !isActive;
+      var lane = g.querySelector('.chan-lane');
+      if (lane) lane.hidden = narrowing;
+    });
+    if (noMatch) noMatch.hidden = shownPatients !== 0;
+  }
+  opts.forEach(function (opt) {
+    opt.addEventListener('click', function () {
+      opts.forEach(function (o) { o.classList.remove('on'); });
+      opt.classList.add('on');
+      activeTrial = opt.getAttribute('data-trial-tab');
+      closeSwitch();
+      updateSpace();
+      applyFilter();
+    });
+  });
+  updateSpace();
+
+  // Trial dropdown open/close
+  if (switchBtn && switchMenu) {
+    switchBtn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      var open = switchMenu.hidden;
+      switchMenu.hidden = !open;
+      switchBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    });
+    document.addEventListener('click', function (e) {
+      if (switchMenu.hidden) return;
+      if (!switchMenu.contains(e.target) && !switchBtn.contains(e.target)) closeSwitch();
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') closeSwitch();
+    });
+  }
+
+  // ---- Adjustable divider: drag to set rail width (persisted) ---- //
+  var shell = document.querySelector('.inbox-shell-full');
+  var resizer = document.getElementById('colResizer');
+  var RAIL_KEY = 'bmdRailW';
+  function setRail(px) {
+    var w = Math.max(260, Math.min(520, px));
+    if (shell) shell.style.setProperty('--rail-w', w + 'px');
+    return w;
+  }
+  (function () {
+    var saved = parseInt(localStorage.getItem(RAIL_KEY) || '', 10);
+    if (saved) setRail(saved);
+  })();
+  if (shell && resizer) {
+    var dragging = false;
+    function onMove(e) {
+      if (!dragging) return;
+      var x = (e.touches ? e.touches[0].clientX : e.clientX);
+      setRail(x - shell.getBoundingClientRect().left);
+    }
+    function stop() {
+      if (!dragging) return;
+      dragging = false;
+      document.body.classList.remove('col-resizing');
+      var w = parseInt(getComputedStyle(shell).getPropertyValue('--rail-w'), 10);
+      if (w) localStorage.setItem(RAIL_KEY, String(w));
+    }
+    function start(e) {
+      dragging = true;
+      document.body.classList.add('col-resizing');
+      e.preventDefault();
+    }
+    resizer.addEventListener('mousedown', start);
+    resizer.addEventListener('touchstart', start, { passive: false });
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('touchmove', onMove, { passive: false });
+    document.addEventListener('mouseup', stop);
+    document.addEventListener('touchend', stop);
+    // Keyboard: arrow keys nudge the divider
+    resizer.addEventListener('keydown', function (e) {
+      var cur = parseInt(getComputedStyle(shell).getPropertyValue('--rail-w'), 10) || 340;
+      if (e.key === 'ArrowLeft') { localStorage.setItem(RAIL_KEY, String(setRail(cur - 16))); e.preventDefault(); }
+      if (e.key === 'ArrowRight') { localStorage.setItem(RAIL_KEY, String(setRail(cur + 16))); e.preventDefault(); }
+    });
+    resizer.addEventListener('dblclick', function () {
+      setRail(340); localStorage.removeItem(RAIL_KEY);
+    });
+  }
+  if (search) search.addEventListener('input', applyFilter);
+  chips.forEach(function (chip) {
+    chip.addEventListener('click', function () {
+      chips.forEach(function (c) { c.classList.remove('on'); });
+      chip.classList.add('on');
+      status = chip.getAttribute('data-status') || 'all';
+      applyFilter();
+    });
+  });
+  // Press "/" anywhere to jump into search (Escape clears it).
+  document.addEventListener('keydown', function (e) {
+    var tag = (document.activeElement && document.activeElement.tagName || '').toLowerCase();
+    if (e.key === '/' && tag !== 'input' && tag !== 'textarea') {
+      e.preventDefault(); if (search) search.focus();
+    } else if (e.key === 'Escape' && search && document.activeElement === search && search.value) {
+      search.value = ''; applyFilter();
+    }
+  });
+  applyFilter();
+
+  // ---- Composer: Enter to send, auto-grow ---- //
+  document.querySelectorAll('textarea[data-grow]').forEach(function (ta) {
+    function grow() { ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 140) + 'px'; }
+    ta.addEventListener('input', grow);
+    grow();
+    ta.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        if (ta.value.trim()) ta.form.submit();
+      }
+    });
+  });
+
+  // ---- Document safety gate (single thread): confirm before any doc send ---- //
+  var main = document.querySelector('.inbox-main');
+  var clip = main ? main.querySelector('.inbox-clip-input') : null;
+  var docModal = document.getElementById('docConfirm');
+  var dcLine = document.getElementById('dcLine');
+  var dcSend = document.getElementById('dcSend');
+  var recipient = main ? main.getAttribute('data-recipient') : '';
+  var trialLabel = main ? main.getAttribute('data-trial') : '';
+
+  function closeDoc() {
+    if (docModal) docModal.hidden = true;
+    if (clip) clip.value = '';           // drop the staged file if cancelled
+  }
+  function askDoc() {
+    if (!docModal || !clip || !clip.files || !clip.files.length) return;
+    dcLine.innerHTML = 'Send <b>"' + clip.files[0].name + '"</b> to <b>' + recipient +
+      '</b><br><span class="dc-trial">' + trialLabel + '</span>';
+    docModal.hidden = false;
+  }
+  if (clip) {
+    clip.addEventListener('change', function () { if (clip.files && clip.files.length) askDoc(); });
+  }
+  if (dcSend) dcSend.addEventListener('click', function () { if (clip && clip.form) clip.form.submit(); });
+  if (docModal) docModal.querySelectorAll('[data-dc-close]').forEach(function (el) {
+    el.addEventListener('click', closeDoc);
+  });
+
+  // ---- Send pre-filled intake form to everyone in a trial (confirm gate) ---- //
+  var intakeModal = document.getElementById('intakeConfirm');
+  var intakeForm = document.getElementById('intakeAllForm');
+  var icLine = document.getElementById('icLine');
+  function closeIntake() { if (intakeModal) intakeModal.hidden = true; }
+  document.querySelectorAll('.chan-intake-all').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      if (!intakeModal) return;
+      var n = btn.getAttribute('data-count');
+      icLine.innerHTML = 'Send the pre-filled intake form to <b>all ' + n + ' patient' +
+        (n === '1' ? '' : 's') + '</b> in <b>' + btn.getAttribute('data-trial') + '</b>?';
+      intakeForm.action = '/app/trial/' + btn.getAttribute('data-nct') + '/send-intake';
+      intakeModal.hidden = false;
+    });
+  });
+  if (intakeModal) intakeModal.querySelectorAll('[data-ic-close]').forEach(function (el) {
+    el.addEventListener('click', closeIntake);
+  });
+
+  // Drag & drop onto the open conversation -> stages the file, then confirms.
+  if (main && clip) {
+    var depth = 0;
+    main.addEventListener('dragenter', function (e) {
+      if (e.dataTransfer && Array.prototype.indexOf.call(e.dataTransfer.types || [], 'Files') !== -1) {
+        e.preventDefault(); depth++; main.classList.add('dragging');
+      }
+    });
+    main.addEventListener('dragover', function (e) {
+      if (e.dataTransfer && Array.prototype.indexOf.call(e.dataTransfer.types || [], 'Files') !== -1) e.preventDefault();
+    });
+    main.addEventListener('dragleave', function () { depth = Math.max(0, depth - 1); if (!depth) main.classList.remove('dragging'); });
+    main.addEventListener('drop', function (e) {
+      e.preventDefault(); depth = 0; main.classList.remove('dragging');
+      if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) {
+        var dt = new DataTransfer();
+        dt.items.add(e.dataTransfer.files[0]);
+        clip.files = dt.files;
+        askDoc();
+      }
+    });
+  }
+
+  // ---- "Message a trial" broadcast: compose -> confirm gate -> send ---- //
+  var modal = document.getElementById('msgAllModal');
+  var openBtn = document.getElementById('msgAllBtn');
+  var trialSel = document.getElementById('msgAllTrial');
+  var composeView = modal ? modal.querySelector('.msgall-compose') : null;
+  var confirmView = modal ? modal.querySelector('.msgall-confirm') : null;
+  var reviewBtn = document.getElementById('msgAllReview');
+  var backBtn = document.getElementById('confBack');
+  var ack = document.getElementById('confAck');
+  var confSend = document.getElementById('confSend');
+  var errEl = document.getElementById('msgAllError');
+  var mBody = modal ? modal.querySelector('textarea[name=body]') : null;
+  var mTask = modal ? modal.querySelector('input[name=task]') : null;
+  var mFile = document.getElementById('msgAllFile');
+  var fileLabel = document.getElementById('msgAllFileLabel');
+
+  function showCompose() { if (composeView) composeView.hidden = false; if (confirmView) confirmView.hidden = true; }
+  function openModal() {
+    if (!modal) return;
+    if (trialSel && activeTrial) trialSel.value = activeTrial;
+    showCompose();
+    if (errEl) errEl.hidden = true;
+    modal.hidden = false;
+    if (mBody) mBody.focus();
+  }
+  function closeModal() { if (modal) modal.hidden = true; }
+
+  if (mFile && fileLabel) mFile.addEventListener('change', function () {
+    fileLabel.textContent = (mFile.files && mFile.files.length) ? mFile.files[0].name : 'Attach doc';
+  });
+
+  function setRow(rowId, valId, val) {
+    var row = document.getElementById(rowId);
+    if (val) { document.getElementById(valId).textContent = val; row.hidden = false; }
+    else { row.hidden = true; }
+  }
+  if (reviewBtn) reviewBtn.addEventListener('click', function () {
+    var body = mBody ? mBody.value.trim() : '';
+    var task = mTask ? mTask.value.trim() : '';
+    var hasFile = mFile && mFile.files && mFile.files.length;
+    if (!body && !task && !hasFile) {
+      if (errEl) { errEl.textContent = 'Add a message, a to-do, or a document first.'; errEl.hidden = false; }
+      return;
+    }
+    var opt = trialSel.options[trialSel.selectedIndex];
+    var count = parseInt(opt.getAttribute('data-count') || '0', 10);
+    if (!count) {
+      if (errEl) { errEl.textContent = 'No accepted patients in this trial yet.'; errEl.hidden = false; }
+      return;
+    }
+    document.getElementById('confCount').textContent = count;
+    document.getElementById('confPlural').textContent = count === 1 ? '' : 's';
+    document.getElementById('confTrial').textContent = opt.getAttribute('data-title') || opt.value;
+    setRow('confMsgRow', 'confMsg', body || '(no message)');
+    setRow('confFileRow', 'confFile', hasFile ? mFile.files[0].name : '');
+    setRow('confTaskRow', 'confTask', task);
+    if (ack) ack.checked = false;
+    if (confSend) confSend.disabled = true;
+    if (composeView) composeView.hidden = true;
+    if (confirmView) confirmView.hidden = false;
+  });
+  if (backBtn) backBtn.addEventListener('click', showCompose);
+  if (ack) ack.addEventListener('change', function () { if (confSend) confSend.disabled = !ack.checked; });
+  if (openBtn) openBtn.addEventListener('click', openModal);
+  if (modal) modal.querySelectorAll('[data-close]').forEach(function (el) { el.addEventListener('click', closeModal); });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') { closeModal(); closeDoc(); closeIntake(); }
+  });
+})();
+</script>
+{% endblock %}

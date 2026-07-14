@@ -37,8 +37,7 @@
     <nav class="side-nav">
       {% if pov == 'study' %}
       {# Study team = the site/sponsor running the trial and reviewing applicants. #}
-      <a href="{{ url_for('leads') }}" class="side-link {{ 'active' if request.endpoint == 'leads' }}">{{ ic.icon('user-plus') }}Candidate review{% if site_unread %} <span class="nav-badge nav-badge-new">{{ site_unread }}</span>{% endif %}</a>
-      <a href="{{ url_for('team_room') }}" class="side-link {{ 'active' if request.endpoint == 'team_room' }}">{{ ic.icon('list') }}Team room</a>
+      <a href="{{ url_for('leads') }}" class="side-link {{ 'active' if request.endpoint in ['leads','patient_inbox'] }}">{{ ic.icon('user-plus') }}Candidate review{% if site_unread %} <span class="nav-badge nav-badge-new">{{ site_unread }}</span>{% endif %}</a>
       <a href="{{ url_for('recruitment_dashboard') }}" class="side-link {{ 'active' if request.endpoint == 'recruitment_dashboard' }}">{{ ic.icon('activity') }}Recruitment</a>
       <a href="{{ url_for('site_setup') }}" class="side-link {{ 'active' if request.endpoint in ['site_setup','add_study_claim','remove_study_claim'] }}">{{ ic.icon('award') }}Site setup</a>
       {% else %}
@@ -61,7 +60,7 @@
       </button>
     </div>
   </aside>
-  <main class="content" id="main" role="main" tabindex="-1">
+  <main class="content {% block content_class %}{% endblock %}" id="main" role="main" tabindex="-1">
     <div class="toast-stack">
       {% with messages = get_flashed_messages(with_categories=true) %}
         {% for cat, msg in messages %}

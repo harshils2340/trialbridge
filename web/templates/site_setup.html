@@ -7,7 +7,7 @@
   <p>Claim your active ClinicalTrials.gov studies so applicants for those NCTs route to your board.</p>
 </div>
 
-<div class="card setup-shell">
+<div class="card setup-shell" data-active-tab="{{ active_tab or '' }}">
   <nav class="setup-tabs" aria-label="Site setup sections">
     <button type="button" class="setup-tab on" data-setup-tab="profile">{{ ic.icon('award') }} Organization</button>
     <button type="button" class="setup-tab" data-setup-tab="redcap">{{ ic.icon('activity') }} REDCap intake</button>
@@ -55,81 +55,13 @@
 </div>
 
 <div class="card setup-panel" data-setup-panel="redcap" hidden>
-  <style>
-    .redcap-help { border: 1px solid #cfe0f5; background: #f5f9ff; border-radius: 12px; margin-bottom: 16px; overflow: hidden; }
-    .redcap-help > summary { list-style: none; cursor: pointer; padding: 14px 16px; font-weight: 600; font-size: 1rem; display: flex; align-items: center; gap: 10px; color: #14396b; }
-    .redcap-help > summary::-webkit-details-marker { display: none; }
-    .redcap-help > summary .chev { margin-left: auto; transition: transform .15s ease; color: #4a6fa5; }
-    .redcap-help[open] > summary .chev { transform: rotate(180deg); }
-    .redcap-help-body { padding: 0 16px 16px; }
-    .redcap-help-intro { color: #2c3e57; margin: 0 0 14px; }
-    .redcap-help-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-    @media (max-width: 720px) { .redcap-help-cols { grid-template-columns: 1fr; } }
-    .redcap-help-part { background: #fff; border: 1px solid #e2e8f2; border-radius: 10px; padding: 14px 16px; }
-    .redcap-help-part h4 { margin: 0 0 10px; font-size: .95rem; color: #14396b; }
-    .redcap-help-part ol { margin: 0; padding-left: 20px; }
-    .redcap-help-part li { margin: 0 0 10px; line-height: 1.5; color: #33475b; }
-    .redcap-help-part li .clickthis { font-weight: 600; color: #14396b; }
-    .redcap-help-notes { margin-top: 14px; display: grid; gap: 8px; }
-    .redcap-help-note { display: flex; gap: 8px; align-items: flex-start; background: #eef6ee; border: 1px solid #cfe6cf; border-radius: 8px; padding: 8px 12px; color: #2b5a2b; font-size: .9rem; }
-    .redcap-token-hint { font-size: .82rem; color: #667085; margin-top: 4px; }
-  </style>
-
-  <div class="section-title"><h2>REDCap intake &amp; screening</h2></div>
-
-  <details class="redcap-help" {{ 'open' if not redcap_on else '' }}>
-    <summary>{{ ic.icon('activity') }} How to connect (takes about 10 minutes) <span class="chev">{{ ic.icon('chevron-down') }}</span></summary>
-    <div class="redcap-help-body">
-      <p class="redcap-help-intro">
-        REDCap is the tool you already use to keep track of patients. Follow these
-        steps once and your patients will be able to fill out your form right here
-        in BridgeMD. You do not need to be technical — if you get stuck, your
-        REDCap administrator can help with any step.
-      </p>
-
-      <div class="redcap-help-cols">
-        <div class="redcap-help-part">
-          <h4>Part 1 — In REDCap (the tool you already use)</h4>
-          <ol>
-            <li>Open your study's project in REDCap — the same place you normally
-              enter patient information.</li>
-            <li>Turn your screening form into a survey. Open <span class="clickthis">Online Designer</span>,
-              find your form, and click <span class="clickthis">Enable as survey</span>.</li>
-            <li>Turn on the connection and copy your key. In the left menu click
-              <span class="clickthis">API</span>, then click <span class="clickthis">Generate token</span>,
-              then copy the long code it shows you.</li>
-            <li>Copy your REDCap web address. It looks like
-              <span class="clickthis">https://redcap.yourhospital.org/api/</span> — copy the whole thing.</li>
-          </ol>
-        </div>
-
-        <div class="redcap-help-part">
-          <h4>Part 2 — Here in BridgeMD</h4>
-          <ol start="5">
-            <li>Paste the web address into <span class="clickthis">REDCap web address (API URL)</span>
-              and the long code into <span class="clickthis">API token (a secure key)</span> in the boxes below.</li>
-            <li>Click <span class="clickthis">Load my forms</span>, then pick your screening form
-              from the list in <span class="clickthis">Your screening form</span>.</li>
-            <li>Check the box that says your form is approved and patients agree,
-              then click <span class="clickthis">Save REDCap connection</span>.</li>
-          </ol>
-        </div>
-      </div>
-
-      <div class="redcap-help-notes">
-        <div class="redcap-help-note">{{ ic.icon('check') }} Your token is like a password — we keep it hidden and never share it.</div>
-        <div class="redcap-help-note">{{ ic.icon('check') }} Not sure? Your REDCap administrator can generate the token for you.</div>
-        <div class="redcap-help-note">{{ ic.icon('check') }} Once connected, patients fill your form right inside BridgeMD.</div>
-      </div>
+  <div class="section-title redcap-title">
+    <div>
+      <h2>REDCap intake &amp; screening</h2>
+      <p class="redcap-sub">Connect once, pick your screening form, and patients fill <b>your</b> form right inside BridgeMD - no re-typing, less drop-off.</p>
     </div>
-  </details>
-
-  <p class="setup-sub">
-    Connect your REDCap project once, then pick which form is your patient
-    intake / screening form. Patients who reach the screening step get a
-    pre-filled, private link so they complete <b>your</b> form - no
-    re-typing, less drop-off.
-  </p>
+    <button type="button" class="btn btn-ghost btn-sm redcap-guide-btn" data-redcap-guide-open>{{ ic.icon('help') }} How to connect</button>
+  </div>
 
   <div class="rec-banner {{ 'ok' if redcap_on else 'connect' }} wide">
     {{ ic.icon('check') if redcap_on else ic.icon('activity') }}
@@ -141,7 +73,7 @@
       <b>REDCap connected.</b>{% if redcap_intake_instrument %} Intake form:
       <b>{{ redcap_intake_instrument }}</b>.{% else %} Choose your intake instrument below.{% endif %}
       {% else %}
-      <b>Not connected.</b> Add your REDCap API URL + token to enable live intake.
+      <b>Not connected.</b> New to this? Tap <b>How to connect</b> for a 10-minute walkthrough, then paste your API URL + token below.
       {% endif %}
     </span>
   </div>
@@ -155,7 +87,6 @@
     </label>
     <label>API token (a secure key) {% if redcap_token_set %}<span class="tag">{{ ic.icon('check') }} saved - leave blank to keep</span>{% endif %}
       <input type="password" name="redcap_api_token" value="" autocomplete="off" placeholder="{{ '••••••••  (stored securely)' if redcap_token_set else 'Paste the long code from REDCap' }}">
-      <span class="redcap-token-hint">What's a token? It's a secure key that lets BridgeMD talk to your REDCap. Your REDCap administrator can make one for you.</span>
     </label>
     <label>Your screening form
       <input type="text" name="redcap_intake_instrument" list="redcapInstrumentList" value="{{ redcap_intake_instrument }}" placeholder="Pick after you click Load my forms">
@@ -163,19 +94,22 @@
         {% for ins in redcap_instruments %}<option value="{{ ins.name }}">{{ ins.label }}</option>{% endfor %}
       </datalist>
     </label>
-    <label class="site-form-wide">Field map (optional — advanced, you can leave this blank)
-      <input type="text" name="redcap_field_map" value="{{ redcap_field_map }}" placeholder='{"email":"contact_email","condition":"dx"}'>
-    </label>
     <label class="site-form-wide redcap-gate">
       <input type="checkbox" name="redcap_intake_enabled" value="1" {{ 'checked' if redcap_intake_enabled else '' }}>
       <span>My form is <b>approved by our ethics board (IRB/REB)</b> and patients agree before it collects any information.
         We need this checked before patients can fill your form.</span>
     </label>
-    <button class="btn btn-primary" type="submit">{{ ic.icon('check') }} Save REDCap connection</button>
-  </form>
-
-  <form method="post" action="{{ url_for('site_redcap_instruments') }}" class="site-form">
-    <button class="btn btn-ghost" type="submit">{{ ic.icon('activity') }} Load my forms</button>
+    <details class="redcap-advanced site-form-wide">
+      <summary>Advanced options</summary>
+      <label class="redcap-adv-field">Field map (optional)
+        <input type="text" name="redcap_field_map" value="{{ redcap_field_map }}" placeholder='{"email":"contact_email","condition":"dx"}'>
+        <span class="redcap-token-hint">Only needed if your REDCap field names differ from the defaults. Leave blank otherwise.</span>
+      </label>
+    </details>
+    <div class="redcap-actions site-form-wide">
+      <button class="btn btn-primary" type="submit">{{ ic.icon('check') }} Save REDCap connection</button>
+      <button class="btn btn-ghost" type="submit" formaction="{{ url_for('site_redcap_instruments') }}" formnovalidate>{{ ic.icon('activity') }} Load my forms</button>
+    </div>
   </form>
 
   {% if redcap_instruments %}
@@ -193,13 +127,59 @@
   </table>
   {% endif %}
 
-  <p class="site-hint">
-    Prefer environment config for a single project? Set <span class="mono">REDCAP_API_URL</span>
-    and <span class="mono">REDCAP_API_TOKEN</span>; per-site values above override it.
-    Tokens are stored securely and never shown again. For completion callbacks,
-    point a REDCap survey/Data-Entry-Trigger at
-    <span class="mono">{{ url_for('redcap_webhook', _external=True) }}</span>.
-  </p>
+  {# Full walkthrough lives here, opened on demand so the panel stays fast to use. #}
+  <div class="redcap-modal" id="redcapGuide" hidden>
+    <div class="redcap-modal-backdrop" data-redcap-guide-close></div>
+    <div class="redcap-modal-dialog" role="dialog" aria-modal="true" aria-label="How to connect REDCap">
+      <div class="redcap-modal-head">
+        <h3>{{ ic.icon('activity') }} Connect REDCap &middot; about 10 minutes</h3>
+        <button type="button" class="redcap-modal-x" data-redcap-guide-close aria-label="Close">{{ ic.icon('x') }}</button>
+      </div>
+      <div class="redcap-modal-body">
+        <p class="redcap-help-intro">
+          REDCap is the tool you already use to keep track of patients. Do this once and
+          your patients can fill out your form right here in BridgeMD. You don't need to be
+          technical - if you get stuck, your REDCap administrator can help with any step.
+        </p>
+        <div class="redcap-help-cols">
+          <div class="redcap-help-part">
+            <h4>Part 1 &mdash; In REDCap</h4>
+            <ol>
+              <li>Open your study's project in REDCap - where you normally enter patient info.</li>
+              <li>Turn your screening form into a survey: open <span class="clickthis">Online Designer</span>,
+                find your form, click <span class="clickthis">Enable as survey</span>.</li>
+              <li>In the left menu click <span class="clickthis">API</span>, then
+                <span class="clickthis">Generate token</span>, and copy the long code.</li>
+              <li>Copy your REDCap web address - it looks like
+                <span class="clickthis">https://redcap.yourhospital.org/api/</span>.</li>
+            </ol>
+          </div>
+          <div class="redcap-help-part">
+            <h4>Part 2 &mdash; Here in BridgeMD</h4>
+            <ol start="5">
+              <li>Paste the web address into <span class="clickthis">REDCap web address</span> and the
+                code into <span class="clickthis">API token</span>.</li>
+              <li>Click <span class="clickthis">Load my forms</span>, then choose your form under
+                <span class="clickthis">Your screening form</span>.</li>
+              <li>Tick the ethics-approval box, then click <span class="clickthis">Save REDCap connection</span>.</li>
+            </ol>
+          </div>
+        </div>
+        <div class="redcap-help-notes">
+          <div class="redcap-help-note">{{ ic.icon('check') }} Your token is like a password - kept hidden, never shared.</div>
+          <div class="redcap-help-note">{{ ic.icon('check') }} Not sure? Your REDCap administrator can generate the token for you.</div>
+          <div class="redcap-help-note">{{ ic.icon('check') }} Once connected, patients complete your form inside BridgeMD.</div>
+        </div>
+        <details class="redcap-it">
+          <summary>For your IT team (optional)</summary>
+          <p>Prefer environment config for a single project? Set <span class="mono">REDCAP_API_URL</span>
+            and <span class="mono">REDCAP_API_TOKEN</span>; per-site values above override it. Tokens are
+            stored securely and never shown again. For completion callbacks, point a REDCap
+            survey / Data-Entry-Trigger at <span class="mono">{{ url_for('redcap_webhook', _external=True) }}</span>.</p>
+        </details>
+      </div>
+    </div>
+  </div>
 </div>
 
 <div class="card setup-panel" data-setup-panel="claim" hidden>
@@ -331,9 +311,10 @@
 (function () {
   var tabs = Array.prototype.slice.call(document.querySelectorAll('.setup-tab'));
   var panels = Array.prototype.slice.call(document.querySelectorAll('[data-setup-panel]'));
-  if (!tabs.length || !panels.length) return;
+  var names = tabs.map(function (t) { return t.getAttribute('data-setup-tab'); });
 
   function activate(name) {
+    if (names.indexOf(name) === -1) return;
     tabs.forEach(function (tab) {
       var on = tab.getAttribute('data-setup-tab') === name;
       tab.classList.toggle('on', on);
@@ -344,10 +325,38 @@
     });
   }
 
-  tabs.forEach(function (tab) {
-    tab.addEventListener('click', function () {
-      activate(tab.getAttribute('data-setup-tab'));
+  if (tabs.length && panels.length) {
+    tabs.forEach(function (tab) {
+      tab.addEventListener('click', function () {
+        var name = tab.getAttribute('data-setup-tab');
+        activate(name);
+        try { history.replaceState(null, '', '#' + name); } catch (e) {}
+      });
     });
+    // Keep the right section open after navigation / re-render: URL hash wins,
+    // then a server hint (e.g. after "Load my forms"), else the default tab.
+    var shell = document.querySelector('.setup-shell');
+    var hash = (location.hash || '').replace('#', '');
+    var server = shell ? shell.getAttribute('data-active-tab') : '';
+    if (names.indexOf(hash) !== -1) activate(hash);
+    else if (names.indexOf(server) !== -1) activate(server);
+  }
+
+  // REDCap "How to connect" walkthrough - kept in a modal so the panel stays fast.
+  var guide = document.getElementById('redcapGuide');
+  function setGuide(open) {
+    if (!guide) return;
+    guide.hidden = !open;
+    document.body.style.overflow = open ? 'hidden' : '';
+  }
+  document.querySelectorAll('[data-redcap-guide-open]').forEach(function (b) {
+    b.addEventListener('click', function () { setGuide(true); });
+  });
+  document.querySelectorAll('[data-redcap-guide-close]').forEach(function (b) {
+    b.addEventListener('click', function () { setGuide(false); });
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && guide && !guide.hidden) setGuide(false);
   });
 })();
 </script>

@@ -682,6 +682,7 @@ _MIGRATIONS = {
         "invite_token": "TEXT DEFAULT ''",
         "redcap_record_id": "TEXT DEFAULT ''",
         "redcap_survey_status": "TEXT DEFAULT ''",
+        "conv_tags": "TEXT DEFAULT ''",
     },
 }
 
@@ -1913,6 +1914,53 @@ def open_task_count(lead_id, assigned_to=None):
 
 
 # --------------------------------------------------------------------------- #
+# Conversation tags (per-lead quick labels a coordinator can filter by).
+# Predefined so filtering stays clean; "pinned" floats a thread to the top.
+# --------------------------------------------------------------------------- #
+CONV_TAGS = [
+    {"key": "pinned", "label": "Pinned"},
+    {"key": "consent", "label": "Needs consent"},
+    {"key": "docs", "label": "Awaiting docs"},
+    {"key": "followup", "label": "Follow up"},
+]
+_CONV_TAG_KEYS = {t["key"] for t in CONV_TAGS}
+
+
+def _row_val(row, key, default=""):
+    try:
+        return row[key]
+    except (IndexError, KeyError):
+        return default
+
+
+def lead_tags(row):
+    """Return the ordered list of tag keys set on a lead row."""
+    raw = _row_val(row, "conv_tags", "") or ""
+    return [t for t in (x.strip() for x in raw.split(",")) if t in _CONV_TAG_KEYS]
+
+
+def toggle_lead_tag(lead_id, tag):
+    """Add/remove a predefined tag on a lead. Returns the new tag list."""
+    if tag not in _CONV_TAG_KEYS:
+        return None
+    db = get_db()
+    row = db.execute("SELECT conv_tags FROM leads WHERE id = ?",
+                     (lead_id,)).fetchone()
+    if row is None:
+        return None
+    cur = [t for t in (x.strip() for x in (row["conv_tags"] or "").split(","))
+           if t in _CONV_TAG_KEYS]
+    if tag in cur:
+        cur.remove(tag)
+    else:
+        cur.append(tag)
+    db.execute("UPDATE leads SET conv_tags = ? WHERE id = ?",
+               (",".join(cur), lead_id))
+    db.commit()
+    return cur
+
+
+# --------------------------------------------------------------------------- #
 # Internal team room (staff-only, keyed by trial NCT). Never patient-visible.
 # --------------------------------------------------------------------------- #
 def add_team_message(nct, user_id, sender_name, body):
@@ -2668,8 +2716,9 @@ def seed_demo_engagement(clinician_id):
 
 
 def seed_demo_collaboration(clinician_id=None):
-    """Seed the collaboration layer (per-candidate to-dos + internal team room)
-    so a fresh demo shows it working. Idempotent per-surface."""
+    """Seed the collaboration layer (per-candidate to-do checklists + a starter
+    internal team channel per trial) so a fresh demo shows conversations working.
+    Idempotent per-surface."""
     db = get_db()
     base = dt.datetime.now()
 
@@ -2693,19 +2742,19 @@ def seed_demo_collaboration(clinician_id=None):
                     (ld["id"], title, who, status, "site", ts(hours=-24),
                      ts(hours=-6) if status == "done" else ""))
 
-    # Internal team room chatter on the demo's claimed trials. Seeded per-NCT so
-    # every room a coordinator can open has content (idempotent per room).
+    # Internal (staff-only) team channel per claimed trial, seeded once per NCT
+    # so every trial channel a coordinator opens has some content.
     if clinician_id:
         claims = db.execute(
             "SELECT nct, title FROM study_claims WHERE user_id = ?",
             (clinician_id,)).fetchall()
         room_seed = [
-            ("Coordinator", "Kicking off recruitment for this cohort - shared the "
-             "latest consent packet and the pre-screen checklist here."),
+            ("Coordinator", "Kicking off recruitment for this cohort - dropped the "
+             "latest consent packet and the pre-screen checklist in here."),
             ("Recruiter", "Two strong applicants came in overnight. Booking screening "
-             "calls for Thursday - will drop the visit prep doc in the thread."),
+             "calls for Thursday - I'll add the visit-prep doc."),
             ("Coordinator", "Reminder: only IRB-approved materials go in patient "
-             "threads. Working drafts stay in here."),
+             "threads. Working drafts stay here in the team channel."),
         ]
         for c in claims:
             has = db.execute(

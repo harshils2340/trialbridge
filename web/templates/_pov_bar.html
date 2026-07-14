@@ -5,7 +5,7 @@
   {% set wf = request.args.get('wf', '').strip().lower() %}
   {% if p.startswith('/app/campaign') or p.startswith('/app/invite') or p.startswith('/i/') %}
     {% set demo_lane = 'ad' %}
-  {% elif p.startswith('/app/leads') or p.startswith('/app/site') or p.startswith('/app/dashboard') or p.startswith('/c/') %}
+  {% elif p.startswith('/app/leads') or p.startswith('/app/site') or p.startswith('/app/dashboard') or p.startswith('/app/messages') or p.startswith('/c/') %}
     {% set demo_lane = 'site' %}
   {% elif p.startswith('/app') or p.startswith('/referral') %}
     {% set demo_lane = 'ehr' if wf == 'proactive' else 'physician' %}

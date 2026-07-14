@@ -32,7 +32,7 @@ import csv
 import mimetypes
 import urllib.parse
 import urllib.request
-from collections import OrderedDict
+from collections import OrderedDict, defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from flask import (Flask, abort, flash, g, jsonify, make_response, redirect,
@@ -682,7 +682,7 @@ def inject_globals():
     # three POVs (patient / clinician / study team) without signing in.
     path = request.path or "/"
     if (path.startswith("/app/leads") or path.startswith("/app/dashboard")
-            or path.startswith("/app/site")):
+            or path.startswith("/app/site") or path.startswith("/app/messages")):
         pov = "study"
     elif path.startswith("/app") or path.startswith("/referral"):
         pov = "clinician"
@@ -2219,6 +2219,68 @@ def _mark_screening_complete(lead, actor="patient",
         "responses and follow up with next steps.")
 
 
+def _send_intake_to_lead(lead):
+    """Coordinator pushes the (pre-filled) screening intake form to a patient.
+
+    Moves the lead into the screening stage so the form becomes available, flags
+    it sent, and drops a note in their thread. The patient opens the same
+    pre-filled, embedded screening handoff - we don't duplicate any form logic.
+    Returns True if sent, False if the application is closed.
+    """
+    if not lead or lead["status"] in db.LEAD_CLOSED:
+        return False
+    order = db.LEAD_PIPELINE
+    cur = lead["status"]
+    target = cur
+    if cur in order and order.index(cur) < order.index("screening"):
+        target = "screening"  # never move a further-along candidate backward
+    db.update_lead_status(lead["id"], target, "screening intake form sent",
+                          actor="you")
+    db.set_lead_redcap(lead["id"], survey_status="sent")
+    db.add_message(
+        lead["id"], "site",
+        "Sent you the screening intake form - it's pre-filled from what you "
+        "already shared. Open \u201cComplete screening form,\u201d review, and submit.")
+    return True
+
+
+@app.route("/app/leads/<int:lead_id>/send-intake", methods=["POST"])
+@login_required
+def send_lead_intake(lead_id):
+    """Send one patient their pre-filled screening intake form."""
+    _ensure_site_access_for_lead(lead_id)
+    back = _lead_action_return()
+    lead = db.get_lead(lead_id)
+    if not lead:
+        flash("Couldn't find that candidate.", "error")
+        return redirect(back)
+    if _send_intake_to_lead(lead):
+        flash(f"Intake form sent to {lead['name'] or candidate_code(lead)}.",
+              "success")
+    else:
+        flash("That candidate's application is closed.", "error")
+    return redirect(back)
+
+
+@app.route("/app/trial/<nct>/send-intake", methods=["POST"])
+@login_required
+def send_trial_intake(nct):
+    """Send every accepted patient in one trial their own pre-filled intake form."""
+    if nct not in db.user_claimed_ncts(g.user["id"]):
+        abort(403)
+    back = (_safe_next(request.form.get("next", ""))
+            or url_for("patient_inbox", nct=nct, team=1))
+    leads = [ld for ld in db.list_leads_for_user(g.user["id"])
+             if ld["revealed"] and ld["status"] not in db.LEAD_CLOSED
+             and ld["nct"] == nct]
+    n = sum(1 for ld in leads if _send_intake_to_lead(ld))
+    if n:
+        flash(f"Intake form sent to {n} patient{'s' if n != 1 else ''}.", "success")
+    else:
+        flash("No accepted patients to send the intake form to yet.", "error")
+    return redirect(back)
+
+
 @app.route("/applications/<token>/screening")
 def application_screening(token):
     """Patient-facing 'Complete your screening form' handoff.
@@ -2812,12 +2874,13 @@ def recruitment_summary_json():
     }), 200
 
 
-def _render_site_setup(instruments=None):
+def _render_site_setup(instruments=None, active_tab=None):
     """Render site setup, including per-site REDCap connection state.
 
     `instruments` is the (optionally freshly-loaded) list of REDCap instruments
     for the picker; falls back to simulated ones in demo mode so the intake
-    picker is always walkable.
+    picker is always walkable. `active_tab` keeps the right section open after a
+    re-render (e.g. after "Load my forms") so the coordinator isn't bounced back.
     """
     profile = db.get_site_profile(g.user["id"])
     cfg = redcap.config_from_profile(profile)
@@ -2835,7 +2898,8 @@ def _render_site_setup(instruments=None):
         redcap_intake_instrument=cfg.intake_instrument,
         redcap_intake_enabled=cfg.intake_enabled,
         redcap_instruments=instruments,
-        redcap_simulated=simulated)
+        redcap_simulated=simulated,
+        active_tab=active_tab)
 
 
 @app.route("/app/site", methods=["GET", "POST"])
@@ -2882,7 +2946,7 @@ def site_redcap_save():
         intake_enabled=intake_enabled,
         project_label=f.get("redcap_project_label", ""))
     flash("REDCap connection saved.", "success")
-    return redirect(url_for("site_setup"))
+    return redirect(url_for("site_setup") + "#redcap")
 
 
 @app.route("/app/site/redcap/instruments", methods=["POST"])
@@ -2892,10 +2956,12 @@ def site_redcap_instruments():
     cfg = redcap.config_from_profile(db.get_site_profile(g.user["id"]))
     if _demo_mode_enabled() and not cfg.connected:
         flash("Showing simulated instruments (REDCap not connected).", "success")
-        return _render_site_setup(instruments=list(redcap.SIMULATED_INSTRUMENTS))
+        return _render_site_setup(instruments=list(redcap.SIMULATED_INSTRUMENTS),
+                                  active_tab="redcap")
     ok, instruments, msg = redcap.export_instruments(cfg)
     flash(msg, "success" if ok else "error")
-    return _render_site_setup(instruments=instruments if ok else None)
+    return _render_site_setup(instruments=instruments if ok else None,
+                              active_tab="redcap")
 
 
 @app.route("/app/site/post-study", methods=["POST"])
@@ -3044,18 +3110,25 @@ def schedule_lead(lead_id):
     return redirect(url_for("leads"))
 
 
+def _lead_action_return():
+    """Send lead actions back to wherever they were triggered (leads board or
+    the message center), defaulting to the leads board."""
+    return _safe_next(request.form.get("next", "")) or url_for("leads")
+
+
 @app.route("/app/leads/<int:lead_id>/message", methods=["POST"])
 @login_required
 def message_lead(lead_id):
     """Study-team inbox action: send a message without leaving the board."""
     _ensure_site_access_for_lead(lead_id)
+    back = _lead_action_return()
     lead = db.get_lead(lead_id)
     if not lead:
         flash("Couldn't find that candidate.", "error")
-        return redirect(url_for("leads"))
+        return redirect(back)
     if not lead["revealed"]:
         flash("Accept the candidate first to message them.", "error")
-        return redirect(url_for("leads"))
+        return redirect(back)
     body = request.form.get("body", "").strip()
     if body:
         db.add_message(lead_id, "site", body)
@@ -3063,7 +3136,7 @@ def message_lead(lead_id):
         flash("Message sent.", "success")
     else:
         flash("Write a message first.", "error")
-    return redirect(url_for("leads"))
+    return redirect(back)
 
 
 @app.route("/app/leads/<int:lead_id>/attach", methods=["POST"])
@@ -3071,17 +3144,18 @@ def message_lead(lead_id):
 def attach_lead_file(lead_id):
     """Study team drops a document into a candidate's private thread."""
     _ensure_site_access_for_lead(lead_id)
+    back = _lead_action_return()
     lead = db.get_lead(lead_id)
     if not lead:
         flash("Couldn't find that candidate.", "error")
-        return redirect(url_for("leads"))
+        return redirect(back)
     if not lead["revealed"]:
         flash("Accept the candidate first to share documents.", "error")
-        return redirect(url_for("leads"))
+        return redirect(back)
     saved = _save_upload(request.files.get("file"))
     if not saved:
         flash("Attach a supported file (PDF, image, doc, spreadsheet).", "error")
-        return redirect(url_for("leads"))
+        return redirect(back)
     orig, stored, mime, size = saved
     note = request.form.get("note", "").strip()
     db.add_attachment(lead_id, "site", orig, stored, mime, size, note)
@@ -3089,7 +3163,7 @@ def attach_lead_file(lead_id):
                    + (f" - {note}" if note else ""))
     _notify_applicant_message(lead, f"Your study team shared a document: {orig}")
     flash("Document shared with the applicant.", "success")
-    return redirect(url_for("leads"))
+    return redirect(back)
 
 
 @app.route("/app/leads/<int:lead_id>/task", methods=["POST"])
@@ -3097,28 +3171,30 @@ def attach_lead_file(lead_id):
 def add_lead_task(lead_id):
     """Study team adds a to-do item for the candidate to complete."""
     _ensure_site_access_for_lead(lead_id)
+    back = _lead_action_return()
     lead = db.get_lead(lead_id)
     if not lead:
         flash("Couldn't find that candidate.", "error")
-        return redirect(url_for("leads"))
+        return redirect(back)
     if not lead["revealed"]:
         flash("Accept the candidate first to assign tasks.", "error")
-        return redirect(url_for("leads"))
+        return redirect(back)
     title = request.form.get("title", "").strip()
     if not title:
         flash("Describe the task first.", "error")
-        return redirect(url_for("leads"))
+        return redirect(back)
     db.add_task(lead_id, title, assigned_to="patient", created_by="site")
     db.add_message(lead_id, "site", f"New to-do for you: {title}")
     _notify_applicant_message(lead, f"New to-do from your study team: {title}")
     flash("Task added to the candidate's checklist.", "success")
-    return redirect(url_for("leads"))
+    return redirect(back)
 
 
 @app.route("/app/leads/<int:lead_id>/task/<int:task_id>", methods=["POST"])
 @login_required
 def toggle_lead_task(lead_id, task_id):
     _ensure_site_access_for_lead(lead_id)
+    back = _lead_action_return()
     task = db.get_task(task_id)
     if not task or task["lead_id"] != lead_id:
         abort(404)
@@ -3126,26 +3202,35 @@ def toggle_lead_task(lead_id, task_id):
     db.set_task_status(task_id, new_status)
     flash("To-do marked done." if new_status == "done"
           else "To-do reopened.", "success")
-    return redirect(url_for("leads"))
+    return redirect(back)
 
 
 @app.route("/app/leads/broadcast", methods=["POST"])
 @login_required
 def broadcast_leads():
-    """Fan a message (and optional task/document) out to every accepted
-    candidate on the account's trials - delivered to each private thread, never
-    a shared room (who else is enrolled is PHI)."""
+    """Fan a message (and optional task/document) out to accepted candidates -
+    all of them, or scoped to one trial (nct) - delivered to each private thread,
+    never a shared room (who else is enrolled is PHI). Scoping by trial is what
+    lets a coordinator send a form to 'everyone in this study' without hunting."""
     body = request.form.get("body", "").strip()
     task_title = request.form.get("task", "").strip()
+    scope_nct = request.form.get("nct", "").strip()
+    back = _safe_next(request.form.get("next", "")) or url_for("leads")
+    # Broadcasts are strictly single-trial: protocol materials are IRB/REB-approved
+    # per study, so cross-trial sends are disallowed (avoids wrong-cohort mistakes).
+    if not scope_nct or scope_nct not in db.user_claimed_ncts(g.user["id"]):
+        flash("Pick a trial to message.", "error")
+        return redirect(back)
     saved = _save_upload(request.files.get("file"))
     if not (body or task_title or saved):
         flash("Add a message, a to-do, or a document to send.", "error")
-        return redirect(url_for("leads"))
+        return redirect(back)
     leads = [ld for ld in db.list_leads_for_user(g.user["id"])
-             if ld["revealed"] and ld["status"] not in db.LEAD_CLOSED]
+             if ld["revealed"] and ld["status"] not in db.LEAD_CLOSED
+             and ld["nct"] == scope_nct]
     if not leads:
-        flash("No accepted candidates to message yet.", "error")
-        return redirect(url_for("leads"))
+        flash("No accepted candidates in that trial yet.", "error")
+        return redirect(back)
     for ld in leads:
         if body:
             db.add_message(ld["id"], "site", body)
@@ -3171,7 +3256,20 @@ def broadcast_leads():
             pass
     flash(f"Sent to {len(leads)} accepted candidate"
           f"{'s' if len(leads) != 1 else ''}.", "success")
-    return redirect(url_for("leads"))
+    return redirect(back)
+
+
+@app.route("/app/leads/<int:lead_id>/tag-toggle", methods=["POST"])
+@login_required
+def toggle_conv_tag(lead_id):
+    """Toggle a quick conversation tag (pin / needs consent / awaiting docs /
+    follow up) so coordinators can flag and later filter threads."""
+    _ensure_site_access_for_lead(lead_id)
+    back = _lead_action_return()
+    tag = request.form.get("tag", "").strip()
+    if db.toggle_lead_tag(lead_id, tag) is None:
+        flash("Couldn't update that tag.", "error")
+    return redirect(back)
 
 
 @app.route("/files/lead/<int:att_id>")
@@ -3191,49 +3289,167 @@ def download_lead_file(att_id):
     return _send_stored_file(att["stored_name"], att["orig_name"])
 
 
-@app.route("/app/team", methods=["GET", "POST"])
+@app.route("/app/trial/<nct>/message", methods=["POST"])
 @login_required
-def team_room():
-    """Staff-only collaboration room, one per claimed trial (NCT). Not
-    patient-visible - purely for the study team to coordinate + share files."""
-    claims = db.list_study_claims(g.user["id"])
-    rooms = [{"nct": c["nct"], "title": c["title"] or c["nct"]} for c in claims]
-    if not rooms:
-        return render_template("team_room.html", rooms=[], active=None,
-                               active_room=None, messages=[], attachments={})
-    valid = {r["nct"] for r in rooms}
-    active = request.values.get("nct") or rooms[0]["nct"]
-    if active not in valid:
-        active = rooms[0]["nct"]
-    if request.method == "POST":
-        body = request.form.get("body", "").strip()
-        saved = _save_upload(request.files.get("file"))
-        if body or saved:
-            label = body or (f"Shared a file: {saved[0]}" if saved else "")
-            mid = db.add_team_message(active, g.user["id"], g.user["name"], label)
-            if saved and mid:
-                orig, stored, mime, size = saved
-                db.add_team_attachment(mid, orig, stored, mime, size)
-        else:
-            flash("Write a message or attach a file.", "error")
-        return redirect(url_for("team_room", nct=active))
-    messages = db.list_team_messages(active)
-    attachments = db.list_team_attachments([m["id"] for m in messages])
-    active_room = next((r for r in rooms if r["nct"] == active), rooms[0])
-    return render_template("team_room.html", rooms=rooms, active=active,
-                           active_room=active_room, messages=messages,
-                           attachments=attachments, me_id=g.user["id"])
+def team_channel_post(nct):
+    """Post to a trial's internal (staff-only) team channel. Not patient-visible
+    - trial-specific coordination that lives next to the patients it's about."""
+    if nct not in db.user_claimed_ncts(g.user["id"]):
+        abort(403)
+    back = (_safe_next(request.form.get("next", ""))
+            or url_for("patient_inbox", nct=nct, team=1))
+    body = request.form.get("body", "").strip()
+    saved = _save_upload(request.files.get("file"))
+    if not (body or saved):
+        flash("Write a message or attach a file.", "error")
+        return redirect(back)
+    label = body or (f"Shared a file: {saved[0]}" if saved else "")
+    mid = db.add_team_message(nct, g.user["id"], g.user["name"], label)
+    if saved and mid:
+        orig, stored, mime, size = saved
+        db.add_team_attachment(mid, orig, stored, mime, size)
+    flash("Posted to the team channel.", "success")
+    return redirect(back)
 
 
 @app.route("/files/team/<int:att_id>")
 @login_required
 def download_team_file(att_id):
+    """Serve an internal team-channel attachment, scoped to the user's trials."""
     att = db.get_team_attachment(att_id)
     if not att:
         abort(404)
     if att["nct"] not in db.user_claimed_ncts(g.user["id"]):
         abort(403)
     return _send_stored_file(att["stored_name"], att["orig_name"])
+
+
+def _inbox_time_label(ts):
+    """Human, glanceable timestamp for the conversation list: time today, a
+    weekday this week, else a short date (so a 3-day-old thread never reads as
+    'just now')."""
+    if not ts:
+        return ""
+    try:
+        when = dt.datetime.strptime(ts[:16], "%Y-%m-%d %H:%M")
+    except ValueError:
+        return ts
+    now = dt.datetime.now()
+    if when.date() == now.date():
+        return when.strftime("%-I:%M %p")
+    if (now.date() - when.date()).days < 7:
+        return when.strftime("%a")
+    if when.year == now.year:
+        return when.strftime("%b %-d")
+    return when.strftime("%b %-d, %Y")
+
+
+@app.route("/app/messages")
+@login_required
+def patient_inbox():
+    """Trial-organized conversations: each trial is a channel with an Internal
+    (staff-only) team lane and an External lane of per-patient threads. Patient
+    threads are the wedge (talking *with participants* moves contacted ->
+    screened -> enrolled -> retained); the internal lane keeps trial-specific
+    coordination next to the people it's about."""
+    uid = g.user["id"]
+    claims = db.list_study_claims(uid)
+    title_by_nct = {c["nct"]: (c["title"] or c["nct"]) for c in claims}
+    rows = db.list_leads_for_user(uid)
+
+    patients_by_nct = defaultdict(list)
+    for r in rows:
+        if not r["revealed"] or r["status"] in db.LEAD_CLOSED:
+            continue
+        msgs = db.get_messages(r["id"])
+        last = msgs[-1] if msgs else None
+        last_at = (last["created_at"] if last else r["updated_at"]) or ""
+        tags = db.lead_tags(r)
+        patients_by_nct[r["nct"]].append({
+            "lead": r,
+            "code": candidate_code(r),
+            "last_at": last_at,
+            "last_label": _inbox_time_label(last_at),
+            "preview": (last["body"] if last else "No messages yet"),
+            # "You:" only when the coordinator sent last - not system notices.
+            "preview_mine": bool(last and last["sender"] == "site"),
+            "unread": db.lead_unread_for_site(r["id"]),
+            # The patient spoke last and we haven't replied -> our turn.
+            "awaiting_reply": bool(last and last["sender"] == "patient"),
+            "open_tasks": db.open_task_count(r["id"], "patient"),
+            "tags": tags,
+            "pinned": "pinned" in tags,
+        })
+
+    # Trial order: claimed studies first, then any NCT that has patients.
+    ncts = list(dict.fromkeys([c["nct"] for c in claims]
+                              + list(patients_by_nct.keys())))
+    trials = []
+    for nct in ncts:
+        # Triage: pinned first, then unread, then "your turn", then most recent.
+        pats = sorted(patients_by_nct.get(nct, []),
+                      key=lambda c: (c["pinned"], c["unread"] > 0,
+                                     c["awaiting_reply"], c["last_at"]),
+                      reverse=True)
+        trials.append({
+            "nct": nct,
+            "title": title_by_nct.get(nct, nct),
+            "patients": pats,
+            "patient_unread": sum(1 for p in pats if p["unread"]),
+        })
+
+    valid_ncts = {t["nct"] for t in trials}
+    sel_lead = request.args.get("lead_id", type=int)
+    sel_nct = request.args.get("nct")
+    want_team = request.args.get("team")
+
+    active = None
+    if sel_lead:
+        for t in trials:
+            match = next((p for p in t["patients"]
+                          if p["lead"]["id"] == sel_lead), None)
+            if match:
+                active = {"kind": "patient", "nct": t["nct"], "convo": match}
+                break
+    if not active and want_team and sel_nct in valid_ncts:
+        active = {"kind": "team", "nct": sel_nct}
+    if not active:
+        # Default to the first patient conversation (the wedge); fall back to a
+        # team channel only if there are no patients yet.
+        first = next(((t["nct"], t["patients"][0]) for t in trials
+                      if t["patients"]), None)
+        if first:
+            active = {"kind": "patient", "nct": first[0], "convo": first[1]}
+        elif trials:
+            active = {"kind": "team", "nct": trials[0]["nct"]}
+
+    detail = None
+    if active and active["kind"] == "patient":
+        p = active["convo"]
+        lid = p["lead"]["id"]
+        detail = {
+            "kind": "patient", "nct": active["nct"],
+            "lead": p["lead"], "code": p["code"],
+            "messages": db.get_messages(lid),
+            "files": db.list_attachments(lid),
+            "tasks": db.list_tasks(lid),
+            "tags": p["tags"],
+        }
+        db.mark_thread_read(lid, "site")
+        p["unread"] = 0  # reflect the read in the rail
+    elif active and active["kind"] == "team":
+        nct = active["nct"]
+        tmsgs = db.list_team_messages(nct)
+        detail = {
+            "kind": "team", "nct": nct,
+            "title": title_by_nct.get(nct, nct),
+            "messages": tmsgs,
+            "attachments": db.list_team_attachments([m["id"] for m in tmsgs]),
+        }
+
+    return render_template("messages.html", trials=trials, active=detail,
+                           labels=db.LEAD_LABELS, me_id=uid,
+                           tag_defs=db.CONV_TAGS)
 
 
 @app.route("/app/leads/<int:lead_id>/coverage-check", methods=["POST"])
