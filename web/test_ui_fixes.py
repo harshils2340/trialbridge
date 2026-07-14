@@ -50,7 +50,7 @@ def _stub_nominatim(address):
 def test_geo_reverse_public_no_login():
     """A logged-out patient must get a 200 JSON response, not a login redirect."""
     with mock.patch.object(app, "_nominatim_reverse",
-                           return_value=("Toronto, Ontario", "CA")):
+                           return_value=("Toronto, Ontario", "CA", "Canada")):
         client = app.app.test_client()
         resp = client.get("/geo/reverse?lat=43.65&lon=-79.38",
                           follow_redirects=False)
@@ -67,9 +67,10 @@ def test_label_us_includes_zip():
     addr = {"city": "New York", "state": "New York", "country": "United States",
             "country_code": "us", "postcode": "10014"}
     with mock.patch("urllib.request.urlopen", _stub_nominatim(addr)):
-        label, cc = app._nominatim_reverse(40.73, -74.00)
+        label, cc, country = app._nominatim_reverse(40.73, -74.00)
     assert label == "New York, New York 10014", label
     assert cc == "US"
+    assert country == "United States"
     print("PASS: US label reads 'City, State ZIP'")
 
 
@@ -77,9 +78,10 @@ def test_label_canada_city_region():
     addr = {"city": "Toronto", "state": "Ontario", "country": "Canada",
             "country_code": "ca", "postcode": "M5G 2C4"}
     with mock.patch("urllib.request.urlopen", _stub_nominatim(addr)):
-        label, cc = app._nominatim_reverse(43.65, -79.38)
+        label, cc, country = app._nominatim_reverse(43.65, -79.38)
     assert label == "Toronto, Ontario", label   # no ZIP appended outside US
     assert cc == "CA"
+    assert country == "Canada"
     print("PASS: non-US label reads 'City, Region'")
 
 

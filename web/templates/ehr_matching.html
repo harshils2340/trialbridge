@@ -3,41 +3,20 @@
 {% block body %}
 {% import "_icons.html" as ic %}
 
-<div class="tool-head">
-  <h1>EHR background matching</h1>
-</div>
-<p class="wf-lead">Your clinic's records, screened against the trials you run — so new
-  candidates come to you instead of you hunting through charts.</p>
-
 {% if ehr and ehr.connected %}
-{# --- Make it obvious the EHR is wired into the platform, clinic-wide --- #}
-<div class="ehr-banner">
-  <span class="ehr-banner-dot" aria-hidden="true"></span>
-  <div class="ehr-banner-main">
-    <b>{{ ehr.system }} EHR connected — clinic-wide</b>
-    <span>{{ ehr.clinic }} · {{ ehr.records }} patient records screened · last sync {{ ehr.last_sync }}</span>
+<div class="tool-head">
+  <h1>New matches from your patients</h1>
+  <div class="stat-strip">
+    <span class="s"><b>{{ ehr.active_trials }}</b> active trials</span>
+    <span class="s"><b>{{ ehr.records }}</b> records scanned</span>
+    <span class="s accent"><b id="ehrNewCount">{{ ehr.new_matches }}</b> new to review</span>
   </div>
-  <span class="ehr-banner-live">{{ ic.icon('activity') }} Matching in the background</span>
 </div>
 
-{# --- The whole idea in three plain steps --- #}
-<div class="pr-how ehr-how">
-  <div class="pr-how-step"><b>1</b> Connect your EHR once — every patient record in the clinic.</div>
-  <span class="pr-how-arrow">{{ ic.icon('arrow-right') }}</span>
-  <div class="pr-how-step"><b>2</b> We continuously screen your patients against the trials you run.</div>
-  <span class="pr-how-arrow">{{ ic.icon('arrow-right') }}</span>
-  <div class="pr-how-step"><b>3</b> New matches appear here — review, then reach out.</div>
-</div>
-
-<div class="stats ehr-stats">
-  <div class="stat"><div class="l">{{ ic.icon('award', 'ico stat-ico') }}Active trials</div><div class="n">{{ ehr.active_trials }}</div></div>
-  <div class="stat"><div class="l">{{ ic.icon('search', 'ico stat-ico') }}Patients screened</div><div class="n">{{ ehr.records }}</div></div>
-  <div class="stat accent"><div class="l">{{ ic.icon('user-plus', 'ico stat-ico') }}New matches</div><div class="n" id="ehrNewCount">{{ ehr.new_matches }}</div></div>
-</div>
-
-<div class="section-title ehr-section-title">
-  <h2>New patient matches</h2>
-  <span class="ehr-section-note">{{ ic.icon('check') }} From your own patients · a physician reviews before anyone is contacted</span>
+<div class="ehr-status">
+  <span class="ehr-status-dot" aria-hidden="true"></span>
+  <span>{{ ehr.system }} · {{ ehr.clinic }} · synced {{ ehr.last_sync }}</span>
+  <span class="ehr-status-note">A physician confirms before any patient is contacted</span>
 </div>
 
 {% set flagcls = {'Strong match': 'good', 'Likely': 'likely', 'Review': 'review'} %}
@@ -56,50 +35,116 @@
   </div>
   <ul class="ehr-pt-list">
     {% for p in t.patients %}
-    <li class="ehr-pt" data-ehr-pt>
-      <div class="ehr-pt-id">
-        <span class="ehr-pt-avatar" aria-hidden="true">{{ p.initials }}</span>
-        <div class="ehr-pt-idmain">
-          <b>{{ p.ref }}</b>
-          <span class="ehr-pt-demo">{{ p.age }}{{ p.sex }} · {{ p.seen }}</span>
+    <li class="ehr-pt" data-ehr-pt data-lead="{{ t.lead }}">
+      <div class="ehr-pt-row">
+        <div class="ehr-pt-id">
+          <span class="ehr-pt-avatar" aria-hidden="true">{{ p.initials }}</span>
+          <div class="ehr-pt-idmain">
+            <b>{{ p.ref }}</b>
+            <span class="ehr-pt-demo">{{ p.age }}{{ p.sex }} · {{ p.seen }}</span>
+          </div>
         </div>
+        <div class="ehr-pt-reason">
+          <div class="ehr-pt-flags">
+            <span class="ehr-pt-flag flag-{{ flagcls.get(p.flag, 'review') }}">{{ p.flag }}</span>
+            {% if p.score %}<span class="ehr-pt-score">{{ p.score }}% match</span>{% endif %}
+          </div>
+          <span class="ehr-pt-summary">{{ p.reason }}</span>
+        </div>
+        <div class="ehr-pt-actions">
+          <button type="button" class="btn btn-sm btn-ghost ehr-toggle" data-ehr-toggle aria-expanded="false">{{ ic.icon('chevron-down') }} Details</button>
+          <button type="button" class="btn btn-sm btn-primary ehr-act" data-act="physician">{{ ic.icon('arrow-right') }} Send to physician</button>
+        </div>
+        <div class="ehr-pt-done" hidden>{{ ic.icon('check') }} <span data-ehr-done-text></span></div>
       </div>
-      <div class="ehr-pt-reason">
-        <span class="ehr-pt-flag flag-{{ flagcls.get(p.flag, 'review') }}">{{ p.flag }}</span>
-        <span>{{ p.reason }}</span>
+
+      <div class="ehr-pt-detail" hidden data-ehr-detail>
+        <div class="ehr-detail-grid">
+          <div class="ehr-detail-col">
+            <div class="ehr-detail-block">
+              <span class="ehr-detail-label">Last visit</span>
+              <p class="ehr-detail-line">{{ p.last_visit }}</p>
+            </div>
+            <div class="ehr-detail-block">
+              <span class="ehr-detail-label">Vitals</span>
+              <div class="ehr-chips">
+                {% for v in p.vitals %}<span class="ehr-chip">{{ v.k }} <b>{{ v.v }}</b></span>{% endfor %}
+              </div>
+            </div>
+            <div class="ehr-detail-block">
+              <span class="ehr-detail-label">Key labs</span>
+              <div class="ehr-chips">
+                {% for l in p.labs %}<span class="ehr-chip tone-{{ l.tone }}">{{ l.k }} <b>{{ l.v }}</b></span>{% endfor %}
+              </div>
+            </div>
+            <div class="ehr-detail-block">
+              <span class="ehr-detail-label">Current medications</span>
+              <ul class="ehr-med-list">{% for m in p.meds %}<li>{{ m }}</li>{% endfor %}</ul>
+            </div>
+          </div>
+          <div class="ehr-detail-col">
+            <div class="ehr-detail-block">
+              <span class="ehr-detail-label">Eligibility check</span>
+              <ul class="ehr-crit">
+                {% for c in p.criteria.met %}<li class="crit-met">{{ ic.icon('check') }} {{ c }}</li>{% endfor %}
+                {% for c in p.criteria.review %}<li class="crit-review">{{ ic.icon('help') }} {{ c }}</li>{% endfor %}
+              </ul>
+            </div>
+            {% if p.criteria.exclude %}
+            <div class="ehr-detail-block">
+              <span class="ehr-detail-label">Exclusions cleared</span>
+              <ul class="ehr-crit">
+                {% for c in p.criteria.exclude %}<li class="crit-exclude">{{ ic.icon('check') }} {{ c }}</li>{% endfor %}
+              </ul>
+            </div>
+            {% endif %}
+            <div class="ehr-detail-block">
+              <span class="ehr-detail-label">Contactability</span>
+              <p class="ehr-detail-line">{{ p.contact }}</p>
+            </div>
+          </div>
+        </div>
+        <p class="ehr-detail-foot">{{ ic.icon('check') }} De-identified chart snapshot from the clinic EHR · a physician confirms before any patient contact.</p>
       </div>
-      <div class="ehr-pt-actions">
-        <button type="button" class="btn btn-sm btn-primary ehr-act" data-act="email">{{ ic.icon('arrow-right') }} Email patient</button>
-        <button type="button" class="btn btn-sm btn-ghost ehr-act" data-act="physician">Send to physician</button>
-      </div>
-      <div class="ehr-pt-done" hidden>{{ ic.icon('check') }} <span data-ehr-done-text></span></div>
     </li>
     {% endfor %}
   </ul>
 </div>
 {% endfor %}
 
-<p class="ehr-foot-note">Demo data. In production, matches come from your live EHR feed
-  and stay inside your clinic — nothing is shared or sent without a clinician's action.</p>
-
 <script>
 (function () {
   var counter = document.getElementById('ehrNewCount');
+
+  // Expand / collapse the de-identified chart detail for a demo walkthrough.
+  document.querySelectorAll('[data-ehr-toggle]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var row = btn.closest('[data-ehr-pt]');
+      var detail = row && row.querySelector('[data-ehr-detail]');
+      if (!detail) return;
+      var open = detail.hidden;
+      detail.hidden = !open;
+      btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+      row.classList.toggle('is-open', open);
+    });
+  });
+
+  // Route the match to the treating physician for review (the only action).
   document.querySelectorAll('.ehr-act').forEach(function (btn) {
     btn.addEventListener('click', function () {
       var row = btn.closest('[data-ehr-pt]');
       if (!row || row.classList.contains('is-done')) return;
-      var act = btn.getAttribute('data-act');
-      var msg = act === 'email'
-        ? 'Email invite sent — awaiting patient reply'
-        : 'Sent to physician for review';
+      var lead = row.getAttribute('data-lead') || 'the physician';
       row.classList.add('is-done');
+      var rowEl = row.querySelector('.ehr-pt-row');
       var actions = row.querySelector('.ehr-pt-actions');
+      var detail = row.querySelector('[data-ehr-detail]');
       var done = row.querySelector('.ehr-pt-done');
       if (actions) actions.hidden = true;
+      if (detail) detail.hidden = true;
       if (done) {
         var t = done.querySelector('[data-ehr-done-text]');
-        if (t) t.textContent = msg;
+        if (t) t.textContent = 'Sent to ' + lead + ' for review';
         done.hidden = false;
       }
       // clear it from the "new matches" count + the trial's badge
@@ -117,14 +162,14 @@
 </script>
 
 {% else %}
+<div class="tool-head"><h1>New matches from your patients</h1></div>
 <div class="card ehr-connect-card">
   <div class="ehr-connect-ic">{{ ic.icon('activity') }}</div>
-  <h2>Turn your patient records into trial matches</h2>
-  <p>Connect your clinic's EHR once. We screen your existing patients against the
-    trials you run and surface new matches here for physician review — no chart
-    digging, no manual search.</p>
+  <h2>No EHR connected</h2>
+  <p>Connect your clinic's records to see new patient matches here for the trials
+    you run.</p>
   <div class="ehr-connect-actions">
-    <a class="btn btn-primary" href="{{ url_for('how_it_works') }}">See how it works</a>
+    <a class="btn btn-primary" href="{{ url_for('how_it_works') }}">Connect EHR</a>
     <a class="btn btn-ghost" href="{{ url_for('dashboard') }}">Back to search</a>
   </div>
 </div>

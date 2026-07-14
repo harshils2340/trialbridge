@@ -1353,14 +1353,52 @@ def _ehr_matching_demo():
             "lead": "Dr. Alvarez (Endocrinology)",
             "patients": [
                 {"ref": "PT-4821", "initials": "J.M.", "age": 54, "sex": "F",
+                 "seen": "Seen 3 days ago", "flag": "Strong match", "score": 94,
                  "reason": "BMI 38, HbA1c 6.1%, no prior GLP-1 - meets key criteria",
-                 "seen": "Seen 3 days ago", "flag": "Strong match"},
+                 "last_visit": "Endocrinology follow-up · Jul 10, 2026",
+                 "vitals": [{"k": "BMI", "v": "38.2"}, {"k": "BP", "v": "128/82"},
+                            {"k": "Weight", "v": "104 kg"}],
+                 "labs": [{"k": "HbA1c", "v": "6.1%", "tone": "met"},
+                          {"k": "eGFR", "v": "88", "tone": "met"},
+                          {"k": "ALT", "v": "24 U/L", "tone": "met"}],
+                 "meds": ["Lisinopril 10 mg daily", "Atorvastatin 20 mg daily"],
+                 "criteria": {
+                     "met": ["Age 18-75", "BMI \u2265 30", "No prior GLP-1 receptor agonist",
+                             "No type 1 diabetes"],
+                     "review": [], "exclude": ["No bariatric surgery in past 12 mo"]},
+                 "contact": "Patient portal active · phone on file"},
                 {"ref": "PT-3910", "initials": "R.K.", "age": 47, "sex": "M",
+                 "seen": "Seen 2 weeks ago", "flag": "Likely", "score": 81,
                  "reason": "BMI 34, prediabetes, stable meds - likely eligible",
-                 "seen": "Seen 2 weeks ago", "flag": "Likely"},
+                 "last_visit": "Primary care annual physical · Jun 28, 2026",
+                 "vitals": [{"k": "BMI", "v": "34.1"}, {"k": "BP", "v": "134/86"},
+                            {"k": "Weight", "v": "112 kg"}],
+                 "labs": [{"k": "HbA1c", "v": "5.9%", "tone": "met"},
+                          {"k": "eGFR", "v": "79", "tone": "met"},
+                          {"k": "Fasting glucose", "v": "108 mg/dL", "tone": "review"}],
+                 "meds": ["Amlodipine 5 mg daily"],
+                 "criteria": {
+                     "met": ["Age 18-75", "BMI \u2265 30", "No prior GLP-1 receptor agonist"],
+                     "review": ["Weight stable past 3 months (confirm at visit)"],
+                     "exclude": ["No type 1 diabetes"]},
+                 "contact": "Phone on file · no portal login yet"},
                 {"ref": "PT-5567", "initials": "D.O.", "age": 61, "sex": "F",
+                 "seen": "Seen 1 month ago", "flag": "Review", "score": 68,
                  "reason": "BMI 41, hypertension controlled - confirm exclusion labs",
-                 "seen": "Seen 1 month ago", "flag": "Review"},
+                 "last_visit": "Cardiology consult · Jun 12, 2026",
+                 "vitals": [{"k": "BMI", "v": "41.0"}, {"k": "BP", "v": "142/88"},
+                            {"k": "Weight", "v": "119 kg"}],
+                 "labs": [{"k": "HbA1c", "v": "6.4%", "tone": "met"},
+                          {"k": "eGFR", "v": "62", "tone": "review"},
+                          {"k": "TSH", "v": "pending", "tone": "review"}],
+                 "meds": ["Losartan 50 mg daily", "Hydrochlorothiazide 25 mg daily",
+                          "Metformin 500 mg BID"],
+                 "criteria": {
+                     "met": ["Age 18-75", "BMI \u2265 30"],
+                     "review": ["eGFR near cutoff - reconfirm renal panel",
+                                "TSH result pending"],
+                     "exclude": ["No type 1 diabetes"]},
+                 "contact": "Patient portal active · phone on file"},
             ],
         },
         {
@@ -1370,11 +1408,35 @@ def _ehr_matching_demo():
             "lead": "Dr. Alvarez (Endocrinology)",
             "patients": [
                 {"ref": "PT-2244", "initials": "S.P.", "age": 58, "sex": "M",
+                 "seen": "Seen 5 days ago", "flag": "Strong match", "score": 91,
                  "reason": "HbA1c 8.2% on metformin, BMI 31 - meets key criteria",
-                 "seen": "Seen 5 days ago", "flag": "Strong match"},
+                 "last_visit": "Diabetes management visit · Jul 8, 2026",
+                 "vitals": [{"k": "BMI", "v": "31.4"}, {"k": "BP", "v": "126/80"},
+                            {"k": "Weight", "v": "96 kg"}],
+                 "labs": [{"k": "HbA1c", "v": "8.2%", "tone": "met"},
+                          {"k": "eGFR", "v": "91", "tone": "met"},
+                          {"k": "C-peptide", "v": "2.1 ng/mL", "tone": "met"}],
+                 "meds": ["Metformin 1000 mg BID"],
+                 "criteria": {
+                     "met": ["Age 18-75", "T2D on metformin", "HbA1c 7.0-10.5%",
+                             "BMI \u2265 25"],
+                     "review": [], "exclude": ["No insulin in past 90 days"]},
+                 "contact": "Patient portal active · phone on file"},
                 {"ref": "PT-6620", "initials": "A.L.", "age": 63, "sex": "F",
+                 "seen": "Seen 3 weeks ago", "flag": "Likely", "score": 84,
                  "reason": "T2D 6 yrs, HbA1c 7.9%, eGFR 74 - likely eligible",
-                 "seen": "Seen 3 weeks ago", "flag": "Likely"},
+                 "last_visit": "Primary care follow-up · Jun 22, 2026",
+                 "vitals": [{"k": "BMI", "v": "29.6"}, {"k": "BP", "v": "138/84"},
+                            {"k": "Weight", "v": "78 kg"}],
+                 "labs": [{"k": "HbA1c", "v": "7.9%", "tone": "met"},
+                          {"k": "eGFR", "v": "74", "tone": "met"},
+                          {"k": "ALT", "v": "31 U/L", "tone": "met"}],
+                 "meds": ["Metformin 1000 mg BID", "Empagliflozin 10 mg daily"],
+                 "criteria": {
+                     "met": ["Age 18-75", "T2D on metformin", "HbA1c 7.0-10.5%"],
+                     "review": ["BMI just below 30 - confirm inclusion band"],
+                     "exclude": ["No insulin in past 90 days"]},
+                 "contact": "Phone on file · portal invite sent"},
             ],
         },
         {
@@ -1384,8 +1446,21 @@ def _ehr_matching_demo():
             "lead": "Dr. Chen (Hepatology)",
             "patients": [
                 {"ref": "PT-7788", "initials": "M.T.", "age": 52, "sex": "M",
+                 "seen": "Seen 8 days ago", "flag": "Review", "score": 72,
                  "reason": "Elevated ALT, FibroScan F2-F3, T2D - confirm biopsy window",
-                 "seen": "Seen 8 days ago", "flag": "Review"},
+                 "last_visit": "Hepatology consult · Jul 5, 2026",
+                 "vitals": [{"k": "BMI", "v": "33.8"}, {"k": "BP", "v": "130/85"},
+                            {"k": "Weight", "v": "101 kg"}],
+                 "labs": [{"k": "ALT", "v": "78 U/L", "tone": "met"},
+                          {"k": "AST", "v": "64 U/L", "tone": "met"},
+                          {"k": "FibroScan", "v": "F2-F3", "tone": "review"}],
+                 "meds": ["Metformin 1000 mg BID", "Atorvastatin 40 mg daily"],
+                 "criteria": {
+                     "met": ["Age 18-80", "T2D", "Elevated transaminases"],
+                     "review": ["Biopsy window - confirm within screening period",
+                                "FibroScan stage needs central read"],
+                     "exclude": ["No cirrhosis", "No significant alcohol use"]},
+                 "contact": "Patient portal active · phone on file"},
             ],
         },
     ]
@@ -2928,7 +3003,7 @@ def geocode(place):
 
 
 def _nominatim_reverse(lat, lon):
-    """(lat, lon) -> (label, country_code). Best-effort human-readable place."""
+    """(lat, lon) -> (label, country_code, country_name). Best-effort place."""
     try:
         q = urllib.parse.urlencode({"lat": lat, "lon": lon, "format": "json",
                                     "zoom": "12", "addressdetails": "1"})
@@ -2941,19 +3016,20 @@ def _nominatim_reverse(lat, lon):
         city = (a.get("city") or a.get("town") or a.get("village")
                 or a.get("municipality") or a.get("county") or "")
         cc = (a.get("country_code") or "").upper()
+        country = a.get("country") or ""
         # Prefer a clean "City, Region" (e.g. "Toronto, Ontario"); fall back to
         # the country when there's no state/province. For US, append the ZIP so
         # it reads like "New York, New York 10014".
-        region = a.get("state") or a.get("country") or ""
+        region = a.get("state") or country or ""
         parts = [p for p in (city, region) if p]
         label = ", ".join(parts)
         postcode = a.get("postcode") or ""
         if cc == "US" and postcode:
             label = (label + " " + postcode).strip(", ").strip()
         label = label or data.get("display_name", "")
-        return label, cc
+        return label, cc, country
     except Exception:
-        return "", ""
+        return "", "", ""
 
 
 def units_for(country_code):
@@ -2971,9 +3047,9 @@ def geo_reverse():
         lon = float(request.args.get("lon", ""))
     except ValueError:
         return jsonify({"ok": False}), 400
-    label, cc = _nominatim_reverse(lat, lon)
+    label, cc, country = _nominatim_reverse(lat, lon)
     return jsonify({"ok": bool(label), "label": label, "cc": cc,
-                    "unit": units_for(cc)})
+                    "country": country, "unit": units_for(cc)})
 
 
 @app.route("/geo/suggest")

@@ -181,3 +181,32 @@ Visual + interaction check (headless Chromium): **0px** horizontal overflow at
 
 **Result:** `All 4 tests passed`; prior suites still green
 (`test_a11y_theme.py` 6/6, `test_ui_fixes.py` 4/4, `test_search_cache.py` 4/4).
+
+## 2026-07-13 — Lane 4 de-slop: user-POV work queue
+
+**Feedback:** the lane opened with a marketing "Epic EHR connected — clinic-wide"
+banner and a "Connect once → we screen → matches appear" 3-step explainer. That
+reads like an investor/landing pitch, not the tool a clinic coordinator actually
+uses ("bare AI slop … this isn't an investor website, it's a user POV").
+
+**Change:** stripped the pitch and made it a real workspace.
+- Removed the `.ehr-banner` promo card, the `.ehr-how` 3-step strip, and the
+  "Demo data…" footer explainer.
+- Header now mirrors the physician dashboard: an `<h1>` + inline `stat-strip`
+  (active trials · records scanned · new to review).
+- Connection state is a single compact, muted line (`.ehr-status`): green dot +
+  `Epic · Riverside Family Medicine · synced 12 min ago` + the review-before-
+  contact note. No promo pill, no "Matching in the background".
+- Dropped the redundant "New patient matches" H2 (the H1 already labels it).
+- `web/templates/ehr_matching.html`, `web/static/style.css` (removed the now-
+  unused banner/how/stats/foot-note rules, added `.ehr-status`).
+
+**Tests:** `web/test_ehr_lane.py` (updated to the new UI; added
+`test_no_marketing_slop` asserting the banner/how-strip/promo copy are gone).
+
+**Result:** `All 5 tests passed`. Also fixed `web/test_ui_fixes.py` (stale: it
+still unpacked `_nominatim_reverse` as a 2-tuple after it grew a `country` field →
+now 3-tuple). Full suite green: `test_ehr_lane` 5/5, `test_a11y_theme` 6/6,
+`test_ui_fixes` 4/4, `test_search_cache` 4/4. Headless Chromium: **0px** overflow
+at 390px and 1200px in light and dark; Details expander shows the de-identified
+chart snapshot (vitals/labs/meds/eligibility).

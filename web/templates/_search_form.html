@@ -142,7 +142,13 @@
   var locLat = document.getElementById('locLat');
   var locLon = document.getElementById('locLon');
   var locCc = document.getElementById('locCc');
+  var country = document.getElementById('country');
   var confirmEl = document.getElementById('locConfirm');
+  function ccName(cc) {
+    var m = { US: 'United States', CA: 'Canada', GB: 'United Kingdom',
+      AU: 'Australia', IE: 'Ireland', NZ: 'New Zealand' };
+    return m[(cc || '').toUpperCase()] || '';
+  }
   function setUnit(u) {
     Array.prototype.forEach.call(radius.options, function (o) {
       o.text = o.value === '' ? 'Any distance' : (o.value + ' ' + u);
@@ -185,6 +191,10 @@
           if (d && d.ok) {
             loc.value = d.label; locCc.value = d.cc || '';
             setUnit(d.unit || 'km');
+            if (country) {
+              var name = d.country || ccName(d.cc);
+              if (name) country.value = name;
+            }
             confirmEl.className = 'loc-confirm ok';
             confirmEl.innerHTML = '📍 Using your location: <b>' + d.label + '</b> - edit above to change.';
           } else {

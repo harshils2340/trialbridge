@@ -2520,37 +2520,19 @@ main:focus { outline: none; }
    Lane 4 — EHR background matching (demo). Token-driven so it themes with dark
    mode automatically; stacks cleanly on mobile.
    ========================================================================== */
-.ehr-banner {
-  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
-  padding: 14px 16px; border-radius: var(--radius);
-  background: var(--green-bg); border: 1px solid rgba(21, 122, 91, .28);
-  margin-bottom: 16px;
+/* Compact, functional connection line (not a marketing banner) */
+.ehr-status {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px;
+  font-size: 12.5px; color: var(--muted); margin: 2px 0 22px;
 }
-.ehr-banner-dot {
-  width: 11px; height: 11px; border-radius: 50%; background: var(--green);
-  flex-shrink: 0; box-shadow: 0 0 0 0 rgba(21, 122, 91, .45);
-  animation: pulse-dot 2s ease-in-out infinite;
+.ehr-status-dot {
+  width: 8px; height: 8px; border-radius: 50%; background: var(--green);
+  flex-shrink: 0;
 }
-.ehr-banner-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.ehr-banner-main b { color: var(--green); font-size: 14.5px; letter-spacing: -.01em; }
-.ehr-banner-main span { color: var(--ink-soft); font-size: 13px; }
-.ehr-banner-live {
-  margin-left: auto; display: inline-flex; align-items: center; gap: 6px;
-  font-size: 12px; font-weight: 600; color: var(--green);
-  background: var(--surface); border: 1px solid rgba(21, 122, 91, .28);
-  padding: 5px 11px; border-radius: 999px; white-space: nowrap;
+.ehr-status-note {
+  color: var(--faint); padding-left: 10px; margin-left: 2px;
+  border-left: 1px solid var(--border);
 }
-.ehr-banner-live .ico { width: 13px; height: 13px; }
-
-.ehr-how { margin-bottom: 18px; }
-.ehr-stats { grid-template-columns: repeat(3, 1fr); }
-
-.ehr-section-title { flex-wrap: wrap; gap: 6px 14px; margin-top: 26px; }
-.ehr-section-note {
-  display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px;
-  color: var(--muted); font-weight: 500;
-}
-.ehr-section-note .ico { width: 14px; height: 14px; color: var(--green); }
 
 .ehr-trial {
   border: 1px solid var(--border); border-radius: var(--radius);
@@ -2575,13 +2557,13 @@ main:focus { outline: none; }
 .ehr-trial-meta .ico { width: 13px; height: 13px; }
 
 .ehr-pt-list { list-style: none; margin: 0; padding: 0; }
-.ehr-pt {
-  display: grid; grid-template-columns: 190px minmax(0, 1fr) auto;
-  gap: 14px 18px; align-items: center; padding: 14px 18px;
-  border-top: 1px solid var(--border);
-}
+.ehr-pt { border-top: 1px solid var(--border); }
 .ehr-pt:first-child { border-top: 0; }
 .ehr-pt.is-done { opacity: .62; }
+.ehr-pt-row {
+  display: grid; grid-template-columns: 190px minmax(0, 1fr) auto;
+  gap: 14px 18px; align-items: center; padding: 14px 18px;
+}
 .ehr-pt-id { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .ehr-pt-avatar {
   width: 34px; height: 34px; border-radius: 50%; flex-shrink: 0;
@@ -2593,24 +2575,55 @@ main:focus { outline: none; }
 .ehr-pt-idmain b { font-size: 13.5px; display: block; }
 .ehr-pt-demo { font-size: 12px; color: var(--muted); }
 .ehr-pt-reason { font-size: 13px; color: var(--ink-soft); line-height: 1.45; min-width: 0; }
+.ehr-pt-flags { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.ehr-pt-summary { display: block; }
+.ehr-pt-score { font-size: 11px; font-weight: 700; color: var(--muted); }
 .ehr-pt-flag {
   display: inline-block; font-size: 10.5px; font-weight: 700; text-transform: uppercase;
-  letter-spacing: .03em; padding: 2px 8px; border-radius: 999px; margin-right: 8px;
-  vertical-align: 1px;
+  letter-spacing: .03em; padding: 2px 8px; border-radius: 999px;
 }
 .ehr-pt-flag.flag-good { background: var(--green-bg); color: var(--green); }
 .ehr-pt-flag.flag-likely { background: var(--accent-soft); color: var(--accent); }
 .ehr-pt-flag.flag-review { background: var(--amber-bg); color: var(--amber); }
 .ehr-pt-actions { display: flex; gap: 8px; flex-shrink: 0; }
+.ehr-toggle .ico { width: 14px; height: 14px; transition: transform .15s ease; }
+.ehr-pt.is-open .ehr-toggle .ico { transform: rotate(180deg); }
 .ehr-pt-done {
   display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px;
   font-weight: 600; color: var(--green); justify-self: end;
 }
 .ehr-pt-done .ico { width: 15px; height: 15px; }
 
-.ehr-foot-note {
-  font-size: 12px; color: var(--faint); line-height: 1.5; margin: 18px 2px 0;
+/* Expandable de-identified chart snapshot */
+.ehr-pt-detail { padding: 0 18px 16px; }
+.ehr-detail-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 16px 28px;
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: 12px; padding: 16px 18px;
 }
+.ehr-detail-col { display: flex; flex-direction: column; gap: 14px; }
+.ehr-detail-block { display: flex; flex-direction: column; gap: 6px; }
+.ehr-detail-label {
+  font-size: 10.5px; font-weight: 800; letter-spacing: .04em;
+  text-transform: uppercase; color: var(--muted);
+}
+.ehr-detail-line { margin: 0; font-size: 13px; color: var(--ink); }
+.ehr-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.ehr-chip {
+  font-size: 12px; color: var(--ink-soft); background: var(--surface);
+  border: 1px solid var(--border); border-radius: 8px; padding: 3px 8px;
+}
+.ehr-chip b { color: var(--ink); font-weight: 700; }
+.ehr-chip.tone-met { border-color: var(--green); }
+.ehr-chip.tone-review { border-color: var(--amber); }
+.ehr-med-list { margin: 0; padding-left: 18px; font-size: 13px; color: var(--ink-soft); line-height: 1.55; }
+.ehr-crit { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
+.ehr-crit li { display: flex; align-items: flex-start; gap: 7px; font-size: 12.5px; line-height: 1.4; color: var(--ink-soft); }
+.ehr-crit li .ico { width: 14px; height: 14px; flex: none; margin-top: 1px; }
+.ehr-crit li.crit-met .ico, .ehr-crit li.crit-exclude .ico { color: var(--green); }
+.ehr-crit li.crit-review .ico { color: var(--amber); }
+.ehr-detail-foot { margin: 12px 0 0; font-size: 11.5px; color: var(--faint); display: flex; align-items: center; gap: 6px; }
+.ehr-detail-foot .ico { width: 13px; height: 13px; color: var(--green); flex: none; }
 
 .ehr-connect-card { text-align: center; max-width: 560px; margin: 0 auto; padding: 40px 32px; }
 .ehr-connect-ic {
@@ -2624,10 +2637,9 @@ main:focus { outline: none; }
 .ehr-connect-actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
 
 @media (max-width: 720px) {
-  .ehr-stats { grid-template-columns: 1fr 1fr; }
-  .ehr-pt { grid-template-columns: 1fr; gap: 10px; }
+  .ehr-pt-row { grid-template-columns: 1fr; gap: 10px; }
   .ehr-pt-actions { flex-wrap: wrap; }
   .ehr-pt-actions .btn { flex: 1 1 auto; }
   .ehr-pt-done { justify-self: start; }
-  .ehr-banner-live { margin-left: 0; }
+  .ehr-detail-grid { grid-template-columns: 1fr; }
 }

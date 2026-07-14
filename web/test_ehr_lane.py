@@ -2,13 +2,14 @@
 that surfaces new trial matches from the clinic's own patients).
 
 What it verifies:
-1. /app?wf=proactive renders the dedicated EHR view (not the search dashboard),
-   and shows the clinic-wide connection state + the 3-step explanation.
-2. Matches are grouped by trial with per-patient "why matched" reasons and
-   review/outreach actions.
+1. /app?wf=proactive renders the dedicated EHR view (not the search dashboard):
+   a real work queue with a workspace heading, a compact connection line, and
+   per-trial patient matches.
+2. It reads like a user-POV tool, not a landing page — no marketing connection
+   banner and no "how it works" explainer strip.
 3. /app (no wf) still renders the normal physician search dashboard.
 4. Compliance guardrails: patients are shown de-identified (no real names) and
-   the "physician reviews before anyone is contacted" note is present, so the
+   a "physician confirms before any patient is contacted" note is present, so the
    demo doesn't imply auto-contacting patients.
 
 Run: python test_ehr_lane.py   (offline; NO_LOGIN gives a demo user)
@@ -45,13 +46,27 @@ def test_proactive_renders_ehr_view():
     r = c.get("/app?wf=proactive")
     assert r.status_code == 200, r.status_code
     html = r.get_data(as_text=True)
-    assert "EHR background matching" in html
-    assert "EHR connected" in html, "connection state not shown"
-    assert "New patient matches" in html, "match queue heading missing"
-    assert "Email patient" in html and "Send to physician" in html, "actions missing"
+    # Real-workspace header (no marketing banner / "how it works" strip).
+    assert "New matches from your patients" in html, "workspace heading missing"
+    assert "records scanned" in html, "scan stat not shown"
+    # Compact, functional connection line — not a promo banner.
+    assert "Epic" in html and "synced" in html, "connection state not shown"
+    # The only action is routing to the treating physician + expandable detail.
+    assert "Send to physician" in html and "Details" in html, "actions missing"
     # grouped by trial (NCT ids present)
     assert "NCT05869903" in html
-    print("PASS: /app?wf=proactive renders the EHR matching view")
+    print("PASS: /app?wf=proactive renders the EHR matching workspace")
+
+
+def test_no_marketing_slop():
+    """The lane is a user-POV work queue, not a landing page: no connection
+    banner, no 'connect once -> we screen -> matches appear' explainer strip."""
+    c = app.app.test_client()
+    html = c.get("/app?wf=proactive").get_data(as_text=True)
+    assert "ehr-banner" not in html, "marketing connection banner should be gone"
+    assert "ehr-how" not in html, "3-step 'how it works' explainer should be gone"
+    assert "Matching in the background" not in html
+    print("PASS: no marketing banner / how-it-works slop on the lane")
 
 
 def test_plain_dashboard_is_search():
@@ -60,9 +75,9 @@ def test_plain_dashboard_is_search():
     assert r.status_code == 200, r.status_code
     html = r.get_data(as_text=True)
     assert "Physician matching workspace" in html, "plain /app should be the search view"
-    # "New patient matches" is unique to the EHR view body (the lane label in the
-    # POV switcher appears on every page, so key off the match queue instead).
-    assert "New patient matches" not in html, "plain /app must not be the EHR view"
+    # The EHR workspace heading is unique to the lane-4 body (the POV switcher
+    # label appears on every page, so key off the heading instead).
+    assert "New matches from your patients" not in html, "plain /app must not be the EHR view"
     print("PASS: plain /app stays the physician search dashboard")
 
 
@@ -71,8 +86,8 @@ def test_compliance_deidentified_and_review_note():
     html = c.get("/app?wf=proactive").get_data(as_text=True)
     # de-identified patient handles (PT-#### + initials), not real names
     assert re.search(r"PT-\d{4}", html), "patients should use de-identified refs"
-    assert "physician reviews before anyone is contacted" in html, \
-        "must state a clinician reviews before contact (no auto-outreach)"
+    assert "before any patient" in html, \
+        "must state a clinician confirms before contact (no auto-outreach)"
     print("PASS: patients de-identified + physician-review-before-contact stated")
 
 
@@ -80,6 +95,7 @@ def main():
     tests = [
         test_demo_payload_shape,
         test_proactive_renders_ehr_view,
+        test_no_marketing_slop,
         test_plain_dashboard_is_search,
         test_compliance_deidentified_and_review_note,
     ]
