@@ -879,7 +879,7 @@ def _csrf_guard():
     _csrf_token()
     if request.method != "POST":
         return None
-    if request.endpoint in {"alerts_run", "reminders_run"}:
+    if request.endpoint in {"alerts_run", "reminders_run", "redcap_webhook"}:
         return None
     sent = (request.form.get("_csrf_token", "")
             or request.headers.get("X-CSRF-Token", ""))
@@ -2036,6 +2036,131 @@ def withdraw_application(token):
     return redirect(url_for("applications"))
 
 
+# --------------------------------------------------------------------------- #
+# REDCap screening handoff (patient completes the site's intake/screening form)
+# --------------------------------------------------------------------------- #
+def _redcap_cfg_for_lead(lead):
+    """Resolve the REDCap config of the site that owns this lead's study."""
+    prof = db.get_site_profile_for_nct(lead["nct"]) if lead and lead["nct"] else None
+    return redcap.config_from_profile(prof)
+
+
+def _mark_screening_complete(lead, actor="patient",
+                             note="screening intake form completed"):
+    """Move the lead into a screening-complete state and notify both sides."""
+    cur = lead["status"]
+    target = "screening"
+    order = db.LEAD_PIPELINE
+    if cur in db.LEAD_CLOSED or (
+            cur in order and order.index(cur) > order.index("screening")):
+        target = cur  # never move backward or reopen a closed application
+    db.update_lead_status(lead["id"], target, note, actor=actor)
+    db.set_lead_redcap(lead["id"], survey_status="complete")
+    db.add_message(
+        lead["id"], "system",
+        "Screening intake form completed. The study team will review your "
+        "responses and follow up with next steps.")
+
+
+@app.route("/applications/<token>/screening")
+def application_screening(token):
+    """Patient-facing 'Complete your screening form' handoff.
+
+    LIVE path (only when the site connected REDCap AND attested the instrument
+    is IRB/REB-approved with patient consent): mint a pre-filled unique survey
+    link and hand off / embed it. Otherwise show a demo-safe simulated form so
+    the flow is always walkable."""
+    if not g.patient_user:
+        flash("Sign in to complete your screening form.", "error")
+        return redirect(url_for("patient_login", next=url_for("applications")))
+    lead = db.get_lead_by_token(token)
+    if not lead or lead["applicant_token"] != get_applicant_token():
+        abort(403)
+    cfg = _redcap_cfg_for_lead(lead)
+    # Keep demos fully simulated - never call a real REDCap during a demo.
+    if cfg.intake_live and not _demo_mode_enabled():
+        ok, url, record_id, msg = redcap.survey_link_for_lead(cfg, lead)
+        if ok:
+            db.set_lead_redcap(lead["id"], record_id=record_id,
+                               survey_status="sent")
+            db.update_lead_status(lead["id"], lead["status"],
+                                  "screening form link generated", actor="you")
+            return render_template(
+                "screening_form.html", lead=lead, survey_url=url,
+                simulated=False, project_label=cfg.project_label)
+        flash(msg, "error")
+        return redirect(url_for("applications"))
+    return render_template(
+        "screening_form.html", lead=lead, survey_url="", simulated=True,
+        project_label=cfg.project_label or "Site intake project",
+        instruments=redcap.SIMULATED_INSTRUMENTS)
+
+
+@app.route("/applications/<token>/screening/complete", methods=["POST"])
+def application_screening_complete(token):
+    """Simulated-form submission (demo / not-yet-live): mark screening done."""
+    if not g.patient_user:
+        flash("Sign in to complete your screening form.", "error")
+        return redirect(url_for("patient_login", next=url_for("applications")))
+    lead = db.get_lead_by_token(token)
+    if not lead or lead["applicant_token"] != get_applicant_token():
+        abort(403)
+    _mark_screening_complete(lead, actor="patient")
+    flash("Thanks - your screening form is complete. The study team will be in "
+          "touch.", "success")
+    return redirect(url_for("applications") + f"#app-{lead['id']}")
+
+
+@app.route("/integrations/redcap/webhook", methods=["POST"])
+def redcap_webhook():
+    """Receive a REDCap survey/Data-Entry-Trigger callback and mark the matching
+    lead screening-complete. Optionally protected by REDCAP_WEBHOOK_SECRET
+    (passed as an X-Redcap-Token header or ?secret= query param)."""
+    if redcap.WEBHOOK_SECRET:
+        provided = (request.headers.get("X-Redcap-Token", "")
+                    or request.args.get("secret", ""))
+        if not (provided and hmac.compare_digest(provided, redcap.WEBHOOK_SECRET)):
+            abort(403)
+    record = (request.form.get("record", "").strip()
+              or request.args.get("record", "").strip())
+    lead = db.find_lead_by_redcap_record(record) if record else None
+    if not lead:
+        return app.response_class("ignored", mimetype="text/plain")
+    instrument = request.form.get("instrument", "").strip()
+    complete = True
+    if instrument:
+        val = request.form.get(f"{instrument}_complete", "").strip()
+        if val and val != "2":  # "2" == Complete in REDCap
+            complete = False
+    if complete:
+        _mark_screening_complete(lead, actor="redcap",
+                                 note="screening form completed (REDCap)")
+    return app.response_class("ok", mimetype="text/plain")
+
+
+@app.route("/app/leads/<int:lead_id>/redcap/refresh", methods=["POST"])
+@login_required
+def refresh_lead_redcap(lead_id):
+    """Site-side poll: check whether a lead's REDCap screening form is complete
+    (an alternative to the webhook for projects that can't call out)."""
+    _ensure_site_access_for_lead(lead_id)
+    lead = db.get_lead(lead_id)
+    if not lead:
+        flash("Couldn't find that candidate.", "error")
+        return redirect(url_for("leads"))
+    cfg = redcap.config_from_profile(db.get_site_profile(g.user["id"]))
+    ok, done, msg = redcap.record_complete(cfg, lead["redcap_record_id"])
+    if not ok:
+        flash(msg, "error")
+    elif done:
+        _mark_screening_complete(lead, actor="you",
+                                 note="screening form completed (REDCap)")
+        flash("Screening form is complete for this candidate.", "success")
+    else:
+        flash("Screening form not completed yet.", "success")
+    return redirect(url_for("leads"))
+
+
 @app.route("/records/connect", methods=["POST"])
 def records_connect():
     """Entry point from forms/buttons: send patient to authorization step first."""
@@ -2403,6 +2528,7 @@ def leads():
     rows = db.list_leads_for_user(g.user["id"])
     recon = db.latest_reconciliation_for_leads([r["id"] for r in rows])
     claims = db.list_study_claims(g.user["id"])
+    site_cfg = redcap.config_from_profile(db.get_site_profile(g.user["id"]))
     counts = db.lead_counts_for_ncts([c["nct"] for c in claims])
     review, active, done = [], [], []
     for r in rows:
@@ -2421,7 +2547,9 @@ def leads():
                            support_travel_labels=SUPPORT_TRAVEL_LABELS,
                            recon_labels=db.RECON_LABELS,
                            recon_outcomes=db.RECON_OUTCOMES,
-                           redcap_on=redcap.configured(), claims=claims)
+                           redcap_on=site_cfg.connected,
+                           redcap_intake_live=site_cfg.intake_live,
+                           claims=claims)
 
 
 @app.route("/app/dashboard")
@@ -2520,26 +2648,90 @@ def recruitment_summary_json():
     }), 200
 
 
+def _render_site_setup(instruments=None):
+    """Render site setup, including per-site REDCap connection state.
+
+    `instruments` is the (optionally freshly-loaded) list of REDCap instruments
+    for the picker; falls back to simulated ones in demo mode so the intake
+    picker is always walkable.
+    """
+    profile = db.get_site_profile(g.user["id"])
+    cfg = redcap.config_from_profile(profile)
+    simulated = _demo_mode_enabled() and not cfg.connected
+    if instruments is None:
+        instruments = list(redcap.SIMULATED_INSTRUMENTS) if simulated else []
+    return render_template(
+        "site_setup.html",
+        profile=profile,
+        claims=db.list_study_claims(g.user["id"]),
+        posted=db.list_site_posted_studies(user_id=g.user["id"]),
+        redcap_on=cfg.connected,
+        redcap_token_set=bool(cfg.api_token),
+        redcap_field_map=redcap._row_get(profile, "redcap_field_map"),
+        redcap_intake_instrument=cfg.intake_instrument,
+        redcap_intake_enabled=cfg.intake_enabled,
+        redcap_instruments=instruments,
+        redcap_simulated=simulated)
+
+
 @app.route("/app/site", methods=["GET", "POST"])
 @login_required
 def site_setup():
     """Study-team onboarding: account profile + claim your active NCTs."""
     if request.method == "POST":
         f = request.form
+        # REDCap connection lives in its own tab (site_redcap_save); preserve it
+        # here so saving the org profile never wipes the stored URL/label.
+        prof = db.get_site_profile(g.user["id"])
         db.upsert_site_profile(
             g.user["id"], f.get("org_name", ""), f.get("contact_name", ""),
             f.get("contact_email", ""), f.get("contact_phone", ""),
             f.get("intake_sla_hours", ""), f.get("escalation_email", ""),
-            f.get("ctms_endpoint", ""), f.get("redcap_endpoint", ""),
-            f.get("redcap_project_label", ""))
+            f.get("ctms_endpoint", ""),
+            redcap._row_get(prof, "redcap_endpoint"),
+            redcap._row_get(prof, "redcap_project_label"))
         flash("Site profile saved.", "success")
         return redirect(url_for("site_setup"))
-    return render_template(
-        "site_setup.html",
-        profile=db.get_site_profile(g.user["id"]),
-        claims=db.list_study_claims(g.user["id"]),
-        posted=db.list_site_posted_studies(user_id=g.user["id"]),
-        redcap_on=redcap.configured())
+    return _render_site_setup()
+
+
+@app.route("/app/site/redcap", methods=["POST"])
+@login_required
+def site_redcap_save():
+    """Save the site's REDCap intake connection (URL, token, instrument, gate).
+
+    The API token is write-only: submitting it blank keeps the stored secret so
+    a coordinator can tweak other settings without re-typing the token. The
+    token is never rendered back to the page or logged."""
+    f = request.form
+    token_raw = f.get("redcap_api_token", "")
+    # Blank token field -> keep existing secret (None = leave unchanged).
+    token = token_raw.strip() if token_raw.strip() else None
+    # Live patient forms require an explicit IRB/consent attestation (compliance).
+    intake_enabled = bool(f.get("redcap_intake_enabled"))
+    db.update_site_redcap(
+        g.user["id"],
+        endpoint=f.get("redcap_endpoint", ""),
+        api_token=token,
+        field_map=f.get("redcap_field_map", ""),
+        intake_instrument=f.get("redcap_intake_instrument", ""),
+        intake_enabled=intake_enabled,
+        project_label=f.get("redcap_project_label", ""))
+    flash("REDCap connection saved.", "success")
+    return redirect(url_for("site_setup"))
+
+
+@app.route("/app/site/redcap/instruments", methods=["POST"])
+@login_required
+def site_redcap_instruments():
+    """Load the project's instruments so the site can pick the intake form."""
+    cfg = redcap.config_from_profile(db.get_site_profile(g.user["id"]))
+    if _demo_mode_enabled() and not cfg.connected:
+        flash("Showing simulated instruments (REDCap not connected).", "success")
+        return _render_site_setup(instruments=list(redcap.SIMULATED_INSTRUMENTS))
+    ok, instruments, msg = redcap.export_instruments(cfg)
+    flash(msg, "success" if ok else "error")
+    return _render_site_setup(instruments=instruments if ok else None)
 
 
 @app.route("/app/site/post-study", methods=["POST"])
@@ -2793,7 +2985,8 @@ def push_lead_redcap(lead_id):
     if not lead:
         flash("Couldn't find that candidate.", "error")
         return redirect(url_for("leads"))
-    ok, msg = redcap.push_candidate(lead)
+    cfg = redcap.config_from_profile(db.get_site_profile(g.user["id"]))
+    ok, msg = redcap.push_candidate(lead, cfg)
     if ok:
         db.update_lead_status(lead_id, lead["status"], "pushed to REDCap",
                               actor="you")

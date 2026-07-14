@@ -98,6 +98,18 @@
     </ol>
     {% endif %}
 
+    {% if not is_closed and ld.redcap_survey_status == 'complete' %}
+    <div class="app-records ok">{{ ic.icon('check') }} <span>Screening form completed - the study team is reviewing your responses.</span></div>
+    {% elif not is_closed and ld.status in ['eligible', 'screening'] %}
+    <div class="app-book">
+      <div class="app-book-copy">{{ ic.icon('activity') }}
+        <span><b>Complete your screening form.</b>
+          The study team needs a few details to confirm you qualify. It's pre-filled
+          from what you already shared - just review and submit.</span></div>
+      <a class="btn btn-primary" href="{{ url_for('application_screening', token=ld.token) }}">Complete screening form</a>
+    </div>
+    {% endif %}
+
     {% if not is_closed and ld.schedule_url %}
     <div class="app-book">
       <div class="app-book-copy">{{ ic.icon('activity') }}

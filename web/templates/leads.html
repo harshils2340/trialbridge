@@ -98,9 +98,17 @@
     <form method="post" action="{{ url_for('revoke_lead_site_token', lead_id=l['id']) }}" class="lead-redcap-form">
       <button class="btn btn-sm btn-ghost" type="submit">Revoke link</button>
     </form>
+    {% if l['redcap_survey_status'] == 'complete' %}
+    <span class="tag">{{ ic.icon('check') }} Screening form complete</span>
+    {% elif l['redcap_survey_status'] == 'sent' %}
+    <span class="tag">{{ ic.icon('activity') }} Screening form sent</span>
+    {% endif %}
     {% if redcap_on %}
     <form method="post" action="{{ url_for('push_lead_redcap', lead_id=l['id']) }}" class="lead-redcap-form">
       <button class="btn btn-sm btn-ghost" type="submit">{{ ic.icon('external') }} Push to REDCap</button>
+    </form>
+    <form method="post" action="{{ url_for('refresh_lead_redcap', lead_id=l['id']) }}" class="lead-redcap-form" title="Check whether this candidate finished their REDCap screening form">
+      <button class="btn btn-sm btn-ghost" type="submit">{{ ic.icon('activity') }} Check screening status</button>
     </form>
     {% endif %}
   </div>

@@ -153,6 +153,10 @@ CREATE TABLE IF NOT EXISTS site_profiles (
     ctms_endpoint TEXT DEFAULT '',
     redcap_endpoint TEXT DEFAULT '',
     redcap_project_label TEXT DEFAULT '',
+    redcap_api_token TEXT DEFAULT '',
+    redcap_field_map TEXT DEFAULT '',
+    redcap_intake_instrument TEXT DEFAULT '',
+    redcap_intake_enabled INTEGER DEFAULT 0,
     created_at    TEXT NOT NULL,
     updated_at    TEXT NOT NULL,
     FOREIGN KEY (user_id) REFERENCES users(id)
@@ -267,6 +271,8 @@ CREATE TABLE IF NOT EXISTS leads (
     nudged_at       TEXT DEFAULT '',
     referred_by     TEXT DEFAULT '',
     invite_token    TEXT DEFAULT '',
+    redcap_record_id TEXT DEFAULT '',
+    redcap_survey_status TEXT DEFAULT '',
     created_at      TEXT NOT NULL,
     updated_at      TEXT DEFAULT ''
 );
@@ -581,6 +587,10 @@ _MIGRATIONS = {
         "ctms_endpoint": "TEXT DEFAULT ''",
         "redcap_endpoint": "TEXT DEFAULT ''",
         "redcap_project_label": "TEXT DEFAULT ''",
+        "redcap_api_token": "TEXT DEFAULT ''",
+        "redcap_field_map": "TEXT DEFAULT ''",
+        "redcap_intake_instrument": "TEXT DEFAULT ''",
+        "redcap_intake_enabled": "INTEGER DEFAULT 0",
     },
     "study_claims": {
         "notify_email": "TEXT DEFAULT ''",
@@ -616,6 +626,8 @@ _MIGRATIONS = {
         "nudged_at": "TEXT DEFAULT ''",
         "referred_by": "TEXT DEFAULT ''",
         "invite_token": "TEXT DEFAULT ''",
+        "redcap_record_id": "TEXT DEFAULT ''",
+        "redcap_survey_status": "TEXT DEFAULT ''",
     },
 }
 
@@ -996,6 +1008,105 @@ def upsert_site_profile(user_id, org_name, contact_name, contact_email,
          (ctms_endpoint or "").strip(), (redcap_endpoint or "").strip(),
          (redcap_project_label or "").strip(), ts, ts))
     db.commit()
+
+
+def update_site_redcap(user_id, endpoint=None, api_token=None, field_map=None,
+                       intake_instrument=None, intake_enabled=None,
+                       project_label=None):
+    """Update only the REDCap connection fields on a site's profile.
+
+    Every argument is optional; None means "leave unchanged" (so re-saving the
+    form without re-typing the API token does NOT wipe the stored secret). An
+    empty string explicitly clears a field. The API token is a secret - it is
+    stored here but never logged or rendered back to the page.
+    """
+    prof = get_site_profile(user_id)
+    if not prof:
+        # Create a bare profile row so REDCap can be configured before the org
+        # profile is filled in.
+        upsert_site_profile(user_id, "", "", "", "")
+        prof = get_site_profile(user_id)
+    sets, vals = [], []
+    fields = {
+        "redcap_endpoint": endpoint,
+        "redcap_api_token": api_token,
+        "redcap_field_map": field_map,
+        "redcap_intake_instrument": intake_instrument,
+        "redcap_project_label": project_label,
+    }
+    for col, val in fields.items():
+        if val is not None:
+            sets.append(f"{col} = ?")
+            vals.append(val.strip() if isinstance(val, str) else val)
+    if intake_enabled is not None:
+        sets.append("redcap_intake_enabled = ?")
+        vals.append(1 if intake_enabled else 0)
+    if not sets:
+        return
+    sets.append("updated_at = ?")
+    vals.append(now())
+    vals.append(user_id)
+    db = get_db()
+    db.execute(f"UPDATE site_profiles SET {', '.join(sets)} WHERE user_id = ?",
+               vals)
+    db.commit()
+
+
+def get_site_profile_for_nct(nct):
+    """The site profile of the team that claimed this NCT (first claim wins).
+
+    Used to resolve which REDCap project a patient's screening form belongs to.
+    """
+    nct = _norm_nct(nct)
+    if not nct:
+        return None
+    row = get_db().execute(
+        "SELECT p.* FROM study_claims c "
+        "JOIN site_profiles p ON p.user_id = c.user_id "
+        "WHERE c.nct = ? ORDER BY c.id ASC LIMIT 1", (nct,)).fetchone()
+    return row
+
+
+def set_lead_redcap(lead_id, record_id=None, survey_status=None):
+    """Track a lead's REDCap screening handoff (record id + survey status)."""
+    lead = get_lead(lead_id)
+    if not lead:
+        return False
+    sets, vals = [], []
+    if record_id is not None:
+        sets.append("redcap_record_id = ?")
+        vals.append(str(record_id))
+    if survey_status is not None:
+        sets.append("redcap_survey_status = ?")
+        vals.append(survey_status)
+    if not sets:
+        return False
+    sets.append("updated_at = ?")
+    vals.append(now())
+    vals.append(lead_id)
+    db = get_db()
+    db.execute(f"UPDATE leads SET {', '.join(sets)} WHERE id = ?", vals)
+    db.commit()
+    return True
+
+
+def find_lead_by_redcap_record(record_id):
+    """Locate the lead a REDCap webhook/record id belongs to.
+
+    Matches the stored handoff record id first, then falls back to the lead's
+    own id (we seed record_id = lead id when creating the record)."""
+    rid = str(record_id or "").strip()
+    if not rid:
+        return None
+    db = get_db()
+    row = db.execute(
+        "SELECT * FROM leads WHERE redcap_record_id = ? "
+        "ORDER BY id DESC LIMIT 1", (rid,)).fetchone()
+    if row:
+        return row
+    if rid.isdigit():
+        return db.execute("SELECT * FROM leads WHERE id = ?", (int(rid),)).fetchone()
+    return None
 
 
 def list_study_claims(user_id):

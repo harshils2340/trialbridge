@@ -1,0 +1,85 @@
+{% extends "public_base.html" %}
+{% block title %}Screening form · BridgeMD{% endblock %}
+
+{% block body %}
+<section class="apps-wrap">
+  <div class="apps-head">
+    <div>
+      <h1>Complete your screening form</h1>
+      <p class="apps-sub">
+        {{ lead.title or 'Clinical trial' }}{% if lead.condition %} · {{ lead.condition }}{% endif %}
+      </p>
+    </div>
+    <a class="btn btn-ghost" href="{{ url_for('applications') }}">{{ ic.icon('chevron-down') }} Back to my applications</a>
+  </div>
+
+  <article class="app-card">
+    <p class="app-blurb">
+      This is the study team's own intake &amp; screening form{% if project_label %}
+      (<b>{{ project_label }}</b>){% endif %}. We've shared what you already told us,
+      so a lot may be pre-filled. Completing it is the quick next step to confirm
+      whether you qualify.
+    </p>
+
+    {% if simulated %}
+    <div class="rec-banner connect wide">{{ ic.icon('activity') }}
+      <span><b>Demo screening form.</b> This is a simulated intake form so you can
+        see the flow. A connected site would show their real REDCap survey here.</span>
+    </div>
+
+    <form method="post" action="{{ url_for('application_screening_complete', token=lead.token) }}" class="site-form site-form-2col">
+      <label>Full name
+        <input type="text" name="s_name" value="{{ lead.name }}" required>
+      </label>
+      <label>Email
+        <input type="email" name="s_email" value="{{ lead.email }}">
+      </label>
+      <label>Date of birth
+        <input type="date" name="s_dob">
+      </label>
+      <label>Primary condition
+        <input type="text" name="s_condition" value="{{ lead.condition }}">
+      </label>
+      <label class="site-form-wide">Current medications (optional)
+        <textarea name="s_meds" rows="2" placeholder="List any current medications"></textarea>
+      </label>
+      <label>Able to travel to the study site?
+        <select name="s_travel">
+          <option value="yes">Yes</option>
+          <option value="maybe">With support</option>
+          <option value="no">No</option>
+        </select>
+      </label>
+      <label>Currently in another trial?
+        <select name="s_other_trial">
+          <option value="no">No</option>
+          <option value="yes">Yes</option>
+        </select>
+      </label>
+      <label class="site-form-wide redcap-gate">
+        <input type="checkbox" name="s_consent" value="1" required>
+        <span>I consent to the study team reviewing my screening responses to
+          assess my eligibility.</span>
+      </label>
+      <button class="btn btn-primary btn-lg" type="submit">{{ ic.icon('check') }} Submit screening form</button>
+    </form>
+    {% else %}
+    <div class="rec-banner ok wide">{{ ic.icon('check') }}
+      <span>Your secure, pre-filled screening survey is ready. Complete it below,
+        or open it in a new tab.</span>
+    </div>
+    <p>
+      <a class="btn btn-primary" href="{{ survey_url }}" target="_blank" rel="noopener">
+        {{ ic.icon('external') }} Open screening form in a new tab</a>
+    </p>
+    <div class="screening-embed">
+      <iframe src="{{ survey_url }}" title="REDCap screening survey"
+              loading="lazy" referrerpolicy="no-referrer"
+              style="width:100%;min-height:720px;border:1px solid var(--border,#ddd);border-radius:10px;"></iframe>
+    </div>
+    <p class="site-hint">Once you submit the form in the survey above, your
+      application status updates automatically.</p>
+    {% endif %}
+  </article>
+</section>
+{% endblock %}

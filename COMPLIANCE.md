@@ -221,6 +221,23 @@ fee-splitting.**
   add an IRB/REB-approval attestation gate before display.
 - [ ] **PHI handling** — keep de-identification mandatory; add BAAs/DPAs before any
   production PHI processing or EHR integration goes live.
+- [ ] **REDCap patient intake/screening forms** — patients can complete a site's
+  own REDCap survey as the screening step (pre-filled link handoff). Guardrails
+  implemented in code:
+  - Live patient forms are gated behind an explicit per-site attestation checkbox
+    ("this instrument is IRB/REB-approved and patients consent") — `redcap_intake_enabled`.
+    Without it, BridgeMD only ever shows the **simulated** demo form.
+  - REDCap API tokens are stored server-side only; never logged, never rendered
+    back into HTML (write-only field, masked status).
+  - Pre-fill is limited to data the patient already volunteered (name, email,
+    condition, NCT) — data minimization; we store only a REDCap record id +
+    survey status on the lead, not form contents.
+  - **Before a site enables live intake:** confirm the chosen instrument is
+    IRB/REB-approved as recruitment/screening material, that patient consent is
+    captured (ideally as the first REDCap instrument), and that a Business
+    Associate Agreement / data-processing agreement is in place with the site
+    (the survey collects PHI directly into the site's project). Counsel/IRB
+    sign-off required per §5 and §3 above.
 
 ---
 

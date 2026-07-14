@@ -10,6 +10,7 @@
 <div class="card setup-shell">
   <nav class="setup-tabs" aria-label="Site setup sections">
     <button type="button" class="setup-tab on" data-setup-tab="profile">{{ ic.icon('award') }} Organization</button>
+    <button type="button" class="setup-tab" data-setup-tab="redcap">{{ ic.icon('activity') }} REDCap intake</button>
     <button type="button" class="setup-tab" data-setup-tab="claim">{{ ic.icon('plus') }} Claim study</button>
     <button type="button" class="setup-tab" data-setup-tab="post">{{ ic.icon('plus') }} Post site study</button>
     <button type="button" class="setup-tab" data-setup-tab="claimed">{{ ic.icon('list') }} Claimed NCTs {% if claims %}<span class="setup-count">{{ claims|length }}</span>{% endif %}</button>
@@ -43,19 +44,93 @@
       <label>CTMS endpoint / workspace URL
         <input type="url" name="ctms_endpoint" value="{{ profile['ctms_endpoint'] if profile else '' }}" placeholder="https://ctms.yoursite.org/studies/...">
       </label>
-      <label>REDCap endpoint URL
-        <input type="url" name="redcap_endpoint" value="{{ profile['redcap_endpoint'] if profile else '' }}" placeholder="https://redcap.yoursite.org/api/">
-      </label>
-      <label>REDCap project label
-        <input type="text" name="redcap_project_label" value="{{ profile['redcap_project_label'] if profile else '' }}" placeholder="Obesity 2026 Enrollment Project">
-      </label>
       <button class="btn btn-primary" type="submit">{{ ic.icon('check') }} Save profile</button>
     </form>
     <p class="site-hint">
       REDCap connection status: <b>{{ 'Connected' if redcap_on else 'Not connected' }}</b>.
-      Configure `REDCAP_API_URL` + `REDCAP_API_TOKEN` in environment to enable push.
+      Manage the connection and choose your patient intake form in the
+      <b>REDCap intake</b> tab above.
     </p>
   </div>
+</div>
+
+<div class="card setup-panel" data-setup-panel="redcap" hidden>
+  <div class="section-title"><h2>REDCap intake &amp; screening</h2></div>
+  <p class="setup-sub">
+    Connect your REDCap project once, then pick which instrument is your patient
+    intake / screening form. Applicants who reach the screening step get a
+    pre-filled, unique survey link so they complete <b>your</b> form - no
+    re-typing, less drop-off.
+  </p>
+
+  <div class="rec-banner {{ 'ok' if redcap_on else 'connect' }} wide">
+    {{ ic.icon('check') if redcap_on else ic.icon('activity') }}
+    <span>
+      {% if redcap_simulated %}
+      <b>Simulated mode.</b> REDCap isn't connected, so applicants see a realistic
+      demo screening form. Add your API URL + token below to go live.
+      {% elif redcap_on %}
+      <b>REDCap connected.</b>{% if redcap_intake_instrument %} Intake form:
+      <b>{{ redcap_intake_instrument }}</b>.{% else %} Choose your intake instrument below.{% endif %}
+      {% else %}
+      <b>Not connected.</b> Add your REDCap API URL + token to enable live intake.
+      {% endif %}
+    </span>
+  </div>
+
+  <form method="post" action="{{ url_for('site_redcap_save') }}" class="site-form site-form-2col">
+    <label>REDCap API URL
+      <input type="url" name="redcap_endpoint" value="{{ profile['redcap_endpoint'] if profile else '' }}" placeholder="https://redcap.yoursite.org/api/">
+    </label>
+    <label>Project label
+      <input type="text" name="redcap_project_label" value="{{ profile['redcap_project_label'] if profile else '' }}" placeholder="Obesity 2026 Enrollment Project">
+    </label>
+    <label>API token {% if redcap_token_set %}<span class="tag">{{ ic.icon('check') }} saved - leave blank to keep</span>{% endif %}
+      <input type="password" name="redcap_api_token" value="" autocomplete="off" placeholder="{{ '••••••••  (stored securely)' if redcap_token_set else 'Project API token' }}">
+    </label>
+    <label>Intake / screening instrument
+      <input type="text" name="redcap_intake_instrument" list="redcapInstrumentList" value="{{ redcap_intake_instrument }}" placeholder="e.g. patient_intake">
+      <datalist id="redcapInstrumentList">
+        {% for ins in redcap_instruments %}<option value="{{ ins.name }}">{{ ins.label }}</option>{% endfor %}
+      </datalist>
+    </label>
+    <label class="site-form-wide">Field map (optional JSON)
+      <input type="text" name="redcap_field_map" value="{{ redcap_field_map }}" placeholder='{"email":"contact_email","condition":"dx"}'>
+    </label>
+    <label class="site-form-wide redcap-gate">
+      <input type="checkbox" name="redcap_intake_enabled" value="1" {{ 'checked' if redcap_intake_enabled else '' }}>
+      <span>This instrument is <b>IRB/REB-approved</b> and patients consent before it collects any data.
+        Required before BridgeMD serves the live form to patients.</span>
+    </label>
+    <button class="btn btn-primary" type="submit">{{ ic.icon('check') }} Save REDCap connection</button>
+  </form>
+
+  <form method="post" action="{{ url_for('site_redcap_instruments') }}" class="site-form">
+    <button class="btn btn-ghost" type="submit">{{ ic.icon('activity') }} Load instruments from REDCap</button>
+  </form>
+
+  {% if redcap_instruments %}
+  <table class="claim-table">
+    <thead><tr><th>Instrument</th><th>Name</th><th></th></tr></thead>
+    <tbody>
+      {% for ins in redcap_instruments %}
+      <tr>
+        <td>{{ ins.label }}</td>
+        <td class="mono">{{ ins.name }}</td>
+        <td>{% if ins.name == redcap_intake_instrument %}<span class="tag">{{ ic.icon('check') }} intake form</span>{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  <p class="site-hint">
+    Prefer environment config for a single project? Set <span class="mono">REDCAP_API_URL</span>
+    and <span class="mono">REDCAP_API_TOKEN</span>; per-site values above override it.
+    Tokens are stored securely and never shown again. For completion callbacks,
+    point a REDCap survey/Data-Entry-Trigger at
+    <span class="mono">{{ url_for('redcap_webhook', _external=True) }}</span>.
+  </p>
 </div>
 
 <div class="card setup-panel" data-setup-panel="claim" hidden>
