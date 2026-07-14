@@ -1,0 +1,152 @@
+{% extends "public_base.html" %}
+{% block title %}Screening form · BridgeMD{% endblock %}
+
+{% block body %}
+<style>
+  .screening-frame { border: 1px solid var(--border, #d9dee6); border-radius: 14px; overflow: hidden; background: #fff; box-shadow: 0 1px 3px rgba(16,24,40,.06); }
+  .screening-frame-bar { display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: linear-gradient(180deg, #f7f9fc, #eef2f8); border-bottom: 1px solid var(--border, #d9dee6); }
+  .screening-frame-bar .lock { color: #1a7f47; display: inline-flex; }
+  .screening-frame-title { font-weight: 600; font-size: .95rem; }
+  .screening-frame-host { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; font-size: .8rem; color: #475467; background: #fff; border: 1px solid var(--border, #d9dee6); border-radius: 999px; padding: 3px 10px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .screening-frame-host .dot { width: 7px; height: 7px; border-radius: 50%; background: #1a7f47; }
+  .screening-frame-body { position: relative; min-height: 300px; }
+  .screening-frame-body iframe { display: block; width: 100%; min-height: 720px; border: 0; }
+  .screening-frame-body .sim-body { padding: 18px; }
+  .screening-frame-foot { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 12px 14px; border-top: 1px solid var(--border, #d9dee6); background: #fbfcfe; }
+  .screening-frame-foot .hint { font-size: .82rem; color: #667085; }
+  .frame-loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 10px; color: #667085; background: #fff; }
+  .frame-blocked { display: none; margin: 14px; padding: 14px 16px; border: 1px solid #f0c36d; background: #fff8e6; border-radius: 10px; color: #6b4e00; }
+  .frame-blocked.show { display: block; }
+</style>
+
+<section class="apps-wrap">
+  <div class="apps-head">
+    <div>
+      <h1>Complete your screening form</h1>
+      <p class="apps-sub">
+        {{ lead.title or 'Clinical trial' }}{% if lead.condition %} · {{ lead.condition }}{% endif %}
+      </p>
+    </div>
+    <a class="btn btn-ghost" href="{{ url_for('applications') }}">{{ ic.icon('chevron-down') }} Back to my applications</a>
+  </div>
+
+  <article class="app-card">
+    <p class="app-blurb">
+      This is the study team's own intake &amp; screening form{% if project_label %}
+      (<b>{{ project_label }}</b>){% endif %}. It runs on their secure REDCap system
+      and stays inside BridgeMD so you never lose your place. We've shared what you
+      already told us, so a lot may be pre-filled.
+    </p>
+
+    <div class="screening-frame">
+      <div class="screening-frame-bar">
+        <span class="lock">{{ ic.icon('check') }}</span>
+        <span class="screening-frame-title">Secure screening form · powered by your study team's REDCap</span>
+        {% if redcap_host %}
+        <span class="screening-frame-host" title="This form is served by your study team's REDCap instance">
+          <span class="dot"></span>{{ redcap_host }}</span>
+        {% endif %}
+      </div>
+
+      <div class="screening-frame-body">
+        {% if simulated %}
+        <div class="sim-body">
+          <div class="rec-banner connect wide">{{ ic.icon('activity') }}
+            <span><b>Demo screening form.</b> This is a simulated intake form shown
+              inside the same secure frame. A connected site loads its real REDCap
+              survey right here.</span>
+          </div>
+          <form method="post" action="{{ url_for('application_screening_complete', token=lead.token) }}" class="site-form site-form-2col">
+            <label>Full name
+              <input type="text" name="s_name" value="{{ lead.name }}" required>
+            </label>
+            <label>Email
+              <input type="email" name="s_email" value="{{ lead.email }}">
+            </label>
+            <label>Date of birth
+              <input type="date" name="s_dob">
+            </label>
+            <label>Primary condition
+              <input type="text" name="s_condition" value="{{ lead.condition }}">
+            </label>
+            <label class="site-form-wide">Current medications (optional)
+              <textarea name="s_meds" rows="2" placeholder="List any current medications"></textarea>
+            </label>
+            <label>Able to travel to the study site?
+              <select name="s_travel">
+                <option value="yes">Yes</option>
+                <option value="maybe">With support</option>
+                <option value="no">No</option>
+              </select>
+            </label>
+            <label>Currently in another trial?
+              <select name="s_other_trial">
+                <option value="no">No</option>
+                <option value="yes">Yes</option>
+              </select>
+            </label>
+            <label class="site-form-wide redcap-gate">
+              <input type="checkbox" name="s_consent" value="1" required>
+              <span>I consent to the study team reviewing my screening responses to
+                assess my eligibility.</span>
+            </label>
+            <button class="btn btn-primary btn-lg" type="submit">{{ ic.icon('check') }} Submit screening form</button>
+          </form>
+        </div>
+        {% else %}
+        <div class="frame-loading" id="frameLoading">{{ ic.icon('activity') }} Loading your secure screening form…</div>
+        <iframe id="screeningFrame" src="{{ survey_url }}" title="REDCap screening survey"
+                loading="eager" referrerpolicy="no-referrer"
+                sandbox="allow-forms allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox"></iframe>
+        <div class="frame-blocked" id="frameBlocked">
+          <b>Can't see the form above?</b> Some institutions' REDCap servers only
+          allow their forms to open in a dedicated tab. Use the secure button below
+          to open it — your progress here is saved and your status still updates
+          automatically when you finish.
+        </div>
+        {% endif %}
+      </div>
+
+      <div class="screening-frame-foot">
+        {% if not simulated %}
+        <a class="btn btn-primary btn-sm" href="{{ survey_url }}" target="_blank" rel="noopener">
+          {{ ic.icon('external') }} Open securely in a new tab</a>
+        {% endif %}
+        <span class="hint">
+          {% if simulated %}
+          This is a demo — no real data is sent anywhere.
+          {% else %}
+          Your responses go straight into your study team's secure REDCap — BridgeMD
+          doesn't store them. Once you submit, your application status updates
+          automatically.
+          {% endif %}
+        </span>
+      </div>
+    </div>
+  </article>
+</section>
+
+{% if not simulated %}
+<script>
+(function () {
+  var frame = document.getElementById('screeningFrame');
+  var loading = document.getElementById('frameLoading');
+  var blocked = document.getElementById('frameBlocked');
+  if (!frame) return;
+  var loaded = false;
+  frame.addEventListener('load', function () {
+    loaded = true;
+    if (loading) loading.style.display = 'none';
+  });
+  // If the embed never loads (e.g. X-Frame-Options / frame-ancestors blocks it),
+  // surface the fallback so the patient is never stuck on a blank frame.
+  setTimeout(function () {
+    if (!loaded) {
+      if (loading) loading.style.display = 'none';
+      if (blocked) blocked.classList.add('show');
+    }
+  }, 5000);
+})();
+</script>
+{% endif %}
+{% endblock %}
