@@ -9,6 +9,9 @@
   .screening-frame-title { font-weight: 600; font-size: .95rem; }
   .screening-frame-host { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; font-size: .8rem; color: #475467; background: #fff; border: 1px solid var(--border, #d9dee6); border-radius: 999px; padding: 3px 10px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
   .screening-frame-host .dot { width: 7px; height: 7px; border-radius: 50%; background: #1a7f47; }
+  .screening-frame-sample { font-size: .7rem; font-weight: 700; letter-spacing: .03em; text-transform: uppercase; color: #667085; background: #fff; border: 1px solid var(--border, #d9dee6); border-radius: 999px; padding: 2px 8px; }
+  .screening-prefill { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 14px; padding: 10px 12px; border-radius: 10px; background: #e9f4ef; border: 1px solid #c4e6d6; color: #157a5b; font-size: .9rem; }
+  .screening-prefill .ico { width: 16px; height: 16px; flex: none; margin-top: 1px; }
   .screening-frame-body { position: relative; min-height: 300px; }
   .screening-frame-body iframe { display: block; width: 100%; min-height: 720px; border: 0; }
   .screening-frame-body .sim-body { padding: 18px; }
@@ -32,16 +35,18 @@
 
   <article class="app-card">
     <p class="app-blurb">
-      This is the study team's own intake &amp; screening form{% if project_label %}
-      (<b>{{ project_label }}</b>){% endif %}. It runs on their secure REDCap system
-      and stays inside BridgeMD so you never lose your place. We've shared what you
-      already told us, so a lot may be pre-filled.
+      Your study team built this intake &amp; screening form{% if project_label %}
+      (<b>{{ project_label }}</b>){% endif %} in their own secure REDCap. It opens
+      right here inside BridgeMD - nothing to download, no new login - and we've
+      already filled in what you shared when you applied. Just review, answer a
+      couple of questions, and submit.
     </p>
 
     <div class="screening-frame">
       <div class="screening-frame-bar">
         <span class="lock">{{ ic.icon('check') }}</span>
         <span class="screening-frame-title">Secure screening form · powered by your study team's REDCap</span>
+        {% if simulated %}<span class="screening-frame-sample" title="Illustrative sample form">Sample</span>{% endif %}
         {% if redcap_host %}
         <span class="screening-frame-host" title="This form is served by your study team's REDCap instance">
           <span class="dot"></span>{{ redcap_host }}</span>
@@ -51,10 +56,9 @@
       <div class="screening-frame-body">
         {% if simulated %}
         <div class="sim-body">
-          <div class="rec-banner connect wide">{{ ic.icon('activity') }}
-            <span><b>Demo screening form.</b> This is a simulated intake form shown
-              inside the same secure frame. A connected site loads its real REDCap
-              survey right here.</span>
+          <div class="screening-prefill">{{ ic.icon('check') }}
+            <span>Pre-filled from your application - <b>we didn't make you re-type it.</b>
+              Review it's right, answer the last questions, and submit.</span>
           </div>
           <form method="post" action="{{ url_for('application_screening_complete', token=lead.token) }}" class="site-form site-form-2col">
             <label>Full name
@@ -114,7 +118,8 @@
         {% endif %}
         <span class="hint">
           {% if simulated %}
-          This is a demo — no real data is sent anywhere.
+          Pre-filled from your application. When you submit, your study team is
+          notified and your application status updates automatically.
           {% else %}
           Your responses go straight into your study team's secure REDCap — BridgeMD
           doesn't store them. Once you submit, your application status updates

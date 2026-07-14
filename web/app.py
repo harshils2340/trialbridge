@@ -2326,8 +2326,12 @@ def application_screening(token):
     if not lead or lead["applicant_token"] != get_applicant_token():
         abort(403)
     cfg = _redcap_cfg_for_lead(lead)
-    # Keep demos fully simulated - never call a real REDCap during a demo.
-    if cfg.intake_live and not _demo_mode_enabled():
+    # Keep demos fully simulated - never call a real REDCap during a demo -
+    # unless REDCAP_LIVE=1 is set, which opts a local/staging run into the real
+    # integration path even while the no-login preview shell is on (used to test
+    # a live REDCap, incl. the mock_redcap.py server, end to end).
+    _redcap_live = os.environ.get("REDCAP_LIVE", "0") == "1"
+    if cfg.intake_live and (_redcap_live or not _demo_mode_enabled()):
         ok, url, record_id, msg = redcap.survey_link_for_lead(cfg, lead)
         if ok:
             db.set_lead_redcap(lead["id"], record_id=record_id,
