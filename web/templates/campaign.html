@@ -61,9 +61,13 @@
       <div class="ad-media">{{ ic.icon('activity') }}</div>
       <div class="ad-card-foot">
         <div class="ad-headline" id="pvHeadline"></div>
-        <button type="button" class="ad-cta" id="pvCta" disabled>Apply now</button>
+        <button type="button" class="ad-cta" id="pvCta" data-flow-open>Apply now</button>
       </div>
     </div>
+
+    <button type="button" class="btn btn-primary btn-block camp-demo-btn" data-flow-open>
+      {{ ic.icon('activity') }} Play the click-to-apply demo</button>
+    <p class="camp-demo-hint">Tap the ad's button (or the button above) to walk the whole journey - ad &rarr; landing &rarr; pre-filled application &rarr; submitted.</p>
 
     {% if new_token %}
     <div class="camp-link">
@@ -112,6 +116,75 @@
   {% endif %}
 </div>
 
+<!-- Click-to-apply walkthrough: simulates what a patient experiences after
+     tapping the ad, all the way to a submitted application. Demo only - no
+     real lead is created here. -->
+<div class="flow-demo" id="flowDemo" hidden>
+  <div class="flow-backdrop" data-flow-close></div>
+  <div class="flow-phone" role="dialog" aria-modal="true" aria-label="Click-to-apply demo">
+    <button type="button" class="flow-x" data-flow-close aria-label="Close demo">{{ ic.icon('x') }}</button>
+    <div class="flow-steps" id="flowSteps">
+      <span class="flow-dot" data-dot="1"></span><span class="flow-dot" data-dot="2"></span>
+      <span class="flow-dot" data-dot="3"></span><span class="flow-dot" data-dot="4"></span>
+    </div>
+    <div class="flow-viewport">
+
+      <section class="flow-screen" data-step="1">
+        <div class="flow-label">1 · The ad in their feed</div>
+        <div class="ad-preview flow-ad">
+          <div class="ad-top"><span class="ad-avatar">Rx</span>
+            <div class="ad-meta"><b>Your Clinic</b><span class="ad-sponsored" id="fPlatform">Sponsored</span></div></div>
+          <div class="ad-text" id="fText"></div>
+          <div class="ad-media">{{ ic.icon('activity') }}</div>
+          <div class="ad-card-foot"><div class="ad-headline" id="fHeadline"></div>
+            <button type="button" class="ad-cta" id="fCta" data-flow-next>Apply now</button></div>
+        </div>
+        <p class="flow-note">They tap your prefill link - no forms lost, no dead end.</p>
+      </section>
+
+      <section class="flow-screen" data-step="2" hidden>
+        <div class="flow-label">2 · Post-click landing</div>
+        <div class="flow-land">
+          <div class="inv-badge">{{ ic.icon('award') }} A study you may qualify for</div>
+          <h3 id="fLandTitle">This study may be a fit for you.</h3>
+          <p class="flow-land-sub">Recruiting now near you. See if you're eligible in about 2 minutes - free, no obligation.</p>
+          <div class="flow-trial"><b id="fTrialTitle">Clinical research study</b><span id="fTrialCond"></span></div>
+          <button type="button" class="btn btn-primary btn-block" data-flow-next>{{ ic.icon('search') }} See this study &amp; apply</button>
+        </div>
+      </section>
+
+      <section class="flow-screen" data-step="3" hidden>
+        <div class="flow-label">3 · Pre-filled application</div>
+        <div class="flow-form">
+          <div class="flow-prefill">{{ ic.icon('check') }} Auto-filled from connected records - they just review &amp; submit.</div>
+          <label class="flow-fld"><span>Can you travel to the study site?</span>
+            <select><option>Yes</option><option>Not sure</option></select></label>
+          <label class="flow-fld"><span>Currently in another trial?</span>
+            <select><option>No</option><option>Yes</option></select></label>
+          <div class="flow-fld-row">
+            <label class="flow-fld"><span>Name</span><input type="text" value="Jordan Patient" readonly></label>
+            <label class="flow-fld"><span>Email</span><input type="text" value="jordan@email.com" readonly></label>
+          </div>
+          <label class="flow-consent"><input type="checkbox" checked>
+            <span>I agree to share a blinded summary for review and contact after acceptance.</span></label>
+          <button type="button" class="btn btn-primary btn-block" data-flow-next>{{ ic.icon('arrow-right') }} Submit application</button>
+        </div>
+      </section>
+
+      <section class="flow-screen flow-done" data-step="4" hidden>
+        <div class="flow-check">{{ ic.icon('check') }}</div>
+        <h3>Application sent</h3>
+        <p>The blinded summary just landed in the study team's intake queue. They review and reach out - the click became a screened, consented candidate.</p>
+        <div class="flow-done-actions">
+          <button type="button" class="btn btn-ghost" data-flow-restart>{{ ic.icon('activity') }} Replay</button>
+          <button type="button" class="btn btn-primary" data-flow-close>Done</button>
+        </div>
+      </section>
+
+    </div>
+  </div>
+</div>
+
 <script>
 (function () {
   var headline = document.getElementById('cHeadline');
@@ -123,6 +196,15 @@
   var pvCta = document.getElementById('pvCta');
   var pvPlatform = document.getElementById('pvPlatform');
   if (!headline || !pvHeadline) return;
+
+  function destTitle() {
+    var el = document.querySelector('[name="title"]');
+    return (el && el.value.trim()) || 'Clinical research study';
+  }
+  function destCond() {
+    var el = document.querySelector('[name="condition"]');
+    return (el && el.value.trim()) || '';
+  }
   function sync() {
     pvHeadline.textContent = headline.value || 'Your ad headline';
     pvText.textContent = text.value || 'Your ad text will appear here.';
@@ -134,6 +216,42 @@
     el.addEventListener('change', sync);
   });
   sync();
+
+  // ---- click-to-apply walkthrough ----
+  var demo = document.getElementById('flowDemo');
+  var screens = Array.prototype.slice.call(demo.querySelectorAll('.flow-screen'));
+  var dots = Array.prototype.slice.call(demo.querySelectorAll('.flow-dot'));
+  var step = 1;
+
+  function render() {
+    screens.forEach(function (s) { s.hidden = (+s.getAttribute('data-step') !== step); });
+    dots.forEach(function (d) { d.classList.toggle('on', +d.getAttribute('data-dot') <= step); });
+  }
+  function hydrate() {
+    document.getElementById('fHeadline').textContent = pvHeadline.textContent;
+    document.getElementById('fText').textContent = pvText.textContent;
+    document.getElementById('fCta').textContent = pvCta.textContent;
+    document.getElementById('fPlatform').textContent = pvPlatform.textContent;
+    var t = destTitle(), c = destCond();
+    document.getElementById('fTrialTitle').textContent = t;
+    document.getElementById('fLandTitle').textContent = c ? (c + ': this study may be a fit for you.') : 'This study may be a fit for you.';
+    var cond = document.getElementById('fTrialCond');
+    cond.textContent = c; cond.hidden = !c;
+  }
+  function open() { hydrate(); step = 1; render(); demo.hidden = false; document.body.style.overflow = 'hidden'; }
+  function close() { demo.hidden = true; document.body.style.overflow = ''; }
+
+  document.querySelectorAll('[data-flow-open]').forEach(function (b) {
+    b.addEventListener('click', open);
+  });
+  demo.addEventListener('click', function (e) {
+    if (e.target.closest('[data-flow-close]')) return close();
+    if (e.target.closest('[data-flow-restart]')) { step = 1; return render(); }
+    if (e.target.closest('[data-flow-next]')) { step = Math.min(4, step + 1); return render(); }
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && !demo.hidden) close();
+  });
 })();
 </script>
 {% endblock %}

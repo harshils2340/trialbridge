@@ -26,7 +26,6 @@
 {% block body %}
 <section class="hero">
   <div class="hero-in">
-    <span class="hero-eyebrow">{{ ic.icon('sparkle') }} Real-time recruiting trials, updated continuously</span>
     <h1>{{ 'Find your next trial match.' if patient_user else 'Find recruiting trials near you.' }}</h1>
     <p class="hero-sub">{{ 'Search again with your saved context and keep applications moving.' if patient_user else 'Enter condition and location, then apply to the best matches.' }}</p>
     {% if not pov_demo %}

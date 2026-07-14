@@ -1461,6 +1461,62 @@ body.demo-home .hero-search { max-width: 860px; margin-top: 28px; }
 .camp-link-title .ico { width: 15px; height: 15px; color: var(--ok, #16a34a); }
 .camp-hint { margin: 14px 0 0; font-size: 12.5px; color: var(--muted); line-height: 1.5; }
 .camp-link-cell { display: flex; gap: 6px; flex-wrap: wrap; }
+.camp-demo-btn { margin-top: 14px; }
+.camp-demo-hint { margin: 8px 0 0; font-size: 12px; color: var(--muted); line-height: 1.45; text-align: center; }
+.ad-cta[data-flow-open], .ad-cta[data-flow-next] { cursor: pointer; }
+.ad-cta[data-flow-open]:hover, .ad-cta[data-flow-next]:hover { filter: brightness(1.06); }
+
+/* Click-to-apply walkthrough modal (phone frame) */
+.flow-demo { position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 24px; }
+.flow-demo[hidden] { display: none; }
+.flow-backdrop { position: absolute; inset: 0; background: rgba(17,17,20,.55); backdrop-filter: blur(2px); }
+.flow-phone { position: relative; width: 360px; max-width: 100%; max-height: 90vh; overflow-y: auto;
+  background: var(--surface); border: 1px solid var(--border-strong); border-radius: 26px;
+  box-shadow: 0 24px 60px rgba(17,17,20,.35); padding: 18px 16px 20px; }
+.flow-x { position: absolute; top: 12px; right: 12px; width: 30px; height: 30px; border-radius: 50%;
+  border: 1px solid var(--border); background: var(--surface-2); color: var(--muted); cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center; }
+.flow-x:hover { color: var(--ink); }
+.flow-x .ico { width: 15px; height: 15px; }
+.flow-steps { display: flex; gap: 6px; justify-content: center; margin: 2px 0 14px; }
+.flow-dot { width: 22px; height: 4px; border-radius: 999px; background: var(--border-strong); transition: background .2s; }
+.flow-dot.on { background: var(--accent); }
+.flow-screen { animation: flowIn .28s ease; }
+@keyframes flowIn { from { opacity: 0; transform: translateX(10px); } to { opacity: 1; transform: none; } }
+.flow-label { font-size: 11px; font-weight: 800; letter-spacing: .03em; text-transform: uppercase; color: var(--muted); margin-bottom: 10px; }
+.flow-note { margin: 10px 2px 0; font-size: 12px; color: var(--muted); text-align: center; }
+.flow-ad { box-shadow: none; }
+
+.flow-land { text-align: center; padding: 4px 2px; }
+.flow-land .inv-badge { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700;
+  color: var(--accent); background: var(--accent-soft); border-radius: 999px; padding: 5px 11px; margin-bottom: 12px; }
+.flow-land .inv-badge .ico { width: 14px; height: 14px; }
+.flow-land h3 { margin: 0 0 6px; font-size: 17px; line-height: 1.3; }
+.flow-land-sub { margin: 0 0 14px; font-size: 13px; color: var(--muted); line-height: 1.5; }
+.flow-trial { border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; margin-bottom: 14px; text-align: left; }
+.flow-trial b { display: block; font-size: 14px; margin-bottom: 2px; }
+.flow-trial span { font-size: 12.5px; color: var(--muted); }
+
+.flow-form { display: flex; flex-direction: column; gap: 11px; }
+.flow-prefill { display: flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 600; color: var(--ok, #16a34a);
+  background: rgba(22,163,74,.09); border-radius: 10px; padding: 9px 11px; line-height: 1.4; }
+.flow-prefill .ico { width: 15px; height: 15px; flex: none; }
+.flow-fld { display: flex; flex-direction: column; gap: 5px; font-size: 12px; font-weight: 600; color: var(--muted); }
+.flow-fld select, .flow-fld input { padding: 9px 11px; border: 1px solid var(--border-strong); border-radius: 9px;
+  font: inherit; font-size: 13px; background: #fff; color: var(--ink); }
+.flow-fld-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.flow-consent { display: flex; align-items: flex-start; gap: 8px; font-size: 12px; color: var(--ink); line-height: 1.4; }
+.flow-consent input { margin-top: 2px; }
+
+.flow-done { text-align: center; padding: 14px 4px 4px; }
+.flow-check { width: 52px; height: 52px; margin: 0 auto 12px; border-radius: 50%; background: rgba(22,163,74,.12);
+  color: var(--ok, #16a34a); display: flex; align-items: center; justify-content: center; }
+.flow-check .ico { width: 26px; height: 26px; }
+.flow-done h3 { margin: 0 0 8px; font-size: 18px; }
+.flow-done p { margin: 0 0 16px; font-size: 13px; color: var(--muted); line-height: 1.55; }
+.flow-done-actions { display: flex; gap: 8px; justify-content: center; }
+
+[data-theme="dark"] .flow-fld select, [data-theme="dark"] .flow-fld input { background: var(--surface); border-color: var(--border-strong); }
 
 /* Study-team setup + claimed-study scoping */
 .site-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-bottom: 18px; }
