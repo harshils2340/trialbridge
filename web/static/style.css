@@ -3073,7 +3073,8 @@ main:focus { outline: none; }
 .chat-topbar-title { flex: none; font-family: 'Manrope', system-ui, sans-serif; font-size: 20px; font-weight: 800; }
 .chat-space-pill { flex: none; display: inline-flex; align-items: center; gap: 8px; max-width: 320px;
   font-family: 'Manrope', system-ui, sans-serif; font-size: 14px; font-weight: 800; color: #fff;
-  background: var(--accent); border-radius: 999px; padding: 9px 16px; box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+  background: var(--trial-accent, var(--accent)); border-radius: 999px; padding: 9px 16px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.12); transition: background .18s ease; }
 .chat-space-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: #fff;
   box-shadow: 0 0 0 3px rgba(255,255,255,.35); }
 .chat-omni { flex: 1; max-width: none; margin: 0; display: flex; align-items: center; gap: 10px;
@@ -3121,13 +3122,16 @@ body.col-resizing iframe { pointer-events: none; }
 /* Trial switcher: one clear header that names the current trial + a dropdown to switch */
 .trial-switch { position: relative; padding: 12px 12px 10px; border-bottom: 1px solid var(--border); }
 .trial-switch-btn { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 12px;
-  border-radius: 12px; border: 1px solid var(--border); background: var(--surface-2); color: var(--ink);
-  font: inherit; text-align: left; cursor: pointer; transition: border-color .12s ease, background .12s ease; }
-.trial-switch-btn:hover:not([disabled]) { border-color: var(--border-strong); background: var(--surface); }
+  border-radius: 12px; border: 1px solid var(--border); border-left: 4px solid var(--trial-accent, var(--accent));
+  background: var(--surface-2); color: var(--ink);
+  font: inherit; text-align: left; cursor: pointer; transition: border-color .18s ease, background .12s ease; }
+.trial-switch-btn:hover:not([disabled]) { border-color: var(--border-strong); background: var(--surface);
+  border-left-color: var(--trial-accent, var(--accent)); }
 .trial-switch-btn[disabled] { cursor: default; }
-.trial-switch-btn[aria-expanded="true"] { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(79,70,229,.12); }
+.trial-switch-btn[aria-expanded="true"] { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(79,70,229,.12);
+  border-left-color: var(--trial-accent, var(--accent)); }
 .trial-switch-eye { flex: none; font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase;
-  color: var(--accent); background: rgba(79,70,229,.10); padding: 3px 7px; border-radius: 6px; }
+  color: #fff; background: var(--trial-accent, var(--accent)); padding: 3px 7px; border-radius: 6px; }
 .trial-switch-name { flex: 1; min-width: 0; font-weight: 700; font-size: 14px; line-height: 1.25;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .trial-switch-caret { flex: none; color: var(--muted); font-size: 12px; }
@@ -3137,7 +3141,9 @@ body.col-resizing iframe { pointer-events: none; }
 .trial-switch-opt { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 10px;
   border: none; border-radius: 9px; background: transparent; color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
 .trial-switch-opt:hover { background: var(--surface-2); }
-.trial-switch-opt.on { background: rgba(79,70,229,.10); }
+.trial-switch-opt.on { background: var(--surface-2); }
+.tso-dot { flex: none; width: 10px; height: 10px; border-radius: 50%; box-shadow: 0 0 0 2px var(--surface); }
+.trial-switch-opt.on .tso-dot { box-shadow: 0 0 0 2px var(--surface), 0 0 0 3px currentColor; }
 .tso-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .tso-title { font-weight: 700; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tso-nct { font-size: 11px; color: var(--muted); }

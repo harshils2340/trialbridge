@@ -9,6 +9,8 @@
   'docs':     {'label': 'Awaiting docs', 'icon': 'paperclip'},
   'followup': {'label': 'Follow up',     'icon': 'arrow-right'}
 } %}
+{# Per-trial accent so it's instantly obvious which trial you're in. #}
+{% set TRIAL_COLORS = ['#4f46e5', '#0f766e', '#be123c', '#b45309', '#6d28d9', '#0369a1', '#15803d', '#a21caf', '#c2410c'] %}
 <div class="chat-topbar">
   {% if trials %}<div class="chat-space-pill" title="You're viewing this trial">
     <span class="chat-space-dot"></span>
@@ -60,7 +62,9 @@
         {% for t in trials %}
         {% set tu = t.patients | sum(attribute='unread') %}
         <button type="button" class="trial-switch-opt {{ 'on' if t.nct == active_nct else '' }}"
-                role="option" data-trial-tab="{{ t.nct }}">
+                role="option" data-trial-tab="{{ t.nct }}"
+                data-accent="{{ TRIAL_COLORS[loop.index0 % TRIAL_COLORS|length] }}">
+          <span class="tso-dot" style="background: {{ TRIAL_COLORS[loop.index0 % TRIAL_COLORS|length] }}"></span>
           <span class="tso-main">
             <span class="tso-title">{{ t.title }}</span>
             <span class="tso-nct">{{ t.nct }}</span>
@@ -82,7 +86,7 @@
     </div>
     <div class="inbox-convos" id="inboxConvos">
       {% for t in trials %}
-      <div class="chan-group" data-nct="{{ t.nct }}" {{ 'hidden' if t.nct != active_nct else '' }}>
+      <div class="chan-group" data-nct="{{ t.nct }}" data-accent="{{ TRIAL_COLORS[loop.index0 % TRIAL_COLORS|length] }}" {{ 'hidden' if t.nct != active_nct else '' }}>
         <div class="chan-trial">
           <div class="chan-trial-main">
             <span class="chan-title-lg">{{ t.title }}</span>
@@ -466,14 +470,21 @@
   var onOpt = document.querySelector('.trial-switch-opt.on');
   var activeTrial = onOpt ? onOpt.getAttribute('data-trial-tab')
                           : (groups[0] && groups[0].getAttribute('data-nct'));
+  var chatRoot = document.querySelector('.content-chat') || document.body;
   function trialTitle(nct) {
     var g = document.querySelector('.chan-group[data-nct="' + nct + '"] .chan-title-lg');
     return (g && g.textContent.trim()) || nct || '';
+  }
+  function trialAccent(nct) {
+    var g = document.querySelector('.chan-group[data-nct="' + nct + '"]');
+    return (g && g.getAttribute('data-accent')) || '';
   }
   function updateSpace() {
     var title = trialTitle(activeTrial);
     if (spaceChip) spaceChip.textContent = title;
     if (switchName) switchName.textContent = title;
+    var accent = trialAccent(activeTrial);
+    if (accent) chatRoot.style.setProperty('--trial-accent', accent);
   }
   function closeSwitch() {
     if (switchMenu) { switchMenu.hidden = true; }
