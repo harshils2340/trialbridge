@@ -3517,8 +3517,9 @@ def patient_inbox():
     valid_ncts = {t["nct"] for t in trials}
     sel_lead = request.args.get("lead_id", type=int)
     sel_nct = request.args.get("nct")
-    want_team = request.args.get("team")
 
+    # Gmail-style: only open a thread when a specific patient is chosen; the
+    # default landing is the inbox LIST for whichever trial "account" is open.
     active = None
     if sel_lead:
         for t in trials:
@@ -3527,20 +3528,18 @@ def patient_inbox():
             if match:
                 active = {"kind": "patient", "nct": t["nct"], "convo": match}
                 break
-    if not active and want_team and sel_nct in valid_ncts:
-        active = {"kind": "team", "nct": sel_nct}
-    if not active:
-        # Default to the first patient conversation (the wedge); fall back to a
-        # team channel only if there are no patients yet.
-        first = next(((t["nct"], t["patients"][0]) for t in trials
-                      if t["patients"]), None)
-        if first:
-            active = {"kind": "patient", "nct": first[0], "convo": first[1]}
-        elif trials:
-            active = {"kind": "team", "nct": trials[0]["nct"]}
+
+    # Which trial inbox is open (the Gmail "account"): the opened patient's
+    # trial, else an explicit ?nct=, else the first trial.
+    if active:
+        open_nct = active["nct"]
+    elif sel_nct in valid_ncts:
+        open_nct = sel_nct
+    else:
+        open_nct = trials[0]["nct"] if trials else None
 
     detail = None
-    if active and active["kind"] == "patient":
+    if active:
         p = active["convo"]
         lid = p["lead"]["id"]
         detail = {
@@ -3548,24 +3547,13 @@ def patient_inbox():
             "lead": p["lead"], "code": p["code"],
             "messages": db.get_messages(lid),
             "files": db.list_attachments(lid),
-            "tasks": db.list_tasks(lid),
             "tags": p["tags"],
         }
         db.mark_thread_read(lid, "site")
         p["unread"] = 0  # reflect the read in the rail
-    elif active and active["kind"] == "team":
-        nct = active["nct"]
-        tmsgs = db.list_team_messages(nct)
-        detail = {
-            "kind": "team", "nct": nct,
-            "title": title_by_nct.get(nct, nct),
-            "messages": tmsgs,
-            "attachments": db.list_team_attachments([m["id"] for m in tmsgs]),
-        }
 
     return render_template("messages.html", trials=trials, active=detail,
-                           labels=db.LEAD_LABELS, me_id=uid,
-                           tag_defs=db.CONV_TAGS)
+                           open_nct=open_nct, labels=db.LEAD_LABELS)
 
 
 @app.route("/app/leads/<int:lead_id>/coverage-check", methods=["POST"])
