@@ -1,14 +1,8 @@
 {% extends "base.html" %}
-{% block title %}Conversations · BridgeMD{% endblock %}
+{% block title %}Inbox · BridgeMD{% endblock %}
 {% block content_class %}content-chat{% endblock %}
 
 {% block body %}
-{% set TAGMETA = {
-  'pinned':   {'label': 'Pinned',        'icon': 'pin'},
-  'consent':  {'label': 'Needs consent', 'icon': 'check'},
-  'docs':     {'label': 'Awaiting docs', 'icon': 'paperclip'},
-  'followup': {'label': 'Follow up',     'icon': 'arrow-right'}
-} %}
 {# Per-trial accent so it's instantly obvious which trial you're in. #}
 {% set TRIAL_COLORS = ['#4f46e5', '#0f766e', '#be123c', '#b45309', '#6d28d9', '#0369a1', '#15803d', '#a21caf', '#c2410c'] %}
 <div class="chat-topbar">
@@ -22,7 +16,7 @@
     <kbd class="chat-omni-kbd">/</kbd>
   </div>
   <div class="chat-topbar-actions">
-    {% if trials %}<button type="button" class="btn btn-primary btn-sm" id="msgAllBtn">{{ ic.icon('send') }} Message a trial</button>{% endif %}
+    {% if trials %}<button type="button" class="btn btn-primary btn-sm" id="msgAllBtn">{{ ic.icon('send') }} Message everyone</button>{% endif %}
     <a class="btn btn-ghost btn-sm" href="{{ url_for('leads') }}">{{ ic.icon('user-plus') }} Candidate review</a>
   </div>
 </div>
@@ -32,7 +26,7 @@
   <div class="card">
     <div class="empty">
       <h3>No trials yet</h3>
-      <p>Claim a study to open its team channel, then accept candidates to start private patient threads.</p>
+      <p>Claim a study, then accept candidates to start a private message thread with each patient.</p>
       <a class="btn btn-primary" href="{{ url_for('site_setup') }}">{{ ic.icon('award') }} Set up site and claim studies</a>
     </div>
   </div>
@@ -41,8 +35,6 @@
 
 {% if active and active.kind == 'patient' %}
   {% set nxt = url_for('patient_inbox', lead_id=active.lead.id) %}
-{% elif active %}
-  {% set nxt = url_for('patient_inbox', nct=active.nct, team=1) %}
 {% else %}
   {% set nxt = url_for('patient_inbox') %}
 {% endif %}
@@ -76,12 +68,10 @@
       {% endif %}
     </div>
     <div class="inbox-filters">
-      <div class="inbox-chips" role="tablist" aria-label="Filter conversations">
+      <div class="inbox-chips" role="tablist" aria-label="Filter people">
         <button type="button" class="inbox-chip on" data-status="all">All</button>
         <button type="button" class="inbox-chip" data-status="unread">Unread</button>
-        <button type="button" class="inbox-chip" data-status="turn">Your turn</button>
-        <button type="button" class="inbox-chip" data-status="todo">To-dos</button>
-        <button type="button" class="inbox-chip" data-status="pinned">{{ ic.icon('pin') }} Pinned</button>
+        <button type="button" class="inbox-chip" data-status="turn">Needs reply</button>
       </div>
     </div>
     <div class="inbox-convos" id="inboxConvos">
@@ -90,7 +80,7 @@
         <div class="chan-trial">
           <div class="chan-trial-main">
             <span class="chan-title-lg">{{ t.title }}</span>
-            <span class="chan-nct">{{ t.nct }}</span>
+            <span class="chan-nct">{{ t.nct }} &middot; {{ t.patients|length }} {{ 'person' if t.patients|length == 1 else 'people' }}</span>
           </div>
           {% if t.patients|length %}
           <button type="button" class="chan-intake-all" data-nct="{{ t.nct }}"
@@ -100,37 +90,23 @@
           {% endif %}
         </div>
 
-        <a class="inbox-convo chan-row {{ 'on' if active and active.kind == 'team' and active.nct == t.nct else '' }}"
-           data-name="team {{ t.title | lower }} {{ t.nct | lower }}" data-unread="0" data-nct="{{ t.nct }}" data-keep
-           href="{{ url_for('patient_inbox', nct=t.nct, team=1) }}">
-          <span class="inbox-avatar team">{{ ic.icon('list') }}</span>
-          <span class="inbox-convo-main">
-            <span class="inbox-convo-top"><span class="inbox-name">Team channel</span></span>
-            <span class="inbox-preview">Staff only &middot; not visible to patients</span>
-          </span>
-        </a>
-
-        <div class="chan-lane">Patients &middot; {{ t.patients|length }}</div>
         {% for c in t.patients %}
         {% set initials = (c.lead.name or c.code).split()[:2] | map('first') | join | upper %}
         <a class="inbox-convo chan-row {{ 'on' if active and active.kind == 'patient' and active.lead.id == c.lead.id else '' }}"
            data-name="{{ (c.lead.name or c.code) | lower }}" data-unread="{{ 1 if c.unread else 0 }}"
            data-nct="{{ t.nct }}" data-turn="{{ 1 if c.awaiting_reply else 0 }}"
-           data-todo="{{ 1 if c.open_tasks else 0 }}" data-pinned="{{ 1 if c.pinned else 0 }}"
            href="{{ url_for('patient_inbox', lead_id=c.lead.id) }}">
           <span class="inbox-avatar">{{ initials or 'C' }}</span>
           <span class="inbox-convo-main">
             <span class="inbox-convo-top">
-              <span class="inbox-name">{% if c.pinned %}<span class="inbox-pin">{{ ic.icon('pin') }}</span>{% endif %}{{ c.lead.name or c.code }}</span>
+              <span class="inbox-name">{{ c.lead.name or c.code }}</span>
               <span class="inbox-when">{{ c.last_label }}</span>
             </span>
             <span class="inbox-preview {{ 'unread' if c.unread else '' }}">
               {% if c.preview_mine %}<span class="inbox-you">You:</span> {% endif %}{{ c.preview }}</span>
             <span class="inbox-convo-tags">
               <span class="inbox-stage stage-{{ c.lead.status }}">{{ labels.get(c.lead.status, c.lead.status) }}</span>
-              {% if c.awaiting_reply and not c.unread %}<span class="inbox-turn">{{ ic.icon('arrow-right') }} Your turn</span>{% endif %}
-              {% if c.open_tasks %}<span class="inbox-todo">{{ c.open_tasks }} to-do{{ 's' if c.open_tasks != 1 else '' }}</span>{% endif %}
-              {% for tg in c.tags if tg != 'pinned' %}<span class="inbox-tagchip">{{ TAGMETA[tg].label }}</span>{% endfor %}
+              {% if c.awaiting_reply and not c.unread %}<span class="inbox-turn">{{ ic.icon('arrow-right') }} Needs reply</span>{% endif %}
             </span>
           </span>
           {% if c.unread %}<span class="inbox-unread">{{ c.unread }}</span>{% endif %}
@@ -141,73 +117,18 @@
       </div>
       {% endfor %}
     </div>
-    <p class="inbox-empty-search" id="inboxNoMatch" hidden>No patients match.</p>
+    <p class="inbox-empty-search" id="inboxNoMatch" hidden>No people match.</p>
   </aside>
 
   <div class="col-resizer" id="colResizer" role="separator" aria-orientation="vertical"
        title="Drag to resize" tabindex="0"></div>
 
-  {% if active and active.kind == 'team' %}
-  {# ---- Internal team channel (staff only) ---- #}
-  <section class="inbox-main card" data-recipient="your study team (internal)" data-trial="{{ active.nct }} - {{ active.title }}">
-    <div class="inbox-head">
-      <span class="inbox-avatar lg team">{{ ic.icon('list') }}</span>
-      <div class="inbox-head-main">
-        <h2>Team channel</h2>
-        <p class="inbox-head-sub">
-          <span class="inbox-stage stage-internal">Internal &middot; staff only</span>
-          <span class="inbox-head-nct">{{ active.nct }} &middot; {{ active.title }}</span>
-        </p>
-      </div>
-    </div>
-
-    <div class="inbox-thread" id="inboxThread">
-      {% set day = namespace(cur='') %}
-      {% for m in active.messages %}
-      {% set mday = (m.created_at or '').split(' ')[0] %}
-      {% if mday and mday != day.cur %}
-      <div class="inbox-day"><span>{{ mday }}</span></div>
-      {% set day.cur = mday %}
-      {% endif %}
-      {% set mine = (m.sender_user_id == me_id) %}
-      <div class="inbox-msg {{ 'mine' if mine else 'theirs' }}">
-        <div class="inbox-bubble">
-          {% if not mine %}<div class="inbox-msg-who">{{ m.sender_name or 'Team member' }}</div>{% endif %}
-          {% if m.body %}<div class="inbox-msg-body">{{ m.body }}</div>{% endif %}
-          {% for f in active.attachments.get(m.id, []) %}
-          <a class="inbox-msg-file" href="{{ url_for('download_team_file', att_id=f.id) }}">{{ ic.icon('file') }}<span>{{ f.orig_name }}</span></a>
-          {% endfor %}
-          <div class="inbox-msg-time">{{ m.created_at.split(' ')[1] if ' ' in (m.created_at or '') else m.created_at }}</div>
-        </div>
-      </div>
-      {% else %}
-      <p class="thread-empty">No messages yet. Post an update or drop a working document for your study team.</p>
-      {% endfor %}
-    </div>
-
-    <div class="inbox-compose">
-      <form class="inbox-clip-form" method="post" enctype="multipart/form-data"
-            action="{{ url_for('team_channel_post', nct=active.nct) }}">
-        <input type="hidden" name="next" value="{{ nxt }}">
-        <label class="inbox-clip" title="Attach a document" aria-label="Attach a document">
-          {{ ic.icon('paperclip') }}
-          <input type="file" name="file" class="inbox-clip-input">
-        </label>
-      </form>
-      <form class="inbox-send-form" method="post" action="{{ url_for('team_channel_post', nct=active.nct) }}">
-        <input type="hidden" name="next" value="{{ nxt }}">
-        <textarea name="body" rows="1" placeholder="Message your study team..." data-grow required></textarea>
-        <button class="inbox-send" type="submit" aria-label="Send">{{ ic.icon('send') }}</button>
-      </form>
-    </div>
-    <p class="inbox-note">{{ ic.icon('help') }} Staff-only working channel for this trial - patients never see it. Already living in Slack? Use whichever fits; this keeps trial docs next to the people.</p>
-  </section>
-
-  {% elif active %}
-  {# ---- External: private patient thread ---- #}
-  <section class="inbox-main card" data-recipient="{{ active.lead.name or active.code }}" data-trial="{{ active.lead.nct }}">
-    {% set aname = active.lead.name or active.code %}
-    {% set ainit = aname.split()[:2] | map('first') | join | upper %}
+  {% if active and active.kind == 'patient' %}
+  {# ---- Private patient thread (email-style) ---- #}
+  {% set aname = active.lead.name or active.code %}
+  {% set ainit = aname.split()[:2] | map('first') | join | upper %}
+  {% set afirst = (active.lead.name or 'this patient').split()[0] %}
+  <section class="inbox-main card" data-recipient="{{ aname }}" data-trial="{{ active.lead.nct }}">
     <div class="inbox-head">
       <span class="inbox-avatar lg">{{ ainit or 'C' }}</span>
       <div class="inbox-head-main">
@@ -225,24 +146,13 @@
         <button type="submit" class="btn btn-primary btn-sm">{{ ic.icon('activity') }} {{ 'Resend intake form' if active.lead.redcap_survey_status == 'sent' else 'Send intake form' }}</button>
       </form>
       {% endif %}
-      <div class="inbox-tagbar">
-        {% for key, meta in TAGMETA.items() %}
-        <form method="post" action="{{ url_for('toggle_conv_tag', lead_id=active.lead.id) }}">
-          <input type="hidden" name="next" value="{{ nxt }}">
-          <input type="hidden" name="tag" value="{{ key }}">
-          <button type="submit" class="tagbtn {{ 'on' if key in active.tags else '' }}"
-                  title="{{ meta.label }}">{{ ic.icon(meta.icon) }} <span>{{ meta.label }}</span></button>
-        </form>
-        {% endfor %}
-      </div>
     </div>
 
+    {% if active.files %}
     <div class="inbox-context">
       <details class="inbox-panel">
-        <summary>{{ ic.icon('paperclip') }} Shared documents
-          {% if active.files %}<span class="inbox-chip-count">{{ active.files|length }}</span>{% endif %}</summary>
+        <summary>{{ ic.icon('paperclip') }} Shared documents<span class="inbox-chip-count">{{ active.files|length }}</span></summary>
         <div class="inbox-panel-body">
-          {% if active.files %}
           <ul class="inbox-doc-list">
             {% for f in active.files %}
             <li class="inbox-doc">
@@ -251,41 +161,12 @@
             </li>
             {% endfor %}
           </ul>
-          {% else %}
-          <p class="inbox-empty-note">No documents yet. Use the clip in the message box to send a consent form or intake sheet.</p>
-          {% endif %}
-        </div>
-      </details>
-
-      <details class="inbox-panel">
-        <summary>{{ ic.icon('check') }} Patient checklist
-          {% set open_t = active.tasks | selectattr('status','equalto','open') | list %}
-          {% if open_t %}<span class="inbox-chip-count open">{{ open_t|length }} open</span>
-          {% elif active.tasks %}<span class="inbox-chip-count done">All done</span>{% endif %}</summary>
-        <div class="inbox-panel-body">
-          {% if active.tasks %}
-          <ul class="inbox-task-list">
-            {% for t in active.tasks %}
-            <li class="inbox-task {{ 'done' if t.status == 'done' else '' }}">
-              <form method="post" action="{{ url_for('toggle_lead_task', lead_id=active.lead.id, task_id=t.id) }}">
-                <input type="hidden" name="next" value="{{ nxt }}">
-                <button type="submit" class="inbox-check" aria-label="Toggle done">{% if t.status == 'done' %}{{ ic.icon('check') }}{% endif %}</button>
-              </form>
-              <span class="inbox-task-title">{{ t.title }}</span>
-            </li>
-            {% endfor %}
-          </ul>
-          {% endif %}
-          <form method="post" action="{{ url_for('add_lead_task', lead_id=active.lead.id) }}" class="inbox-task-add">
-            <input type="hidden" name="next" value="{{ nxt }}">
-            <input type="text" name="title" placeholder="Add a to-do for {{ (active.lead.name or 'the patient').split()[0] }}..." required>
-            <button class="btn btn-sm btn-ghost" type="submit">{{ ic.icon('plus') }} Add</button>
-          </form>
         </div>
       </details>
     </div>
+    {% endif %}
 
-    <div class="inbox-thread" id="inboxThread">
+    <div class="inbox-thread mail-thread" id="inboxThread">
       {% set day = namespace(cur='') %}
       {% for m in active.messages %}
       {% set mday = (m.created_at or '').split(' ')[0] %}
@@ -298,42 +179,61 @@
       {% else %}
       {% set mine = (m.sender != 'patient') %}
       {% set is_doc = m.body.startswith('Shared a document: ') %}
-      <div class="inbox-msg {{ 'mine' if mine else 'theirs' }}">
-        <div class="inbox-bubble">
+      <article class="mail-msg {{ 'mine' if mine else '' }}">
+        {% if mine %}<span class="inbox-avatar sm you">{{ ic.icon('user') }}</span>
+        {% else %}<span class="inbox-avatar sm">{{ ainit or 'C' }}</span>{% endif %}
+        <div class="mail-msg-main">
+          <div class="mail-msg-head">
+            <span class="mail-from">{{ 'You' if mine else aname }}</span>
+            <span class="mail-time">{{ m.created_at.split(' ')[1][:5] if ' ' in (m.created_at or '') else m.created_at }}</span>
+          </div>
           {% if is_doc %}
           {% set fname = m.body[19:].split(' - ')[0] %}
           {% set match = active.files | selectattr('orig_name','equalto',fname) | first %}
-          <a class="inbox-msg-file" href="{{ url_for('download_lead_file', att_id=match.id) if match else '#' }}">
+          <a class="mail-file" href="{{ url_for('download_lead_file', att_id=match.id) if match else '#' }}">
             {{ ic.icon('file') }}<span>{{ fname }}</span></a>
-          {% if ' - ' in m.body %}<div class="inbox-msg-note">{{ m.body.split(' - ', 1)[1] }}</div>{% endif %}
+          {% if ' - ' in m.body %}<div class="mail-note">{{ m.body.split(' - ', 1)[1] }}</div>{% endif %}
           {% else %}
-          <div class="inbox-msg-body">{{ m.body }}</div>
+          <div class="mail-body">{{ m.body }}</div>
           {% endif %}
-          <div class="inbox-msg-time">{{ m.created_at.split(' ')[1] if ' ' in (m.created_at or '') else m.created_at }}</div>
         </div>
-      </div>
+      </article>
       {% endif %}
       {% else %}
-      <p class="thread-empty">No messages yet. Say hello, share a form, or assign a to-do to get {{ (active.lead.name or 'the patient').split()[0] }} moving.</p>
+      <p class="thread-empty">No messages yet. Say hello or send {{ afirst }} a form to get things moving.</p>
       {% endfor %}
     </div>
 
-    <div class="inbox-compose">
-      <form class="inbox-clip-form" method="post" enctype="multipart/form-data"
-            action="{{ url_for('attach_lead_file', lead_id=active.lead.id) }}">
-        <input type="hidden" name="next" value="{{ nxt }}">
-        <label class="inbox-clip" title="Attach a document" aria-label="Attach a document">
-          {{ ic.icon('paperclip') }}
-          <input type="file" name="file" class="inbox-clip-input">
-        </label>
-      </form>
-      <form class="inbox-send-form" method="post" action="{{ url_for('message_lead', lead_id=active.lead.id) }}">
-        <input type="hidden" name="next" value="{{ nxt }}">
-        <textarea name="body" rows="1" placeholder="Message {{ (active.lead.name or 'this candidate').split()[0] }}..." data-grow required></textarea>
-        <button class="inbox-send" type="submit" aria-label="Send">{{ ic.icon('send') }}</button>
-      </form>
+    <div class="mail-compose">
+      <div class="mail-compose-to">{{ ic.icon('arrow-right') }} Replying to <b>{{ afirst }}</b> &middot; private &amp; logged to the study record</div>
+      <div class="inbox-compose">
+        <form class="inbox-clip-form" method="post" enctype="multipart/form-data"
+              action="{{ url_for('attach_lead_file', lead_id=active.lead.id) }}">
+          <input type="hidden" name="next" value="{{ nxt }}">
+          <label class="inbox-clip" title="Attach a document" aria-label="Attach a document">
+            {{ ic.icon('paperclip') }}
+            <input type="file" name="file" class="inbox-clip-input">
+          </label>
+        </form>
+        <form class="inbox-send-form" method="post" action="{{ url_for('message_lead', lead_id=active.lead.id) }}">
+          <input type="hidden" name="next" value="{{ nxt }}">
+          <textarea name="body" rows="2" placeholder="Write a message to {{ afirst }}..." data-grow required></textarea>
+          <button class="btn btn-primary btn-sm inbox-send-btn" type="submit">{{ ic.icon('send') }} Send</button>
+        </form>
+      </div>
+      <p class="inbox-note">{{ ic.icon('help') }} Share only IRB/REB-approved materials - no PHI you aren't cleared to send.</p>
     </div>
-    <p class="inbox-note">{{ ic.icon('help') }} Private to this patient and logged for the study record. Share only IRB/REB-approved materials - no PHI you aren't cleared to send.</p>
+  </section>
+
+  {% else %}
+  {# ---- No patient selected (e.g. a trial with no accepted patients yet) ---- #}
+  <section class="inbox-main card inbox-main-empty">
+    <div class="empty">
+      <span class="inbox-avatar lg">{{ ic.icon('chat') }}</span>
+      <h3>Pick someone to open their thread</h3>
+      <p>Choose a patient on the left to read the conversation, send a message, or share a form. No accepted patients in this trial yet? Accept candidates in Candidate review.</p>
+      <a class="btn btn-ghost btn-sm" href="{{ url_for('leads') }}">{{ ic.icon('user-plus') }} Candidate review</a>
+    </div>
   </section>
   {% endif %}
 </div>
@@ -492,26 +392,18 @@
   }
 
   function matchStatus(el) {
-    if (status === 'all') return true;
     if (status === 'unread') return el.getAttribute('data-unread') === '1';
     if (status === 'turn') return el.getAttribute('data-turn') === '1';
-    if (status === 'todo') return el.getAttribute('data-todo') === '1';
-    if (status === 'pinned') return el.getAttribute('data-pinned') === '1';
     return true;
   }
   function applyFilter() {
     var q = (search && search.value || '').trim().toLowerCase();
     var searching = !!q;                     // global search spans every trial
-    var narrowing = q || status !== 'all';
     var shownPatients = 0;
     groups.forEach(function (g) {
       var isActive = g.getAttribute('data-nct') === activeTrial;
       var groupHasMatch = false;
       g.querySelectorAll('.inbox-convo').forEach(function (el) {
-        if (el.hasAttribute('data-keep')) {  // team channel row
-          el.hidden = narrowing || !isActive;
-          return;
-        }
         var okName = !q || (el.getAttribute('data-name') || '').indexOf(q) !== -1;
         var okScope = searching || isActive;
         var show = okScope && okName && matchStatus(el);
@@ -519,8 +411,6 @@
         if (show) { shownPatients++; groupHasMatch = true; }
       });
       g.hidden = searching ? !groupHasMatch : !isActive;
-      var lane = g.querySelector('.chan-lane');
-      if (lane) lane.hidden = narrowing;
     });
     if (noMatch) noMatch.hidden = shownPatients !== 0;
   }
