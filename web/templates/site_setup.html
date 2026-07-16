@@ -258,8 +258,9 @@
           {% else %}
           {{ c['nct'] }}
           {% endif %}
+          {% if c['verified'] %}{{ ui.badge('Verified', 'ok') }}{% else %}{{ ui.badge('Pending verification', 'warn') }}{% endif %}
         </td>
-        <td>{{ c['title'] or '-' }}</td>
+        <td>{{ c['title'] or '-' }}{% if not c['verified'] %}<div class="hint">Applicants stay hidden until your study affiliation is approved.</div>{% endif %}</td>
         <td>
           <form method="post" action="{{ url_for('update_study_claim_notify_email') }}" class="site-form">
             <input type="hidden" name="nct" value="{{ c['nct'] }}">

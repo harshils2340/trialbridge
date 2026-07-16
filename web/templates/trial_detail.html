@@ -191,15 +191,33 @@
         <input type="hidden" name="sex" value="{{ q_sex or (records_profile.sex if records_profile else '') }}">
         <input type="hidden" name="eligibility" value='{{ {"verdict": m.verdict, "rationale": m.rationale, "met": m.met, "unknown": m.unknown, "not_met": m.not_met}|tojson }}'>
 
+        {% set q_total = (prescreen|length + 2) if prescreen else 4 %}
         <div class="if-screener">
-          <label><span>Can you travel to the study site for visits?</span>
-            <select name="travel"><option value="yes">Yes</option><option value="maybe">Not sure</option><option value="no">No</option></select></label>
-          <label><span>Are you currently in another clinical trial?</span>
-            <select name="other_trial"><option value="no">No</option><option value="yes">Yes</option></select></label>
-          <label><span>Are you pregnant or planning to become pregnant?</span>
-            <select name="pregnancy"><option value="no">No</option><option value="yes">Yes</option><option value="na">Not applicable</option></select></label>
-          <label><span>Can you give your own informed consent?</span>
-            <select name="consent_capable"><option value="yes">Yes</option><option value="no">No</option></select></label>
+          <div class="if-screener-head">A few quick questions ({{ q_total }}) to pre-screen you for this study</div>
+          {% if prescreen %}
+            {% for q in prescreen %}
+            <label><span>{{ loop.index }}. {{ q.q }}</span>
+              <input type="hidden" name="sq_{{ loop.index0 }}" value="{{ q.q }}">
+              <input type="hidden" name="sf_{{ loop.index0 }}" value="{{ q.flag_if }}">
+              <select name="sa_{{ loop.index0 }}" required>
+                <option value="" disabled selected>Select</option>
+                <option value="yes">Yes</option><option value="no">No</option><option value="unsure">Not sure</option>
+              </select></label>
+            {% endfor %}
+            <label><span>{{ prescreen|length + 1 }}. Can you travel to the study site for visits?</span>
+              <select name="travel"><option value="yes">Yes</option><option value="maybe">Not sure</option><option value="no">No</option></select></label>
+            <label><span>{{ prescreen|length + 2 }}. Can you give your own informed consent?</span>
+              <select name="consent_capable"><option value="yes">Yes</option><option value="no">No</option></select></label>
+          {% else %}
+            <label><span>1. Can you travel to the study site for visits?</span>
+              <select name="travel"><option value="yes">Yes</option><option value="maybe">Not sure</option><option value="no">No</option></select></label>
+            <label><span>2. Are you currently in another clinical trial?</span>
+              <select name="other_trial"><option value="no">No</option><option value="yes">Yes</option></select></label>
+            <label><span>3. Are you pregnant or planning to become pregnant?</span>
+              <select name="pregnancy"><option value="no">No</option><option value="yes">Yes</option><option value="na">Not applicable</option></select></label>
+            <label><span>4. Can you give your own informed consent?</span>
+              <select name="consent_capable"><option value="yes">Yes</option><option value="no">No</option></select></label>
+          {% endif %}
         </div>
 
         <div class="if-row two">

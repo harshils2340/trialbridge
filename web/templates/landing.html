@@ -267,6 +267,14 @@
       locCc = document.getElementById('locCc'), confirmEl = document.getElementById('locConfirm');
   var suggestTimer = null;
   var lastSuggestQuery = '';
+  // Autocomplete session token: groups keystrokes + the final place-details
+  // lookup into one billable Google session. Regenerated after each selection.
+  function newSessionToken() {
+    try { return (crypto.randomUUID && crypto.randomUUID()) ||
+      String(Date.now()) + Math.random().toString(16).slice(2); }
+    catch (e) { return String(Date.now()) + Math.random().toString(16).slice(2); }
+  }
+  var locSession = newSessionToken();
 
   function hideLocSuggest() {
     if (!locSuggest) return;
@@ -276,10 +284,34 @@
   function applyLocSuggestion(item) {
     if (!loc) return;
     loc.value = item.label || '';
-    if (locLat) locLat.value = item.lat || '';
-    if (locLon) locLon.value = item.lon || '';
     if (locCc) locCc.value = item.cc || '';
-    hideLocSuggest();
+    if (item.lat && item.lon) {
+      // Nominatim path: coords came inline.
+      if (locLat) locLat.value = item.lat;
+      if (locLon) locLon.value = item.lon;
+      hideLocSuggest();
+    } else if (item.place_id) {
+      // Google path: resolve coords once, on selection, using the session token.
+      if (locLat) locLat.value = '';
+      if (locLon) locLon.value = '';
+      fetch('{{ url_for("geo_place") }}?place_id=' + encodeURIComponent(item.place_id) +
+            '&session=' + encodeURIComponent(locSession))
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          if (d && d.ok) {
+            if (locLat) locLat.value = d.lat || '';
+            if (locLon) locLon.value = d.lon || '';
+            if (locCc && d.cc) locCc.value = d.cc;
+          }
+        })
+        .catch(function () { /* fall back to server-side geocode on submit */ })
+        .then(function () { locSession = newSessionToken(); });
+      hideLocSuggest();
+    } else {
+      if (locLat) locLat.value = '';
+      if (locLon) locLon.value = '';
+      hideLocSuggest();
+    }
   }
   function renderLocSuggest(items) {
     if (!locSuggest) return;
@@ -300,7 +332,8 @@
     var q = (loc.value || '').trim();
     if (q.length < 3) { hideLocSuggest(); return; }
     lastSuggestQuery = q;
-    fetch('{{ url_for("geo_suggest") }}?q=' + encodeURIComponent(q))
+    fetch('{{ url_for("geo_suggest") }}?q=' + encodeURIComponent(q) +
+          '&session=' + encodeURIComponent(locSession))
       .then(function (r) { return r.json(); })
       .then(function (d) {
         if (!loc || (loc.value || '').trim() !== lastSuggestQuery) return;

@@ -2145,6 +2145,8 @@ h1, h2, h3 {
 /* Patient apply: short screener */
 .if-screener { display: grid; gap: 10px; padding: 14px; background: var(--surface-2);
   border: 1px solid var(--border); border-radius: 10px; }
+.if-screener-head { font-size: 13px; font-weight: 700; color: var(--ink);
+  line-height: 1.4; }
 .if-screener label { font-size: 13px; font-weight: 600; color: var(--ink-soft); display: flex;
   align-items: center; justify-content: space-between; gap: 14px; flex-direction: row; }
 .if-screener label > span { flex: 1 1 auto; min-width: 0; line-height: 1.4; }

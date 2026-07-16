@@ -163,12 +163,15 @@ CREATE TABLE IF NOT EXISTS site_profiles (
 );
 
 -- A study team claims NCTs they manage. Leads are scoped by these claims.
+-- `verified` gates access: a claim only exposes applicant PHI once approved,
+-- so a self-serve account can't harvest a trial's applicants by claiming its NCT.
 CREATE TABLE IF NOT EXISTS study_claims (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id     INTEGER NOT NULL,
     nct         TEXT NOT NULL,
     title       TEXT DEFAULT '',
     notify_email TEXT DEFAULT '',
+    verified    INTEGER NOT NULL DEFAULT 1,
     created_at  TEXT NOT NULL,
     UNIQUE (user_id, nct),
     FOREIGN KEY (user_id) REFERENCES users(id)
@@ -469,6 +472,25 @@ CREATE TABLE IF NOT EXISTS trend_cache (
     updated_at  TEXT NOT NULL
 );
 
+-- Privacy-safe web analytics: one row per tracked on-site action so we can see
+-- traffic, where clicks come from, what people search, and the visit->search->
+-- view->apply drop-off. NO PHI: visitor is a random anon cookie id; detail holds
+-- only non-identifying facts (search term, result count, nct).
+CREATE TABLE IF NOT EXISTS web_events (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts          TEXT NOT NULL,
+    visitor     TEXT DEFAULT '',
+    name        TEXT NOT NULL,
+    path        TEXT DEFAULT '',
+    source      TEXT DEFAULT '',
+    medium      TEXT DEFAULT '',
+    campaign    TEXT DEFAULT '',
+    referrer    TEXT DEFAULT '',
+    detail      TEXT DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_web_events_ts ON web_events(ts);
+CREATE INDEX IF NOT EXISTS idx_web_events_name ON web_events(name);
+
 -- Plain-English trial summaries (see web/summarize.py). Cached per study so we
 -- only rewrite each description once.
 CREATE TABLE IF NOT EXISTS trial_summaries (
@@ -666,6 +688,9 @@ _MIGRATIONS = {
     },
     "study_claims": {
         "notify_email": "TEXT DEFAULT ''",
+        # Existing rows backfill to verified (1) so current demos keep working;
+        # new self-serve claims are inserted with verified=0 (pending approval).
+        "verified": "INTEGER NOT NULL DEFAULT 1",
     },
     "records_profiles": {
         "sync_status": "TEXT DEFAULT ''",
@@ -1166,20 +1191,15 @@ def set_lead_redcap(lead_id, record_id=None, survey_status=None):
 def find_lead_by_redcap_record(record_id):
     """Locate the lead a REDCap webhook/record id belongs to.
 
-    Matches the stored handoff record id first, then falls back to the lead's
-    own id (we seed record_id = lead id when creating the record)."""
+    Matches ONLY the stored handoff record id (set when the survey link is
+    created). We deliberately do NOT fall back to the lead's primary key: that
+    let a caller advance any patient by guessing sequential ids."""
     rid = str(record_id or "").strip()
     if not rid:
         return None
-    db = get_db()
-    row = db.execute(
+    return get_db().execute(
         "SELECT * FROM leads WHERE redcap_record_id = ? "
         "ORDER BY id DESC LIMIT 1", (rid,)).fetchone()
-    if row:
-        return row
-    if rid.isdigit():
-        return db.execute("SELECT * FROM leads WHERE id = ?", (int(rid),)).fetchone()
-    return None
 
 
 def list_study_claims(user_id):
@@ -1277,8 +1297,11 @@ def remove_site_posted_study(user_id, study_id):
 
 
 def user_claimed_ncts(user_id):
+    """NCTs this account may access applicants for. Only VERIFIED claims count,
+    so an unapproved claim never exposes a trial's patient PHI."""
     rows = get_db().execute(
-        "SELECT nct FROM study_claims WHERE user_id = ?", (user_id,)).fetchall()
+        "SELECT nct FROM study_claims WHERE user_id = ? AND verified = 1",
+        (user_id,)).fetchall()
     return {r["nct"] for r in rows if r["nct"]}
 
 
@@ -1302,7 +1325,8 @@ def site_contact_for_nct(nct):
         "SELECT c.notify_email, p.contact_email, u.email FROM study_claims c "
         "JOIN users u ON u.id = c.user_id "
         "LEFT JOIN site_profiles p ON p.user_id = c.user_id "
-        "WHERE c.nct = ? ORDER BY c.id DESC LIMIT 1", (nct,)).fetchone()
+        "WHERE c.nct = ? AND c.verified = 1 ORDER BY c.id DESC LIMIT 1",
+        (nct,)).fetchone()
     if not row:
         return ""
     return (row["notify_email"] or row["contact_email"] or row["email"] or "").strip()
@@ -1345,17 +1369,44 @@ def spend_summary_for_user(user_id, ncts=None):
     return {"total_usd": round(total, 2), "by_source": src_rows, "rows": rows}
 
 
-def add_study_claim(user_id, nct, title="", notify_email=""):
+def add_study_claim(user_id, nct, title="", notify_email="", verified=False):
+    """Record a study-team claim on an NCT.
+
+    `verified` defaults to False: a new claim is PENDING and grants no access to
+    that trial's applicants until approved (see verify_study_claim). Callers that
+    are trusted (demo builds, admin onboarding) pass verified=True."""
     nct = _norm_nct(nct)
     if not nct:
         return False
     db = get_db()
     db.execute(
         "INSERT OR IGNORE INTO study_claims "
-        "(user_id, nct, title, notify_email, created_at) VALUES (?,?,?,?,?)",
-        (user_id, nct, (title or "").strip(), (notify_email or "").strip(), now()))
+        "(user_id, nct, title, notify_email, verified, created_at) "
+        "VALUES (?,?,?,?,?,?)",
+        (user_id, nct, (title or "").strip(), (notify_email or "").strip(),
+         1 if verified else 0, now()))
     db.commit()
     return True
+
+
+def set_claim_verified(user_id, nct, verified=True):
+    """Approve (or revoke) a study claim so it grants/stops granting access."""
+    nct = _norm_nct(nct)
+    if not nct:
+        return False
+    db = get_db()
+    db.execute("UPDATE study_claims SET verified = ? WHERE user_id = ? AND nct = ?",
+               (1 if verified else 0, user_id, nct))
+    db.commit()
+    return True
+
+
+def list_pending_claims():
+    """All unverified claims awaiting approval (for an admin/ops review)."""
+    return get_db().execute(
+        "SELECT c.*, u.email AS user_email FROM study_claims c "
+        "JOIN users u ON u.id = c.user_id "
+        "WHERE c.verified = 0 ORDER BY c.created_at DESC, c.id DESC").fetchall()
 
 
 def remove_study_claim(user_id, nct):
@@ -3198,6 +3249,143 @@ def top_terms(kind, limit=8):
         "SELECT term FROM search_stats WHERE kind = ? "
         "ORDER BY hits DESC, last_at DESC LIMIT ?", (kind, limit)).fetchall()
     return [r["term"] for r in rows]
+
+
+# --------------------------------------------------------------------------- #
+# Web analytics - privacy-safe on-site behavior + traffic attribution.
+# --------------------------------------------------------------------------- #
+_WEB_FUNNEL = ("visit", "search", "trial_view", "apply")
+_WEB_FUNNEL_LABELS = {
+    "visit": "Visited site",
+    "search": "Ran a search",
+    "trial_view": "Viewed a trial",
+    "apply": "Applied",
+}
+
+
+def log_web_event(name, visitor="", path="", source="", medium="",
+                  campaign="", referrer="", detail=None):
+    """Record one on-site action. Best-effort; never raises. `detail` is a small
+    dict of non-identifying facts (e.g. term, result count, nct)."""
+    name = (name or "").strip()
+    if not name:
+        return
+    try:
+        payload = json.dumps(detail, separators=(",", ":")) if detail else ""
+    except (TypeError, ValueError):
+        payload = ""
+    try:
+        d = get_db()
+        d.execute(
+            "INSERT INTO web_events (ts, visitor, name, path, source, medium, "
+            "campaign, referrer, detail) VALUES (?,?,?,?,?,?,?,?,?)",
+            (now(), (visitor or "")[:64], name[:40], (path or "")[:200],
+             (source or "")[:80], (medium or "")[:40], (campaign or "")[:80],
+             (referrer or "")[:200], payload[:500]))
+        d.commit()
+    except Exception:
+        pass
+
+
+def _web_since(days):
+    return (dt.datetime.now() - dt.timedelta(days=max(1, days))).strftime(
+        "%Y-%m-%d %H:%M")
+
+
+def web_funnel_stats(days=30, limit_terms=10, limit_sources=10):
+    """Traffic + on-site funnel + attribution over the last `days`, all computed
+    from web_events. Returns counts, unique-visitor funnel, source breakdown, and
+    top searches. Safe on an empty table."""
+    d = get_db()
+    since = _web_since(days)
+
+    # Raw + unique-visitor counts per funnel stage.
+    funnel = []
+    for stage in _WEB_FUNNEL:
+        row = d.execute(
+            "SELECT COUNT(*) c, COUNT(DISTINCT visitor) u FROM web_events "
+            "WHERE name = ? AND ts >= ?", (stage, since)).fetchone()
+        funnel.append({
+            "key": stage, "label": _WEB_FUNNEL_LABELS.get(stage, stage),
+            "unique": (row["u"] or 0), "count": (row["c"] or 0),
+            "conv_from_prev": 100.0,
+        })
+    # Conversion from the previous stage (first stage anchors at 100%).
+    for i in range(1, len(funnel)):
+        base = funnel[i - 1]["unique"]
+        funnel[i]["conv_from_prev"] = round(
+            funnel[i]["unique"] / base * 100.0, 0) if base else 0.0
+    top_u = funnel[0]["unique"] if funnel else 0
+
+    # Biggest on-site leak.
+    dropoff = None
+    for i in range(1, len(funnel)):
+        base = funnel[i - 1]["unique"]
+        if base >= 1:
+            lost = base - funnel[i]["unique"]
+            pct = lost / base * 100.0
+            if dropoff is None or pct > dropoff["pct"]:
+                dropoff = {"from": funnel[i - 1]["label"], "to": funnel[i]["label"],
+                           "pct": round(pct, 0), "lost": lost}
+
+    # Where clicks come from: attribution on the 'visit' event.
+    src_rows = d.execute(
+        "SELECT CASE WHEN source != '' THEN source "
+        "WHEN referrer != '' THEN referrer ELSE 'direct' END AS src, "
+        "COUNT(DISTINCT visitor) u, COUNT(*) c FROM web_events "
+        "WHERE name = 'visit' AND ts >= ? GROUP BY src "
+        "ORDER BY u DESC, c DESC LIMIT ?", (since, limit_sources)).fetchall()
+    # Applies attributed by source (join visitor's first source is complex in raw
+    # SQL; approximate by the source stamped on the apply event itself).
+    apply_by_src = {}
+    for r in d.execute(
+        "SELECT CASE WHEN source != '' THEN source "
+        "WHEN referrer != '' THEN referrer ELSE 'direct' END AS src, "
+        "COUNT(DISTINCT visitor) u FROM web_events "
+        "WHERE name = 'apply' AND ts >= ? GROUP BY src", (since,)).fetchall():
+        apply_by_src[r["src"]] = r["u"]
+    sources = [{
+        "source": r["src"], "visitors": r["u"], "hits": r["c"],
+        "applies": apply_by_src.get(r["src"], 0),
+    } for r in src_rows]
+
+    # Top searches (term + how many results they saw on average).
+    terms = {}
+    for r in d.execute(
+        "SELECT detail FROM web_events WHERE name = 'search' AND ts >= ? "
+        "AND detail != ''", (since,)).fetchall():
+        try:
+            det = json.loads(r["detail"])
+        except (TypeError, ValueError):
+            continue
+        term = (det.get("q") or "").strip().lower()
+        if not term:
+            continue
+        t = terms.setdefault(term, {"term": term, "count": 0, "results": 0,
+                                    "zero": 0})
+        t["count"] += 1
+        t["results"] += int(det.get("results") or 0)
+        if int(det.get("results") or 0) == 0:
+            t["zero"] += 1
+    top_searches = sorted(terms.values(), key=lambda x: -x["count"])[:limit_terms]
+    for t in top_searches:
+        t["avg_results"] = round(t["results"] / t["count"], 1) if t["count"] else 0
+
+    return {
+        "days": days,
+        "funnel": funnel,
+        "dropoff": dropoff,
+        "sources": sources,
+        "top_searches": top_searches,
+        "totals": {
+            "visits": funnel[0]["unique"] if funnel else 0,
+            "visit_hits": funnel[0]["count"] if funnel else 0,
+            "searches": funnel[1]["count"] if len(funnel) > 1 else 0,
+            "applies": funnel[-1]["unique"] if funnel else 0,
+            "visit_to_apply": round(
+                (funnel[-1]["unique"] / top_u * 100.0), 1) if top_u else 0.0,
+        },
+    }
 
 
 # --------------------------------------------------------------------------- #

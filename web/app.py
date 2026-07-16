@@ -86,6 +86,31 @@ if os.environ.get("BEHIND_PROXY", "0") == "1":
     from werkzeug.middleware.proxy_fix import ProxyFix
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 
+# "Production" indicator: running behind a hosting proxy or ENV=production. Used
+# to fail-closed on demo mode and to require HTTPS-only cookies.
+IS_PROD = (os.environ.get("BEHIND_PROXY", "0") == "1"
+           or os.environ.get("ENV", "").strip().lower() in ("prod", "production"))
+
+# TEMP no-login / demo preview. MUST be OFF in production: it opens the clinician
+# ATS to anonymous visitors and seeds fake patients into the DB. Refuse to boot
+# if it's enabled while a production indicator is set.
+NO_LOGIN = os.environ.get("NO_LOGIN", "0") == "1"
+if NO_LOGIN and IS_PROD:
+    raise RuntimeError(
+        "NO_LOGIN/demo mode is enabled while a production indicator is set "
+        "(BEHIND_PROXY=1 or ENV=production). Refusing to start: demo mode "
+        "exposes the study-team ATS and patient PHI without login. Unset "
+        "NO_LOGIN for production deployments.")
+
+# Session cookie hardening (the session carries the auth user id). Secure is on
+# in production so the cookie is never sent over plain HTTP.
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_COOKIE_SECURE=IS_PROD,
+    PERMANENT_SESSION_LIFETIME=60 * 60 * 24 * 14,  # 14 days
+)
+
 MAX_MATCH = int(os.environ.get("WEB_MAX_MATCH", "6"))  # LLM calls per search
 WEB_LLM_PARALLELISM = max(
     1, min(8, int(os.environ.get("WEB_LLM_PARALLELISM", "6"))))
@@ -158,7 +183,8 @@ db.init_db()
 
 # In no-login demo mode, seed a few realistic (clearly fake) candidates so the
 # study-team review board shows an end-to-end picture. No-op once real leads exist.
-if os.environ.get("NO_LOGIN", "1") == "1":
+# Gated on NO_LOGIN so a production DB never starts with fake "patients".
+if NO_LOGIN:
     try:
         db.seed_demo_leads()
     except Exception:
@@ -271,10 +297,8 @@ def ops_readiness():
 # --------------------------------------------------------------------------- #
 # Auth
 # --------------------------------------------------------------------------- #
-# TEMP: no-login testing mode. When on, the clinician tool is open to everyone
-# (falls back to a shared demo account) so there's zero barrier to trying it.
-# Set NO_LOGIN=1 only for local demos; production should keep this off.
-NO_LOGIN = os.environ.get("NO_LOGIN", "0") == "1"
+# NO_LOGIN (defined near the top with the production guard) enables the no-login
+# demo shell. It is forced off in production so the ATS is never anonymous.
 _DEMO_EMAIL = "demo@bridgemd.local"
 _DEMO_PATIENT_EMAIL = "demo.patient@bridgemd.local"
 _DEMO_PATIENT_NAME = os.environ.get("DEMO_PATIENT_NAME", "Harshil Test User").strip() or "Harshil Test User"
@@ -423,17 +447,16 @@ def _seed_demo_documents():
 
 
 def _demo_mode_enabled():
-    """True when the temporary no-login preview shell should be enabled."""
-    # Session override always wins so the preview toggle is reliable even when
-    # NO_LOGIN is enabled for local demos.
+    """True only for explicitly-enabled local/demo builds - never in production.
+
+    Requires NO_LOGIN (forced off in prod). The session toggle can only refine
+    behavior within a demo build; it can never turn demo mode on in production,
+    so a tampered/forged session cookie can't expose the ATS or patient PHI."""
+    if not NO_LOGIN:
+        return False
     if DEMO_SESSION_KEY in session:
         return bool(session.get(DEMO_SESSION_KEY))
-    if NO_LOGIN:
-        return True
-    # Default behavior for demos: anonymous visitors on study-team surfaces
-    # should see a working ATS without setup/login friction.
-    p = (request.path or "").strip()
-    return p.startswith("/app/leads") or p.startswith("/app/dashboard")
+    return True
 
 
 # Seed the retention/engagement surfaces (messages, visits, a physician referral)
@@ -499,6 +522,99 @@ def _set_applicant_cookie(resp, token):
                     samesite="Lax", httponly=True,
                     secure=bool(os.environ.get("BEHIND_PROXY")))
     return resp
+
+
+# --------------------------------------------------------------------------- #
+# Privacy-safe web analytics: an anonymous visitor id + first-touch attribution
+# (where the click came from), used to log the visit->search->view->apply funnel.
+# No PII: the visitor id is a random cookie, attribution is UTM/referrer only.
+# --------------------------------------------------------------------------- #
+VISITOR_COOKIE = "tb_vid"
+ATTR_COOKIE = "tb_attr"
+
+
+def _external_referrer_host():
+    ref = request.referrer or ""
+    if not ref:
+        return ""
+    try:
+        host = urllib.parse.urlparse(ref).netloc.lower()
+        own = urllib.parse.urlparse(request.host_url).netloc.lower()
+    except Exception:
+        return ""
+    if not host or host == own:
+        return ""
+    return host[4:] if host.startswith("www.") else host
+
+
+def _compute_attribution():
+    a = request.args
+    source = (a.get("utm_source") or "").strip().lower()
+    medium = (a.get("utm_medium") or "").strip().lower()
+    campaign = (a.get("utm_campaign") or "").strip().lower()
+    ref_host = _external_referrer_host()
+    if not source and ref_host:
+        source = ref_host
+        medium = medium or "referral"
+    return {"s": source[:80], "m": medium[:40], "c": campaign[:80],
+            "r": ref_host[:200]}
+
+
+@app.before_request
+def _web_analytics_ctx():
+    g._new_vid = None
+    g._new_attr = None
+    g.visitor_id = ""
+    g.attr = {}
+    if request.endpoint == "static":
+        return
+    vid = request.cookies.get(VISITOR_COOKIE, "")
+    if not vid:
+        vid = secrets.token_urlsafe(12)
+        g._new_vid = vid
+    g.visitor_id = vid
+    attr = None
+    raw = request.cookies.get(ATTR_COOKIE, "")
+    if raw:
+        try:
+            attr = json.loads(raw)
+        except (ValueError, TypeError):
+            attr = None
+    if attr is None:                       # first touch: lock the source
+        attr = _compute_attribution()
+        g._new_attr = attr
+    g.attr = attr or {}
+
+
+@app.after_request
+def _web_analytics_cookies(resp):
+    try:
+        secure = bool(os.environ.get("BEHIND_PROXY"))
+        if getattr(g, "_new_vid", None):
+            resp.set_cookie(VISITOR_COOKIE, g._new_vid,
+                            max_age=60 * 60 * 24 * 365, samesite="Lax",
+                            httponly=True, secure=secure)
+        if getattr(g, "_new_attr", None) is not None:
+            resp.set_cookie(ATTR_COOKIE,
+                            json.dumps(g._new_attr, separators=(",", ":")),
+                            max_age=60 * 60 * 24 * 90, samesite="Lax",
+                            httponly=True, secure=secure)
+    except Exception:
+        pass
+    return resp
+
+
+def _log_event(name, detail=None):
+    """Best-effort funnel event with the current visitor + attribution."""
+    try:
+        attr = getattr(g, "attr", {}) or {}
+        db.log_web_event(
+            name, visitor=getattr(g, "visitor_id", ""), path=request.path,
+            source=attr.get("s", ""), medium=attr.get("m", ""),
+            campaign=attr.get("c", ""), referrer=attr.get("r", ""),
+            detail=detail)
+    except Exception:
+        pass
 
 
 # --------------------------------------------------------------------------- #
@@ -697,7 +813,11 @@ def inject_globals():
 
 @app.route("/demo-mode", methods=["POST"])
 def set_demo_mode():
-    """Allow quick POV testing without creating accounts in local demos."""
+    """Allow quick POV testing without creating accounts in local demos.
+    Disabled entirely unless this is a demo build (NO_LOGIN) so it can never be
+    used to flip a production instance into anonymous demo mode."""
+    if not NO_LOGIN:
+        abort(404)
     vals = request.form.getlist("enabled")
     enabled = "1" in vals
     session[DEMO_SESSION_KEY] = bool(enabled)
@@ -986,7 +1106,8 @@ def _csrf_guard():
     _csrf_token()
     if request.method != "POST":
         return None
-    if request.endpoint in {"alerts_run", "reminders_run", "redcap_webhook"}:
+    if request.endpoint in {"alerts_run", "reminders_run", "redcap_webhook",
+                            "ops_verify_claim"}:
         return None
     sent = (request.form.get("_csrf_token", "")
             or request.headers.get("X-CSRF-Token", ""))
@@ -1685,6 +1806,7 @@ def home():
 
 
 def _render_landing():
+    _log_event("visit")
     condition_options = _merge_terms(
         trending_conditions(12), SEARCH_CONDITION_OPTIONS, 30)
     condition_prefill = request.args.get("condition", "").strip()
@@ -1715,6 +1837,35 @@ _SEARCH_CACHE_MAX = 80
 _SEARCH_QUERY_CACHE = OrderedDict()   # query-key -> {"sid": str, "ts": float}
 _SEARCH_QUERY_CACHE_MAX = 250
 _SEARCH_QUERY_TTL_SECONDS = int(os.environ.get("SEARCH_QUERY_CACHE_TTL", "900"))
+
+# Trial-specific pre-screen questions are generated once per NCT (LLM) and cached
+# so repeat views of the same trial don't re-pay for generation.
+_PRESCREEN_CACHE = OrderedDict()      # nct -> {"questions": list, "ts": float}
+_PRESCREEN_CACHE_MAX = 500
+_PRESCREEN_TTL_SECONDS = int(os.environ.get("PRESCREEN_CACHE_TTL", "86400"))
+
+
+def _prescreen_for_trial(trial):
+    """Return cached/generated patient-answerable pre-screen questions for a
+    trial. Never raises: on any failure returns [] so the apply form falls back
+    to the generic screener."""
+    nct = (trial or {}).get("nctId") or ""
+    if not nct or not mt.LLM_API_KEY:
+        return []
+    hit = _PRESCREEN_CACHE.get(nct)
+    if hit and (time.time() - float(hit.get("ts") or 0)) <= _PRESCREEN_TTL_SECONDS:
+        _PRESCREEN_CACHE.move_to_end(nct)
+        return hit["questions"]
+    try:
+        questions = mt.prescreen_questions(trial)
+    except Exception:
+        app.logger.exception("prescreen question generation failed")
+        questions = []
+    _PRESCREEN_CACHE[nct] = {"questions": questions, "ts": time.time()}
+    _PRESCREEN_CACHE.move_to_end(nct)
+    while len(_PRESCREEN_CACHE) > _PRESCREEN_CACHE_MAX:
+        _PRESCREEN_CACHE.popitem(last=False)
+    return questions
 
 
 def _cache_search(results, ctx):
@@ -1893,6 +2044,7 @@ def find():
     qkey = _cache_query_key(candidate_ctx)
     cached_sid = _lookup_query_sid(qkey)
     if cached_sid:
+        _log_event("search", {"q": label, "cached": 1})
         return redirect(url_for("find_results", search_id=cached_sid))
     try:
         detected, results = run_search(note, condition_query, "", False, coords,
@@ -1918,6 +2070,9 @@ def find():
     except Exception:
         app.logger.exception("search stat logging failed")
 
+    _log_event("search", {"q": label, "results": len(results),
+                          "intervention": 1 if intervention else 0})
+
     ctx = {"condition": label, "location": location, "unit": unit,
            "q_condition": condition_label, "q_intervention": intervention,
            "q_age": age, "q_sex": sex, "q_about": about, "q_radius": radius,
@@ -1942,10 +2097,13 @@ def trial_detail(search_id, nct):
     if not r:
         flash("That trial result expired - please run your search again.", "error")
         return redirect(url_for("find"))
+    _log_event("trial_view", {"nct": nct})
     applied = db.applied_ncts(get_applicant_token())
     summary = summarize.plain(r["trial"])
+    prescreen = _prescreen_for_trial(r["trial"])
     return render_template("trial_detail.html", r=r, search_id=search_id,
-                           applied=applied, summary=summary, **ctx)
+                           applied=applied, summary=summary,
+                           prescreen=prescreen, **ctx)
 
 
 @app.route("/interest", methods=["POST"])
@@ -1971,13 +2129,32 @@ def interest():
         return redirect(request.referrer or url_for("find"))
     applicant = g.patient_user["applicant_token"]
 
-    # Short screener: only quick gate questions that records can't reliably
-    # answer. Everything clinical is filled from the record / search match.
+    # Short screener: quick gate questions the patient can answer about
+    # themselves. Universal logistics/consent gates use fixed keys (labelled via
+    # SCREENER_LABELS); trial-specific questions (generated from the study's
+    # eligibility criteria) arrive as sq_i (question text) / sa_i (answer) /
+    # sf_i (the answer that is a concern) and are stored keyed by their text.
     screener = {}
     for q in ("travel", "other_trial", "pregnancy", "consent_capable"):
         v = f.get(q, "").strip()
         if v:
             screener[q] = v
+    flagged = []
+    dyn_idx = sorted({
+        int(k[3:]) for k in f.keys()
+        if k.startswith("sq_") and k[3:].isdigit()
+    })
+    for i in dyn_idx:
+        qtext = f.get(f"sq_{i}", "").strip()
+        ans = f.get(f"sa_{i}", "").strip()
+        if not qtext or not ans:
+            continue
+        screener[qtext] = ans
+        flag_if = f.get(f"sf_{i}", "").strip().lower()
+        if flag_if and ans.lower() == flag_if:
+            flagged.append(qtext)
+    if flagged:
+        screener["_flags"] = flagged
 
     # Carry the eligibility profile computed at search time (met/unknown/not_met)
     # so the study team gets a criteria breakdown with no extra LLM cost.
@@ -2033,6 +2210,7 @@ def interest():
     # Go-live hook: tell the site a new blinded candidate is waiting. No-op while
     # NOTIFY_LIVE is off, so nothing is emailed during testing.
     _notify_site_new_candidate(token)
+    _log_event("apply", {"nct": f.get("nct", "").strip()})
     return render_template("thanks.html", title=f.get("title", ""),
                            nct=f.get("nct", ""))
 
@@ -2372,13 +2550,16 @@ def application_screening_complete(token):
 @app.route("/integrations/redcap/webhook", methods=["POST"])
 def redcap_webhook():
     """Receive a REDCap survey/Data-Entry-Trigger callback and mark the matching
-    lead screening-complete. Optionally protected by REDCAP_WEBHOOK_SECRET
-    (passed as an X-Redcap-Token header or ?secret= query param)."""
-    if redcap.WEBHOOK_SECRET:
-        provided = (request.headers.get("X-Redcap-Token", "")
-                    or request.args.get("secret", ""))
-        if not (provided and hmac.compare_digest(provided, redcap.WEBHOOK_SECRET)):
-            abort(403)
+    lead screening-complete. Requires REDCAP_WEBHOOK_SECRET (passed as an
+    X-Redcap-Token header or ?secret= query param); the endpoint is disabled
+    (fails closed) until a secret is configured so it can't be triggered by
+    anonymous callers to advance arbitrary patients."""
+    if not redcap.WEBHOOK_SECRET:
+        abort(403)
+    provided = (request.headers.get("X-Redcap-Token", "")
+                or request.args.get("secret", ""))
+    if not (provided and hmac.compare_digest(provided, redcap.WEBHOOK_SECRET)):
+        abort(403)
     record = (request.form.get("record", "").strip()
               or request.args.get("record", "").strip())
     lead = db.find_lead_by_redcap_record(record) if record else None
@@ -2759,8 +2940,13 @@ def _decode_lead(row, recon=None):
         scr = json.loads(row["screener"]) if row["screener"] else {}
     except (ValueError, TypeError):
         scr = {}
+    # Reserved key holds trial-specific answers the patient flagged as concerns.
+    dyn_flags = scr.pop("_flags", None) or []
+    if not isinstance(dyn_flags, list):
+        dyn_flags = [str(dyn_flags)]
     flags = [SCREENER_LABELS.get(k, k) for k, bad in SCREENER_FLAGS.items()
              if scr.get(k) == bad]
+    flags += [str(x) for x in dyn_flags if str(x).strip()]
     return {
         "lead": row,
         "events": db.get_lead_events(row["id"]),
@@ -2830,8 +3016,13 @@ def recruitment_dashboard():
         if enrolled else None
     spend["cost_per_screened"] = round(spend["total_usd"] / screened, 2) \
         if screened else None
+    try:
+        web_days = max(1, min(365, int(request.args.get("web_days", 30))))
+    except (TypeError, ValueError):
+        web_days = 30
+    web = db.web_funnel_stats(days=web_days)
     return render_template(
-        "recruitment.html", stats=stats, spend=spend,
+        "recruitment.html", stats=stats, spend=spend, web=web,
         labels=db.LEAD_LABELS, claims=db.list_study_claims(g.user["id"]))
 
 
@@ -3052,20 +3243,66 @@ def remove_posted_study():
     return redirect(url_for("site_setup"))
 
 
+def _auto_verify_claims():
+    """Claims are auto-approved only in trusted single-tenant/demo builds.
+    In a multi-tenant production instance, new claims stay pending until an
+    admin approves them - otherwise any account could claim a trial's NCT and
+    read that trial's applicants (PHI)."""
+    return _demo_mode_enabled() or os.environ.get("AUTO_VERIFY_CLAIMS", "0") == "1"
+
+
 @app.route("/app/site/claim", methods=["POST"])
 @login_required
 def add_study_claim():
     nct = request.form.get("nct", "").strip().upper()
     title = request.form.get("title", "").strip()
     notify_email = request.form.get("notify_email", "").strip()
+    auto = _auto_verify_claims()
     if not nct:
         flash("Add an NCT number to claim a study.", "error")
-    elif db.add_study_claim(g.user["id"], nct, title, notify_email=notify_email):
-        flash("Study claimed. New applicants for that NCT now route to your board.",
-              "success")
+    elif db.add_study_claim(g.user["id"], nct, title,
+                            notify_email=notify_email, verified=auto):
+        if auto:
+            flash("Study claimed. New applicants for that NCT now route to your "
+                  "board.", "success")
+        else:
+            flash("Claim submitted for verification. To protect patient data, "
+                  "applicants for this NCT will appear on your board once your "
+                  "affiliation with the study is approved.", "success")
     else:
         flash("Couldn't claim that study. Check the NCT and try again.", "error")
     return redirect(url_for("site_setup"))
+
+
+@app.route("/ops/claims/pending")
+def ops_pending_claims():
+    """Admin: list study claims awaiting verification (key-protected)."""
+    if not _ops_key_ok():
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+    rows = db.list_pending_claims()
+    return jsonify({"ok": True, "pending": [
+        {"user_id": r["user_id"], "user_email": r["user_email"],
+         "nct": r["nct"], "title": r["title"], "created_at": r["created_at"]}
+        for r in rows]}), 200
+
+
+@app.route("/ops/claims/verify", methods=["POST"])
+def ops_verify_claim():
+    """Admin: approve (or revoke) a study claim so it grants/stops access.
+    Key-protected; not a browser form (CSRF-exempt)."""
+    if not _ops_key_ok():
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+    try:
+        uid = int(request.form.get("user_id", "0") or 0)
+    except ValueError:
+        uid = 0
+    nct = request.form.get("nct", "").strip().upper()
+    verified = request.form.get("verified", "1").strip() != "0"
+    if not (uid and nct):
+        return jsonify({"ok": False, "error": "user_id and nct required"}), 400
+    db.set_claim_verified(uid, nct, verified=verified)
+    return jsonify({"ok": True, "user_id": uid, "nct": nct,
+                    "verified": verified}), 200
 
 
 @app.route("/app/site/claim/remove", methods=["POST"])
@@ -3900,13 +4137,102 @@ def geo_reverse():
                     "country": country, "unit": units_for(cc)})
 
 
+# Optional Google Places (New) typeahead. When the key is present we use Google
+# for nicer suggestions; otherwise everything falls back to Nominatim so the
+# feature keeps working with no key and no billing.
+GOOGLE_MAPS_API_KEY = os.environ.get("GOOGLE_MAPS_API_KEY", "").strip()
+_GOOGLE_PLACES_BASE = "https://places.googleapis.com/v1"
+
+
+def _google_places_suggest(query, session_token="", limit=6):
+    """Google Places Autocomplete (New). Returns [{label, place_id}] (no coords -
+    coordinates are resolved lazily on selection to stay in the free tier).
+    Returns [] on any error so callers can fall back to Nominatim."""
+    q = (query or "").strip()
+    if len(q) < 3 or not GOOGLE_MAPS_API_KEY:
+        return []
+    try:
+        body = {"input": q}
+        if session_token:
+            body["sessionToken"] = session_token
+        req = urllib.request.Request(
+            f"{_GOOGLE_PLACES_BASE}/places:autocomplete",
+            data=json.dumps(body).encode(),
+            headers={"Content-Type": "application/json",
+                     "X-Goog-Api-Key": GOOGLE_MAPS_API_KEY})
+        with urllib.request.urlopen(req, timeout=15) as r:
+            data = json.load(r)
+        out = []
+        for s in data.get("suggestions", []):
+            pred = s.get("placePrediction") or {}
+            label = ((pred.get("text") or {}).get("text") or "").strip()
+            pid = (pred.get("placeId") or "").strip()
+            if label and pid:
+                out.append({"label": label, "place_id": pid})
+            if len(out) >= limit:
+                break
+        return out
+    except Exception:
+        app.logger.exception("google places autocomplete failed")
+        return []
+
+
+def _google_place_latlon(place_id, session_token=""):
+    """Resolve a Google place_id to {lat, lon, cc} via Place Details (New).
+    One call per selected suggestion (session-token model). None on error."""
+    pid = (place_id or "").strip()
+    if not pid or not GOOGLE_MAPS_API_KEY:
+        return None
+    try:
+        url = f"{_GOOGLE_PLACES_BASE}/places/{urllib.parse.quote(pid)}"
+        if session_token:
+            url += "?sessionToken=" + urllib.parse.quote(session_token)
+        req = urllib.request.Request(
+            url,
+            headers={"X-Goog-Api-Key": GOOGLE_MAPS_API_KEY,
+                     "X-Goog-FieldMask": "location,addressComponents"})
+        with urllib.request.urlopen(req, timeout=15) as r:
+            data = json.load(r)
+        loc = data.get("location") or {}
+        lat, lon = loc.get("latitude"), loc.get("longitude")
+        if lat is None or lon is None:
+            return None
+        cc = ""
+        for comp in data.get("addressComponents", []):
+            if "country" in (comp.get("types") or []):
+                cc = (comp.get("shortText") or "").upper()
+                break
+        return {"lat": float(lat), "lon": float(lon), "cc": cc}
+    except Exception:
+        app.logger.exception("google place details failed")
+        return None
+
+
 @app.route("/geo/suggest")
 def geo_suggest():
     # Public helper for patient search: lightweight typeahead while entering a
-    # location manually. Returns best-effort address suggestions with coords.
+    # location manually. Uses Google Places when configured (coords resolved on
+    # selection via /geo/place), otherwise Nominatim (coords included inline).
     q = request.args.get("q", "")
+    session = request.args.get("session", "")
+    if GOOGLE_MAPS_API_KEY:
+        items = _google_places_suggest(q, session_token=session, limit=6)
+        if items:
+            return jsonify({"ok": True, "provider": "google", "items": items})
     items = _nominatim_suggest(q, limit=6)
-    return jsonify({"ok": True, "items": items})
+    return jsonify({"ok": True, "provider": "nominatim", "items": items})
+
+
+@app.route("/geo/place")
+def geo_place():
+    # Resolve a Google place_id (from /geo/suggest) to coordinates. Kept separate
+    # so we only pay for Place Details when a user actually picks a suggestion.
+    place_id = request.args.get("place_id", "")
+    session = request.args.get("session", "")
+    res = _google_place_latlon(place_id, session_token=session)
+    if not res:
+        return jsonify({"ok": False}), 404
+    return jsonify({"ok": True, **res})
 
 
 def haversine(lat1, lon1, lat2, lon2, unit="km"):

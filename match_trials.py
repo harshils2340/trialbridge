@@ -393,6 +393,114 @@ def llm_match(patient, trial, retries=3):
 
 
 # --------------------------------------------------------------------------- #
+# 2b. TRIAL-SPECIFIC PRE-SCREEN QUESTIONS (LLM)
+# --------------------------------------------------------------------------- #
+PRESCREEN_SYSTEM = (
+    "You turn a clinical trial's eligibility criteria into a SHORT list of plain "
+    "yes/no pre-screening questions that a layperson patient can answer about "
+    "themselves in seconds.\n\n"
+    "RULES:\n"
+    "1. Only produce questions a patient can honestly answer WITHOUT a doctor, "
+    "lab test, imaging, genetic/biomarker result, or medical record. Turn "
+    "criteria about things like specific lab values (eGFR, HbA1c thresholds a "
+    "patient wouldn't know), biomarkers, mutations, imaging findings, or "
+    "'investigator's judgment' into NOTHING -- skip them entirely.\n"
+    "2. GOOD questions cover: age range, pregnancy/breastfeeding, a diagnosis the "
+    "patient would know they have, prior/current medications, prior surgeries, "
+    "being in another trial, ability to attend visits, major conditions a person "
+    "is aware of.\n"
+    "3. Phrase each as a short second-person question ('you'/'your'), one fact "
+    "each, answerable strictly Yes / No / Not sure.\n"
+    "4. For each question set 'flag_if' to the answer that signals a POSSIBLE "
+    "eligibility problem: for an EXCLUSION criterion that is 'yes' (they have the "
+    "disqualifier); for an INCLUSION criterion that is 'no' (they don't meet it). "
+    "Use \"\" if neither answer is clearly a concern.\n"
+    "5. Return AT MOST the requested number of questions, most decisive first. "
+    "Do not invent criteria that aren't in the text.\n"
+    "Respond with strict JSON only."
+)
+
+PRESCREEN_SCHEMA = (
+    '{"questions":[{"q":"short yes/no question in plain language","flag_if":"yes|no|"}]}'
+)
+
+
+def _normalize_prescreen(data, max_q):
+    """Coerce LLM output into a clean, capped list of {q, flag_if} dicts."""
+    if isinstance(data, dict):
+        items = data.get("questions")
+    else:
+        items = data
+    if not isinstance(items, list):
+        return []
+    out, seen = [], set()
+    for it in items:
+        if isinstance(it, str):
+            q, flag = it, ""
+        elif isinstance(it, dict):
+            q = str(it.get("q") or it.get("question") or "").strip()
+            flag = str(it.get("flag_if") or "").strip().lower()
+        else:
+            continue
+        if not q:
+            continue
+        if flag not in ("yes", "no"):
+            flag = ""
+        key = q.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append({"q": q, "flag_if": flag})
+        if len(out) >= max_q:
+            break
+    return out
+
+
+def prescreen_questions(trial, max_q=6, retries=2):
+    """Generate up to `max_q` patient-answerable yes/no pre-screen questions from
+    a trial's eligibility criteria. Returns [] when no LLM key or no criteria, so
+    callers can fall back to the generic screener."""
+    if not LLM_API_KEY:
+        return []
+    criteria = (trial.get("criteria") or "").strip()
+    if not criteria:
+        return []
+    prompt = (
+        f"TRIAL: {trial.get('title', '')} ({trial.get('nctId', '')})\n"
+        f"Sex: {trial.get('sex', '')}  Age: {trial.get('minAge', '')}-"
+        f"{trial.get('maxAge', '')}\n\n"
+        f"ELIGIBILITY CRITERIA:\n{criteria[:6000]}\n\n"
+        f"Produce at most {max_q} questions.\n"
+        f"Return JSON exactly in this shape:\n{PRESCREEN_SCHEMA}"
+    )
+    body = json.dumps({
+        "model": LLM_MODEL,
+        "messages": [
+            {"role": "system", "content": PRESCREEN_SYSTEM},
+            {"role": "user", "content": prompt},
+        ],
+        "response_format": {"type": "json_object"},
+        "temperature": 0,
+    }).encode()
+    last = None
+    for attempt in range(retries):
+        try:
+            req = urllib.request.Request(
+                f"{LLM_BASE_URL}/chat/completions", data=body,
+                headers={"Authorization": f"Bearer {LLM_API_KEY}",
+                         "Content-Type": "application/json"})
+            with urllib.request.urlopen(req, timeout=60) as r:
+                resp = json.load(r)
+            return _normalize_prescreen(_extract_json(
+                resp["choices"][0]["message"]["content"]), max_q)
+        except Exception as e:
+            last = e
+            if attempt < retries - 1:
+                time.sleep(2 ** attempt)
+    raise last
+
+
+# --------------------------------------------------------------------------- #
 # 3. RANK + REPORT
 # --------------------------------------------------------------------------- #
 def _fmt_site(s):
