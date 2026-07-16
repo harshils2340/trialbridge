@@ -30,6 +30,21 @@ VISIT_WINDOW_H = int(os.environ.get("REMINDERS_VISIT_WINDOW_HOURS", "24"))
 QUIET_DAYS = int(os.environ.get("REMINDERS_QUIET_DAYS", "3"))
 _FMT = "%Y-%m-%d %H:%M"
 
+# SINGLE SWITCH for the cron reminder/nudge EMAILS (visit reminders + the
+# "still interested?" quiet-applicant check-ins). While off, the in-app system
+# messages still post on each thread - only the emails are suppressed.
+# Turn back on by flipping this to True, or set env REMINDER_EMAILS=1.
+SEND_REMINDER_EMAILS = False
+
+
+def _reminder_emails_enabled():
+    override = os.environ.get("REMINDER_EMAILS")
+    if override == "1":
+        return True
+    if override == "0":
+        return False
+    return SEND_REMINDER_EMAILS
+
 
 def configure(app, on_visit=None, on_nudge=None):
     """on_visit(visit_row) and on_nudge(lead_row) send the (optional) emails."""
@@ -59,7 +74,7 @@ def check_visits():
         msg += " Showing up is the key step - reply here if anything's in the way."
         db.add_message(v["lead_id"], "system", msg)
         db.mark_visit_reminded(v["id"])
-        if _on_visit:
+        if _on_visit and _reminder_emails_enabled():
             try:
                 _on_visit(v)
             except Exception:
@@ -85,7 +100,7 @@ def check_nudges():
             "Just checking in - your application is still active. Reply here with "
             "any questions, or let the team know you're still interested.")
         db.set_nudged(lead["id"])
-        if _on_nudge:
+        if _on_nudge and _reminder_emails_enabled():
             try:
                 _on_nudge(lead)
             except Exception:
