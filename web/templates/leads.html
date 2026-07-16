@@ -5,7 +5,7 @@
 
 {% macro active_card(it, labels, statuses, recon_labels, recon_outcomes, support_coverage_labels, support_travel_labels, redcap_on) %}
 {% set l = it.lead %}
-<div class="card outreach-card">
+<div class="card outreach-card" data-nct="{{ l['nct'] or '' }}">
   <div class="ats-head">
     <div class="ats-main">
       <h3>{{ l['name'] }}</h3>
@@ -271,12 +271,24 @@
 
 {% set trial_set = [] %}
 {% set source_set = [] %}
+{% set trial_titles = {} %}
 {% for it in review + active + done %}
   {% set l = it.lead %}
-  {% if l['nct'] and l['nct'] not in trial_set %}{% set _ = trial_set.append(l['nct']) %}{% endif %}
+  {% if l['nct'] and l['nct'] not in trial_set %}{% set _ = trial_set.append(l['nct']) %}{% set _ = trial_titles.update({l['nct']: l['title']}) %}{% endif %}
   {% set src_bucket = 'physician' if (l['source'] or '') in ['referral','invite','physician','emr','doctor_referral'] else 'patient' %}
   {% if src_bucket not in source_set %}{% set _ = source_set.append(src_bucket) %}{% endif %}
 {% endfor %}
+
+{% if claims and trial_set|length > 1 %}
+<div class="trial-filter-bar" id="trialFilterBar">
+  <label for="trialFilter">{{ ic.icon('award') }} Filter by trial</label>
+  <select id="trialFilter">
+    <option value="">All trials</option>
+    {% for nct in trial_set %}<option value="{{ nct }}">{{ nct }}{% if trial_titles.get(nct) %} · {{ trial_titles.get(nct)[:44] }}{% endif %}</option>{% endfor %}
+  </select>
+  <span class="trial-filter-count" id="trialFilterCount"></span>
+</div>
+{% endif %}
 
 <section class="pipeline-lane rev-panel" data-panel="list" hidden>
   <div class="lane-head">
@@ -425,7 +437,7 @@
 
   {% for it in review %}
   {% set l = it.lead %}
-  <div class="cand-row">
+  <div class="cand-row" data-nct="{{ l['nct'] or '' }}">
     <div class="cr-left">
       <span class="cand-code">{{ ic.icon('user-plus') }} {{ it.code }}</span>
       <span class="cand-demo">{{ it.age_band }}{% if l['sex'] %} · {{ l['sex']|capitalize }}{% endif %}</span>
@@ -508,6 +520,7 @@
     </div>
   </div>
   {% endfor %}
+  <div class="card trial-empty" data-trial-empty hidden>{{ ui.empty('No candidates in this trial', 'Switch trials or choose “All trials”.', 'award') }}</div>
 </section>
 
 <section class="pipeline-lane rev-panel" data-panel="active" hidden>
@@ -558,6 +571,7 @@
     {% if not active_pipeline %}<div class="card">{{ ui.empty('No remaining active candidates.', icon='list') }}</div>{% endif %}
     {% for it in active_pipeline %}{{ active_card(it, labels, statuses, recon_labels, recon_outcomes, support_coverage_labels, support_travel_labels, redcap_on) }}{% endfor %}
   </details>
+  <div class="card trial-empty" data-trial-empty hidden>{{ ui.empty('No candidates in this trial', 'Switch trials or choose “All trials”.', 'award') }}</div>
 </section>
 
 <section class="pipeline-lane rev-panel" data-panel="done" hidden>
@@ -574,7 +588,7 @@
       <tbody>
         {% for it in done %}
         {% set l = it.lead %}
-        <tr>
+        <tr data-nct="{{ l['nct'] or '' }}">
           <td><b>{% if l['revealed'] %}{{ l['name'] }}{% else %}{{ it.code }}{% endif %}</b>
             {% if it.unread %}{{ ui.badge(it.unread ~ ' new', 'danger') }}{% endif %}
             <div class="tag">{{ it.age_band }}{% if l['sex'] %} · {{ l['sex']|capitalize }}{% endif %}</div>
@@ -617,6 +631,7 @@
     </table>
     {% endif %}
   </div>
+  <div class="card trial-empty" data-trial-empty hidden>{{ ui.empty('No candidates in this trial', 'Switch trials or choose “All trials”.', 'award') }}</div>
 </section>
 {% endif %}
 <script>
@@ -624,9 +639,55 @@
   var tabs = document.querySelectorAll('.rev-tab');
   var panels = document.querySelectorAll('.rev-panel');
   if (!tabs.length) return;
+
+  // ---- Filter candidates by trial across the card lanes (review/active/done) ---- //
+  var trialFilter = document.getElementById('trialFilter');
+  var trialBar = document.getElementById('trialFilterBar');
+  var trialCount = document.getElementById('trialFilterCount');
+  function slice(nl) { return Array.prototype.slice.call(nl); }
+  function applyTrialFilter() {
+    var nct = (trialFilter && trialFilter.value) || '';
+    var cards = slice(document.querySelectorAll(
+      '.cand-row[data-nct], .outreach-card[data-nct], tr[data-nct]'));
+    cards.forEach(function (el) {
+      el.style.display = (!nct || el.getAttribute('data-nct') === nct) ? '' : 'none';
+    });
+    var total = 0;
+    ['review', 'active', 'done'].forEach(function (name) {
+      var panel = document.querySelector('.rev-panel[data-panel="' + name + '"]');
+      if (!panel) return;
+      var n = 0;
+      slice(panel.querySelectorAll('[data-nct]')).forEach(function (el) {
+        if (el.style.display !== 'none') n += 1;
+      });
+      total += n;
+      var laneN = panel.querySelector('.lane-n');
+      if (laneN) laneN.textContent = n;
+      var tabN = document.querySelector('.rev-tab[data-tab="' + name + '"] .tab-n');
+      if (tabN) tabN.textContent = n;
+      var emptyEl = panel.querySelector('[data-trial-empty]');
+      if (emptyEl) emptyEl.hidden = !(nct && n === 0);
+      if (name === 'done') {
+        var tableCard = panel.querySelector('.card:not(.trial-empty)');
+        if (tableCard) tableCard.style.display = (nct && n === 0) ? 'none' : '';
+      }
+    });
+    // Collapse empty sub-groups in the active lane so headers don't dangle.
+    slice(document.querySelectorAll('.active-group')).forEach(function (g) {
+      var any = false;
+      slice(g.querySelectorAll('.outreach-card[data-nct]')).forEach(function (c) {
+        if (c.style.display !== 'none') any = true;
+      });
+      g.style.display = any ? '' : 'none';
+    });
+    if (trialCount) trialCount.textContent = nct ? (total + ' candidate' + (total === 1 ? '' : 's')) : '';
+  }
+
   function activateTab(name) {
     tabs.forEach(function (x) { x.classList.toggle('active', x.getAttribute('data-tab') === name); });
     panels.forEach(function (p) { p.hidden = p.getAttribute('data-panel') !== name; });
+    // The ATS list has its own trial filter, so hide the global one there.
+    if (trialBar) trialBar.hidden = (name === 'list');
   }
   tabs.forEach(function (t) {
     t.addEventListener('click', function () {
@@ -635,8 +696,10 @@
       window.scrollTo({ top: 0, behavior: 'smooth' });
     });
   });
+  if (trialFilter) trialFilter.addEventListener('change', applyTrialFilter);
   // Default view should always open on Awaiting review.
   activateTab('review');
+  applyTrialFilter();
 
   var rows = Array.prototype.slice.call(document.querySelectorAll('.ats-row-item'));
   if (!rows.length) return;

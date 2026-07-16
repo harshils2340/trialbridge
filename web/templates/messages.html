@@ -88,11 +88,6 @@
           {{ ic.icon('star') }} <span class="gm-label-t">Starred</span>{% if n_star %}<span class="gm-label-n">{{ n_star }}</span>{% endif %}</a>
       </nav>
       <div class="gm-side-foot">
-        {% if cur.patients|length %}
-        <button type="button" class="gm-side-link chan-intake-all" data-nct="{{ cur.nct }}"
-                data-count="{{ cur.patients|length }}" data-trial="{{ cur.title }}">
-          {{ ic.icon('activity') }} Send intake to all {{ cur.patients|length }}</button>
-        {% endif %}
         <a class="gm-side-link" href="{{ url_for('leads') }}">{{ ic.icon('user-plus') }} Candidate review</a>
       </div>
     </aside>
@@ -213,6 +208,14 @@
       <div class="gm-list-top">
         <span class="gm-list-title">{{ cur.title }}</span>
         <span class="gm-list-meta">{{ cur.patients|length }} {{ 'person' if cur.patients|length == 1 else 'people' }}</span>
+        {% if cur.patients|length %}
+        <div class="gm-list-actions">
+          <button type="button" class="gm-groupbtn" id="msgGroupBtn">{{ ic.icon('send') }} Message all</button>
+          <button type="button" class="gm-groupbtn" id="docGroupBtn">{{ ic.icon('paperclip') }} Send document to all</button>
+          <button type="button" class="gm-groupbtn chan-intake-all" data-nct="{{ cur.nct }}"
+                  data-count="{{ cur.patients|length }}" data-trial="{{ cur.title }}">{{ ic.icon('activity') }} Send intake to all</button>
+        </div>
+        {% endif %}
       </div>
       <div class="gm-list" id="inboxConvos">
         {% for c in cur.patients %}
@@ -683,6 +686,15 @@
     }
   });
   if (openBtn) openBtn.addEventListener('click', openModal);
+  // Contextual group actions in the list toolbar.
+  var msgGroupBtn = document.getElementById('msgGroupBtn');
+  var docGroupBtn = document.getElementById('docGroupBtn');
+  if (msgGroupBtn) msgGroupBtn.addEventListener('click', openModal);
+  if (docGroupBtn) docGroupBtn.addEventListener('click', function () {
+    openModal();
+    // Jump straight to picking a document for the whole trial.
+    if (mFile) setTimeout(function () { mFile.click(); }, 60);
+  });
   if (modal) modal.querySelectorAll('[data-close]').forEach(function (el) { el.addEventListener('click', closeModal); });
 
   // ---- Gmail-style keyboard shortcuts ---- //

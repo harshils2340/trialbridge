@@ -2173,6 +2173,19 @@ h1, h2, h3 {
 .rev-tab.active .tab-n { background: var(--accent-soft); color: var(--accent); border-color: transparent; }
 .rev-panel { display: flex; flex-direction: column; gap: 12px; }
 
+/* Global "filter by trial" bar for the candidate card lanes */
+.trial-filter-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin: 0 0 16px; padding: 10px 14px; border: 1px solid var(--border);
+  border-radius: 12px; background: var(--surface-2); }
+.trial-filter-bar label { display: inline-flex; align-items: center; gap: 6px;
+  font-size: 13px; font-weight: 700; color: var(--muted); }
+.trial-filter-bar label .ico { width: 15px; height: 15px; }
+.trial-filter-bar select { padding: 7px 12px; border: 1px solid var(--border-strong);
+  border-radius: 8px; font: inherit; font-size: 13px; background: var(--surface);
+  color: var(--ink); max-width: 420px; }
+.trial-filter-count { font-size: 12.5px; font-weight: 700; color: var(--accent); }
+.trial-empty { margin-top: 4px; }
+
 /* Horizontal candidate row: id | trial+eligibility | actions */
 .cand-row { display: flex; gap: 24px; align-items: flex-start;
   border: 1px solid var(--border-strong); border-radius: 14px; background: var(--surface);
@@ -3109,9 +3122,15 @@ main:focus { outline: none; }
   display: grid; place-items: center; font-weight: 800; color: var(--accent); z-index: 5; }
 
 /* List view */
-.gm-list-top { flex: none; display: flex; align-items: baseline; gap: 10px; padding: 14px 22px; border-bottom: 1px solid var(--border); }
+.gm-list-top { flex: none; display: flex; align-items: center; gap: 10px; padding: 12px 22px; border-bottom: 1px solid var(--border); }
 .gm-list-title { font-size: 15px; font-weight: 800; color: var(--ink); }
 .gm-list-meta { font-size: 12px; color: var(--muted); }
+.gm-list-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.gm-groupbtn { display: inline-flex; align-items: center; gap: 7px; padding: 7px 12px; border-radius: 8px;
+  border: 1px solid var(--border-strong); background: var(--surface); color: var(--ink); font: inherit;
+  font-size: 12.5px; font-weight: 600; cursor: pointer; }
+.gm-groupbtn:hover { border-color: var(--accent); color: var(--accent); }
+.gm-groupbtn .ico { width: 14px; height: 14px; }
 .gm-list { flex: 1; min-height: 0; overflow-y: auto; }
 .gm-row { position: relative; display: flex; align-items: center; gap: 2px; padding: 0 18px 0 8px;
   border-bottom: 1px solid var(--border); background: var(--surface-2); }

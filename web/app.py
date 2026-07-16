@@ -1694,7 +1694,8 @@ def _render_landing():
                            drugs=trending_drugs(6), slugify=slugify,
                            condition_options=condition_options,
                            condition_value=condition_prefill,
-                           location_value=location_prefill)
+                           location_value=location_prefill,
+                           landing_page=True)
 
 
 # --------------------------------------------------------------------------- #

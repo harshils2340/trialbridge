@@ -2565,6 +2565,43 @@ def _demo_lead_specs():
         ("Grace", "Allen", "female", "64", "closed", 0, "NCT05442919",
          "Resmetirom for Nonalcoholic Steatohepatitis (NASH)", "NASH (MASH)",
          "Ottawa, ON", "Ottawa Liver Institute"),
+        # ---- Extra accepted/active people so each trial inbox looks full ----
+        ("Olivia", "Foster", "female", "59", "eligible", 1, "NCT05442919",
+         "Resmetirom for Nonalcoholic Steatohepatitis (NASH)", "NASH (MASH)",
+         "Ottawa, ON", "Ottawa Liver Institute"),
+        ("Henry", "Reed", "male", "63", "screening", 1, "NCT05442919",
+         "Resmetirom for Nonalcoholic Steatohepatitis (NASH)", "NASH (MASH)",
+         "Kingston, ON", "Kingston Liver Research"),
+        ("Amelia", "Cook", "female", "56", "enrolled", 1, "NCT05442919",
+         "Resmetirom for Nonalcoholic Steatohepatitis (NASH)", "NASH (MASH)",
+         "Ottawa, ON", "Ottawa Liver Institute"),
+        ("Jack", "Bailey", "male", "60", "eligible", 1, "NCT05442919",
+         "Resmetirom for Nonalcoholic Steatohepatitis (NASH)", "NASH (MASH)",
+         "Ottawa, ON", "Ottawa Liver Institute"),
+        ("Charlotte", "Rivera", "female", "41", "eligible", 1, "NCT05929066",
+         "Investigational GLP-1/GIP Co-agonist for Weight Management", "Obesity",
+         "Hamilton, ON", "Hamilton Health Research"),
+        ("Benjamin", "Ward", "male", "48", "screening", 1, "NCT05929066",
+         "Investigational GLP-1/GIP Co-agonist for Weight Management", "Obesity",
+         "Hamilton, ON", "Hamilton Health Research"),
+        ("Harper", "Gray", "female", "35", "enrolled", 1, "NCT05929066",
+         "Investigational GLP-1/GIP Co-agonist for Weight Management", "Obesity",
+         "Burlington, ON", "Halton Clinical Research"),
+        ("Daniel", "Price", "male", "52", "eligible", 1, "NCT05929066",
+         "Investigational GLP-1/GIP Co-agonist for Weight Management", "Obesity",
+         "Hamilton, ON", "Hamilton Health Research"),
+        ("Aria", "Hughes", "female", "40", "eligible", 1, "NCT05869903",
+         "Once-Weekly Semaglutide in Adults With Obesity", "Obesity",
+         "Toronto, ON", "Toronto Metabolic Research Centre"),
+        ("William", "Perry", "male", "51", "screening", 1, "NCT05869903",
+         "Once-Weekly Semaglutide in Adults With Obesity", "Obesity",
+         "London, ON", "Western Metabolic Clinic"),
+        ("Scarlett", "Barnes", "female", "53", "screening", 1, "NCT06034262",
+         "Tirzepatide vs Placebo for Type 2 Diabetes and Weight",
+         "Type 2 Diabetes", "Mississauga, ON", "Trillium Clinical Trials"),
+        ("Michael", "Ross", "male", "59", "enrolled", 1, "NCT06034262",
+         "Tirzepatide vs Placebo for Type 2 Diabetes and Weight",
+         "Type 2 Diabetes", "Markham, ON", "York Region Trials"),
     ]
 
     for i, (first, last, sex, age, status, rec, nct, title, cond, loc, site) in enumerate(extra):
@@ -2702,7 +2739,7 @@ def seed_demo_engagement(clinician_id):
         study_rows = db.execute(
             "SELECT DISTINCT nct, title FROM leads WHERE nct != '' ORDER BY nct"
         ).fetchall()
-        for s in study_rows[:3]:
+        for s in study_rows[:4]:
             db.execute(
                 "INSERT OR IGNORE INTO study_claims (user_id, nct, title, created_at) "
                 "VALUES (?,?,?,?)",
@@ -2733,23 +2770,31 @@ def seed_demo_engagement(clinician_id):
         return
 
     # Threads on the accepted/revealed candidates so neither side looks empty.
+    # Vary the conversation per person so the inbox reads like a real one: some
+    # are awaiting our reply (unread), some are waiting on the patient.
+    openers = [
+        "Hi {first}, thanks for applying - you look like a strong fit. Any "
+        "questions before we book your screening visit?",
+        "Hi {first}, welcome! I'm your study coordinator. I'll share a couple of "
+        "forms to complete before your first visit - happy to help with anything.",
+        "Hi {first}, good news - you've cleared our initial review. When works for "
+        "a quick screening call this week?",
+        "Hi {first}, thanks for your interest. I've noted what happens next; let "
+        "me know if anything is unclear.",
+    ]
+    replies = [
+        "Thank you! Roughly how many visits are involved, and is parking available?",
+        "Great, thanks. What should I bring to the first visit?",
+        "Sounds good - mornings work best for me. Is Thursday possible?",
+        "Appreciate it! Will taking part affect my regular care?",
+    ]
+    follow = ("Absolutely - I'll send those details over now. Talk soon!")
     revealed = db.execute(
         "SELECT * FROM leads WHERE revealed = 1 ORDER BY id").fetchall()
-    for ld in revealed:
-        first = ld["name"].split()[0] if ld["name"] else "there"
-        db.execute("INSERT INTO messages (lead_id, sender, body, read_patient, "
-                   "read_site, created_at) VALUES (?,?,?,?,?,?)",
-                   (ld["id"], "site",
-                    f"Hi {first}, thanks for applying - we've reviewed your details "
-                    "and would love to take the next step. Any questions so far?",
-                    1, 1, ts(hours=-30)))
-        db.execute("INSERT INTO messages (lead_id, sender, body, read_patient, "
-                   "read_site, created_at) VALUES (?,?,?,?,?,?)",
-                   (ld["id"], "patient",
-                    "Thank you! Yes - roughly how many visits are involved, and is "
-                    "parking available?", 1, 0, ts(hours=-26)))
 
-    # A visit on the screening/enrolled candidates (drives reminders + patient view).
+    # A visit on the screening/enrolled candidates (drives reminders + patient
+    # view). Seed this BEFORE the chat so the real conversation keeps the last
+    # (highest-id) slot and drives the inbox preview / unread / awaiting cues.
     for ld in revealed:
         if ld["status"] in ("screening", "enrolled"):
             when = ts(days=2, hours=3) if ld["status"] == "screening" else ts(days=-2)
@@ -2757,13 +2802,41 @@ def seed_demo_engagement(clinician_id):
                        "note, reminded_at, created_at) VALUES (?,?,?,?,?,?,?)",
                        (ld["id"], "screening", when, ld["site"] or "Study site",
                         "Please bring a photo ID. Allow about 90 minutes.",
-                        "", ts(hours=-20)))
+                        "", ts(hours=-34)))
             db.execute("INSERT INTO messages (lead_id, sender, body, read_patient, "
                        "read_site, created_at) VALUES (?,?,?,?,?,?)",
                        (ld["id"], "system",
                         f"Your screening visit is booked for {when} at "
                         f"{ld['site'] or 'the study site'}. We'll remind you beforehand.",
-                        1, 1, ts(hours=-20)))
+                        1, 1, ts(hours=-34)))
+
+    # Spread the conversation "kind" WITHIN each trial (not by global id) so every
+    # trial inbox has a realistic mix: some awaiting our reply (unread), some
+    # waiting on the patient, some just opened. Pin one patient per trial so the
+    # Starred filter and gold stars have something to show.
+    by_trial = {}
+    for ld in revealed:
+        by_trial.setdefault(ld["nct"], []).append(ld)
+    for _nct, leads in by_trial.items():
+        for idx, ld in enumerate(leads):
+            first = ld["name"].split()[0] if ld["name"] else "there"
+            kind = idx % 3
+            db.execute("INSERT INTO messages (lead_id, sender, body, read_patient, "
+                       "read_site, created_at) VALUES (?,?,?,?,?,?)",
+                       (ld["id"], "site", openers[idx % len(openers)].format(first=first),
+                        1, 1, ts(hours=-30)))
+            if kind != 1:  # patient wrote back
+                db.execute("INSERT INTO messages (lead_id, sender, body, read_patient, "
+                           "read_site, created_at) VALUES (?,?,?,?,?,?)",
+                           (ld["id"], "patient", replies[idx % len(replies)],
+                            1, 0 if kind == 0 else 1, ts(hours=-26)))
+            if kind == 2:  # we already replied -> waiting on the patient
+                db.execute("INSERT INTO messages (lead_id, sender, body, read_patient, "
+                           "read_site, created_at) VALUES (?,?,?,?,?,?)",
+                           (ld["id"], "site", follow, 1, 1, ts(hours=-24)))
+            if idx == 1:  # pin the second person in each trial
+                db.execute("UPDATE leads SET conv_tags = 'pinned' WHERE id = ?",
+                           (ld["id"],))
 
     # At least one source-verified enrollment for revenue/reconciliation demos.
     enrolled = db.execute(
@@ -3008,7 +3081,7 @@ def seed_demo_patient_apps(applicant_token):
                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (gen_token(), gen_token(), _site_token_expiry(), 0, applicant_token,
              s["nct"], s["title"], s["condition"], s["location"], s["site"],
-             "Patient Profile", "patient.profile@bridgemd.local", "+1 416 555 0110",
+             "Jordan Blake", "jordan.blake@bridgemd.local", "+1 416 555 0110",
              "31", "female", "", 1, "demo", s["status"],
              json.dumps({"travel": "yes", "other_trial": "no",
                          "pregnancy": "na", "consent_capable": "yes"}),

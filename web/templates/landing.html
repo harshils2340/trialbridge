@@ -20,6 +20,9 @@
 </form>
 {% endif %}
 <span class="nav-user" title="Records: {{ 'Connected' if records_profile else 'Not connected' }}">{{ ic.icon('user-plus') }} <b>{{ welcome_name }}</b>{% if pov_demo %} <em>Test user</em>{% endif %}</span>
+<form method="post" action="{{ url_for('patient_logout') }}" style="margin:0;">
+  <button type="submit" class="link-btn">Sign out</button>
+</form>
 {% endif %}
 {% endblock %}
 
