@@ -4517,6 +4517,10 @@ def geocode(place):
         if r:
             return r
 
+    # Google first (higher quality), then Nominatim as a resilient fallback.
+    r = _google_geocode(p)
+    if r:
+        return r
     r = _nominatim(p)
     if r:
         return r
@@ -4570,7 +4574,11 @@ def geo_reverse():
         lon = float(request.args.get("lon", ""))
     except ValueError:
         return jsonify({"ok": False}), 400
-    label, cc, country = _nominatim_reverse(lat, lon)
+    res = _google_reverse(lat, lon)
+    if res and res[0]:
+        label, cc, country = res
+    else:
+        label, cc, country = _nominatim_reverse(lat, lon)
     return jsonify({"ok": bool(label), "label": label, "cc": cc,
                     "country": country, "unit": units_for(cc)})
 
@@ -4580,6 +4588,7 @@ def geo_reverse():
 # feature keeps working with no key and no billing.
 GOOGLE_MAPS_API_KEY = os.environ.get("GOOGLE_MAPS_API_KEY", "").strip()
 _GOOGLE_PLACES_BASE = "https://places.googleapis.com/v1"
+_GOOGLE_GEOCODE_URL = "https://maps.googleapis.com/maps/api/geocode/json"
 # Last Google error (for diagnostics via /geo/suggest?debug=1). Not secret:
 # holds Google's own error text (e.g. referrer/billing/API-not-enabled).
 _LAST_GEO_ERROR = {}
@@ -4663,6 +4672,89 @@ def _google_place_latlon(place_id, session_token=""):
         return {"lat": float(lat), "lon": float(lon), "cc": cc}
     except Exception as e:
         _capture_geo_error("place", e)
+        return None
+
+
+def _google_geocode(place):
+    """Forward geocode free text -> (lat, lon, cc) via Places API (New) Text
+    Search. Returns None on any error so the caller falls back to Nominatim."""
+    q = (place or "").strip()
+    if len(q) < 2 or not GOOGLE_MAPS_API_KEY:
+        return None
+    try:
+        body = {"textQuery": q, "maxResultCount": 1}
+        req = urllib.request.Request(
+            f"{_GOOGLE_PLACES_BASE}/places:searchText",
+            data=json.dumps(body).encode(),
+            headers={"Content-Type": "application/json",
+                     "X-Goog-Api-Key": GOOGLE_MAPS_API_KEY,
+                     "X-Goog-FieldMask": "places.location,places.addressComponents"})
+        with urllib.request.urlopen(req, timeout=15) as r:
+            data = json.load(r)
+        places = data.get("places") or []
+        if not places:
+            return None
+        loc = (places[0].get("location") or {})
+        lat, lon = loc.get("latitude"), loc.get("longitude")
+        if lat is None or lon is None:
+            return None
+        cc = ""
+        for comp in places[0].get("addressComponents", []):
+            if "country" in (comp.get("types") or []):
+                cc = (comp.get("shortText") or "").upper()
+                break
+        _LAST_GEO_ERROR.pop("geocode", None)
+        return float(lat), float(lon), cc
+    except Exception as e:
+        _capture_geo_error("geocode", e)
+        return None
+
+
+def _google_reverse(lat, lon):
+    """Reverse geocode (lat, lon) -> (label, cc, country) via the Geocoding API.
+    Builds a concise 'City, Region' label. None on error (caller falls back)."""
+    if not GOOGLE_MAPS_API_KEY:
+        return None
+    try:
+        params = urllib.parse.urlencode({"latlng": f"{lat},{lon}",
+                                         "key": GOOGLE_MAPS_API_KEY})
+        req = urllib.request.Request(f"{_GOOGLE_GEOCODE_URL}?{params}")
+        with urllib.request.urlopen(req, timeout=15) as r:
+            data = json.load(r)
+        status = data.get("status", "")
+        if status != "OK":
+            _LAST_GEO_ERROR["reverse"] = (
+                status + " " + (data.get("error_message", "") or "")).strip()
+            return None
+        results = data.get("results") or []
+        if not results:
+            return None
+        comps = results[0].get("address_components", [])
+
+        def _comp(type_):
+            for c in comps:
+                if type_ in (c.get("types") or []):
+                    return c
+            return None
+        city_c = (_comp("locality") or _comp("postal_town")
+                  or _comp("sublocality") or _comp("administrative_area_level_2"))
+        region_c = _comp("administrative_area_level_1")
+        country_c = _comp("country")
+        postal_c = _comp("postal_code")
+        city = (city_c or {}).get("long_name", "")
+        region = (region_c or {}).get("long_name", "")
+        country = (country_c or {}).get("long_name", "")
+        cc = ((country_c or {}).get("short_name") or "").upper()
+        parts = [p for p in (city, region or country) if p]
+        label = ", ".join(parts)
+        postcode = (postal_c or {}).get("long_name", "")
+        if cc == "US" and postcode:
+            label = (label + " " + postcode).strip(", ").strip()
+        label = label or results[0].get("formatted_address", "")
+        _LAST_GEO_ERROR.pop("reverse", None)
+        return label, cc, country
+    except Exception as e:
+        _capture_geo_error("reverse", e)
         return None
 
 
