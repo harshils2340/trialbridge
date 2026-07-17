@@ -2452,6 +2452,16 @@ h1, h2, h3 {
   .td-summary-struct > div { grid-template-columns: 1fr; gap: 3px; }
 }
 /* "In plain terms" panel */
+.tp-personal { display: flex; align-items: flex-start; gap: 9px; margin: 0 0 14px;
+  padding: 11px 13px; border-radius: 11px; font-size: 13.5px; line-height: 1.5; }
+.tp-personal .ico { width: 17px; height: 17px; flex-shrink: 0; margin-top: 1px; }
+.tp-personal-ok { background: var(--green-bg); color: var(--ink);
+  border: 1px solid #c4e6d6; }
+.tp-personal-ok .ico { color: var(--green); }
+.tp-personal-warn { background: #fdf3e7; color: var(--ink); border: 1px solid #f0d8b8; }
+.tp-personal-warn .ico { color: var(--amber); }
+[data-theme="dark"] .tp-personal-warn { background: rgba(224,161,58,.12);
+  border-color: rgba(224,161,58,.32); }
 .tp-facts { list-style: none; margin: 0 0 14px; padding: 0; display: flex;
   flex-wrap: wrap; gap: 8px; }
 .tp-facts li { display: inline-flex; align-items: center; gap: 6px; font-size: 13px;

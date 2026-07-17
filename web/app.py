@@ -3131,6 +3131,28 @@ def _readiness_band(score):
     return "review"
 
 
+_QUESTION_STARTS = ("do ", "does ", "are ", "is ", "can ", "have ", "has ",
+                    "did ", "were ", "was ", "what", "when", "how", "which",
+                    "who", "why")
+
+
+def _as_question(phrase):
+    """Turn a 'thing the team will confirm' phrase (e.g. 'MMSE score') into a
+    patient-answerable question ('What is your most recent MMSE score?'), so we
+    can optionally collect it upfront. Leaves phrases that are already questions
+    mostly intact."""
+    p = (phrase or "").strip().rstrip("?.").strip()
+    if not p:
+        return ""
+    low = p.lower()
+    if low.startswith(_QUESTION_STARTS):
+        return p[0].upper() + p[1:] + "?"
+    return "Can you share your " + p[0].lower() + p[1:] + "?"
+
+
+app.jinja_env.filters["as_question"] = _as_question
+
+
 def _readiness_from_signals(elig, screener):
     """Deterministic 'chance of clearing pre-screen' from the LLM eligibility
     verdict + the concern flags in the patient's own answers. Used as a fast,
@@ -3187,7 +3209,9 @@ def _evaluate_prescreen_readiness(title, condition, screener, elig):
         "This is an ESTIMATE, not a decision or a promise of enrollment; the "
         "study team makes the final call. Never discourage someone from "
         "applying. Return strict JSON: {\"score\": int 0-100, \"note\": string "
-        "<=25 words, \"confirm\": [up to 3 short phrases the team will verify]}."
+        "<=25 words, \"confirm\": [up to 3 SHORT patient-answerable questions "
+        "the patient could optionally answer to speed screening, e.g. 'What is "
+        "your most recent MMSE score?']}."
     )
     user = (
         f"STUDY: {title or condition or 'a clinical study'}\n"
@@ -4463,6 +4487,24 @@ def geo_reverse():
 # feature keeps working with no key and no billing.
 GOOGLE_MAPS_API_KEY = os.environ.get("GOOGLE_MAPS_API_KEY", "").strip()
 _GOOGLE_PLACES_BASE = "https://places.googleapis.com/v1"
+# Last Google error (for diagnostics via /geo/suggest?debug=1). Not secret:
+# holds Google's own error text (e.g. referrer/billing/API-not-enabled).
+_LAST_GEO_ERROR = {}
+
+
+def _capture_geo_error(kind, e):
+    """Extract a human-readable reason from a urllib error, including the HTTP
+    response body Google returns (which names the actual misconfiguration)."""
+    detail = ""
+    if hasattr(e, "read"):
+        try:
+            detail = e.read().decode("utf-8", "replace")[:600]
+        except Exception:
+            detail = ""
+    code = getattr(e, "code", "")
+    msg = (f"HTTP {code}: " if code else "") + (detail or str(e))
+    _LAST_GEO_ERROR[kind] = msg
+    app.logger.error("google places %s failed: %s", kind, msg)
 
 
 def _google_places_suggest(query, session_token="", limit=6):
@@ -4492,9 +4534,10 @@ def _google_places_suggest(query, session_token="", limit=6):
                 out.append({"label": label, "place_id": pid})
             if len(out) >= limit:
                 break
+        _LAST_GEO_ERROR.pop("suggest", None)
         return out
-    except Exception:
-        app.logger.exception("google places autocomplete failed")
+    except Exception as e:
+        _capture_geo_error("suggest", e)
         return []
 
 
@@ -4523,9 +4566,10 @@ def _google_place_latlon(place_id, session_token=""):
             if "country" in (comp.get("types") or []):
                 cc = (comp.get("shortText") or "").upper()
                 break
+        _LAST_GEO_ERROR.pop("place", None)
         return {"lat": float(lat), "lon": float(lon), "cc": cc}
-    except Exception:
-        app.logger.exception("google place details failed")
+    except Exception as e:
+        _capture_geo_error("place", e)
         return None
 
 
@@ -4536,11 +4580,24 @@ def geo_suggest():
     # selection via /geo/place), otherwise Nominatim (coords included inline).
     q = request.args.get("q", "")
     session = request.args.get("session", "")
+    debug = request.args.get("debug") == "1"
     if GOOGLE_MAPS_API_KEY:
         items = _google_places_suggest(q, session_token=session, limit=6)
         if items:
             return jsonify({"ok": True, "provider": "google", "items": items})
+        if debug:
+            # Diagnose why Google returned nothing (key config, billing, etc.).
+            return jsonify({
+                "ok": True, "provider": "nominatim_fallback",
+                "google_configured": True,
+                "google_key_len": len(GOOGLE_MAPS_API_KEY),
+                "google_error": _LAST_GEO_ERROR.get("suggest", "no error (empty result set)"),
+                "items": _nominatim_suggest(q, limit=6)})
     items = _nominatim_suggest(q, limit=6)
+    if debug:
+        return jsonify({"ok": True, "provider": "nominatim",
+                        "google_configured": bool(GOOGLE_MAPS_API_KEY),
+                        "items": items})
     return jsonify({"ok": True, "provider": "nominatim", "items": items})
 
 

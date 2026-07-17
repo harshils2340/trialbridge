@@ -284,6 +284,10 @@
   if (locInput && !serverLoc) locInput.value = '';
 
   function prefillOnly(term, isDrug) {
+    // Chips populate the structured "By condition" search, so always switch to
+    // that tab first (e.g. clicking a popular condition while in plain-English
+    // mode should flip tabs and fill the condition in).
+    setMode('condition');
     if (!isDrug && condInput) condInput.value = term;
     if (interv) { interv.value = isDrug ? term : ''; }
     form.scrollIntoView({ behavior: 'smooth', block: 'center' });

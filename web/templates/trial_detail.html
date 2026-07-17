@@ -68,6 +68,13 @@
     {% if plain_terms and (plain_terms.who or plain_terms.rule_out or plain_terms.design or plain_terms.phase) %}
     <div class="td-section td-plain">
       <h2>In plain terms</h2>
+      {% if m.not_met %}
+      <div class="tp-personal tp-personal-warn">{{ ic.icon('activity') }}
+        <span><b>Based on what you shared, double-check:</b> {{ m.not_met|join('; ') }}. The study team makes the final call.</span></div>
+      {% elif m.met %}
+      <div class="tp-personal tp-personal-ok">{{ ic.icon('check') }}
+        <span>You already appear to meet the basics for this study. The team confirms the rest at screening.</span></div>
+      {% endif %}
       {% if plain_terms.phase or plain_terms.design or plain_terms.time %}
       <ul class="tp-facts">
         {% if plain_terms.phase %}<li>{{ ic.icon('activity') }} {{ plain_terms.phase }}</li>{% endif %}
@@ -98,15 +105,6 @@
       </details>
       {% endif %}
       <p class="td-source" style="margin-top:12px;">A plain-language read of the study's public eligibility and design. The study team confirms who qualifies.</p>
-    </div>
-    {% endif %}
-
-    {% if m.met or m.unknown or m.not_met %}
-    <div class="td-section">
-      <h2>How you line up with the eligibility</h2>
-      {% if m.met %}<div class="pr-elig-b good"><b>Looks like you meet:</b><ul>{% for x in m.met %}<li>{{ x }}</li>{% endfor %}</ul></div>{% endif %}
-      {% if m.unknown %}<div class="pr-elig-b maybe"><b>The team will need to check:</b><ul>{% for x in m.unknown %}<li>{{ x }}</li>{% endfor %}</ul></div>{% endif %}
-      {% if m.not_met %}<div class="pr-elig-b no"><b>May be a barrier:</b><ul>{% for x in m.not_met %}<li>{{ x }}</li>{% endfor %}</ul></div>{% endif %}
     </div>
     {% endif %}
 
@@ -283,4 +281,77 @@
     </div>
   </aside>
 </section>
+
+<script>
+/* Load study-specific pre-screen questions (see /trial/<id>/<nct>/prescreen.json)
+   and swap them into the apply form. Mirrors the server-rendered tailored layout
+   exactly (sq_/sf_/sa_ + the fixed travel/consent questions) so the apply handler
+   parses answers the same way. Falls back to the generic screener on empty/error. */
+(function () {
+  var box = document.getElementById('ifScreener');
+  if (!box) return;
+  var url = box.getAttribute('data-prescreen-url');
+  if (!url) return;  // already showing cached tailored (or generic-only) questions
+  var head = document.getElementById('ifScreenerHead');
+  var note = document.getElementById('ifScreenerNote');
+  var body = document.getElementById('ifScreenerBody');
+  if (!body) return;
+
+  function opt(value, label, disabled, selected) {
+    var o = document.createElement('option');
+    o.value = value; o.textContent = label;
+    if (disabled) o.disabled = true;
+    if (selected) o.selected = true;
+    return o;
+  }
+  function select(name, opts, required) {
+    var s = document.createElement('select');
+    s.name = name;
+    if (required) s.required = true;
+    opts.forEach(function (o) { s.appendChild(o); });
+    return s;
+  }
+  function question(numText, control, hidden) {
+    var label = document.createElement('label');
+    var span = document.createElement('span');
+    span.textContent = numText;
+    label.appendChild(span);
+    (hidden || []).forEach(function (h) { label.appendChild(h); });
+    label.appendChild(control);
+    return label;
+  }
+  function hidden(name, value) {
+    var h = document.createElement('input');
+    h.type = 'hidden'; h.name = name; h.value = value || '';
+    return h;
+  }
+
+  fetch(url, { headers: { 'X-Requested-With': 'fetch' } })
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      var qs = (d && d.questions) || [];
+      if (!qs.length) { if (note) note.remove(); return; }  // keep generic set
+      var frag = document.createDocumentFragment();
+      qs.forEach(function (q, i) {
+        var sel = select('sa_' + i, [
+          opt('', 'Select', true, true), opt('yes', 'Yes'),
+          opt('no', 'No'), opt('unsure', 'Not sure')
+        ], true);
+        frag.appendChild(question((i + 1) + '. ' + (q.q || ''), sel,
+          [hidden('sq_' + i, q.q || ''), hidden('sf_' + i, q.flag_if || '')]));
+      });
+      var n = qs.length;
+      frag.appendChild(question((n + 1) + '. Can you travel to the study site for visits?',
+        select('travel', [opt('yes', 'Yes'), opt('maybe', 'Not sure'), opt('no', 'No')])));
+      frag.appendChild(question((n + 2) + '. Can you give your own informed consent?',
+        select('consent_capable', [opt('yes', 'Yes'), opt('no', 'No')])));
+      body.innerHTML = '';
+      body.appendChild(frag);
+      if (head) head.textContent = 'A few quick questions (' + (n + 2)
+        + ') to pre-screen you for this study';
+      if (note) note.remove();
+    })
+    .catch(function () { if (note) note.remove(); });
+})();
+</script>
 {% endblock %}
