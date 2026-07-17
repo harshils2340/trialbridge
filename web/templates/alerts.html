@@ -11,13 +11,20 @@
     <a class="btn btn-ghost" href="{{ url_for('find') }}">{{ ic.icon('search') }} Find trials now</a>
   </div>
 
-  <form class="alert-new" method="post" action="{{ url_for('alerts_create') }}">
+  <form class="alert-new" method="post" action="{{ url_for('alerts_create') }}" autocomplete="off">
     <div class="alert-new-row">
-      <label>Condition or treatment
-        <input type="text" name="condition" placeholder="e.g. obesity, semaglutide" required>
+      <label class="ac-field">Condition or treatment
+        <input id="alertCond" type="text" name="condition" placeholder="e.g. obesity, semaglutide"
+               autocomplete="off" autocapitalize="off" spellcheck="false" required>
+        <div id="alertCondSuggest" class="ac-suggest" hidden></div>
       </label>
-      <label>Near <span class="opt">(optional)</span>
-        <input type="text" name="location" placeholder="City or region">
+      <label class="ac-field">Near <span class="opt">(optional)</span>
+        <input id="alertLoc" type="text" name="location" placeholder="City or region"
+               autocomplete="off" autocapitalize="words" spellcheck="false">
+        <div id="alertLocSuggest" class="ac-suggest" hidden></div>
+        <input type="hidden" id="alertLat" name="lat">
+        <input type="hidden" id="alertLon" name="lon">
+        <input type="hidden" id="alertCc" name="cc">
       </label>
       <label>Within
         <span class="alert-radius-in">
@@ -28,14 +35,11 @@
           </select>
         </span>
       </label>
-      <label>Email
-        <input type="email" name="email" placeholder="you@email.com" required>
-      </label>
       <button class="btn btn-primary" type="submit">{{ ic.icon('activity') }} Turn on</button>
     </div>
     <label class="alert-strong-check"><input type="checkbox" name="strong_only" checked>
       Only email me strong-fit matches (recommended - keeps it high-quality)</label>
-    <p class="alert-new-hint">Only trials that open <b>after</b> you turn this on are sent.</p>
+    <p class="alert-new-hint">Sent to <b>{{ patient_user.notify_email or patient_user.email }}</b> · only trials that open <b>after</b> you turn this on.</p>
   </form>
 
   {% if not items %}
@@ -64,19 +68,23 @@
     </div>
 
     <form class="alert-tune" method="post" action="{{ url_for('alerts_update', alert_id=a.id) }}">
-      <label>Distance
-        <span class="alert-radius-in">
-          <input type="number" name="radius" value="{{ a.radius }}" min="1" step="5">
-          <select name="unit">
-            <option value="km" {{ 'selected' if a.unit != 'mi' else '' }}>km</option>
-            <option value="mi" {{ 'selected' if a.unit == 'mi' else '' }}>mi</option>
-          </select>
-        </span>
-      </label>
-      <label class="alert-strong-check"><input type="checkbox" name="strong_only" {{ 'checked' if a.strong_only else '' }}>
-        Strong-fit only</label>
-      <button class="btn btn-ghost btn-sm" type="submit">Save</button>
-      <button class="btn btn-ghost btn-sm alert-preview-btn" type="button">Preview what you'd get</button>
+      <div class="alert-tune-fields">
+        <label class="alert-tune-field"><span>Distance</span>
+          <span class="alert-radius-in">
+            <input type="number" name="radius" value="{{ a.radius }}" min="1" step="5">
+            <select name="unit">
+              <option value="km" {{ 'selected' if a.unit != 'mi' else '' }}>km</option>
+              <option value="mi" {{ 'selected' if a.unit == 'mi' else '' }}>mi</option>
+            </select>
+          </span>
+        </label>
+        <label class="alert-strong-check"><input type="checkbox" name="strong_only" {{ 'checked' if a.strong_only else '' }}>
+          Strong-fit only</label>
+      </div>
+      <div class="alert-tune-actions">
+        <button class="btn btn-ghost btn-sm alert-preview-btn" type="button">Preview</button>
+        <button class="btn btn-primary btn-sm" type="submit">Save</button>
+      </div>
     </form>
     <div class="alert-preview" hidden></div>
 
@@ -104,6 +112,142 @@
 </section>
 
 <script>
+// Condition + location typeahead for the "new alert" form — same suggestion
+// sources as the main hero search bar (condition list + Google/Nominatim geo).
+(function () {
+  var conditionOptions = {{ (condition_options[:80] if condition_options else [])|tojson }};
+
+  // ---- Condition typeahead (client-side filter, identical to hero) ----------
+  var condInput = document.getElementById('alertCond');
+  var condSuggest = document.getElementById('alertCondSuggest');
+  var condActiveIdx = -1;
+  function condItems() {
+    return condSuggest ? Array.prototype.slice.call(condSuggest.querySelectorAll('.ac-suggest-item')) : [];
+  }
+  function hideCond() { if (condSuggest) { condSuggest.hidden = true; condSuggest.innerHTML = ''; condActiveIdx = -1; } }
+  function setCondActive(idx) {
+    var items = condItems();
+    if (!items.length) { condActiveIdx = -1; return; }
+    if (idx < 0) idx = items.length - 1;
+    if (idx >= items.length) idx = 0;
+    condActiveIdx = idx;
+    items.forEach(function (el, i) { el.classList.toggle('is-active', i === condActiveIdx); });
+    if (items[condActiveIdx]) items[condActiveIdx].scrollIntoView({ block: 'nearest' });
+  }
+  function showCond() {
+    if (!condInput || !condSuggest) return;
+    var q = (condInput.value || '').trim().toLowerCase();
+    if (!q) { hideCond(); return; }
+    var starts = conditionOptions.filter(function (o) { return (o || '').toLowerCase().indexOf(q) === 0; });
+    var contains = conditionOptions.filter(function (o) { var lo = (o || '').toLowerCase(); return lo.indexOf(q) > 0; });
+    var list = starts.concat(contains).slice(0, 8);
+    if (!list.length) { hideCond(); return; }
+    condSuggest.innerHTML = '';
+    list.forEach(function (label) {
+      var b = document.createElement('button');
+      b.type = 'button'; b.className = 'ac-suggest-item'; b.textContent = label;
+      b.addEventListener('click', function () { condInput.value = label; hideCond(); });
+      condSuggest.appendChild(b);
+    });
+    condSuggest.hidden = false; condActiveIdx = -1;
+  }
+  if (condInput) {
+    condInput.addEventListener('input', showCond);
+    condInput.addEventListener('keydown', function (e) {
+      if (!condSuggest || condSuggest.hidden) return;
+      if (e.key === 'ArrowDown') { e.preventDefault(); setCondActive(condActiveIdx + 1); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); setCondActive(condActiveIdx - 1); }
+      else if (e.key === 'Enter') { var it = condItems()[condActiveIdx]; if (it) { it.click(); e.preventDefault(); } }
+      else if (e.key === 'Escape') { hideCond(); }
+    });
+    condInput.addEventListener('blur', function () { setTimeout(hideCond, 120); });
+  }
+
+  // ---- Location typeahead (server geo suggest, identical to hero) -----------
+  var locInput = document.getElementById('alertLoc');
+  var locSuggest = document.getElementById('alertLocSuggest');
+  var locLat = document.getElementById('alertLat'), locLon = document.getElementById('alertLon'),
+      locCc = document.getElementById('alertCc');
+  var locActiveIdx = -1, suggestTimer = null, lastQuery = '';
+  function newSession() {
+    try { return (crypto.randomUUID && crypto.randomUUID()) || String(Date.now()) + Math.random().toString(16).slice(2); }
+    catch (e) { return String(Date.now()) + Math.random().toString(16).slice(2); }
+  }
+  var locSession = newSession();
+  function locItems() {
+    return locSuggest ? Array.prototype.slice.call(locSuggest.querySelectorAll('.ac-suggest-item')) : [];
+  }
+  function hideLoc() { if (locSuggest) { locSuggest.hidden = true; locSuggest.innerHTML = ''; locActiveIdx = -1; } }
+  function setLocActive(idx) {
+    var items = locItems();
+    if (!items.length) { locActiveIdx = -1; return; }
+    if (idx < 0) idx = items.length - 1;
+    if (idx >= items.length) idx = 0;
+    locActiveIdx = idx;
+    items.forEach(function (el, i) { el.classList.toggle('is-active', i === locActiveIdx); });
+    if (items[locActiveIdx]) items[locActiveIdx].scrollIntoView({ block: 'nearest' });
+  }
+  function applyLoc(item) {
+    if (!locInput) return;
+    locInput.value = item.label || '';
+    if (locCc) locCc.value = item.cc || '';
+    if (item.lat && item.lon) {
+      if (locLat) locLat.value = item.lat;
+      if (locLon) locLon.value = item.lon;
+    } else if (item.place_id) {
+      if (locLat) locLat.value = '';
+      if (locLon) locLon.value = '';
+      fetch('{{ url_for("geo_place") }}?place_id=' + encodeURIComponent(item.place_id) +
+            '&session=' + encodeURIComponent(locSession))
+        .then(function (r) { return r.json(); })
+        .then(function (d) { if (d && d.ok) { if (locLat) locLat.value = d.lat || ''; if (locLon) locLon.value = d.lon || ''; if (locCc && d.cc) locCc.value = d.cc; } })
+        .catch(function () {})
+        .then(function () { locSession = newSession(); });
+    } else {
+      if (locLat) locLat.value = '';
+      if (locLon) locLon.value = '';
+    }
+    hideLoc();
+  }
+  function renderLoc(items) {
+    if (!locSuggest) return;
+    if (!items || !items.length) { hideLoc(); return; }
+    locSuggest.innerHTML = '';
+    items.forEach(function (it) {
+      var b = document.createElement('button');
+      b.type = 'button'; b.className = 'ac-suggest-item'; b.textContent = it.label || '';
+      b.addEventListener('click', function () { applyLoc(it); });
+      locSuggest.appendChild(b);
+    });
+    locSuggest.hidden = false; locActiveIdx = -1;
+  }
+  function requestLoc() {
+    if (!locInput) return;
+    var q = (locInput.value || '').trim();
+    if (q.length < 3) { hideLoc(); return; }
+    lastQuery = q;
+    fetch('{{ url_for("geo_suggest") }}?q=' + encodeURIComponent(q) + '&session=' + encodeURIComponent(locSession))
+      .then(function (r) { return r.json(); })
+      .then(function (d) { if (!locInput || (locInput.value || '').trim() !== lastQuery) return; renderLoc((d && d.items) ? d.items : []); })
+      .catch(function () { hideLoc(); });
+  }
+  if (locInput) {
+    locInput.addEventListener('input', function () {
+      if (locLat && locLat.value) { locLat.value = locLon.value = locCc.value = ''; }
+      if (suggestTimer) clearTimeout(suggestTimer);
+      suggestTimer = setTimeout(requestLoc, 180);
+    });
+    locInput.addEventListener('keydown', function (e) {
+      if (!locSuggest || locSuggest.hidden) return;
+      if (e.key === 'ArrowDown') { e.preventDefault(); setLocActive(locActiveIdx + 1); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); setLocActive(locActiveIdx - 1); }
+      else if (e.key === 'Enter') { var it = locItems()[locActiveIdx]; if (it) { it.click(); e.preventDefault(); } }
+      else if (e.key === 'Escape') { hideLoc(); }
+    });
+    locInput.addEventListener('blur', function () { setTimeout(hideLoc, 120); });
+  }
+})();
+
 document.querySelectorAll('.alert-preview-btn').forEach(function (btn) {
   btn.addEventListener('click', function () {
     var card = btn.closest('.alert-card');

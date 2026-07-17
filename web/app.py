@@ -2935,7 +2935,12 @@ def alerts():
     # Viewing clears the "new" badge in the nav.
     if token:
         db.clear_new_flags(token)
-    return render_template("alerts.html", items=items)
+    # Same condition suggestion list the hero search uses, so the "new alert"
+    # form gets identical typeahead results.
+    condition_options = _merge_terms(
+        trending_conditions(12), SEARCH_CONDITION_OPTIONS, 30)
+    return render_template("alerts.html", items=items,
+                           condition_options=condition_options)
 
 
 @app.route("/alerts/create", methods=["POST"])
@@ -2948,12 +2953,11 @@ def alerts_create():
     f = request.form
     condition = f.get("condition", "").strip()
     intervention = f.get("intervention", "").strip()
-    email = f.get("email", "").strip()
+    # Signed-in patients: always notify their account email (or the notify_email
+    # they chose in Settings). Never ask for it in the form.
+    email = (g.patient_user["notify_email"] or g.patient_user["email"] or "").strip()
     if not (condition or intervention):
         flash("Tell us a condition or treatment to watch for.", "error")
-        return redirect(request.referrer or url_for("alerts"))
-    if not email:
-        flash("Add an email so we can notify you about new trials.", "error")
         return redirect(request.referrer or url_for("alerts"))
 
     applicant = g.patient_user["applicant_token"]

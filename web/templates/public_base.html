@@ -41,7 +41,6 @@
        (landing.html), so skip the patient links here to avoid duplicates. #}
     {% set landing_patient = (landing_page | default(false)) and patient_user %}
     <a href="{{ url_for('find') }}">Find a trial</a>
-    <a href="{{ url_for('how_it_works') }}">How it works</a>
     {% if not landing_patient %}
     <a href="{{ url_for('alerts') }}" class="pub-apps">Alerts{% if alerts_new_count %} <span class="nav-badge nav-badge-new">{{ alerts_new_count }}</span>{% endif %}</a>
     <a href="{{ url_for('applications') }}" class="pub-apps">My applications{% if messages_unread %} <span class="nav-badge nav-badge-new">{{ messages_unread }}</span>{% elif applications_count %} <span class="nav-badge">{{ applications_count }}</span>{% endif %}</a>
