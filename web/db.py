@@ -266,6 +266,7 @@ CREATE TABLE IF NOT EXISTS leads (
     record_summary  TEXT DEFAULT '',
     screener        TEXT DEFAULT '',
     eligibility     TEXT DEFAULT '',
+    prescreen_readiness TEXT DEFAULT '',
     decision        TEXT DEFAULT '',
     decision_reason TEXT DEFAULT '',
     decided_at      TEXT DEFAULT '',
@@ -717,6 +718,7 @@ _MIGRATIONS = {
         "record_summary": "TEXT DEFAULT ''",
         "screener": "TEXT DEFAULT ''",
         "eligibility": "TEXT DEFAULT ''",
+        "prescreen_readiness": "TEXT DEFAULT ''",
         "decision": "TEXT DEFAULT ''",
         "decision_reason": "TEXT DEFAULT ''",
         "decided_at": "TEXT DEFAULT ''",
@@ -935,6 +937,31 @@ def set_patient_onboarding(patient_id, primary_interest="", notify_email="",
         ((primary_interest or "").strip(), (notify_email or "").strip(),
          1 if email_alerts else 0, patient_id))
     db.commit()
+
+
+def update_patient_account(patient_id, full_name=None, notify_email=None,
+                           email_alerts=None, primary_interest=None):
+    """Update the basic, patient-editable account fields from the settings page.
+    Only the fields passed (not None) are changed."""
+    patient = get_patient_user(patient_id)
+    if not patient:
+        return False
+    sets, vals = [], []
+    if full_name is not None:
+        sets.append("full_name = ?"); vals.append((full_name or "").strip())
+    if notify_email is not None:
+        sets.append("notify_email = ?"); vals.append((notify_email or "").strip())
+    if email_alerts is not None:
+        sets.append("email_alerts = ?"); vals.append(1 if email_alerts else 0)
+    if primary_interest is not None:
+        sets.append("primary_interest = ?"); vals.append((primary_interest or "").strip())
+    if not sets:
+        return True
+    vals.append(patient_id)
+    db = get_db()
+    db.execute("UPDATE patient_users SET " + ", ".join(sets) + " WHERE id = ?", vals)
+    db.commit()
+    return True
 
 
 def create_patient_code(patient_id, purpose, code, expires_ts):
@@ -1567,9 +1594,9 @@ def create_lead(data):
            (token, site_token, site_token_expires_at, site_token_revoked,
             applicant_token, nct, title, condition, location, site, name,
             email, phone, age, sex, notes, consent, source, status, screener,
-            eligibility, records_connected, record_summary, referred_by,
-            invite_token, created_at, updated_at)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            eligibility, prescreen_readiness, records_connected, record_summary,
+            referred_by, invite_token, created_at, updated_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         (token, site_token, _site_token_expiry(), 0,
          data.get("applicant_token", ""), data.get("nct", ""),
          data.get("title", ""), data.get("condition", ""),
@@ -1578,6 +1605,7 @@ def create_lead(data):
          data.get("sex", ""), data.get("notes", ""),
          1 if data.get("consent") else 0, data.get("source", "web"),
          "prescreen", data.get("screener", ""), data.get("eligibility", ""),
+         data.get("prescreen_readiness", ""),
          1 if data.get("records_connected") else 0,
          data.get("record_summary", ""), data.get("referred_by", ""),
          data.get("invite_token", ""), ts, ts))
@@ -2352,13 +2380,16 @@ def set_nudged(lead_id):
     db.commit()
 
 
-def withdraw_lead(token, applicant_token):
-    """Patient withdraws their own application (must own the applicant token)."""
+def withdraw_lead(token, applicant_token, reason=""):
+    """Patient withdraws their own application (must own the applicant token).
+    The reason is stored on the status event so it flows into the funnel
+    drop-off analytics (why patients leave)."""
     lead = get_lead_by_token(token)
     if not lead or lead["applicant_token"] != applicant_token:
         return False
-    return update_lead_status(lead["id"], "withdrawn",
-                              "withdrawn by applicant", actor="you")
+    reason = (reason or "").strip()
+    note = f"withdrawn by applicant: {reason}" if reason else "withdrawn by applicant"
+    return update_lead_status(lead["id"], "withdrawn", note, actor="you")
 
 
 def connect_records(token, applicant_token, summary):
@@ -3653,16 +3684,52 @@ def create_alert(data):
     cur = db.execute(
         """INSERT INTO alerts
            (applicant_token, label, condition, intervention, location, lat, lon,
-            cc, radius, unit, email, active, created_at, notify_min_days)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,1,?,?)""",
+            cc, radius, unit, email, active, strong_only, created_at,
+            notify_min_days)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,1,?,?,?)""",
         (data.get("applicant_token", ""), data.get("label", ""),
          data.get("condition", ""), data.get("intervention", ""),
          data.get("location", ""), data.get("lat"), data.get("lon"),
          data.get("cc", ""), int(data.get("radius") or 50),
-         data.get("unit", "km"), data.get("email", ""), now(),
+         data.get("unit", "km"), data.get("email", ""),
+         1 if data.get("strong_only", True) else 0, now(),
          int(data.get("notify_min_days") or 7)))
     db.commit()
     return cur.lastrowid
+
+
+def update_alert_prefs(alert_id, applicant_token, *, radius=None, unit=None,
+                       strong_only=None, location=None, lat=None, lon=None,
+                       cc=None):
+    """Let the owner tune an alert's quality controls (distance radius, unit,
+    strong-fit-only) and location. Only touches provided fields; ownership is
+    enforced by applicant_token so one patient can't edit another's alert."""
+    a = get_alert(alert_id)
+    if not a or a["applicant_token"] != applicant_token:
+        return False
+    sets, vals = [], []
+    if radius is not None:
+        sets.append("radius = ?"); vals.append(max(1, int(radius)))
+    if unit is not None:
+        sets.append("unit = ?"); vals.append(unit if unit in ("km", "mi") else "km")
+    if strong_only is not None:
+        sets.append("strong_only = ?"); vals.append(1 if strong_only else 0)
+    if location is not None:
+        sets.append("location = ?"); vals.append(location.strip())
+    if lat is not None:
+        sets.append("lat = ?"); vals.append(lat)
+    if lon is not None:
+        sets.append("lon = ?"); vals.append(lon)
+    if cc is not None:
+        sets.append("cc = ?"); vals.append((cc or "").strip().upper())
+    if not sets:
+        return False
+    vals.extend([alert_id, applicant_token])
+    db = get_db()
+    db.execute("UPDATE alerts SET " + ", ".join(sets)
+               + " WHERE id = ? AND applicant_token = ?", vals)
+    db.commit()
+    return True
 
 
 def list_alerts(applicant_token):

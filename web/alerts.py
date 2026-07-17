@@ -81,6 +81,25 @@ def _quality_score(alert, match):
     return score
 
 
+STRONG_FIT_MIN_SCORE = 10
+
+
+def _alert_val(alert, key, default=None):
+    """Read a field from an alert row/dict (sqlite Row has no .get)."""
+    try:
+        return alert[key]
+    except (KeyError, IndexError, TypeError):
+        return default
+
+
+def _strong_only(alert):
+    """Whether this alert should only ever surface high-signal matches.
+    Defaults to True so alerts stay quiet and trustworthy unless the patient
+    explicitly opts into looser (all) matches."""
+    v = _alert_val(alert, "strong_only", 1)
+    return True if v is None else bool(v)
+
+
 def _curate_for_email(alert, rows):
     """Pick a small, useful set of matches for an email digest."""
     picks = []
@@ -93,9 +112,28 @@ def _curate_for_email(alert, rows):
         m = {"nct": nct, "title": title, "score": _quality_score(alert, row)}
         picks.append(m)
     picks.sort(key=lambda x: (-x["score"], x["nct"]))
-    # Require at least some relevance signal; otherwise skip the email.
-    strong = [x for x in picks if x["score"] >= 10]
-    return strong[:EMAIL_MAX_MATCHES]
+    if _strong_only(alert):
+        # Require a real relevance signal; otherwise skip the email entirely.
+        picks = [x for x in picks if x["score"] >= STRONG_FIT_MIN_SCORE]
+    return picks[:EMAIL_MAX_MATCHES]
+
+
+def preview_matches(alert, limit=6):
+    """What this alert WOULD email today: the current recruiting matches that
+    pass the same quality bar the digest uses. Powers the 'what you'll get'
+    preview on the alerts page so the patient can trust it before relying on
+    it. Live CT.gov call - call from a request, not the tight loop."""
+    rows = [{"nct": n, "title": t} for (n, t) in _match_ncts(alert)]
+    picks = []
+    for row in rows:
+        picks.append({"nct": row["nct"], "title": row["title"],
+                      "score": _quality_score(alert, row)})
+    picks.sort(key=lambda x: (-x["score"], x["nct"]))
+    if _strong_only(alert):
+        picks = [x for x in picks if x["score"] >= STRONG_FIT_MIN_SCORE]
+    for p in picks:
+        p["strong"] = p["score"] >= STRONG_FIT_MIN_SCORE
+    return picks[:limit]
 
 
 def seed_baseline(alert_id):

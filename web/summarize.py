@@ -274,6 +274,146 @@ def evaluate_summary_quality(trial, summary):
     return out
 
 
+def _crit_bullets(block):
+    """Split a criteria block into clean bullet items, preserving the source
+    line/bullet structure (tidy() alone would flatten it)."""
+    block = html.unescape(block or "")
+    parts = re.split(r"(?:\r?\n|^)\s*(?:[\*\-\u2022\u25aa\u25cf]|\d+[.)])\s+", block)
+    items = [tidy(p) for p in parts]
+    items = [s for s in items if len(s) >= 4]
+    if len(items) <= 1:  # no bullet markers: fall back to line breaks
+        items = [tidy(x) for x in re.split(r"\r?\n+", block)]
+        items = [s for s in items if len(s) >= 4]
+    return items
+
+
+def _split_criteria(raw):
+    """Return (inclusion_items, exclusion_items) from raw CT.gov criteria text."""
+    raw = raw or ""
+    m = re.search(r"exclusion\s+criteria\s*:?", raw, re.I)
+    if m:
+        inc_txt, exc_txt = raw[:m.start()], raw[m.end():]
+    else:
+        inc_txt, exc_txt = raw, ""
+    inc_txt = re.sub(r"inclusion\s+criteria\s*:?", "", inc_txt, flags=re.I)
+    return _crit_bullets(inc_txt), _crit_bullets(exc_txt)
+
+
+def _short(text, limit=150):
+    s = _plainify(text)
+    if len(s) <= limit:
+        return s
+    return s[:limit].rsplit(" ", 1)[0].rstrip(" .,;:") + "..."
+
+
+def _phase_plain(phase):
+    """Map a CT.gov phase string to a short, honest plain-language label."""
+    p = (phase or "").upper().replace(" ", "").replace("_", "")
+    if not p or p == "NA":
+        return ""
+    if "PHASE4" in p:
+        return "Phase 4: studies an already-approved treatment"
+    if "PHASE3" in p:
+        return "Phase 3: a large, late-stage study"
+    if "PHASE2" in p:
+        return "Phase 2: a mid-size study of how well it works"
+    if "PHASE1" in p or "EARLYPHASE1" in p:
+        return "Phase 1: an early, usually small safety study"
+    return ""
+
+
+def _age_sex_basics(trial):
+    """Short 'who' line from age range, sex, and healthy-volunteer fields."""
+    def yrs(v):
+        mt_ = re.search(r"(\d+)", str(v or ""))
+        return mt_.group(1) if mt_ else ""
+    lo, hi = yrs(trial.get("minAge")), yrs(trial.get("maxAge"))
+    if lo and hi:
+        age = f"Ages {lo} to {hi}"
+    elif lo:
+        age = f"Ages {lo} and older"
+    elif hi:
+        age = f"Ages up to {hi}"
+    else:
+        age = "Adults"
+    sex = (trial.get("sex") or "ALL").upper()
+    if sex == "FEMALE":
+        age += ", women only"
+    elif sex == "MALE":
+        age += ", men only"
+    if str(trial.get("healthyVolunteers") or "").lower() in ("yes", "true", "y"):
+        age += ". Healthy volunteers may be eligible."
+    return age
+
+
+def _design_line(trial):
+    """Plain note on randomization, placebo, and blinding from the study text."""
+    text = " ".join([
+        trial.get("criteria") or "", trial.get("briefSummary") or "",
+        trial.get("detailedDescription") or "", trial.get("title") or "",
+    ]).lower()
+    randomized = bool(re.search(r"randomi[sz]ed", text))
+    placebo = "placebo" in text
+    blinded = bool(re.search(r"double-?blind|single-?blind|\bblinded\b|masking", text))
+    if not (randomized or placebo or blinded):
+        return ""
+    if placebo:
+        note = ("You might receive a placebo (an inactive treatment) instead of "
+                "the study drug")
+        if randomized:
+            note += ", decided by chance"
+        note += "."
+    elif randomized:
+        note = "Which group you join is decided by chance."
+    else:
+        note = "This is a blinded study."
+    if blinded and placebo:
+        note += " You may not know which one you got."
+    return note
+
+
+def _duration_plain(trial):
+    """Best-effort per-patient time commitment, only when the text states it
+    clearly (avoids inventing a number). Returns '' when unsure."""
+    text = tidy(f"{trial.get('briefSummary') or ''} "
+                f"{trial.get('detailedDescription') or ''}")
+    best = None
+    pat = re.compile(
+        r"(?:treatment period of|study (?:duration|period) of|over a period of|"
+        r"for (?:up to|about|approximately)?|over|during|lasts?|last for)"
+        r"\s+(\d{1,3})\s*(weeks?|months?|years?)", re.I)
+    for m in pat.finditer(text):
+        n, unit = int(m.group(1)), m.group(2).lower()
+        if not unit.endswith("s") and n != 1:
+            unit += "s"
+        weeks = n * (52 if "year" in unit else 4 if "month" in unit else 1)
+        if 1 <= weeks <= 520 and (best is None or weeks > best[0]):
+            best = (weeks, f"about {n} {unit}")
+    return best[1] if best else ""
+
+
+def plain_terms(trial):
+    """Compact, neutral 'in plain terms' facts for the trial detail page: who
+    can join, what likely rules you out, study design (placebo/randomization),
+    and a rough time commitment. Deterministic (no LLM, no network) and built
+    only from public CT.gov fields, so it's compliance-safe (no sponsor claims)."""
+    trial = trial or {}
+    inc, exc = _split_criteria(trial.get("criteria") or "")
+    who = [_short(x) for x in inc[:5]]
+    rule_out = [_short(x) for x in exc[:6]]
+    return {
+        "phase": _phase_plain(trial.get("phase")),
+        "design": _design_line(trial),
+        "time": _duration_plain(trial),
+        "who_basics": _age_sex_basics(trial),
+        "who": who,
+        "rule_out": rule_out,
+        "inc_all": [_short(x, 220) for x in inc],
+        "exc_all": [_short(x, 220) for x in exc],
+        "has_more": len(inc) > len(who) or len(exc) > len(rule_out),
+    }
+
+
 def plain(trial):
     """Structured plain-English summary for the detail page (LLM + cache)."""
     trial = trial or {}

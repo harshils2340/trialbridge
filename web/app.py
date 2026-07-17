@@ -2187,8 +2187,9 @@ def trial_detail(search_id, nct):
     # `trial_prescreen` endpoint below.
     prescreen = _prescreen_cached(r["trial"]) or []
     prescreen_ai = bool(mt.LLM_API_KEY) and bool((r["trial"] or {}).get("criteria"))
+    plain_terms = summarize.plain_terms(r["trial"])
     return render_template("trial_detail.html", r=r, search_id=search_id,
-                           applied=applied, summary=summary,
+                           applied=applied, summary=summary, plain_terms=plain_terms,
                            prescreen=prescreen, prescreen_ai=prescreen_ai, **ctx)
 
 
@@ -2295,6 +2296,17 @@ def interest():
             invite_token = inv_tok
             source = "referral"
 
+    # One-time pre-screen readiness estimate from the patient's own answers +
+    # eligibility read. Stored so both the patient and study team see the same
+    # number without repeat LLM cost. Never blocks the application if it fails.
+    readiness = ""
+    try:
+        readiness = json.dumps(_evaluate_prescreen_readiness(
+            f.get("title", "").strip(), f.get("condition", "").strip(),
+            screener, elig))
+    except Exception:
+        app.logger.exception("readiness compute failed")
+
     token = db.create_lead({
         "applicant_token": applicant,
         "nct": f.get("nct", "").strip(), "title": f.get("title", "").strip(),
@@ -2306,6 +2318,7 @@ def interest():
         "notes": f.get("about", "").strip(), "consent": 1, "source": source,
         "screener": json.dumps(screener) if screener else "",
         "eligibility": json.dumps(elig) if elig else "",
+        "prescreen_readiness": readiness,
         "records_connected": records_connected, "record_summary": record_summary,
         "referred_by": referred_by, "invite_token": invite_token,
     })
@@ -2313,8 +2326,20 @@ def interest():
     # NOTIFY_LIVE is off, so nothing is emailed during testing.
     _notify_site_new_candidate(token)
     _log_event("apply", {"nct": f.get("nct", "").strip()})
+    # Prefill an OPTIONAL "alert me about similar trials" offer on the thank-you
+    # page (see thanks.html). Nothing is created unless the patient opts in.
+    alert_prefill = {
+        "condition": f.get("condition", "").strip(),
+        "location": f.get("location", "").strip(),
+        "lat": f.get("lat", "").strip(),
+        "lon": f.get("lon", "").strip(),
+        "cc": f.get("cc", "").strip(),
+        "radius": f.get("radius", "").strip() or "50",
+        "unit": f.get("unit", "km").strip() or "km",
+        "email": email,
+    }
     return render_template("thanks.html", title=f.get("title", ""),
-                           nct=f.get("nct", ""))
+                           nct=f.get("nct", ""), alert_prefill=alert_prefill)
 
 
 @app.route("/how-it-works")
@@ -2333,6 +2358,20 @@ def applications():
     leads = db.list_leads_by_applicant(token)
     apps = []
     for ld in leads:
+        # Parse the answers the patient submitted (drop the internal _flags key)
+        # so we can show them back read-only, and the stored readiness estimate.
+        try:
+            scr = json.loads(ld["screener"]) if ld["screener"] else {}
+        except (ValueError, TypeError):
+            scr = {}
+        scr.pop("_flags", None)
+        answers = [{"q": SCREENER_LABELS.get(k, k), "a": v}
+                   for k, v in scr.items() if str(v).strip()]
+        try:
+            readiness = (json.loads(ld["prescreen_readiness"])
+                         if ld["prescreen_readiness"] else None)
+        except (ValueError, TypeError):
+            readiness = None
         apps.append({
             "lead": ld,
             "events": db.get_lead_events(ld["id"]),
@@ -2342,6 +2381,8 @@ def applications():
             "files": db.list_attachments(ld["id"]),
             "tasks": db.list_tasks(ld["id"]),
             "doc_requests": db.list_doc_requests(ld["id"]),
+            "answers": answers,
+            "readiness": readiness,
         })
         db.mark_thread_read(ld["id"], "patient")
     return render_template("applications.html", apps=apps,
@@ -2349,6 +2390,31 @@ def applications():
                            blurb=db.LEAD_BLURB, closed=db.LEAD_CLOSED,
                            support_coverage_labels=SUPPORT_COVERAGE_LABELS,
                            support_travel_labels=SUPPORT_TRAVEL_LABELS)
+
+
+@app.route("/settings", methods=["GET", "POST"])
+def patient_settings():
+    """Basic, patient-editable account settings: display name, where updates go,
+    whether to receive email updates, and a primary condition of interest."""
+    if not g.patient_user:
+        flash("Sign in to manage your settings.", "error")
+        return redirect(url_for("patient_login", next=url_for("patient_settings")))
+    if request.method == "POST":
+        f = request.form
+        full_name = f.get("full_name", "").strip()
+        notify_email = f.get("notify_email", "").strip()
+        primary_interest = f.get("primary_interest", "").strip()
+        email_alerts = bool(f.get("email_alerts"))
+        if notify_email and ("@" not in notify_email or "." not in notify_email.split("@")[-1]):
+            flash("That notification email doesn't look right.", "error")
+            return redirect(url_for("patient_settings"))
+        db.update_patient_account(
+            g.patient_user["id"], full_name=full_name, notify_email=notify_email,
+            email_alerts=email_alerts, primary_interest=primary_interest)
+        g.patient_user = db.get_patient_user(g.patient_user["id"])
+        flash("Settings saved.", "success")
+        return redirect(url_for("patient_settings"))
+    return render_template("settings.html", patient=g.patient_user)
 
 
 @app.route("/applications/<token>/message", methods=["POST"])
@@ -2489,7 +2555,11 @@ def withdraw_application(token):
     if not g.patient_user:
         flash("Sign in to manage your applications.", "error")
         return redirect(url_for("patient_login", next=url_for("applications")))
-    if db.withdraw_lead(token, get_applicant_token()):
+    reason = request.form.get("reason", "").strip()
+    if not reason:
+        flash("Please add a short reason so we can withdraw this application.", "error")
+        return redirect(url_for("applications") + f"#app-{token}")
+    if db.withdraw_lead(token, get_applicant_token(), reason):
         flash("Application withdrawn.", "success")
     else:
         flash("Couldn't withdraw that application.", "error")
@@ -2894,23 +2964,68 @@ def alerts_create():
         except (TypeError, ValueError):
             return None
 
+    # Strong-fit-only defaults ON (quiet, high-signal). Only off if explicitly
+    # unchecked in a form that includes the toggle.
+    strong_only = True
+    if "strong_only" in f:
+        strong_only = bool(f.get("strong_only"))
     alert_id = db.create_alert({
         "applicant_token": applicant,
-        "label": f.get("label", "").strip(),
+        "label": f.get("label", "").strip() or condition or intervention,
         "condition": condition, "intervention": intervention,
         "location": f.get("location", "").strip(),
         "lat": _f(f.get("lat")), "lon": _f(f.get("lon")),
         "cc": f.get("cc", "").strip(), "radius": f.get("radius", "50").strip() or 50,
         "unit": f.get("unit", "km").strip() or "km", "email": email,
+        "strong_only": strong_only,
     })
     # Baseline current matches so the patient isn't spammed with the backlog.
     try:
         alerts_mod.seed_baseline(alert_id)
     except Exception:
         app.logger.exception("alert baseline failed")
-    flash("Alert saved. We'll email you when a new matching trial opens - no "
-          "need to keep searching.", "success")
+    flash("Alert on. We'll only email you about new, strong-fit trials near you "
+          "- tune the radius or turn it off anytime below.", "success")
     return redirect(url_for("alerts"))
+
+
+@app.route("/alerts/<int:alert_id>/update", methods=["POST"])
+def alerts_update(alert_id):
+    """Tune an alert's quality controls: distance radius/unit and whether to
+    send only strong-fit matches. Keeps alerts high-signal and near the patient."""
+    if not g.patient_user:
+        flash("Sign in to manage alerts.", "error")
+        return redirect(url_for("patient_login", next=url_for("alerts")))
+    f = request.form
+    try:
+        radius = int(f.get("radius", "").strip() or 50)
+    except ValueError:
+        radius = 50
+    unit = f.get("unit", "km").strip() or "km"
+    strong_only = bool(f.get("strong_only"))
+    ok = db.update_alert_prefs(alert_id, get_applicant_token(),
+                               radius=radius, unit=unit, strong_only=strong_only)
+    flash("Alert updated." if ok else "Couldn't update that alert.",
+          "success" if ok else "error")
+    return redirect(url_for("alerts"))
+
+
+@app.route("/alerts/<int:alert_id>/preview")
+def alerts_preview(alert_id):
+    """Return the trials this alert WOULD email today (current strong-fit
+    matches), so the patient can see the quality before trusting it."""
+    if not g.patient_user:
+        return jsonify({"ok": False, "error": "auth"}), 403
+    alert = db.get_alert(alert_id)
+    if not alert or alert["applicant_token"] != get_applicant_token():
+        return jsonify({"ok": False, "error": "not_found"}), 404
+    try:
+        matches = alerts_mod.preview_matches(alert, limit=6)
+    except Exception:
+        app.logger.exception("alert preview failed")
+        matches = []
+    return jsonify({"ok": True, "strong_only": bool(alert["strong_only"]),
+                    "matches": matches})
 
 
 @app.route("/alerts/<int:alert_id>/delete", methods=["POST"])
@@ -3001,6 +3116,97 @@ SCREENER_LABELS = {
 }
 # Answers that are a yellow flag for the study team to look at.
 SCREENER_FLAGS = {"other_trial": "yes", "pregnancy": "yes", "consent_capable": "no"}
+
+
+def _readiness_band(score):
+    if score >= 70:
+        return "strong"
+    if score >= 45:
+        return "good"
+    return "review"
+
+
+def _readiness_from_signals(elig, screener):
+    """Deterministic 'chance of clearing pre-screen' from the LLM eligibility
+    verdict + the concern flags in the patient's own answers. Used as a fast,
+    free baseline and as the fallback when the LLM is unavailable."""
+    verdict = (elig or {}).get("verdict", "")
+    base = {"likely_eligible": 82, "possible": 58,
+            "unlikely": 32}.get(verdict, 55)
+    scr = dict(screener or {})
+    dyn = scr.pop("_flags", None) or []
+    if not isinstance(dyn, list):
+        dyn = [dyn]
+    concern = sum(1 for k, bad in SCREENER_FLAGS.items() if scr.get(k) == bad)
+    concern += len([x for x in dyn if str(x).strip()])
+    base -= 12 * concern
+    unknown = len((elig or {}).get("unknown") or [])
+    base -= min(10, 2 * unknown)
+    return max(5, min(95, base))
+
+
+def _evaluate_prescreen_readiness(title, condition, screener, elig):
+    """Estimate how likely the patient's application is to clear the study
+    team's pre-screen, from THEIR answers + the eligibility read. Returns
+    {score, band, note, confirm[]}. LLM-written note when available, else a
+    templated one. This is an ESTIMATE for the patient's benefit - never a
+    guarantee, never a sponsor claim (see compliance rule)."""
+    base = _readiness_from_signals(elig, screener)
+    band = _readiness_band(base)
+    # Deterministic, encouraging fallback copy.
+    fb_note = {
+        "strong": "Your answers line up well with this study's basics.",
+        "good": "You look like a reasonable fit - the team will confirm a few details.",
+        "review": "A few things need the study team's review, but it's worth applying.",
+    }[band]
+    confirm = [str(x) for x in ((elig or {}).get("unknown") or [])[:3]]
+    result = {"score": base, "band": band, "note": fb_note, "confirm": confirm}
+    if not mt.LLM_API_KEY:
+        return result
+    # Compact, de-identified view of the answers for the model.
+    scr = dict(screener or {})
+    scr.pop("_flags", None)
+    ans_lines = "\n".join(f"- {SCREENER_LABELS.get(k, k)}: {v}"
+                          for k, v in scr.items() if str(v).strip())
+    elig_bits = []
+    if (elig or {}).get("met"):
+        elig_bits.append("Meets: " + "; ".join(elig["met"][:6]))
+    if (elig or {}).get("unknown"):
+        elig_bits.append("To confirm: " + "; ".join(elig["unknown"][:6]))
+    if (elig or {}).get("not_met"):
+        elig_bits.append("Possible barriers: " + "; ".join(elig["not_met"][:6]))
+    system = (
+        "You help a patient understand how ready their application looks for a "
+        "clinical study team's pre-screen, based ONLY on the patient's own "
+        "answers and an eligibility read. Be encouraging and plain-spoken. "
+        "This is an ESTIMATE, not a decision or a promise of enrollment; the "
+        "study team makes the final call. Never discourage someone from "
+        "applying. Return strict JSON: {\"score\": int 0-100, \"note\": string "
+        "<=25 words, \"confirm\": [up to 3 short phrases the team will verify]}."
+    )
+    user = (
+        f"STUDY: {title or condition or 'a clinical study'}\n"
+        f"CONDITION: {condition or 'n/a'}\n\n"
+        f"PATIENT ANSWERS:\n{ans_lines or '- (none)'}\n\n"
+        f"ELIGIBILITY READ:\n{chr(10).join(elig_bits) or '- (none)'}\n\n"
+        f"Baseline score from signals is {base}. Adjust only if the answers "
+        f"clearly justify it, and return the JSON."
+    )
+    try:
+        raw = mt.llm_chat(system, user)
+        data = mt._extract_json(raw)
+        score = int(data.get("score", base))
+        score = max(5, min(95, score))
+        note = str(data.get("note", "")).strip() or fb_note
+        conf = data.get("confirm") or confirm
+        if not isinstance(conf, list):
+            conf = [str(conf)]
+        conf = [str(x).strip() for x in conf if str(x).strip()][:3]
+        return {"score": score, "band": _readiness_band(score),
+                "note": note, "confirm": conf}
+    except Exception:
+        app.logger.exception("prescreen readiness eval failed")
+        return result
 SUPPORT_COVERAGE_LABELS = {
     "": "Not checked",
     "needs_info": "Need more insurance info",

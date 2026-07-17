@@ -1,0 +1,40 @@
+{% extends "public_base.html" %}
+{% block title %}Settings · BridgeMD{% endblock %}
+{% import "_ui.html" as ui %}
+{% block body %}
+<section class="find-wrap">
+  <h1 class="find-title">Settings</h1>
+  <p class="find-lead">Update your basic account details and how we keep in touch.</p>
+
+  <form method="post" class="find-form">
+    <label class="find-field"><span>Display name</span>
+      <input type="text" name="full_name" value="{{ patient.full_name or '' }}"
+             placeholder="Your name"></label>
+
+    <label class="find-field"><span>Account email</span>
+      <input type="email" value="{{ patient.email }}" disabled></label>
+    <p class="find-hint">This is the email you sign in with and can't be changed here.</p>
+
+    <label class="find-field"><span>Where updates are sent</span>
+      <input type="email" name="notify_email" value="{{ patient.notify_email or patient.email }}"
+             placeholder="you@email.com"></label>
+    <p class="find-hint">Trial alerts and study-team messages go here. Defaults to your account email.</p>
+
+    <label class="find-field"><span>Main condition / interest</span>
+      <input type="text" name="primary_interest" value="{{ patient.primary_interest or '' }}"
+             placeholder="e.g. type 2 diabetes"></label>
+
+    <label class="filt-check"><input type="checkbox" name="email_alerts"
+      {{ 'checked' if patient.email_alerts else '' }}>
+      Email me updates about my applications and new matching trials</label>
+
+    {{ ui.btn('Save settings', 'primary', type='submit') }}
+  </form>
+
+  <div class="set-signout">
+    <form method="post" action="{{ url_for('patient_logout') }}">
+      {{ ui.btn('Sign out', 'ghost', type='submit') }}
+    </form>
+  </div>
+</section>
+{% endblock %}

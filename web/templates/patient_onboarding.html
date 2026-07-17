@@ -3,14 +3,14 @@
 {% block body %}
 <section class="find-wrap">
   <h1 class="find-title">Finish setup</h1>
-  <p class="find-lead">Tell us what studies you care about and where to send alerts.</p>
+  <p class="find-lead">Tell us what you care about. Alerts stay <b>off</b> unless you turn them on - you're never signed up automatically.</p>
   <form method="post" class="find-form">
     <label class="find-field"><span>Main condition/interest</span>
       <input type="text" name="primary_interest" placeholder="e.g. obesity, type 2 diabetes"></label>
     <label class="find-field"><span>Alert email</span>
       <input type="email" name="notify_email" value="{{ patient_user.email if patient_user else '' }}"></label>
-    <label class="filt-check"><input type="checkbox" name="email_alerts" checked>
-      Email me when new matching trials open</label>
+    <label class="filt-check"><input type="checkbox" name="email_alerts">
+      Optional: email me only when a new, strong-fit trial opens near me</label>
     <button class="btn btn-primary" type="submit">Save and continue</button>
   </form>
 </section>

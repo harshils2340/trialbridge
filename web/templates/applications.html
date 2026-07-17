@@ -100,6 +100,36 @@
     </ol>
     {% endif %}
 
+    {% if not is_closed and a.readiness %}
+    {% set rd = a.readiness %}
+    <div class="app-readiness rd-{{ rd.band }}">
+      <div class="rd-head">
+        <span class="rd-label">{{ ic.icon('activity') }} Pre-screen readiness</span>
+        <span class="rd-score">{{ rd.score }}<span class="rd-score-max">/100</span></span>
+      </div>
+      <div class="rd-meter"><span style="width: {{ rd.score }}%"></span></div>
+      {% if rd.note %}<p class="rd-note">{{ rd.note }}</p>{% endif %}
+      {% if rd.confirm %}
+      <details class="rd-confirm">
+        <summary>What the team will confirm</summary>
+        <ul>{% for c in rd.confirm %}<li>{{ c }}</li>{% endfor %}</ul>
+      </details>
+      {% endif %}
+      <p class="rd-disc">An estimate from your answers - the study team makes the final decision.</p>
+    </div>
+    {% endif %}
+
+    {% if a.answers %}
+    <details class="app-answers">
+      <summary>{{ ic.icon('check') }} Your answers ({{ a.answers|length }})</summary>
+      <ul class="app-answers-list">
+        {% for qa in a.answers %}
+        <li><span class="aa-q">{{ qa.q }}</span><span class="aa-a">{{ qa.a|capitalize }}</span></li>
+        {% endfor %}
+      </ul>
+    </details>
+    {% endif %}
+
     {% if not is_closed and ld.redcap_survey_status == 'complete' %}
     <div class="app-records ok">{{ ic.icon('check') }} <span>Screening form completed - the study team is reviewing your responses.</span></div>
     {% elif not is_closed and ld.status in ['eligible', 'screening'] %}
@@ -257,14 +287,27 @@
         </details>
         {% endif %}
         {% if not is_closed %}
-        <form method="post" action="{{ url_for('withdraw_application', token=ld.token) }}"
-              onsubmit="return confirm('Withdraw this application? The study team will no longer be able to contact you about it.');">
-          <button class="link-btn app-withdraw" type="submit">Withdraw</button>
-        </form>
+        <button type="button" class="link-btn app-withdraw" data-ui-open="withdraw-{{ ld.id }}">Withdraw</button>
         {% endif %}
       </div>
     </div>
   </article>
+
+  {% if not is_closed %}
+  {% call ui.modal('withdraw-' ~ ld.id, 'Withdraw this application?', icon='activity') %}
+    <p class="ui-modal-lead">Are you sure? The study team will no longer be able to contact
+      you about <b>{{ ld.title or 'this trial' }}</b>. This can't be undone.</p>
+    <form method="post" action="{{ url_for('withdraw_application', token=ld.token) }}" class="withdraw-form">
+      <label class="find-field"><span>Reason for withdrawing (required)</span>
+        <textarea name="reason" rows="3" required
+          placeholder="e.g. no longer interested, too far to travel, joined another study"></textarea></label>
+      <div class="withdraw-actions">
+        {{ ui.btn('Keep application', 'ghost', type='button', extra='data-ui-close') }}
+        {{ ui.btn('Withdraw application', 'danger', type='submit') }}
+      </div>
+    </form>
+  {% endcall %}
+  {% endif %}
   {% endfor %}
 
   {% if apps %}

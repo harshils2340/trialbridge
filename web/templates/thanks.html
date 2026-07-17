@@ -14,6 +14,32 @@
       <li>They schedule screening if you're a fit.</li>
     </ol>
   </div>
+  {% if alert_prefill and alert_prefill.condition %}
+  <form class="thanks-alert" method="post" action="{{ url_for('alerts_create') }}">
+    <input type="hidden" name="label" value="{{ alert_prefill.condition }}">
+    <input type="hidden" name="condition" value="{{ alert_prefill.condition }}">
+    <input type="hidden" name="location" value="{{ alert_prefill.location }}">
+    <input type="hidden" name="lat" value="{{ alert_prefill.lat }}">
+    <input type="hidden" name="lon" value="{{ alert_prefill.lon }}">
+    <input type="hidden" name="cc" value="{{ alert_prefill.cc }}">
+    <input type="hidden" name="radius" value="{{ alert_prefill.radius }}">
+    <input type="hidden" name="unit" value="{{ alert_prefill.unit }}">
+    <input type="hidden" name="email" value="{{ alert_prefill.email }}">
+    <input type="hidden" name="strong_only" value="1">
+    <div class="thanks-alert-body">
+      {{ ic.icon('activity') }}
+      <div>
+        <b>Want a heads-up on trials like this?</b>
+        <p>We'll email you <b>only</b> when a new, strong-fit study for
+          <b>{{ alert_prefill.condition }}</b>{% if alert_prefill.location %} near <b>{{ alert_prefill.location }}</b>{% endif %}
+          opens. No spam - you pick the distance and can turn it off anytime.</p>
+      </div>
+    </div>
+    <button class="btn btn-primary" type="submit">Turn on alerts for similar trials</button>
+    <span class="thanks-alert-skip">You're not signed up unless you tap this.</span>
+  </form>
+  {% endif %}
+
   <div class="thanks-actions">
     <a class="btn btn-primary btn-lg" href="{{ url_for('find') }}">{{ ic.icon('search') }} Find more trials</a>
     <a class="btn btn-ghost" href="{{ url_for('home') }}">Back to home</a>

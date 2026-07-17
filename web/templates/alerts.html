@@ -6,7 +6,7 @@
   <div class="apps-head">
     <div>
       <h1>Trial alerts</h1>
-      <p class="apps-sub">Get a weekly email digest with only high-signal new matching studies.</p>
+      <p class="apps-sub">Off unless you turn them on. When on, we email you <b>only</b> about new, strong-fit trials near you - never the whole backlog.</p>
     </div>
     <a class="btn btn-ghost" href="{{ url_for('find') }}">{{ ic.icon('search') }} Find trials now</a>
   </div>
@@ -19,38 +19,66 @@
       <label>Near <span class="opt">(optional)</span>
         <input type="text" name="location" placeholder="City or region">
       </label>
+      <label>Within
+        <span class="alert-radius-in">
+          <input type="number" name="radius" value="50" min="1" step="5">
+          <select name="unit">
+            <option value="km" selected>km</option>
+            <option value="mi">mi</option>
+          </select>
+        </span>
+      </label>
       <label>Email
         <input type="email" name="email" placeholder="you@email.com" required>
       </label>
-      <button class="btn btn-primary" type="submit">{{ ic.icon('activity') }} Create alert</button>
+      <button class="btn btn-primary" type="submit">{{ ic.icon('activity') }} Turn on</button>
     </div>
-    <p class="alert-new-hint">Only new studies after alert creation are sent.</p>
+    <label class="alert-strong-check"><input type="checkbox" name="strong_only" checked>
+      Only email me strong-fit matches (recommended - keeps it high-quality)</label>
+    <p class="alert-new-hint">Only trials that open <b>after</b> you turn this on are sent.</p>
   </form>
 
   {% if not items %}
   <div class="apps-empty">
     <div class="apps-empty-mark">{{ ic.icon('activity') }}</div>
-    <h2>No alerts yet</h2>
-    <p>Create one above, or set one straight from any search results page.</p>
+    <h2>No alerts on</h2>
+    <p>Turn one on above, or right after you apply to a trial we'll offer alerts for similar studies.</p>
   </div>
   {% endif %}
 
   {% for it in items %}
   {% set a = it.alert %}
-  <article class="alert-card">
+  <article class="alert-card" data-preview-url="{{ url_for('alerts_preview', alert_id=a.id) }}">
     <div class="alert-card-head">
       <div>
         <h2 class="alert-title">{{ a.label or a.condition or a.intervention }}</h2>
         <p class="alert-meta">
-          {% if a.location %}{{ ic.icon('pin') }} Near {{ a.location }} · {% endif %}
-          {{ ic.icon('check') }} Watching for new trials
+          {% if a.location %}{{ ic.icon('pin') }} Near {{ a.location }} · within {{ a.radius }}{{ a.unit }} · {% endif %}
+          {% if a.strong_only %}{{ ic.icon('check') }} Strong-fit only{% else %}{{ ic.icon('check') }} All matches{% endif %}
           {% if a.last_checked_at %}· last checked {{ a.last_checked_at }}{% endif %}
         </p>
       </div>
       <form method="post" action="{{ url_for('alerts_delete', alert_id=a.id) }}">
-        <button class="link-btn" type="submit">Remove</button>
+        <button class="link-btn" type="submit">Turn off</button>
       </form>
     </div>
+
+    <form class="alert-tune" method="post" action="{{ url_for('alerts_update', alert_id=a.id) }}">
+      <label>Distance
+        <span class="alert-radius-in">
+          <input type="number" name="radius" value="{{ a.radius }}" min="1" step="5">
+          <select name="unit">
+            <option value="km" {{ 'selected' if a.unit != 'mi' else '' }}>km</option>
+            <option value="mi" {{ 'selected' if a.unit == 'mi' else '' }}>mi</option>
+          </select>
+        </span>
+      </label>
+      <label class="alert-strong-check"><input type="checkbox" name="strong_only" {{ 'checked' if a.strong_only else '' }}>
+        Strong-fit only</label>
+      <button class="btn btn-ghost btn-sm" type="submit">Save</button>
+      <button class="btn btn-ghost btn-sm alert-preview-btn" type="button">Preview what you'd get</button>
+    </form>
+    <div class="alert-preview" hidden></div>
 
     {% set news = it.matches | selectattr('is_new') | list %}
     {% if news %}
@@ -69,9 +97,46 @@
       {% endfor %}
     </ul>
     {% else %}
-    <p class="alert-none">No matches yet - we'll email <b>{{ a.email }}</b> the moment one opens.</p>
+    <p class="alert-none">No matches yet - we'll email <b>{{ a.email }}</b> the moment a strong-fit one opens.</p>
     {% endif %}
   </article>
   {% endfor %}
 </section>
+
+<script>
+document.querySelectorAll('.alert-preview-btn').forEach(function (btn) {
+  btn.addEventListener('click', function () {
+    var card = btn.closest('.alert-card');
+    var box = card.querySelector('.alert-preview');
+    var url = card.getAttribute('data-preview-url');
+    btn.disabled = true;
+    var prev = btn.textContent;
+    btn.textContent = 'Checking CT.gov…';
+    box.hidden = false;
+    box.innerHTML = '<p class="alert-preview-loading">Finding trials that match right now…</p>';
+    fetch(url, {headers: {'X-Requested-With': 'fetch'}})
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        btn.disabled = false; btn.textContent = prev;
+        if (!d.ok) { box.innerHTML = '<p class="alert-preview-loading">Couldn\'t load a preview right now.</p>'; return; }
+        if (!d.matches || !d.matches.length) {
+          box.innerHTML = '<p class="alert-preview-loading">Nothing open right now clears the bar - which is exactly why you\'ll only hear from us when something strong appears.</p>';
+          return;
+        }
+        var html = '<p class="alert-preview-lbl">A new one like these would land in your inbox:</p><ul class="alert-preview-list">';
+        d.matches.forEach(function (m) {
+          html += '<li><a href="https://clinicaltrials.gov/study/' + m.nct + '" target="_blank" rel="noopener">' +
+            (m.title || m.nct) + '</a>' + (m.strong ? ' <span class="alert-preview-strong">strong fit</span>' : '') +
+            ' <span class="alert-match-nct">' + m.nct + '</span></li>';
+        });
+        html += '</ul>';
+        box.innerHTML = html;
+      })
+      .catch(function () {
+        btn.disabled = false; btn.textContent = prev;
+        box.innerHTML = '<p class="alert-preview-loading">Couldn\'t load a preview right now.</p>';
+      });
+  });
+});
+</script>
 {% endblock %}

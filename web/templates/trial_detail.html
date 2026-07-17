@@ -65,6 +65,42 @@
     </div>
     {% endif %}
 
+    {% if plain_terms and (plain_terms.who or plain_terms.rule_out or plain_terms.design or plain_terms.phase) %}
+    <div class="td-section td-plain">
+      <h2>In plain terms</h2>
+      {% if plain_terms.phase or plain_terms.design or plain_terms.time %}
+      <ul class="tp-facts">
+        {% if plain_terms.phase %}<li>{{ ic.icon('activity') }} {{ plain_terms.phase }}</li>{% endif %}
+        {% if plain_terms.time %}<li>{{ ic.icon('activity') }} Time commitment: {{ plain_terms.time }}</li>{% endif %}
+        {% if plain_terms.design %}<li>{{ ic.icon('sparkle') }} {{ plain_terms.design }}</li>{% endif %}
+      </ul>
+      {% endif %}
+      <div class="tp-grid">
+        {% if plain_terms.who or plain_terms.who_basics %}
+        <div class="tp-col tp-join">
+          <h3>{{ ic.icon('check') }} You may be able to join if</h3>
+          {% if plain_terms.who_basics %}<p class="tp-basics">{{ plain_terms.who_basics }}</p>{% endif %}
+          {% if plain_terms.who %}<ul>{% for x in plain_terms.who %}<li>{{ x }}</li>{% endfor %}</ul>{% endif %}
+        </div>
+        {% endif %}
+        {% if plain_terms.rule_out %}
+        <div class="tp-col tp-rule">
+          <h3>{{ ic.icon('x') }} You likely can't join if</h3>
+          <ul>{% for x in plain_terms.rule_out %}<li>{{ x }}</li>{% endfor %}</ul>
+        </div>
+        {% endif %}
+      </div>
+      {% if plain_terms.has_more and (plain_terms.inc_all or plain_terms.exc_all) %}
+      <details class="tp-full">
+        <summary>See the full eligibility criteria</summary>
+        {% if plain_terms.inc_all %}<div class="tp-full-b"><b>Who can join</b><ul>{% for x in plain_terms.inc_all %}<li>{{ x }}</li>{% endfor %}</ul></div>{% endif %}
+        {% if plain_terms.exc_all %}<div class="tp-full-b"><b>What rules you out</b><ul>{% for x in plain_terms.exc_all %}<li>{{ x }}</li>{% endfor %}</ul></div>{% endif %}
+      </details>
+      {% endif %}
+      <p class="td-source" style="margin-top:12px;">A plain-language read of the study's public eligibility and design. The study team confirms who qualifies.</p>
+    </div>
+    {% endif %}
+
     {% if m.met or m.unknown or m.not_met %}
     <div class="td-section">
       <h2>How you line up with the eligibility</h2>
@@ -190,6 +226,11 @@
         <input type="hidden" name="title" value="{{ t.title }}">
         <input type="hidden" name="condition" value="{{ condition }}">
         <input type="hidden" name="location" value="{{ location }}">
+        <input type="hidden" name="lat" value="{{ q_lat or '' }}">
+        <input type="hidden" name="lon" value="{{ q_lon or '' }}">
+        <input type="hidden" name="cc" value="{{ q_cc or '' }}">
+        <input type="hidden" name="radius" value="{{ q_radius or '' }}">
+        <input type="hidden" name="unit" value="{{ unit or 'km' }}">
         <input type="hidden" name="site" value="{{ r.site_str }}">
         <input type="hidden" name="age" value="{{ q_age or (records_profile.age if records_profile else '') }}">
         <input type="hidden" name="sex" value="{{ q_sex or (records_profile.sex if records_profile else '') }}">
