@@ -46,6 +46,10 @@
     <a href="{{ url_for('applications') }}" class="pub-apps">My applications{% if messages_unread %} <span class="nav-badge nav-badge-new">{{ messages_unread }}</span>{% elif applications_count %} <span class="nav-badge">{{ applications_count }}</span>{% endif %}</a>
     {% if patient_user %}
     <a href="{{ url_for('patient_settings') }}">Settings</a>
+    {% set nu_name = (patient_user.full_name.split(' ')[0] if patient_user.full_name else (patient_user.email.split('@')[0] if patient_user.email else 'Account')) %}
+    <span class="nav-user" title="Signed in as {{ patient_user.email or nu_name }}">
+      <span class="nav-user-av">{{ (patient_user.full_name or patient_user.email or 'P')[0]|upper }}</span>
+      <b>{{ nu_name }}</b></span>
     <form method="post" action="{{ url_for('patient_logout') }}" style="margin:0;">
       <button type="submit" class="link-btn">Sign out</button>
     </form>
