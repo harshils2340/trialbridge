@@ -396,11 +396,32 @@
     catch (e) { return String(Date.now()) + Math.random().toString(16).slice(2); }
   }
   var locSession = newSessionToken();
+  var locActiveIdx = -1;
 
   function hideLocSuggest() {
     if (!locSuggest) return;
     locSuggest.hidden = true;
     locSuggest.innerHTML = '';
+    locActiveIdx = -1;
+  }
+  function locItems() {
+    if (!locSuggest) return [];
+    return Array.prototype.slice.call(locSuggest.querySelectorAll('.hero-loc-item'));
+  }
+  function setLocActive(idx) {
+    var items = locItems();
+    if (!items.length) { locActiveIdx = -1; return; }
+    if (idx < 0) idx = items.length - 1;
+    if (idx >= items.length) idx = 0;
+    locActiveIdx = idx;
+    items.forEach(function (el, i) { el.classList.toggle('is-active', i === locActiveIdx); });
+    if (items[locActiveIdx]) items[locActiveIdx].scrollIntoView({ block: 'nearest' });
+  }
+  function pickLocActive() {
+    var items = locItems();
+    if (locActiveIdx < 0 || locActiveIdx >= items.length) return false;
+    items[locActiveIdx].click();
+    return true;
   }
   function applyLocSuggestion(item) {
     if (!loc) return;
@@ -447,6 +468,7 @@
       locSuggest.appendChild(b);
     });
     locSuggest.hidden = false;
+    locActiveIdx = -1;
   }
   function requestLocSuggest() {
     if (!loc) return;
@@ -466,6 +488,20 @@
     if (locLat.value) { locLat.value = locLon.value = locCc.value = ''; confirmEl.style.display = 'none'; }
     if (suggestTimer) clearTimeout(suggestTimer);
     suggestTimer = setTimeout(requestLocSuggest, 180);
+  });
+  if (loc) loc.addEventListener('keydown', function (e) {
+    if (!locSuggest || locSuggest.hidden) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setLocActive(locActiveIdx + 1);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setLocActive(locActiveIdx - 1);
+    } else if (e.key === 'Enter') {
+      if (pickLocActive()) e.preventDefault();  // pick highlighted, don't submit
+    } else if (e.key === 'Escape') {
+      hideLocSuggest();
+    }
   });
   if (loc) loc.addEventListener('blur', function () { setTimeout(hideLocSuggest, 120); });
   if (useLoc) useLoc.addEventListener('click', function () {

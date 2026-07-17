@@ -757,7 +757,7 @@ body.demo-home .hero-search { max-width: 860px; margin-top: 28px; }
   max-height: 230px; overflow: auto; z-index: 15; padding: 4px; }
 .hero-loc-item { width: 100%; text-align: left; border: 0; background: transparent;
   padding: 8px 10px; border-radius: 8px; cursor: pointer; font-size: 13px; color: var(--ink-soft); }
-.hero-loc-item:hover { background: var(--surface-2); color: var(--ink); }
+.hero-loc-item:hover, .hero-loc-item.is-active { background: var(--surface-2); color: var(--ink); }
 .hero-search .btn { flex-shrink: 0; }
 .hero-more { max-width: 760px; margin: 12px auto 0; text-align: left; }
 .hero-more > summary { list-style: none; cursor: pointer; font-size: 13px; color: var(--faint);
