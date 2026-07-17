@@ -805,7 +805,8 @@ def inject_globals():
     else:
         pov = "patient"
     return {"user": g.user, "llm_on": bool(mt.LLM_API_KEY),
-            "applications_count": apps_n, "pov_demo": _demo_mode_enabled(), "pov": pov,
+            "applications_count": apps_n, "pov_demo": _demo_mode_enabled(),
+            "demo_available": NO_LOGIN, "pov": pov,
             "records_profile": rec, "records_provider": records_mod.provider_label(),
             "alerts_new_count": alerts_new, "messages_unread": msgs_unread,
             "site_unread": site_unread, "patient_user": g.patient_user}
@@ -1785,14 +1786,23 @@ def trending_drugs(limit=6):
         return SEED_DRUGS[:limit]
 
 
-def build_patient_note(condition, age="", sex="", about=""):
-    """Turn a patient's self-reported details into a note the matcher can read."""
+def build_patient_note(condition, age="", sex="", about="", pregnant="",
+                       other_trial=""):
+    """Turn a patient's self-reported details into a note the matcher can read.
+    AGE/SEX feed the deterministic hard gate; pregnancy and concurrent-trial
+    status are added as plain lines so the per-trial LLM eligibility read can
+    apply them (they are not structured CT.gov fields)."""
     lines = []
     if str(age).strip():
         lines.append(f"AGE: {str(age).strip()}")
     if sex in ("male", "female"):
         lines.append(f"SEX: {sex}")
-    lines.append(f"Condition: {condition}.")
+    if condition:
+        lines.append(f"Condition: {condition}.")
+    if str(pregnant).strip().lower() == "yes":
+        lines.append("Currently pregnant or breastfeeding.")
+    if str(other_trial).strip().lower() == "yes":
+        lines.append("Currently enrolled in another clinical trial.")
     if about.strip():
         lines.append(about.strip())
     return "\n".join(lines)
@@ -1992,22 +2002,33 @@ def find():
         return _render_landing()
 
     condition = request.form.get("condition", "").strip()
-    condition_terms = [x.strip() for x in condition.split(",") if x.strip()]
-    condition_query = condition_terms[0] if condition_terms else condition
-    condition_label = ", ".join(condition_terms) if condition_terms else condition
     intervention = request.form.get("intervention", "").strip()
     location = request.form.get("location", "").strip()
     age = request.form.get("age", "").strip()
     sex = request.form.get("sex", "").strip()
     about = request.form.get("about", "").strip()
+    pregnant = request.form.get("pregnant", "").strip()
+    other_trial = request.form.get("other_trial", "").strip()
+    # Free-text ("describe it in your own words") mode: the box holds a sentence,
+    # not a condition term. Route it to the note and let the matcher extract the
+    # condition (LLM) instead of querying CT.gov with a whole sentence.
+    freeform = request.form.get("freeform", "") == "1"
+    if freeform and condition:
+        about = (condition + ("\n" + about if about else "")).strip()
+        condition = ""
+
+    condition_terms = [x.strip() for x in condition.split(",") if x.strip()]
+    condition_query = condition_terms[0] if condition_terms else condition
+    condition_label = ", ".join(condition_terms) if condition_terms else condition
     try:
         radius = int(request.form.get("radius", "50") or 0)
     except ValueError:
         radius = 50
 
     label = condition_label or intervention
-    if not label:
-        flash("Tell us the condition or treatment you're looking for.", "error")
+    if not label and not about:
+        flash("Tell us the condition, or describe what you're looking for.",
+              "error")
         return redirect(url_for("home", location=location))
     if not location:
         flash("Enter your city or postal code so we only show trials near you.",
@@ -2033,12 +2054,13 @@ def find():
             coords = (geo[0], geo[1])
             unit = units_for(geo[2])
 
-    note = build_patient_note(label, age, sex, about)
+    note = build_patient_note(label, age, sex, about, pregnant, other_trial)
     # Fast path: identical recent search -> reuse cached result set instantly.
     candidate_ctx = {
         "condition": label, "location": location, "unit": unit,
         "q_condition": condition_label, "q_intervention": intervention,
         "q_age": age, "q_sex": sex, "q_about": about, "q_radius": radius,
+        "q_pregnant": pregnant, "q_other_trial": other_trial,
         "q_lat": lat_in, "q_lon": lon_in, "q_cc": cc_in,
     }
     qkey = _cache_query_key(candidate_ctx)
@@ -2058,6 +2080,11 @@ def find():
         flash("Search failed unexpectedly. Please try again.", "error")
         return redirect(url_for("home", condition=condition_label, location=location))
 
+    # Free-text search: adopt the condition the matcher extracted so results,
+    # caching, and analytics have a real label instead of a raw sentence.
+    if not label:
+        label = (detected or "").strip() or "your search"
+
     # Record the search so "trending" reflects real site traffic. Drug-name
     # queries go through the intervention field; everything else is a condition.
     try:
@@ -2067,6 +2094,8 @@ def find():
             db.log_search_term(t, "condition")
         if condition and not condition_terms:
             db.log_search_term(condition, "condition")
+        if freeform and detected:
+            db.log_search_term(detected, "condition")
     except Exception:
         app.logger.exception("search stat logging failed")
 
@@ -2074,7 +2103,8 @@ def find():
                           "intervention": 1 if intervention else 0})
 
     ctx = {"condition": label, "location": location, "unit": unit,
-           "q_condition": condition_label, "q_intervention": intervention,
+           "q_condition": condition_label or (label if freeform else ""),
+           "q_intervention": intervention,
            "q_age": age, "q_sex": sex, "q_about": about, "q_radius": radius,
            "q_lat": lat_in, "q_lon": lon_in, "q_cc": cc_in}
     search_id = _cache_search(results, ctx)

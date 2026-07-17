@@ -61,7 +61,7 @@
     </button>
   </nav>
 </header>
-{% if request.endpoint == 'home' or (not patient_user and not user) %}
+{% if demo_available and (request.endpoint == 'home' or (not patient_user and not user)) %}
 <div class="pub-nav-tools">
   {% include "_pov_bar.html" %}
 </div>
@@ -87,7 +87,7 @@
       <span class="pub-foot-note">Not medical advice.</span>
     </div>
     <div class="pub-foot-tools">
-      {% if request.endpoint != 'home' and (not patient_user and not user) %}
+      {% if demo_available and request.endpoint != 'home' and (not patient_user and not user) %}
       {% include "_pov_bar.html" %}
       {% endif %}
     </div>

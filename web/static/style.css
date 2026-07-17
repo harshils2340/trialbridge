@@ -762,6 +762,23 @@ body.demo-home .hero-search { max-width: 860px; margin-top: 28px; }
 .hero-more input:focus, .hero-more select:focus, .hero-more textarea:focus {
   border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 .hero-more textarea { resize: vertical; }
+.hero-hint { text-align: center; color: var(--muted); font-size: 13px;
+  margin: var(--space-2) auto 0; max-width: 620px; }
+.presearch-lead { color: var(--muted); font-size: 14px; margin: 0 0 var(--space-4); }
+.presearch-grid { display: flex; gap: var(--space-3); }
+.presearch-grid label, .presearch-row { display: flex; flex-direction: column; gap: 6px;
+  font-size: 13px; font-weight: 600; color: var(--ink-soft); flex: 1; }
+.presearch-row { margin-top: var(--space-3); }
+.presearch-opt { font-weight: 400; color: var(--faint); }
+.presearch-grid input, .presearch-grid select, .presearch-row input,
+.presearch-row select, .presearch-row textarea { border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm); padding: 10px 12px; font-size: 14px;
+  font-family: var(--sans); outline: 0; background: var(--surface); color: var(--ink); }
+.presearch-grid input:focus, .presearch-grid select:focus, .presearch-row input:focus,
+.presearch-row select:focus, .presearch-row textarea:focus {
+  border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.presearch-row textarea { resize: vertical; }
+.presearch-actions { display: flex; gap: var(--space-3); margin-top: var(--space-5); }
 .hero-loc-actions { display: flex; flex-wrap: wrap; justify-content: center; align-items: center;
   gap: 12px; max-width: 760px; margin: 12px auto 0; }
 .hero-loc-actions .loc-use { margin-left: 0; font-size: 14px; }

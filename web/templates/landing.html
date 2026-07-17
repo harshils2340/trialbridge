@@ -1,4 +1,6 @@
 {% extends "public_base.html" %}
+{% import "_icons.html" as ic %}
+{% import "_ui.html" as ui %}
 {% block title %}BridgeMD - find recruiting clinical trials{% endblock %}
 
 {% block pub_nav_extra %}
@@ -30,19 +32,14 @@
 <section class="hero">
   <div class="hero-in">
     <h1>{{ 'Find your next trial match.' if patient_user else 'Find recruiting trials near you.' }}</h1>
-    <p class="hero-sub">{{ 'Search again with your saved context and keep applications moving.' if patient_user else 'Enter condition and location, then apply to the best matches.' }}</p>
-    {% if not pov_demo %}
-    <p class="hero-sub" style="margin-top:6px;font-size:14px;color:var(--muted);">
-      For sites and sponsors: track which channels actually convert to screened and enrolled patients.
-    </p>
-    {% endif %}
+    <p class="hero-sub">{{ 'Search again with your saved context and keep applications moving.' if patient_user else 'Type a condition, or just describe what you\'re looking for.' }}</p>
 
     <form id="heroForm" method="post" action="{{ url_for('find') }}" autocomplete="off">
       <div class="hero-search">
         <div class="hero-field">
           {{ ic.icon('search') }}
           <input id="conditionInput" name="condition" type="text"
-                 placeholder="Condition or treatment - e.g. type 2 diabetes"
+                 placeholder="e.g. type 2 diabetes — or “I have obesity and want new treatments”"
                  value="{{ condition_value|default('') }}"
                  autocomplete="off" autocapitalize="off" spellcheck="false" required>
           <div id="heroCondSuggest" class="hero-suggest" hidden></div>
@@ -56,27 +53,45 @@
         </div>
         <button class="btn btn-primary btn-lg" type="submit">Find trials{{ ic.icon('arrow-right') }}</button>
       </div>
+      <p class="hero-hint">Search by a specific condition or describe it in your own words — either works.</p>
       <input type="hidden" id="locLat" name="lat">
       <input type="hidden" id="locLon" name="lon">
       <input type="hidden" id="locCc" name="cc">
       <input type="hidden" id="heroIntervention" name="intervention" value="">
       <input type="hidden" name="radius" value="50">
+      <input type="hidden" id="heroFreeform" name="freeform" value="0">
 
-      <details class="hero-more">
-        <summary>{{ ic.icon('user-plus') }} Add details for better matches (optional)</summary>
-        <div class="hero-more-grid">
-          <label>Age <span>(optional)</span>
-            <input name="age" type="number" min="0" max="120" placeholder="e.g. 54"></label>
-          <label>Sex <span>(optional)</span>
-            <select name="sex">
+      {% call ui.modal('preSearchModal', 'A few quick questions', icon='user-plus') %}
+        <p class="presearch-lead">These help us hide trials you clearly wouldn't qualify for. All optional.</p>
+        <div class="presearch-grid">
+          <label>Age
+            <input id="intakeAge" name="age" type="number" min="0" max="120" inputmode="numeric" placeholder="e.g. 54"></label>
+          <label>Sex at birth
+            <select id="intakeSex" name="sex">
               <option value="">Prefer not to say</option>
               <option value="female">Female</option>
               <option value="male">Male</option>
             </select></label>
         </div>
-        <label class="hero-more-about">Anything else about your situation? <span>(optional)</span>
-          <textarea name="about" rows="2" placeholder="e.g. diagnosed 3 years ago, on metformin, A1c around 8.1"></textarea></label>
-      </details>
+        <label id="pregRow" class="presearch-row" hidden>Are you pregnant or breastfeeding?
+          <select id="intakePregnant" name="pregnant">
+            <option value="">Prefer not to say</option>
+            <option value="no">No</option>
+            <option value="yes">Yes</option>
+          </select></label>
+        <label class="presearch-row">Are you currently taking part in another clinical trial?
+          <select id="intakeOtherTrial" name="other_trial">
+            <option value="">Prefer not to say</option>
+            <option value="no">No</option>
+            <option value="yes">Yes</option>
+          </select></label>
+        <label class="presearch-row">Anything else about your situation? <span class="presearch-opt">(optional)</span>
+          <textarea id="intakeAbout" name="about" rows="2" placeholder="e.g. diagnosed 3 years ago, on metformin, A1c around 8.1"></textarea></label>
+        <div class="presearch-actions">
+          {{ ui.btn('Search trials', variant='primary', icon='arrow-right', extra='id="preSearchGo"') }}
+          {{ ui.btn('Skip', variant='ghost', extra='id="preSearchSkip"') }}
+        </div>
+      {% endcall %}
     </form>
     <div class="hero-loc-actions">
       <button type="button" id="useLoc" class="link-btn loc-use">{{ ic.icon('pin') }} Use my current location</button>
@@ -134,9 +149,43 @@
   var ov = document.getElementById('loadingOverlay');
   var bar = document.getElementById('progressBar');
   var sub = document.getElementById('loadingSub');
+  var heroFreeform = document.getElementById('heroFreeform');
   var steps = ['Fetching recruiting studies', 'Checking which are near you',
                'Reading eligibility for each', 'Ranking your best matches'];
-  form.addEventListener('submit', function () {
+
+  // The main box accepts EITHER a condition term or a plain-English sentence.
+  // If it reads like a sentence, flag it so the server treats it as free text
+  // (and extracts the condition) instead of querying CT.gov with a whole phrase.
+  function looksFreeform(text) {
+    var t = (text || '').trim();
+    if (!t) return false;
+    if (t.split(/\s+/).length >= 5) return true;
+    return /\b(i|im|i'm|my|have|has|want|need|looking|help|treatment|cure|suffer|suffering|diagnos)\b/i.test(t);
+  }
+
+  // Lightweight modal control (public pages don't load the shared modal JS).
+  var preModal = document.getElementById('preSearchModal');
+  function openPre() { if (preModal) preModal.hidden = false; }
+  function closePre() { if (preModal) preModal.hidden = true; }
+  if (preModal) {
+    preModal.querySelectorAll('[data-ui-close]').forEach(function (el) {
+      el.addEventListener('click', closePre);
+    });
+  }
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && preModal && !preModal.hidden) closePre();
+  });
+
+  // Show/hide the pregnancy question based on sex.
+  var intakeSex = document.getElementById('intakeSex');
+  var pregRow = document.getElementById('pregRow');
+  function syncPreg() {
+    if (pregRow) pregRow.hidden = !(intakeSex && intakeSex.value === 'female');
+  }
+  if (intakeSex) intakeSex.addEventListener('change', syncPreg);
+  syncPreg();
+
+  function startOverlay() {
     ov.classList.add('show'); ov.setAttribute('aria-hidden', 'false');
     var pct = 0, i = 0;
     setInterval(function () { i++; if (i < steps.length) sub.textContent = steps[i]; }, 4200);
@@ -144,7 +193,33 @@
       pct += Math.max(0.4, (92 - pct) * 0.05); if (pct > 92) pct = 92;
       bar.style.width = pct.toFixed(1) + '%';
     }, 220);
+  }
+
+  var intakeDone = false;
+  form.addEventListener('submit', function (e) {
+    if (heroFreeform) {
+      var box = document.getElementById('conditionInput');
+      heroFreeform.value = looksFreeform(box && box.value) ? '1' : '0';
+    }
+    // First press: make sure condition + location are filled, then ask the
+    // quick pre-screen questions before actually running the search.
+    if (!intakeDone) {
+      if (!form.reportValidity()) return;
+      e.preventDefault();
+      openPre();
+      return;
+    }
+    startOverlay();
   });
+  function submitWithIntake() {
+    intakeDone = true;
+    closePre();
+    if (form.requestSubmit) form.requestSubmit(); else form.submit();
+  }
+  var preGo = document.getElementById('preSearchGo');
+  var preSkip = document.getElementById('preSearchSkip');
+  if (preGo) preGo.addEventListener('click', submitWithIntake);
+  if (preSkip) preSkip.addEventListener('click', submitWithIntake);
   window.addEventListener('pagehide', function () { if (bar) bar.style.width = '100%'; });
 
   // Chips prefill the search box instead of navigating away. We do NOT auto-run

@@ -33,7 +33,7 @@
 <div class="layout">
   <aside class="sidebar">
     <a class="brand" href="{{ url_for('leads') if pov == 'study' else url_for('dashboard') }}"><img class="brand-mark" src="{{ url_for('static', filename='logo.svg') }}" width="24" height="24" alt="">BridgeMD</a>
-    <div class="side-pov">{% include "_pov_bar.html" %}</div>
+    {% if demo_available %}<div class="side-pov">{% include "_pov_bar.html" %}</div>{% endif %}
     <nav class="side-nav">
       {% if pov == 'study' %}
       {# Study team = the site/sponsor running the trial and reviewing applicants. #}
