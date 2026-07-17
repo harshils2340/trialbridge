@@ -70,7 +70,8 @@ def _quality_score(alert, match):
     title = (match.get("title") or "").strip()
     if not title:
         return 0
-    q = _tokens(alert.get("label"), alert.get("condition"), alert.get("intervention"))
+    q = _tokens(_alert_val(alert, "label"), _alert_val(alert, "condition"),
+                _alert_val(alert, "intervention"))
     t = _tokens(title)
     overlap = len(q & t)
     score = overlap * 12
