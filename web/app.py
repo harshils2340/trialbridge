@@ -5398,34 +5398,37 @@ def _site_str(site):
                                  s.get("state"), s.get("country")) if p)
 
 
-def _maps_url(site):
-    """A Google Maps link that opens the EXACT site location, like a shared pin.
+def _maps_query(site):
+    """Best Google Maps query for a site.
 
-    Prefers precise lat/lon (drops a single pin at the exact spot) so we don't
-    send patients to an ambiguous name search - many research networks (e.g.
-    'Centricity Research') have dozens of locations. Falls back to the address
-    string only when we have no coordinates."""
+    Prefers the human-readable place (facility, city, state, country) so Maps
+    opens the NAMED location - not a raw 'lat,lon' pin that just displays ugly
+    coordinates. Falls back to coordinates only when there's no usable label."""
     s = site or {}
+    label = _site_str(site)
+    if label:
+        return label
     lat, lon = s.get("lat"), s.get("lon")
     if lat is not None and lon is not None:
-        return ("https://www.google.com/maps/search/?api=1&query="
-                + urllib.parse.quote(f"{lat},{lon}"))
-    label = _site_str(site)
-    if not label:
+        return f"{lat},{lon}"
+    return ""
+
+
+def _maps_url(site):
+    """A Google Maps link that opens the site as a named place (see _maps_query)."""
+    q = _maps_query(site)
+    if not q:
         return ""
-    return ("https://www.google.com/maps/search/?api=1&query="
-            + urllib.parse.quote(label))
+    return "https://www.google.com/maps/search/?api=1&query=" + urllib.parse.quote(q)
 
 
 def _maps_dir_url(site):
-    """Google Maps driving-directions link to the exact site (coords preferred)."""
-    s = site or {}
-    lat, lon = s.get("lat"), s.get("lon")
-    dest = f"{lat},{lon}" if (lat is not None and lon is not None) else _site_str(site)
-    if not dest:
+    """Google Maps driving-directions link to the site as a named place."""
+    q = _maps_query(site)
+    if not q:
         return ""
     return ("https://www.google.com/maps/dir/?api=1&destination="
-            + urllib.parse.quote(dest))
+            + urllib.parse.quote(q))
 
 
 def _clean_name(name):
