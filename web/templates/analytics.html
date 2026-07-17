@@ -12,6 +12,21 @@
       {% if d == days %}<strong>{{ d }}d</strong>{% else %}<a href="{{ url_for('owner_analytics', days=d) }}">{{ d }}d</a>{% endif %}{% if not loop.last %} · {% endif %}
     {% endfor %}
   </p>
+  <p class="site-hint">
+    Bots are filtered out and visits are counted only for real browsers, so
+    these are legit numbers. Your IP: <strong>{{ your_ip or 'unknown' }}</strong> ·
+    {% if ip_ignored %}
+      your visits are <strong>excluded</strong>.
+    {% else %}
+      your visits are <strong>counted</strong> — to exclude them, set
+      <code>ANALYTICS_IGNORE_IPS={{ your_ip }}</code> and restart.
+    {% endif %}
+  </p>
+  <form method="post" action="{{ url_for('owner_analytics_reset') }}"
+        onsubmit="return confirm('Clear all visitor analytics history? This removes bot-inflated data and cannot be undone.');"
+        style="margin-top:8px;">
+    {{ ui.btn('Reset analytics history', variant='ghost', size='sm', icon='trash', type='submit') }}
+  </form>
 </div>
 
 <div class="stats">
@@ -20,6 +35,163 @@
   <div class="stat"><div class="l">{{ ic.icon('user-plus', 'ico stat-ico') }}Applied</div><div class="n">{{ web.totals.applies }}</div></div>
   <div class="stat accent"><div class="l">{{ ic.icon('award', 'ico stat-ico') }}Visit&rarr;Apply</div><div class="n">{{ web.totals.visit_to_apply }}%</div></div>
 </div>
+
+<div class="card dash-card ts-card">
+  <div class="section-title ts-head">
+    <h2>Visitors over time</h2>
+    <div class="ts-legend">
+      <span class="ts-key ts-key-visitors">Visitors</span>
+      <span class="ts-key ts-key-searches">Searches</span>
+      <span class="ts-key ts-key-applies">Applied</span>
+    </div>
+  </div>
+  <div class="ts-chart" id="tsChart" role="img"
+       aria-label="Daily visitors, searches, and applications over the last {{ days }} days">
+    <svg class="ts-svg" viewBox="0 0 1000 320" preserveAspectRatio="none">
+      <defs>
+        <linearGradient id="tsGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop class="ts-grad-top" offset="0"></stop>
+          <stop class="ts-grad-bot" offset="1"></stop>
+        </linearGradient>
+      </defs>
+      <g class="ts-grid" id="tsGrid"></g>
+      <path class="ts-area" id="tsArea" d=""></path>
+      <path class="ts-line ts-line-visitors" id="tsLineVisitors" d=""></path>
+      <path class="ts-line ts-line-searches" id="tsLineSearches" d=""></path>
+      <path class="ts-line ts-line-applies" id="tsLineApplies" d=""></path>
+      <line class="ts-cursor" id="tsCursor" x1="0" y1="0" x2="0" y2="300" hidden></line>
+      <circle class="ts-dot ts-dot-visitors" id="tsDotVisitors" r="4" hidden></circle>
+    </svg>
+    <div class="ts-xaxis" id="tsXaxis"></div>
+    <div class="ts-tip" id="tsTip" hidden></div>
+  </div>
+  <p class="site-hint ts-empty" id="tsEmpty" hidden>No visits recorded yet in this window.</p>
+</div>
+<script id="tsData" type="application/json">{{ series | tojson }}</script>
+<script>
+(function () {
+  var raw = document.getElementById('tsData');
+  var data = [];
+  try { data = JSON.parse(raw.textContent || '[]'); } catch (e) { data = []; }
+  var chart = document.getElementById('tsChart');
+  var svg = chart ? chart.querySelector('.ts-svg') : null;
+  if (!svg || !data.length) {
+    if (chart) chart.style.display = 'none';
+    var empty = document.getElementById('tsEmpty');
+    if (empty) empty.hidden = false;
+    return;
+  }
+
+  var W = 1000, H = 320, padT = 16, padB = 20, padL = 8, padR = 8;
+  var plotH = H - padT - padB, plotW = W - padL - padR;
+  var maxV = 1;
+  data.forEach(function (d) {
+    maxV = Math.max(maxV, d.visitors || 0, d.searches || 0, d.applies || 0);
+  });
+  // Round the top of the scale up to something clean.
+  var step = Math.pow(10, Math.floor(Math.log10(maxV)));
+  var top = Math.ceil(maxV / step) * step;
+  if (top < maxV) top += step;
+
+  function x(i) {
+    return data.length === 1 ? padL + plotW / 2
+      : padL + (plotW * i / (data.length - 1));
+  }
+  function y(v) { return padT + plotH - (plotH * (v / top)); }
+
+  function linePath(key) {
+    return data.map(function (d, i) {
+      return (i ? 'L' : 'M') + x(i).toFixed(1) + ' ' + y(d[key] || 0).toFixed(1);
+    }).join(' ');
+  }
+  var areaPath = linePath('visitors')
+    + ' L' + x(data.length - 1).toFixed(1) + ' ' + y(0).toFixed(1)
+    + ' L' + x(0).toFixed(1) + ' ' + y(0).toFixed(1) + ' Z';
+
+  document.getElementById('tsArea').setAttribute('d', areaPath);
+  document.getElementById('tsLineVisitors').setAttribute('d', linePath('visitors'));
+  document.getElementById('tsLineSearches').setAttribute('d', linePath('searches'));
+  document.getElementById('tsLineApplies').setAttribute('d', linePath('applies'));
+
+  // Horizontal gridlines + y labels (4 bands).
+  var grid = document.getElementById('tsGrid');
+  var bands = 4;
+  for (var b = 0; b <= bands; b++) {
+    var val = Math.round(top * b / bands);
+    var gy = y(val);
+    var ln = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    ln.setAttribute('x1', padL); ln.setAttribute('x2', W - padR);
+    ln.setAttribute('y1', gy.toFixed(1)); ln.setAttribute('y2', gy.toFixed(1));
+    ln.setAttribute('class', 'ts-gridline');
+    grid.appendChild(ln);
+    var tx = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    tx.setAttribute('x', padL + 2); tx.setAttribute('y', (gy - 4).toFixed(1));
+    tx.setAttribute('class', 'ts-ylabel');
+    tx.textContent = val;
+    grid.appendChild(tx);
+  }
+
+  // X-axis labels: first, middle, last dates (short).
+  function shortDay(s) {
+    var p = (s || '').split('-');
+    return p.length === 3 ? (p[1] + '/' + p[2]) : s;
+  }
+  var xaxis = document.getElementById('tsXaxis');
+  if (xaxis) {
+    var idxs = data.length <= 2 ? [0, data.length - 1]
+      : [0, Math.floor((data.length - 1) / 2), data.length - 1];
+    xaxis.innerHTML = '';
+    idxs.forEach(function (i, k) {
+      var span = document.createElement('span');
+      span.textContent = shortDay(data[i].day);
+      if (k === 0) span.style.textAlign = 'left';
+      else if (k === idxs.length - 1) span.style.textAlign = 'right';
+      else span.style.textAlign = 'center';
+      xaxis.appendChild(span);
+    });
+  }
+
+  // Hover: nearest-day tooltip + cursor line, stock-chart style.
+  var cursor = document.getElementById('tsCursor');
+  var dot = document.getElementById('tsDotVisitors');
+  var tip = document.getElementById('tsTip');
+  function nearest(clientX) {
+    var r = svg.getBoundingClientRect();
+    var rel = (clientX - r.left) / r.width * W;
+    var best = 0, bestD = Infinity;
+    for (var i = 0; i < data.length; i++) {
+      var dd = Math.abs(x(i) - rel);
+      if (dd < bestD) { bestD = dd; best = i; }
+    }
+    return best;
+  }
+  function showTip(i, clientX) {
+    var d = data[i];
+    var px = x(i), py = y(d.visitors || 0);
+    cursor.setAttribute('x1', px); cursor.setAttribute('x2', px);
+    cursor.hidden = false;
+    dot.setAttribute('cx', px); dot.setAttribute('cy', py); dot.hidden = false;
+    tip.innerHTML = '<b>' + d.day + '</b>'
+      + '<span><i class="ts-sw ts-sw-visitors"></i>Visitors: ' + (d.visitors || 0) + '</span>'
+      + '<span><i class="ts-sw ts-sw-searches"></i>Searches: ' + (d.searches || 0) + '</span>'
+      + '<span><i class="ts-sw ts-sw-applies"></i>Applied: ' + (d.applies || 0) + '</span>';
+    tip.hidden = false;
+    var cr = chart.getBoundingClientRect();
+    var left = (px / W) * cr.width;
+    left = Math.min(Math.max(left, 60), cr.width - 60);
+    tip.style.left = left + 'px';
+  }
+  function hideTip() { cursor.hidden = true; dot.hidden = true; tip.hidden = true; }
+  chart.addEventListener('mousemove', function (e) { showTip(nearest(e.clientX), e.clientX); });
+  chart.addEventListener('mouseleave', hideTip);
+  chart.addEventListener('touchstart', function (e) {
+    if (e.touches[0]) showTip(nearest(e.touches[0].clientX), e.touches[0].clientX);
+  }, { passive: true });
+  chart.addEventListener('touchmove', function (e) {
+    if (e.touches[0]) showTip(nearest(e.touches[0].clientX), e.touches[0].clientX);
+  }, { passive: true });
+})();
+</script>
 
 <div class="card dash-card">
   <div class="section-title"><h2>What people are searching</h2></div>

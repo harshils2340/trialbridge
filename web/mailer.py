@@ -86,6 +86,42 @@ def build_candidate_message(lead, link):
     return subject, "\n".join(lines)
 
 
+def build_owner_new_application(lead, link):
+    """Internal heads-up to the operator that a new application came in, so they
+    can confirm the funnel is producing real applications. De-identified on
+    purpose: NO name, email, phone, or clinical notes — those live behind the
+    secure dashboard link."""
+    nct = lead["nct"] or "a study"
+    subject = f"New application: {nct} - BridgeMD"
+    src = (lead["source"] or "web").replace("_", " ")
+    lines = [
+        "A new application was just submitted on BridgeMD.",
+        "",
+        f"Study: {lead['title'] or nct}",
+    ]
+    if lead["nct"]:
+        lines.append(f"NCT: {lead['nct']}")
+    if lead["condition"]:
+        lines.append(f"Condition: {lead['condition']}")
+    if lead["location"]:
+        lines.append(f"Region: {lead['location']}")
+    lines.append(f"Source: {src}")
+    try:
+        if lead["records_connected"]:
+            lines.append("Records: connected")
+    except (KeyError, IndexError, TypeError):
+        pass
+    lines += [
+        "",
+        "Open the dashboard to review it (contact details are behind login):",
+        link,
+        "",
+        "You're getting this because you're the BridgeMD operator.",
+        "Sent via BridgeMD.",
+    ]
+    return subject, "\n".join(lines)
+
+
 _APPLICANT_COPY = {
     "accepted": ("A study team wants to move forward with your application",
                  "Good news - a study team reviewed your application and would "

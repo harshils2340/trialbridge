@@ -332,6 +332,49 @@ textarea { resize: vertical; min-height: 150px; line-height: 1.6; }
   text-transform: uppercase; letter-spacing: .06em; font-weight: 600; }
 .stat.accent .n { color: var(--green); }
 
+/* ---------- Visitors-over-time chart (owner analytics) ---------- */
+.ts-card { margin-bottom: 26px; }
+.ts-head { display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; gap: 10px; }
+.ts-legend { display: inline-flex; align-items: center; gap: 16px; }
+.ts-key { display: inline-flex; align-items: center; gap: 6px; font-size: 12px;
+  color: var(--muted); font-weight: 600; }
+.ts-key::before { content: ""; width: 12px; height: 3px; border-radius: 2px; }
+.ts-key-visitors::before { background: var(--accent); }
+.ts-key-searches::before { background: var(--violet); }
+.ts-key-applies::before { background: var(--green); }
+.ts-chart { position: relative; margin-top: 12px; }
+.ts-svg { width: 100%; height: 260px; display: block; overflow: visible; }
+.ts-grad-top { stop-color: var(--accent); stop-opacity: .22; }
+.ts-grad-bot { stop-color: var(--accent); stop-opacity: 0; }
+.ts-area { fill: url(#tsGrad); stroke: none; }
+.ts-line { fill: none; stroke-width: 2.5; vector-effect: non-scaling-stroke;
+  stroke-linejoin: round; stroke-linecap: round; }
+.ts-line-visitors { stroke: var(--accent); }
+.ts-line-searches { stroke: var(--violet); stroke-width: 2; stroke-dasharray: 1 6; }
+.ts-line-applies { stroke: var(--green); stroke-width: 2; }
+.ts-gridline { stroke: var(--border); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.ts-ylabel { fill: var(--faint); font-size: 11px; font-family: var(--sans); }
+.ts-cursor { stroke: var(--border-strong); stroke-width: 1;
+  vector-effect: non-scaling-stroke; stroke-dasharray: 3 3; }
+.ts-dot-visitors { fill: var(--surface); stroke: var(--accent); stroke-width: 2.5; }
+.ts-xaxis { display: flex; justify-content: space-between; margin-top: 6px;
+  font-size: 11px; color: var(--faint); font-variant-numeric: tabular-nums; }
+.ts-xaxis span { flex: 1; }
+.ts-tip { position: absolute; top: 6px; transform: translateX(-50%);
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); box-shadow: var(--shadow-lift);
+  padding: 8px 10px; font-size: 12px; color: var(--ink); pointer-events: none;
+  white-space: nowrap; z-index: 5; }
+.ts-tip b { display: block; margin-bottom: 4px; color: var(--muted);
+  font-weight: 600; font-size: 11px; }
+.ts-tip span { display: flex; align-items: center; gap: 6px;
+  font-variant-numeric: tabular-nums; }
+.ts-sw { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
+.ts-sw-visitors { background: var(--accent); }
+.ts-sw-searches { background: var(--violet); }
+.ts-sw-applies { background: var(--green); }
+
 /* ---------- Trial result cards (expandable) ---------- */
 .result { background: var(--surface); border: 1px solid var(--border);
   border-radius: var(--radius); box-shadow: var(--shadow); margin-bottom: 12px;

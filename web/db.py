@@ -731,6 +731,11 @@ _MIGRATIONS = {
         "redcap_survey_status": "TEXT DEFAULT ''",
         "conv_tags": "TEXT DEFAULT ''",
     },
+    "web_events": {
+        # User-agent kept for bot auditing only (not PHI). Bot traffic is
+        # filtered before insert, so this should only ever hold real browsers.
+        "ua": "TEXT DEFAULT ''",
+    },
 }
 
 
@@ -3297,9 +3302,10 @@ _WEB_FUNNEL_LABELS = {
 
 
 def log_web_event(name, visitor="", path="", source="", medium="",
-                  campaign="", referrer="", detail=None):
+                  campaign="", referrer="", detail=None, ua=""):
     """Record one on-site action. Best-effort; never raises. `detail` is a small
-    dict of non-identifying facts (e.g. term, result count, nct)."""
+    dict of non-identifying facts (e.g. term, result count, nct). `ua` is the
+    browser user-agent, stored only for bot auditing."""
     name = (name or "").strip()
     if not name:
         return
@@ -3311,10 +3317,10 @@ def log_web_event(name, visitor="", path="", source="", medium="",
         d = get_db()
         d.execute(
             "INSERT INTO web_events (ts, visitor, name, path, source, medium, "
-            "campaign, referrer, detail) VALUES (?,?,?,?,?,?,?,?,?)",
+            "campaign, referrer, detail, ua) VALUES (?,?,?,?,?,?,?,?,?,?)",
             (now(), (visitor or "")[:64], name[:40], (path or "")[:200],
              (source or "")[:80], (medium or "")[:40], (campaign or "")[:80],
-             (referrer or "")[:200], payload[:500]))
+             (referrer or "")[:200], payload[:500], (ua or "")[:200]))
         d.commit()
     except Exception:
         pass
@@ -3419,6 +3425,44 @@ def web_funnel_stats(days=30, limit_terms=10, limit_sources=10):
                 (funnel[-1]["unique"] / top_u * 100.0), 1) if top_u else 0.0,
         },
     }
+
+
+def clear_web_events():
+    """Wipe all visitor-analytics events. Used by the owner to reset to a clean
+    baseline (e.g. after removing bot-inflated history). Returns rows deleted."""
+    d = get_db()
+    n = d.execute("SELECT COUNT(*) c FROM web_events").fetchone()["c"]
+    d.execute("DELETE FROM web_events")
+    d.commit()
+    return int(n or 0)
+
+
+def web_timeseries(days=30):
+    """Per-day traffic for the visitor chart: unique visitors, searches, and
+    applies for each of the last `days` days. Zero-filled so the line is
+    continuous even on days with no traffic. Newest last (left-to-right)."""
+    d = get_db()
+    since = _web_since(days)
+    rows = d.execute(
+        "SELECT substr(ts, 1, 10) AS day, "
+        "COUNT(DISTINCT CASE WHEN name = 'visit' THEN visitor END) AS visitors, "
+        "SUM(CASE WHEN name = 'search' THEN 1 ELSE 0 END) AS searches, "
+        "SUM(CASE WHEN name = 'apply' THEN 1 ELSE 0 END) AS applies "
+        "FROM web_events WHERE ts >= ? GROUP BY day", (since,)).fetchall()
+    by_day = {r["day"]: r for r in rows}
+    span = max(1, days)
+    start = dt.date.today() - dt.timedelta(days=span - 1)
+    out = []
+    for i in range(span):
+        day = (start + dt.timedelta(days=i)).strftime("%Y-%m-%d")
+        r = by_day.get(day)
+        out.append({
+            "day": day,
+            "visitors": int((r["visitors"] if r else 0) or 0),
+            "searches": int((r["searches"] if r else 0) or 0),
+            "applies": int((r["applies"] if r else 0) or 0),
+        })
+    return out
 
 
 def recent_searches(days=30, limit=40):

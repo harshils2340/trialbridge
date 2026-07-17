@@ -544,4 +544,18 @@
   });
 })();
 </script>
+<script>
+/* Visit beacon: counts a visit only for real browsers that run JS, which keeps
+   crawlers (that don't execute JS) out of the analytics. Fires once per load. */
+(function () {
+  try {
+    var meta = document.querySelector('meta[name="csrf-token"]');
+    var token = meta ? meta.getAttribute('content') : '';
+    fetch('{{ url_for("track_visit") }}', {
+      method: 'POST', keepalive: true, credentials: 'same-origin',
+      headers: { 'X-CSRF-Token': token, 'X-Requested-With': 'XMLHttpRequest' }
+    }).catch(function () {});
+  } catch (e) {}
+})();
+</script>
 {% endblock %}

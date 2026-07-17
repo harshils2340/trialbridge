@@ -530,6 +530,62 @@ def login_required(view):
 # every other signed-in staff user gets a 404 (so its existence isn't leaked).
 OWNER_EMAIL = os.environ.get("OWNER_EMAIL", "harshils2340@gmail.com").strip().lower()
 
+# Analytics: don't count your own traffic. Set ANALYTICS_IGNORE_IPS to a
+# comma-separated list of IPs to drop from the visitor funnel (e.g. your home /
+# office IP). Events from these IPs — and from anyone signed in as OWNER_EMAIL —
+# are never logged. Find your current IP on the /app/analytics page.
+ANALYTICS_IGNORE_IPS = frozenset(
+    ip.strip() for ip in os.environ.get("ANALYTICS_IGNORE_IPS", "").split(",")
+    if ip.strip())
+
+
+def _client_ip():
+    """Best-effort client IP. Behind a proxy, ProxyFix rewrites remote_addr to
+    the real client (X-Forwarded-For); otherwise remote_addr is the peer."""
+    return (request.remote_addr or "").strip()
+
+
+# Substrings that mark a request as automated (crawlers, scrapers, monitors,
+# link previewers, headless browsers, CLI HTTP clients). Matched case-insensitively
+# against the User-Agent. This is the standard, low-maintenance way to keep bots
+# out of visitor analytics so the funnel numbers stay legit.
+_BOT_UA_MARKERS = (
+    "bot", "crawl", "spider", "slurp", "search", "scrape", "fetch",
+    "curl", "wget", "python-requests", "python-httpx", "aiohttp", "httpclient",
+    "okhttp", "go-http", "java/", "libwww", "phantomjs", "headless",
+    "puppeteer", "playwright", "selenium", "webdriver", "lighthouse",
+    "monitor", "uptime", "pingdom", "statuscake", "datadog", "newrelic",
+    "facebookexternalhit", "facebot", "embedly", "quora link", "outbrain",
+    "whatsapp", "telegrambot", "discordbot", "slackbot", "twitterbot",
+    "linkedinbot", "bingpreview", "yandex", "baidu", "duckduckbot",
+    "semrush", "ahrefs", "mj12bot", "dotbot", "petalbot", "gptbot",
+    "ccbot", "claudebot", "google-inspectiontool", "chrome-lighthouse",
+)
+
+
+def _is_bot(ua=None):
+    """True when the User-Agent looks automated. Empty UAs are treated as bots:
+    real browsers always send one, most scripted clients don't."""
+    if ua is None:
+        try:
+            ua = request.headers.get("User-Agent", "")
+        except Exception:
+            ua = ""
+    ua = (ua or "").strip().lower()
+    if not ua:
+        return True
+    return any(marker in ua for marker in _BOT_UA_MARKERS)
+
+
+def _analytics_ignored():
+    """True when the current request should be excluded from visitor analytics:
+    automated traffic (bots), the owner's own IP(s), or the signed-in owner."""
+    if _is_bot():
+        return True
+    if _client_ip() in ANALYTICS_IGNORE_IPS:
+        return True
+    return _is_owner()
+
 
 def _is_owner():
     try:
@@ -675,14 +731,17 @@ def _web_analytics_cookies(resp):
 
 
 def _log_event(name, detail=None):
-    """Best-effort funnel event with the current visitor + attribution."""
+    """Best-effort funnel event with the current visitor + attribution.
+    Owner traffic (ignored IPs or the signed-in owner) is never logged."""
     try:
+        if _analytics_ignored():
+            return
         attr = getattr(g, "attr", {}) or {}
         db.log_web_event(
             name, visitor=getattr(g, "visitor_id", ""), path=request.path,
             source=attr.get("s", ""), medium=attr.get("m", ""),
             campaign=attr.get("c", ""), referrer=attr.get("r", ""),
-            detail=detail)
+            detail=detail, ua=request.headers.get("User-Agent", ""))
     except Exception:
         pass
 
@@ -700,6 +759,12 @@ def _log_event(name, detail=None):
 # --------------------------------------------------------------------------- #
 NOTIFY_LIVE = os.environ.get("NOTIFY_LIVE", "0") == "1"
 SITE_NOTIFY_EMAIL = os.environ.get("SITE_NOTIFY_EMAIL", "").strip()
+# Internal inbox(es) that get a heads-up on every new application, so the operator
+# can confirm the funnel is producing real, legit applications. De-identified.
+# Comma-separated; defaults to the brand inbox + your personal owner email so you
+# get it directly. Override with OWNER_NOTIFY_EMAIL.
+OWNER_NOTIFY_EMAIL = os.environ.get(
+    "OWNER_NOTIFY_EMAIL", f"hello@bridgemd.health, {OWNER_EMAIL}").strip()
 PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL", "").strip().rstrip("/")
 _NOTIFIER = notifications_mod.Notifier(
     live=NOTIFY_LIVE,
@@ -746,6 +811,21 @@ def _notify_site_new_candidate(token):
     link = _abs_url("candidate_page", token=lead["site_token"])
     subject, body = mailer.build_candidate_message(lead, link)
     return _notify(to_addr, subject, body)
+
+
+def _notify_owner_new_application(token):
+    """Heads-up to the operator's inbox (OWNER_NOTIFY_EMAIL) that a new
+    application came in, so they can confirm the funnel is producing real,
+    legit applications. De-identified: links to the dashboard for details.
+    No-op while notifications are off (NOTIFY_LIVE) or no recipient set."""
+    if not OWNER_NOTIFY_EMAIL:
+        return False
+    lead = db.get_lead_by_token(token)
+    if not lead:
+        return False
+    link = _abs_url("leads")
+    subject, body = mailer.build_owner_new_application(lead, link)
+    return _notify(OWNER_NOTIFY_EMAIL, subject, body)
 
 
 def _notify_applicant(token, kind):
@@ -1920,8 +2000,17 @@ def home():
     return _render_landing()
 
 
-def _render_landing():
+@app.route("/e/visit", methods=["POST"])
+def track_visit():
+    """Client-side visit beacon. The landing page fires this on load, so only
+    real browsers that execute JavaScript are counted — most crawlers never run
+    JS and so never reach here. Bot user-agents and owner traffic are dropped
+    inside _log_event. Always returns 204 (best-effort, no body)."""
     _log_event("visit")
+    return ("", 204)
+
+
+def _render_landing():
     condition_options = _merge_terms(
         trending_conditions(12), SEARCH_CONDITION_OPTIONS, 30)
     condition_prefill = request.args.get("condition", "").strip()
@@ -2398,6 +2487,8 @@ def interest():
     # Go-live hook: tell the site a new blinded candidate is waiting. No-op while
     # NOTIFY_LIVE is off, so nothing is emailed during testing.
     _notify_site_new_candidate(token)
+    # Internal heads-up so the operator can confirm real applications are landing.
+    _notify_owner_new_application(token)
     # Confirm receipt to the applicant (job-application style). The in-app system
     # message always shows in their thread; the email sends only when go-live is
     # on, so both surfaces stay in sync.
@@ -3517,7 +3608,24 @@ def owner_analytics():
         days = 30
     web = db.web_funnel_stats(days=days)
     recent = db.recent_searches(days=days, limit=40)
-    return render_template("analytics.html", web=web, recent=recent, days=days)
+    series = db.web_timeseries(days=days)
+    return render_template("analytics.html", web=web, recent=recent, days=days,
+                           series=series,
+                           your_ip=_client_ip(), ip_ignored=_analytics_ignored())
+
+
+@app.route("/app/analytics/reset", methods=["POST"])
+@owner_required
+def owner_analytics_reset():
+    """Clear all visitor-analytics history. Handy for wiping bot-inflated data
+    accumulated before bot filtering was added, so counts start clean."""
+    try:
+        n = db.clear_web_events()
+        flash(f"Cleared {n} analytics event(s). Counts start fresh now.", "success")
+    except Exception:
+        app.logger.exception("failed to reset web analytics")
+        flash("Couldn't reset analytics. Please try again.", "error")
+    return redirect(url_for("owner_analytics"))
 
 
 @app.route("/app/dashboard/spend", methods=["POST"])
