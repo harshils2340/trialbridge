@@ -31,20 +31,35 @@
 {% block body %}
 <section class="hero">
   <div class="hero-in">
+    {% if not patient_user %}
+    <span class="hero-eyebrow"><span class="hero-eyebrow-dot"></span> Free clinical-trial finder</span>
+    {% endif %}
     <h1>{{ 'Find your next trial match.' if patient_user else 'Find recruiting trials near you.' }}</h1>
-    <p class="hero-sub">{{ 'Search again with your saved context and keep applications moving.' if patient_user else 'Type a condition, or just describe what you\'re looking for.' }}</p>
+    <p class="hero-sub">{{ 'Search again with your saved context and keep applications moving.' if patient_user else 'Search by your condition, or describe it in plain English. We match you to recruiting trials nearby.' }}</p>
 
     <form id="heroForm" method="post" action="{{ url_for('find') }}" autocomplete="off">
+      <div class="search-modes" role="tablist" aria-label="How to search">
+        <button type="button" class="search-mode is-active" id="modeCondition"
+                data-mode="condition" role="tab" aria-selected="true">By condition</button>
+        <button type="button" class="search-mode" id="modeDescribe"
+                data-mode="describe" role="tab" aria-selected="false">Describe it</button>
+      </div>
       <div class="hero-search">
-        <div class="hero-field">
+        <div class="hero-field" id="condField">
           {{ ic.icon('search') }}
           <input id="conditionInput" name="condition" type="text"
-                 placeholder="e.g. type 2 diabetes — or “I have obesity and want new treatments”"
+                 placeholder="e.g. type 2 diabetes"
                  value="{{ condition_value|default('') }}"
                  autocomplete="off" autocapitalize="off" spellcheck="false" required>
           <div id="heroCondSuggest" class="hero-suggest" hidden></div>
         </div>
-        <div class="hero-field">
+        <div class="hero-field" id="descField" hidden>
+          {{ ic.icon('search') }}
+          <input id="describeInput" name="condition" type="text"
+                 placeholder="Describe it — e.g. I have obesity and want new treatments"
+                 autocomplete="off" autocapitalize="off" spellcheck="false" required disabled>
+        </div>
+        <div class="hero-field hero-field-loc">
           {{ ic.icon('pin') }}
           <input id="location" name="location" type="text" placeholder="City or postal code"
                  value="{{ location_value|default('') }}" autocomplete="off"
@@ -53,7 +68,7 @@
         </div>
         <button class="btn btn-primary btn-lg" type="submit">Find trials{{ ic.icon('arrow-right') }}</button>
       </div>
-      <p class="hero-hint">Search by a specific condition or describe it in your own words — either works.</p>
+      <p class="hero-hint" id="heroHint">Know your condition? Search it directly. Not sure? Switch to “Describe it” and write in plain English.</p>
       <input type="hidden" id="locLat" name="lat">
       <input type="hidden" id="locLon" name="lon">
       <input type="hidden" id="locCc" name="cc">
@@ -101,7 +116,7 @@
     {% if not pov_demo %}
     <div class="chips-block">
       <div class="chip-row">
-        <span class="chip-label">Quick picks</span>
+        <span class="chip-label">Popular</span>
         <div class="chip-cluster">
           {% for c in conditions[:5] %}
           <a class="chip cond-chip" href="{{ url_for('condition_page', slug=slugify(c)) }}" data-cond="{{ c }}">{{ c }}</a>
@@ -110,24 +125,35 @@
       </div>
     </div>
     {% endif %}
+
+    {% if not patient_user %}
+    <ul class="hero-trust">
+      <li>{{ ic.icon('check') }} Free for patients</li>
+      <li>{{ ic.icon('check') }} No account needed to search</li>
+      <li>{{ ic.icon('activity') }} Trials from ClinicalTrials.gov</li>
+    </ul>
+    {% endif %}
   </div>
 </section>
 
-<section class="traction">
-  <div class="traction-in">
-    <p class="traction-eyebrow">Early results</p>
-    <div class="traction-grid">
-      <div class="traction-card">
-        <span class="traction-num">150</span>
-        <span class="traction-label">Patients matched to trials</span>
+<section class="howto">
+  <div class="howto-in">
+    <p class="howto-eyebrow">How it works</p>
+    <div class="howto-grid">
+      <div class="howto-step">
+        <span class="howto-ico">{{ ic.icon('search') }}</span>
+        <h3>1 · Search</h3>
+        <p>Enter your condition or describe your situation, plus where you are.</p>
       </div>
-      <div class="traction-card">
-        <span class="traction-num">30%</span>
-        <span class="traction-label">Faster time to enrollment</span>
+      <div class="howto-step">
+        <span class="howto-ico">{{ ic.icon('sparkle') }}</span>
+        <h3>2 · Match</h3>
+        <p>We read each trial's eligibility and rank the recruiting studies near you.</p>
       </div>
-      <div class="traction-card">
-        <span class="traction-num">$125k</span>
-        <span class="traction-label">Saved in recruitment costs</span>
+      <div class="howto-step">
+        <span class="howto-ico">{{ ic.icon('send') }}</span>
+        <h3>3 · Apply</h3>
+        <p>Answer a few quick questions and apply to the ones that fit — in minutes.</p>
       </div>
     </div>
   </div>
@@ -153,15 +179,39 @@
   var steps = ['Fetching recruiting studies', 'Checking which are near you',
                'Reading eligibility for each', 'Ranking your best matches'];
 
-  // The main box accepts EITHER a condition term or a plain-English sentence.
-  // If it reads like a sentence, flag it so the server treats it as free text
-  // (and extracts the condition) instead of querying CT.gov with a whole phrase.
-  function looksFreeform(text) {
-    var t = (text || '').trim();
-    if (!t) return false;
-    if (t.split(/\s+/).length >= 5) return true;
-    return /\b(i|im|i'm|my|have|has|want|need|looking|help|treatment|cure|suffer|suffering|diagnos)\b/i.test(t);
+  // Two explicit search modes so it's clear what you're entering:
+  //   "condition" -> a specific term (with autocomplete), freeform=0
+  //   "describe"  -> plain English; server extracts the condition, freeform=1
+  // Only the active field is enabled, so only it submits (name="condition").
+  var condField = document.getElementById('condField');
+  var descField = document.getElementById('descField');
+  var describeInput = document.getElementById('describeInput');
+  var modeButtons = document.querySelectorAll('.search-mode');
+  var heroHint = document.getElementById('heroHint');
+  var HINTS = {
+    condition: 'Know your condition? Search it directly. Not sure? Switch to “Describe it” and write in plain English.',
+    describe: 'Describe your situation in plain English — e.g. “I have obesity and want to try new treatments”.'
+  };
+  function setMode(mode) {
+    var describe = mode === 'describe';
+    if (heroFreeform) heroFreeform.value = describe ? '1' : '0';
+    if (condField) condField.hidden = describe;
+    if (descField) descField.hidden = !describe;
+    var condInputEl = document.getElementById('conditionInput');
+    if (condInputEl) condInputEl.disabled = describe;
+    if (describeInput) describeInput.disabled = !describe;
+    modeButtons.forEach(function (b) {
+      var on = b.getAttribute('data-mode') === mode;
+      b.classList.toggle('is-active', on);
+      b.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+    if (heroHint && HINTS[mode]) heroHint.textContent = HINTS[mode];
+    var active = describe ? describeInput : condInputEl;
+    if (active) { try { active.focus(); } catch (e) {} }
   }
+  modeButtons.forEach(function (b) {
+    b.addEventListener('click', function () { setMode(b.getAttribute('data-mode')); });
+  });
 
   // Lightweight modal control (public pages don't load the shared modal JS).
   var preModal = document.getElementById('preSearchModal');
@@ -197,10 +247,6 @@
 
   var intakeDone = false;
   form.addEventListener('submit', function (e) {
-    if (heroFreeform) {
-      var box = document.getElementById('conditionInput');
-      heroFreeform.value = looksFreeform(box && box.value) ? '1' : '0';
-    }
     // First press: make sure condition + location are filled, then ask the
     // quick pre-screen questions before actually running the search.
     if (!intakeDone) {

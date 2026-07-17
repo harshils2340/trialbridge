@@ -707,22 +707,36 @@ body.demo-home .hero-sub { max-width: 700px; }
 body.demo-home .hero-search { max-width: 860px; margin-top: 28px; }
 
 /* Hero */
-.hero { max-width: 1080px; margin: 0 auto; padding: 48px 24px 24px; text-align: center; }
-.hero-eyebrow { display: inline-flex; align-items: center; gap: 6px; font-size: 13px;
-  font-weight: 600; color: var(--accent); background: var(--accent-soft);
-  padding: 6px 14px; border-radius: 999px; }
+.hero { max-width: 1080px; margin: 0 auto; padding: 48px 24px 24px; text-align: center;
+  position: relative; isolation: isolate; }
+.hero::before { content: ""; position: absolute; z-index: -1; left: 50%; top: -30px;
+  transform: translateX(-50%); width: min(920px, 94%); height: 340px;
+  background: radial-gradient(58% 78% at 50% 0, var(--accent-soft), transparent 72%);
+  opacity: .55; pointer-events: none; }
+.hero-eyebrow { display: inline-flex; align-items: center; gap: 8px; font-size: 13px;
+  font-weight: 600; color: var(--ink-soft); background: var(--surface);
+  border: 1px solid var(--border); padding: 6px 14px; border-radius: var(--radius-pill);
+  box-shadow: var(--shadow); }
 .hero-eyebrow .ico { width: 14px; height: 14px; }
+.hero-eyebrow-dot { width: 7px; height: 7px; border-radius: var(--radius-pill);
+  background: var(--green); box-shadow: 0 0 0 3px var(--green-bg); }
 .hero h1 { font-size: 52px; line-height: 1.05; letter-spacing: -.04em; margin: 20px 0 0;
   font-weight: 800; }
-.hero-sub { font-size: 18px; color: var(--muted); max-width: 620px; margin: 18px auto 0;
+.hero-sub { font-size: 18px; color: var(--muted); max-width: 600px; margin: 16px auto 0;
   line-height: 1.55; }
-.hero-search { display: flex; gap: 10px; max-width: 760px; margin: 32px auto 0;
+.hero-search { display: flex; gap: 10px; max-width: 860px; margin: 32px auto 0;
   background: var(--surface); border: 1px solid var(--border-strong);
   border-radius: 16px; padding: 8px; box-shadow: var(--shadow-lift); }
 .hero-field { display: flex; align-items: center; gap: 8px; flex: 1; padding: 0 12px; }
+/* The free-text box needs more room so its full prompt/answer is readable. */
+#descField { flex: 2.4; }
 .hero-field .ico { width: 18px; height: 18px; color: var(--faint); flex-shrink: 0; }
 .hero-field input { border: 0; outline: 0; width: 100%; font-size: 15px;
   font-family: var(--sans); background: transparent; padding: 12px 0; color: var(--ink); }
+/* The card shows the focus ring (focus-within); inner inputs stay flat.
+   Focus is still clearly visible via .hero-search:focus-within, so it's a11y-safe. */
+.hero-field input:focus, .hero-field input:focus-visible {
+  box-shadow: none; border-color: transparent; outline: none; }
 .hero-field { position: relative; }
 .hero-chip-input { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; width: 100%;
   min-height: 46px; padding: 8px 0; }
@@ -764,6 +778,16 @@ body.demo-home .hero-search { max-width: 860px; margin-top: 28px; }
 .hero-more textarea { resize: vertical; }
 .hero-hint { text-align: center; color: var(--muted); font-size: 13px;
   margin: var(--space-2) auto 0; max-width: 620px; }
+.search-modes { display: inline-flex; gap: 4px; margin: 0 auto var(--space-5);
+  padding: 4px; border: 1px solid var(--border); border-radius: var(--radius-pill);
+  background: var(--surface-2); }
+.search-mode { border: 0; background: transparent; padding: 8px 20px;
+  border-radius: var(--radius-pill); font-family: var(--sans); font-size: 14px;
+  font-weight: 600; color: var(--muted); cursor: pointer;
+  transition: background .15s ease, color .15s ease, box-shadow .15s ease; }
+.search-mode:hover { color: var(--ink); }
+.search-mode.is-active { background: var(--surface); color: var(--accent);
+  box-shadow: var(--shadow); }
 .presearch-lead { color: var(--muted); font-size: 14px; margin: 0 0 var(--space-4); }
 .presearch-grid { display: flex; gap: var(--space-3); }
 .presearch-grid label, .presearch-row { display: flex; flex-direction: column; gap: 6px;
@@ -1139,6 +1163,8 @@ body.demo-home .hero-search { max-width: 860px; margin-top: 28px; }
   .hero h1 { font-size: 36px; }
   .hero-search, .cond-search { flex-direction: column; }
   .hero-search .btn { width: 100%; justify-content: center; }
+  .hero-field-loc { border-left: 0; border-top: 1px solid var(--border); }
+  #descField { flex: 1; }
   .steps { grid-template-columns: 1fr; gap: 14px; }
   .chip-row { grid-template-columns: 1fr; gap: 8px; }
   .chip-label { justify-content: flex-start; padding-top: 0; }
@@ -1922,27 +1948,54 @@ h1, h2, h3 {
 }
 
 .hero-search {
-  border: 1px solid #e8e8ef;
-  border-radius: 18px;
-  padding: 12px;
-  background: #fff;
-  box-shadow: 0 2px 4px rgba(17,17,20,.03), 0 16px 32px rgba(17,17,20,.06);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow-lift);
+  transition: border-color .15s ease, box-shadow .15s ease;
 }
+.hero-search:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px var(--accent-soft), var(--shadow-lift);
+}
+/* Subtle divider between the query field and the location field. */
+.hero-field-loc { border-left: 1px solid var(--border); }
 
 .hero-trust {
-  margin-top: 12px;
+  list-style: none;
+  margin: var(--space-5) auto 0;
+  padding: 0;
   display: flex;
   flex-wrap: wrap;
-  gap: 10px 18px;
-  font-size: 13px;
+  justify-content: center;
+  gap: 10px 22px;
+  font-size: 13.5px;
   color: var(--muted);
 }
-
-.hero-trust span {
+.hero-trust li {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 7px;
 }
+.hero-trust .ico { width: 15px; height: 15px; color: var(--green); }
+
+/* How it works (honest 3-step, replaces the old stats band) */
+.howto { max-width: 1080px; margin: 0 auto; padding: 16px 24px 60px; }
+.howto-in { max-width: 940px; margin: 0 auto; }
+.howto-eyebrow { text-align: center; font-size: 12.5px; font-weight: 700;
+  letter-spacing: .08em; text-transform: uppercase; color: var(--faint);
+  margin: 0 0 var(--space-6); }
+.howto-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-4); }
+.howto-step { background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: var(--space-6); text-align: left; }
+.howto-ico { display: inline-flex; align-items: center; justify-content: center;
+  width: 40px; height: 40px; border-radius: var(--radius-sm); background: var(--accent-soft);
+  color: var(--accent); margin-bottom: var(--space-4); }
+.howto-ico .ico { width: 20px; height: 20px; }
+.howto-step h3 { margin: 0 0 6px; font-size: 16px; font-weight: 700; color: var(--ink); }
+.howto-step p { margin: 0; font-size: 14px; color: var(--muted); line-height: 1.55; }
+@media (max-width: 760px) { .howto-grid { grid-template-columns: 1fr; } }
 
 .hero-trust .ico {
   width: 14px;
