@@ -764,6 +764,16 @@ def _notify_applicant_by_id(lead_id, kind):
     return _notify_applicant(lead["token"], kind) if lead else False
 
 
+def _notify_applicant_apply_confirmation(token):
+    """Send the applicant a friendly 'we got your application' confirmation right
+    after they apply. No-op if there's no email/phone or notifications are off."""
+    lead = db.get_lead_by_token(token)
+    if not lead or (not lead["email"] and not lead["phone"]):
+        return False
+    subject, body = mailer.build_apply_confirmation(lead, _abs_url("applications"))
+    return _notify_patient(lead["email"], lead["phone"], subject, body, "")
+
+
 def _notify_applicant_schedule(lead):
     """Email the applicant their booking link so they can self-schedule."""
     if (not lead or not lead["schedule_url"] or
@@ -2388,6 +2398,17 @@ def interest():
     # Go-live hook: tell the site a new blinded candidate is waiting. No-op while
     # NOTIFY_LIVE is off, so nothing is emailed during testing.
     _notify_site_new_candidate(token)
+    # Confirm receipt to the applicant (job-application style). The in-app system
+    # message always shows in their thread; the email sends only when go-live is
+    # on, so both surfaces stay in sync.
+    new_lead = db.get_lead_by_token(token)
+    if new_lead:
+        db.add_message(
+            new_lead["id"], "system",
+            "Thanks for applying - your application was received and sent to the "
+            "study team. Someone will respond shortly, usually within a few "
+            "business days. You don't need to do anything right now.")
+    _notify_applicant_apply_confirmation(token)
     _log_event("apply", {"nct": f.get("nct", "").strip()})
     # Prefill an OPTIONAL "alert me about similar trials" offer on the thank-you
     # page (see thanks.html). Nothing is created unless the patient opts in.

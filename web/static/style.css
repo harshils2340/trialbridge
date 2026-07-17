@@ -736,20 +736,16 @@ body.demo-home .hero-search { max-width: 680px; margin-top: 14px; }
 .hero-sub { font-size: 18.5px; color: var(--muted); max-width: 600px; margin: 18px auto 0;
   line-height: 1.6; }
 
-/* Trust bar - credibility markers directly under the hero. */
-.trust-bar { max-width: 1080px; margin: 30px auto 0; padding: 0 24px; }
-.trust-bar-in { display: flex; flex-wrap: wrap; justify-content: center; align-items: stretch;
-  gap: 2px; border: 1px solid var(--border); border-radius: var(--radius);
-  background: var(--surface); box-shadow: var(--shadow); overflow: hidden; }
-.trust-item { display: flex; align-items: center; gap: 11px; flex: 1 1 240px;
-  padding: 16px 20px; font-size: 13.5px; color: var(--muted); line-height: 1.4;
-  border-left: 1px solid var(--border); }
-.trust-item:first-child { border-left: 0; }
-.trust-item b { color: var(--ink); font-weight: 600; }
-.trust-item .ico { width: 18px; height: 18px; color: var(--accent); flex-shrink: 0; }
+/* Trust bar - light inline credibility markers directly under the hero. */
+.trust-bar { max-width: 900px; margin: 40px auto 0; padding: 0 24px; }
+.trust-bar-in { display: flex; flex-wrap: wrap; justify-content: center;
+  align-items: center; gap: 12px 28px; }
+.trust-item { display: inline-flex; align-items: center; gap: 8px;
+  font-size: 13px; color: var(--muted); line-height: 1.4; }
+.trust-item b { color: var(--ink-soft); font-weight: 600; }
+.trust-item .ico { width: 15px; height: 15px; color: var(--accent); flex-shrink: 0; }
 @media (max-width: 720px) {
-  .trust-item { flex-basis: 100%; border-left: 0; border-top: 1px solid var(--border); }
-  .trust-item:first-child { border-top: 0; }
+  .trust-bar-in { flex-direction: column; align-items: flex-start; gap: 12px; }
 }
 /* Search: one cohesive, elevated bar - [condition | location | Find] - so the
  * entry point reads as a single confident instrument (Airbnb/Google style). */
@@ -774,10 +770,9 @@ body.demo-home .hero-search { max-width: 680px; margin-top: 14px; }
   font-family: var(--sans); background: transparent; padding: 15px 0; color: var(--ink); }
 .hero-go { flex-shrink: 0; align-self: stretch; border-radius: var(--radius); }
 /* Reassurance: free to use, no gate. */
-.hero-free { display: inline-flex; align-items: center; gap: 7px; margin: 13px auto 0;
-  font-size: 12.5px; font-weight: 600; color: var(--green); background: var(--green-bg);
-  border-radius: var(--radius-pill); padding: 6px 14px; }
-.hero-free .ico { width: 15px; height: 15px; }
+.hero-free { display: inline-flex; align-items: center; gap: 7px; margin: 14px auto 0;
+  font-size: 13px; font-weight: 500; color: var(--muted); }
+.hero-free .ico { width: 15px; height: 15px; color: var(--green); }
 @media (max-width: 640px) {
   .hero-search { flex-direction: column; gap: 8px; padding: 8px; }
   .hero-search-loc::before { display: none; }
@@ -2166,31 +2161,18 @@ h1, h2, h3 {
 .howto-eyebrow { text-align: center; font-size: 12.5px; font-weight: 700;
   letter-spacing: .08em; text-transform: uppercase; color: var(--faint);
   margin: 0 0 var(--space-6); }
-.howto-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-4); }
-.howto-step { background: var(--surface); border: 1px solid var(--border);
-  border-radius: var(--radius); padding: var(--space-6); text-align: left; }
+.howto-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-6); }
+.howto-step { padding: 0; text-align: left; }
 .howto-ico { display: inline-flex; align-items: center; justify-content: center;
-  width: 40px; height: 40px; border-radius: var(--radius-sm); background: var(--accent-soft);
-  color: var(--accent); margin-bottom: var(--space-4); }
+  width: 38px; height: 38px; border-radius: var(--radius-sm); background: var(--accent-soft);
+  color: var(--accent); margin-bottom: var(--space-3); }
 .howto-ico .ico { width: 20px; height: 20px; }
 .howto-step h3 { margin: 0 0 6px; font-size: 16px; font-weight: 700; color: var(--ink); }
 .howto-step p { margin: 0; font-size: 14px; color: var(--muted); line-height: 1.55; }
 @media (max-width: 760px) { .howto-grid { grid-template-columns: 1fr; } }
 
 .chips-block {
-  margin-top: 16px;
-}
-
-.chip {
-  border: 1px solid #e7e7ef;
-  background: #fff;
-  transition: border-color .14s ease, transform .14s ease, box-shadow .14s ease;
-}
-
-.chip:hover {
-  border-color: #d7d7e8;
-  box-shadow: 0 4px 12px rgba(17,17,20,.07);
-  transform: translateY(-1px);
+  margin-top: 20px;
 }
 
 .steps-wrap {

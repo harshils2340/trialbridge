@@ -124,6 +124,36 @@ def build_applicant_message(lead, kind, link):
     return subj, "\n".join(lines)
 
 
+def build_apply_confirmation(lead, link):
+    """Warm, job-application-style confirmation sent to the applicant right after
+    they apply. Sets expectations (someone will respond) and respects their time."""
+    title = lead["title"] or lead["nct"] or "a clinical trial"
+    subject = f"We got your application - {lead['nct'] or title}"
+    lines = [
+        f"Hi {lead['name'] or 'there'},",
+        "",
+        "Thanks for applying - your application was received and sent to the "
+        "study team. We know your time matters, so here's exactly what happens "
+        "next:",
+        "",
+        f"Trial: {title}",
+        "",
+        "What's next:",
+        "  - The study team reviews your application.",
+        "  - Someone will respond shortly - typically within a few business days.",
+        "  - You'll hear from us here and in your BridgeMD account either way.",
+        "",
+        "You don't need to do anything right now. You can check your status or "
+        "message the study team any time here:",
+        link,
+        "",
+        "This isn't medical advice and you can talk to your own doctor first.",
+        "",
+        "Sent via BridgeMD.",
+    ]
+    return subject, "\n".join(lines)
+
+
 def build_alert_message(alert, new_matches, link):
     """Notify a patient with a concise, useful weekly digest.
     `new_matches` accepts either [(nct, title)] or [{"nct","title"}, ...]."""
