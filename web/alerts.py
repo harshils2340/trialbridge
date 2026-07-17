@@ -81,7 +81,11 @@ def _quality_score(alert, match):
     return score
 
 
-STRONG_FIT_MIN_SCORE = 10
+# A "strong fit" must share at least one real condition/treatment keyword with
+# the trial title (overlap*12), not merely be a long title (length bonus = 10).
+# Setting the bar above the length-only bonus forces a genuine relevance signal,
+# which is what keeps the alert list tight instead of a loose CT.gov dump.
+STRONG_FIT_MIN_SCORE = 12
 
 
 def _alert_val(alert, key, default=None):
@@ -133,6 +137,30 @@ def preview_matches(alert, limit=6):
         picks = [x for x in picks if x["score"] >= STRONG_FIT_MIN_SCORE]
     for p in picks:
         p["strong"] = p["score"] >= STRONG_FIT_MIN_SCORE
+    return picks[:limit]
+
+
+def curate_for_display(alert, rows, limit=12):
+    """Curate the STORED matches for the on-page alert list using the same
+    relevance/quality bar (and Strong-fit-only toggle) the email digest uses.
+    Without this the page shows the raw CT.gov dump - lots of loosely-related
+    studies - which reads nothing like the tight search results the patient
+    trusts. Returns dicts: {nct, title, score, is_new, strong}."""
+    picks = []
+    for r in rows:
+        row = dict(r)
+        nct = (row.get("nct") or "").strip()
+        title = (row.get("title") or "").strip()
+        if not nct or not title:
+            continue
+        score = _quality_score(alert, row)
+        picks.append({"nct": nct, "title": title, "score": score,
+                      "is_new": bool(row.get("is_new")),
+                      "strong": score >= STRONG_FIT_MIN_SCORE})
+    # New trials first (so the "New" banner still fires), then by relevance.
+    picks.sort(key=lambda x: (not x["is_new"], -x["score"], x["nct"]))
+    if _strong_only(alert):
+        picks = [x for x in picks if x["score"] >= STRONG_FIT_MIN_SCORE]
     return picks[:limit]
 
 

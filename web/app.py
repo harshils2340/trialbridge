@@ -146,7 +146,7 @@ app.config.update(
     PERMANENT_SESSION_LIFETIME=60 * 60 * 24 * 14,  # 14 days
 )
 
-MAX_MATCH = int(os.environ.get("WEB_MAX_MATCH", "6"))  # LLM calls per search
+MAX_MATCH = int(os.environ.get("WEB_MAX_MATCH", "15"))  # LLM calls per search
 WEB_LLM_PARALLELISM = max(
     1, min(8, int(os.environ.get("WEB_LLM_PARALLELISM", "6"))))
 MATCH_QUALITY_MIN = max(
@@ -2418,6 +2418,38 @@ def patient_settings():
     return render_template("settings.html", patient=g.patient_user)
 
 
+@app.route("/applications/<token>/prescreen-info", methods=["POST"])
+def application_prescreen_info(token):
+    """Patient optionally answers the 'what the team will confirm' questions
+    upfront (e.g. MMSE score, diagnosis stage). We send it to the study team as
+    a message so they can pre-screen faster - a direct hit on the contact->
+    screen drop-off. All optional; only answered items are shared."""
+    if not g.patient_user:
+        flash("Sign in to share pre-screen details.", "error")
+        return redirect(url_for("patient_login", next=url_for("applications")))
+    lead = db.get_lead_by_token(token)
+    if not lead or lead["applicant_token"] != get_applicant_token():
+        abort(403)
+    f = request.form
+    idxs = sorted({int(k[3:]) for k in f.keys()
+                   if k.startswith("pq_") and k[3:].isdigit()})
+    lines = []
+    for i in idxs:
+        q = f.get(f"pq_{i}", "").strip()
+        a = f.get(f"pa_{i}", "").strip()
+        if q and a:
+            lines.append(f"- {q} {a}")
+    if not lines:
+        flash("Add at least one answer to share.", "error")
+        return redirect(url_for("applications") + f"#app-{lead['id']}")
+    body = "Extra pre-screen details I can share:\n" + "\n".join(lines)
+    db.add_message(lead["id"], "patient", body)
+    _notify_site_message(lead, body)
+    flash("Thanks - shared with your study team to help speed up screening.",
+          "success")
+    return redirect(url_for("applications") + f"#app-{lead['id']}")
+
+
 @app.route("/applications/<token>/message", methods=["POST"])
 def application_message(token):
     """Patient sends a message to the study team about their own application."""
@@ -2427,11 +2459,17 @@ def application_message(token):
     lead = db.get_lead_by_token(token)
     if not lead or lead["applicant_token"] != get_applicant_token():
         abort(403)
+    is_ajax = request.headers.get("X-Requested-With") == "fetch"
     body = request.form.get("body", "").strip()
     if body:
         db.add_message(lead["id"], "patient", body)
         _notify_site_message(lead, body)
+        if is_ajax:
+            return jsonify({"ok": True, "sender": "patient",
+                            "body": body, "created_at": db.now()})
         flash("Message sent to the study team.", "success")
+    elif is_ajax:
+        return jsonify({"ok": False, "error": "empty"}), 400
     return redirect(url_for("applications") + f"#app-{lead['id']}")
 
 
@@ -2932,7 +2970,12 @@ def alerts():
     token = get_applicant_token()
     items = []
     for a in db.list_alerts(token):
-        items.append({"alert": a, "matches": db.get_alert_matches(a["id"])})
+        # Curate stored matches with the same relevance/quality gate (and
+        # Strong-fit-only toggle) the email digest uses, so the on-page list
+        # reads like tight search results instead of the raw CT.gov dump.
+        raw = db.get_alert_matches(a["id"], limit=60)
+        items.append({"alert": a,
+                      "matches": alerts_mod.curate_for_display(a, raw)})
     # Viewing clears the "new" badge in the nav.
     if token:
         db.clear_new_flags(token)
@@ -3147,7 +3190,9 @@ def _as_question(phrase):
     low = p.lower()
     if low.startswith(_QUESTION_STARTS):
         return p[0].upper() + p[1:] + "?"
-    return "Can you share your " + p[0].lower() + p[1:] + "?"
+    # Keep original casing so acronyms (MMSE) and proper nouns (Alzheimer's)
+    # aren't mangled.
+    return "Can you share your " + p + "?"
 
 
 app.jinja_env.filters["as_question"] = _as_question
@@ -4948,10 +4993,18 @@ def run_search(note, condition, country, require_site, coords=None, radius=50,
     def _rel(t):
         return codes.relevance(patient_tokens, mt.concept_tokens(t))
 
-    # Pick which trials to screen. With a location, keep only trials with a
-    # RECRUITING site inside the radius, screen the closest first - so we never
-    # surface something across the country or a site that isn't enrolling.
-    picks = []  # list of (trial, sites_nearby)
+    # Which trials to surface. With a location, keep only trials with a
+    # RECRUITING site inside the radius, closest first - so we never surface
+    # something across the country or a site that isn't enrolling.
+    #
+    # We DON'T cap what's shown: every matching, recruiting, in-radius trial is
+    # returned, best-match first. There's no magic "top N" number - a broad
+    # search like "obesity" legitimately has many equally-good options, so we
+    # show them all. The per-trial LLM eligibility read is the only thing that's
+    # budgeted (it's the expensive part): the strongest matches get the full
+    # reasoning, the long tail shows with a lightweight "recruiting & on-topic"
+    # verdict, all ranked together below.
+    picks = []  # list of (trial, sites_nearby), already in best-match order
     if coords:
         within = []
         for t in gated:
@@ -4961,10 +5014,10 @@ def run_search(note, condition, country, require_site, coords=None, radius=50,
         # Nearest first, but let strong concept relevance win close ties so a
         # slightly-farther on-topic trial isn't buried by an off-topic closer one.
         within.sort(key=lambda x: (round(x[1][0]["distance"], 0), -_rel(x[0])))
-        picks = within[:MAX_MATCH]
+        picks = within
     else:
-        gated.sort(key=lambda t: -_rel(t))        # most on-topic into LLM budget
-        picks = [(t, []) for t in gated[:MAX_MATCH]]
+        gated.sort(key=lambda t: -_rel(t))        # most on-topic first
+        picks = [(t, []) for t in gated]
 
     def _build_result(t, near, m):
         t = dict(t or {})
@@ -5014,11 +5067,25 @@ def run_search(note, condition, country, require_site, coords=None, radius=50,
                 "pay": _pay_likelihood(t),
                 "support": _participant_support_signal(t)}
 
+    # Budget the (expensive) per-trial LLM eligibility read to the strongest
+    # matches; everything else still shows with a neutral, honest verdict.
+    def _light_match():
+        return {"verdict": "possible", "score": 0,
+                "rationale": ("Matches your search and is recruiting"
+                              + (" near you." if coords else ".")
+                              + " The study team confirms full eligibility"
+                              " after you apply."),
+                "met": [], "not_met": [], "unknown": [],
+                "quality_score": 100, "quality_flags": [], "quality_ok": True}
+
+    llm_picks = picks[:MAX_MATCH]
+    light_picks = picks[MAX_MATCH:]
+
     results = []
     if mt.LLM_API_KEY:
-        max_workers = min(WEB_LLM_PARALLELISM, len(picks))
+        max_workers = min(WEB_LLM_PARALLELISM, len(llm_picks))
         if max_workers <= 1:
-            for t, near in picks:
+            for t, near in llm_picks:
                 try:
                     m = mt.llm_match(note, t)
                 except Exception as e:
@@ -5028,7 +5095,7 @@ def run_search(note, condition, country, require_site, coords=None, radius=50,
         else:
             future_map = {}
             with ThreadPoolExecutor(max_workers=max_workers) as ex:
-                for t, near in picks:
+                for t, near in llm_picks:
                     future_map[ex.submit(mt.llm_match, note, t)] = (t, near)
                 for fut in as_completed(future_map):
                     t, near = future_map[fut]
@@ -5039,11 +5106,12 @@ def run_search(note, condition, country, require_site, coords=None, radius=50,
                              "met": [], "not_met": [], "unknown": []}
                     results.append(_build_result(t, near, m))
     else:
-        m = {"verdict": "possible", "score": 0,
-             "rationale": "Add an LLM key for eligibility reasoning.",
-             "met": [], "not_met": [], "unknown": []}
-        for t, near in picks:
-            results.append(_build_result(t, near, m))
+        for t, near in llm_picks:
+            results.append(_build_result(t, near, _light_match()))
+
+    # The rest of the matches - shown too, ranked below via rank_key.
+    for t, near in light_picks:
+        results.append(_build_result(t, near, _light_match()))
 
     # Also include studies posted directly by sites (not yet on CT.gov).
     for row in db.list_site_posted_studies(status="recruiting"):

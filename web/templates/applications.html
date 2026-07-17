@@ -111,8 +111,19 @@
       {% if rd.note %}<p class="rd-note">{{ rd.note }}</p>{% endif %}
       {% if rd.confirm %}
       <details class="rd-confirm">
-        <summary>What the team will confirm</summary>
-        <ul>{% for c in rd.confirm %}<li>{{ c }}</li>{% endfor %}</ul>
+        <summary>Speed up your screening (optional)</summary>
+        <form class="rd-qform" method="post" action="{{ url_for('application_prescreen_info', token=ld.token) }}">
+          <p class="rd-qhint">The team will confirm these anyway. If you already know any, add them here to move faster - all optional.</p>
+          {% for c in rd.confirm %}
+          <label class="rd-q">
+            <span>{{ c|as_question }}</span>
+            <input type="hidden" name="pq_{{ loop.index0 }}" value="{{ c|as_question }}">
+            <input type="text" name="pa_{{ loop.index0 }}" placeholder="Your answer (optional)"
+                   autocomplete="off">
+          </label>
+          {% endfor %}
+          {{ ui.btn('Share with study team', 'ghost', 'sm', type='submit') }}
+        </form>
       </details>
       {% endif %}
       <p class="rd-disc">An estimate from your answers - the study team makes the final decision.</p>
@@ -160,10 +171,6 @@
           {% if v.note %}<span class="app-visit-note">{{ v.note }}</span>{% endif %}</span></div>
       {% endfor %}
     </div>
-    {% endif %}
-
-    {% if not is_closed and ld.records_connected %}
-    <div class="app-records ok">{{ ic.icon('check') }} <span>Records attached - the study team can pre-screen you from your history.</span></div>
     {% endif %}
 
     {% if a.tasks %}
@@ -240,12 +247,10 @@
       {% endif %}
     </div>
 
-    <div class="thread">
-      <div class="thread-head">{{ ic.icon('activity') }} Messages with the study team
-        {% set unread = a.messages | selectattr('sender','ne','patient') | selectattr('read_patient','equalto',0) | list %}
-      </div>
-      {% if a.messages %}
-      <ul class="thread-list">
+    {% if cur >= 1 or a.messages %}
+    <div class="thread" data-thread>
+      <div class="thread-head">{{ ic.icon('activity') }} Messages with the study team</div>
+      <ul class="thread-list" data-thread-list>
         {% for m in a.messages %}
         <li class="msg msg-{{ m.sender }}">
           <span class="msg-who">{% if m.sender == 'patient' %}You{% elif m.sender == 'system' %}BridgeMD{% else %}Study team{% endif %}</span>
@@ -254,17 +259,16 @@
         </li>
         {% endfor %}
       </ul>
-      {% else %}
-      <p class="thread-empty">No messages yet. Ask the study team a question - what a visit involves,
-        travel help, timing - anything that would help you decide.</p>
-      {% endif %}
+      <p class="thread-empty" data-thread-empty {{ 'hidden' if a.messages }}>No messages yet. Ask the study team
+        a question - what a visit involves, travel help, timing - anything that would help you decide.</p>
       {% if not is_closed %}
-      <form class="thread-form" method="post" action="{{ url_for('application_message', token=ld.token) }}">
-        <input type="text" name="body" placeholder="Write a message..." required autocomplete="off">
+      <form class="thread-form" method="post" action="{{ url_for('application_message', token=ld.token) }}" data-thread-form>
+        <input type="text" name="body" placeholder="Write a message..." required autocomplete="off" data-thread-input>
         {{ ui.btn('Send', 'primary', 'sm', type='submit') }}
       </form>
       {% endif %}
     </div>
+    {% endif %}
 
     <div class="app-foot">
       <span class="app-applied">Applied {{ ld.created_at }}</span>
@@ -337,6 +341,58 @@
     form.addEventListener('drop', function (e) {
       if (e.dataTransfer && e.dataTransfer.files.length) { input.files = e.dataTransfer.files; setName(); }
     });
+  });
+})();
+
+(function () {
+  var csrf = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
+  function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+  document.querySelectorAll('[data-thread-form]').forEach(function (form) {
+    var thread = form.closest('[data-thread]');
+    var list = thread.querySelector('[data-thread-list]');
+    var empty = thread.querySelector('[data-thread-empty]');
+    var input = form.querySelector('[data-thread-input]');
+    var btn = form.querySelector('button, input[type="submit"]');
+    function scroll() { list.scrollTop = list.scrollHeight; }
+
+    function send() {
+      var body = input.value.trim();
+      if (!body) return;
+      var li = document.createElement('li');
+      li.className = 'msg msg-patient msg-sending';
+      li.innerHTML = '<span class="msg-who">You</span><span class="msg-body">' +
+        esc(body) + '</span><span class="msg-time">Sending…</span>';
+      list.appendChild(li);
+      if (empty) empty.hidden = true;
+      input.value = '';
+      input.focus();
+      scroll();
+      var fd = new FormData();
+      fd.append('body', body);
+      fd.append('_csrf_token', csrf);
+      fetch(form.action, {
+        method: 'POST', body: fd, credentials: 'same-origin',
+        headers: { 'X-Requested-With': 'fetch', 'X-CSRF-Token': csrf }
+      }).then(function (r) { return r.ok ? r.json() : Promise.reject(r); })
+        .then(function (d) {
+          li.classList.remove('msg-sending');
+          li.querySelector('.msg-time').textContent = d.created_at || '';
+        })
+        .catch(function () {
+          li.classList.remove('msg-sending');
+          li.classList.add('msg-failed');
+          var t = li.querySelector('.msg-time');
+          t.textContent = 'Not sent - tap to retry';
+          t.style.cursor = 'pointer';
+          t.onclick = function () { input.value = body; li.remove(); input.focus(); };
+        });
+    }
+
+    form.addEventListener('submit', function (e) { e.preventDefault(); send(); });
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+    });
+    scroll();
   });
 })();
 </script>

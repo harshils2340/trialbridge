@@ -1445,6 +1445,16 @@ body.demo-home .hero-search { max-width: 680px; margin-top: 14px; }
   cursor: pointer; }
 .rd-confirm ul { margin: 8px 0 0; padding-left: 18px; color: var(--ink-soft);
   font-size: 13px; line-height: 1.5; }
+.rd-qform { margin: 10px 0 0; display: flex; flex-direction: column; gap: 10px; }
+.rd-qhint { margin: 0; font-size: 12.5px; color: var(--muted); line-height: 1.5; }
+.rd-q { display: flex; flex-direction: column; gap: 5px; }
+.rd-q > span { font-size: 13px; font-weight: 600; color: var(--ink); }
+.rd-q input[type="text"] { padding: 9px 11px; border: 1px solid var(--border-strong);
+  border-radius: 9px; font-size: 13.5px; font-family: var(--sans); background: var(--surface);
+  color: var(--ink); }
+.rd-q input[type="text"]:focus { outline: 0; border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft); }
+.rd-qform .btn { align-self: flex-start; }
 .rd-disc { margin: 10px 0 0; font-size: 11.5px; color: var(--faint); line-height: 1.4; }
 .rd-strong .rd-score { color: #0b7a4b; }
 .rd-strong .rd-meter span { background: #16a06a; }
@@ -1488,6 +1498,9 @@ body.demo-home .hero-search { max-width: 680px; margin-top: 14px; }
 .msg-who { font-size: 11px; font-weight: 700; opacity: .7; }
 .msg-body { white-space: pre-wrap; word-break: break-word; }
 .msg-time { font-size: 10.5px; color: var(--faint); }
+.msg-sending { opacity: .6; }
+.msg-failed { outline: 1px solid var(--danger, #d64545); }
+.msg-failed .msg-time { color: var(--danger, #d64545); }
 /* patient's own messages right-aligned; the other party left; system centered */
 .msg-patient { align-self: flex-end; background: var(--accent); color: #fff; border-bottom-right-radius: 4px; }
 .msg-patient .msg-who, .msg-patient .msg-time { color: rgba(255,255,255,.8); opacity: 1; }
