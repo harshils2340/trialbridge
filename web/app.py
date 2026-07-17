@@ -4575,12 +4575,20 @@ def geo_reverse():
     except ValueError:
         return jsonify({"ok": False}), 400
     res = _google_reverse(lat, lon)
+    provider = "google"
     if res and res[0]:
         label, cc, country = res
     else:
+        provider = "nominatim"
         label, cc, country = _nominatim_reverse(lat, lon)
-    return jsonify({"ok": bool(label), "label": label, "cc": cc,
-                    "country": country, "unit": units_for(cc)})
+    out = {"ok": bool(label), "label": label, "cc": cc,
+           "country": country, "unit": units_for(cc)}
+    if request.args.get("debug") == "1":
+        out["provider"] = provider
+        out["google_configured"] = bool(GOOGLE_MAPS_API_KEY)
+        if provider != "google":
+            out["google_error"] = _LAST_GEO_ERROR.get("reverse", "n/a")
+    return jsonify(out)
 
 
 # Optional Google Places (New) typeahead. When the key is present we use Google
