@@ -370,7 +370,19 @@ RATE_LIMIT_ROUTES = {
     "account_verify_resend": max(
         1, int(os.environ.get("RATE_LIMIT_VERIFY_RESEND_MAX", "5"))),
     "interest": max(1, int(os.environ.get("RATE_LIMIT_INTEREST_MAX", "12"))),
+    # Public search is the one expensive public endpoint (LLM calls per query),
+    # so cap it per IP to blunt bursts/bots. Generous for real users.
+    "find": max(1, int(os.environ.get("RATE_LIMIT_FIND_MAX", "20"))),
 }
+
+# Global daily ceiling on LLM-backed searches so a traffic spike or abuse can't
+# run up the model bill / exhaust the API key. When exceeded, search still works
+# - it just returns matches without per-trial eligibility reasoning. 0 disables.
+LLM_DAILY_SEARCH_CAP = max(0, int(os.environ.get("LLM_DAILY_SEARCH_CAP", "600")))
+
+# Contact + last-updated shown on the Privacy / Terms pages and footer.
+LEGAL_CONTACT = os.environ.get("LEGAL_CONTACT", "hello@bridgemd.app").strip()
+LEGAL_UPDATED = os.environ.get("LEGAL_UPDATED", "July 2026").strip()
 
 
 def _ensure_demo_user():
@@ -1179,6 +1191,21 @@ def _rate_limited_response(msg, retry_after, template_name="", **template_ctx):
     return resp
 
 
+def _llm_search_budget_ok():
+    """Consume one unit of the global daily LLM-search budget. Returns False once
+    the day's ceiling is hit, so search falls back to non-LLM matching instead of
+    burning through the model budget. Fails open on counter errors."""
+    if LLM_DAILY_SEARCH_CAP <= 0:
+        return True
+    try:
+        ok, _ = db.check_and_bump_ip_limit(
+            "llm_search_daily", "global", LLM_DAILY_SEARCH_CAP, 86400)
+        return ok
+    except Exception:
+        app.logger.exception("llm daily budget check failed")
+        return True
+
+
 def _guard_ip_rate_limit(route_key, template_name="", **template_ctx):
     """Rate-limit sensitive POST flows by client IP."""
     limit = RATE_LIMIT_ROUTES.get(route_key, 0)
@@ -1315,6 +1342,11 @@ def patient_signup():
         pw = request.form.get("password", "")
         if not full_name or not email or not pw:
             flash("Name, email, and password are required.", "error")
+            return render_template("patient_signup.html",
+                                   google_enabled=_google_ready())
+        if not request.form.get("agree"):
+            flash("Please agree to the Terms and Privacy notice to create an account.",
+                  "error")
             return render_template("patient_signup.html",
                                    google_enabled=_google_ready())
         if len(pw) < 8:
@@ -2054,6 +2086,10 @@ def find():
             return redirect(url_for("dashboard"))
         return _render_landing()
 
+    blocked = _guard_ip_rate_limit("find")
+    if blocked is not None:
+        return redirect(url_for("home"))
+
     condition = request.form.get("condition", "").strip()
     intervention = request.form.get("intervention", "").strip()
     location = request.form.get("location", "").strip()
@@ -2348,6 +2384,18 @@ def interest():
 def how_it_works():
     return render_template("how.html", pipeline=db.LEAD_PIPELINE,
                            labels=db.LEAD_LABELS, blurb=db.LEAD_BLURB)
+
+
+@app.route("/privacy")
+def privacy():
+    return render_template("privacy.html", legal_contact=LEGAL_CONTACT,
+                           legal_updated=LEGAL_UPDATED)
+
+
+@app.route("/terms")
+def terms():
+    return render_template("terms.html", legal_contact=LEGAL_CONTACT,
+                           legal_updated=LEGAL_UPDATED)
 
 
 @app.route("/applications")
@@ -5082,7 +5130,7 @@ def run_search(note, condition, country, require_site, coords=None, radius=50,
     light_picks = picks[MAX_MATCH:]
 
     results = []
-    if mt.LLM_API_KEY:
+    if mt.LLM_API_KEY and _llm_search_budget_ok():
         max_workers = min(WEB_LLM_PARALLELISM, len(llm_picks))
         if max_workers <= 1:
             for t, near in llm_picks:

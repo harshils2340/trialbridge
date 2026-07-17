@@ -1163,6 +1163,36 @@ body.demo-home .hero-search { max-width: 680px; margin-top: 14px; }
 .pub-foot-brand > span:first-child { display: inline-flex; align-items: center; gap: 8px; font-weight: 700; color: var(--ink); }
 .pub-foot-note { line-height: 1.5; }
 .pub-foot-tools { display: inline-flex; justify-content: flex-end; }
+.pub-foot-legal { max-width: 1180px; margin: 0 auto; padding: 0 32px 22px;
+  font-size: 12px; color: var(--faint); line-height: 1.55; }
+.pub-foot-disc { margin: 0 0 6px; max-width: 720px; }
+.pub-foot-links a { color: var(--muted); text-decoration: none; }
+.pub-foot-links a:hover { color: var(--ink); text-decoration: underline; }
+
+/* Home-page compact legal footer */
+.landing-legal { max-width: 900px; margin: 8px auto 0; padding: 22px 24px 40px;
+  text-align: center; color: var(--faint); font-size: 12.5px; line-height: 1.6; }
+.landing-legal-disc { margin: 0 0 8px; max-width: 680px; margin-inline: auto; }
+.landing-legal-links a { color: var(--muted); text-decoration: none; }
+.landing-legal-links a:hover { color: var(--ink); text-decoration: underline; }
+
+/* Privacy / Terms prose pages */
+.legal-page { max-width: 760px; margin: 0 auto; padding: 40px 24px 64px; }
+.legal-page h1 { font-size: 28px; margin: 0 0 6px; }
+.legal-page h2 { font-size: 17px; margin: 28px 0 8px; }
+.legal-page p, .legal-page li { color: var(--ink-soft); line-height: 1.65; font-size: 14.5px; }
+.legal-page ul { padding-left: 20px; margin: 8px 0; }
+.legal-page li { margin: 6px 0; }
+.legal-page a { color: var(--accent); }
+.legal-lead { color: var(--muted) !important; font-size: 14px !important; }
+.legal-contact { margin-top: 28px; font-weight: 600; }
+.legal-foot { margin-top: 8px; color: var(--muted); }
+
+/* Signup consent */
+.auth-consent { display: flex; gap: 9px; align-items: flex-start; margin: 4px 0 14px;
+  font-size: 12.5px; color: var(--ink-soft); line-height: 1.5; cursor: pointer; }
+.auth-consent input { margin-top: 2px; flex: none; }
+.auth-consent a { color: var(--accent); }
 
 @media (max-width: 720px) {
   .pub-nav { padding: 14px 16px; align-items: flex-start; gap: 10px; }

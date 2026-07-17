@@ -34,6 +34,11 @@
         <input type="password" name="password" minlength="8" required></label>
         <p class="find-hint">Use at least 8 characters.</p>
         <p class="find-error" data-error-for="password"></p>
+      <label class="auth-consent"><input type="checkbox" name="agree" value="1" required>
+        <span>I agree to the <a href="{{ url_for('terms') }}" target="_blank" rel="noopener">Terms</a>
+          and <a href="{{ url_for('privacy') }}" target="_blank" rel="noopener">Privacy</a> notice.
+          BridgeMD isn't medical advice or the study sponsor.</span></label>
+        <p class="find-error" data-error-for="agree"></p>
       <button class="btn btn-primary" type="submit">Create account</button>
     </form>
     <p class="cond-note">Already have an account? <a href="{{ url_for('patient_login') }}">Sign in</a></p>
@@ -65,6 +70,7 @@
     if (!input) return;
     input.addEventListener('input', function () { clearError(name); });
   });
+  if (form.agree) form.agree.addEventListener('change', function () { clearError('agree'); });
 
   form.addEventListener('submit', function (e) {
     var fullName = (form.full_name.value || '').trim();
@@ -80,6 +86,9 @@
     if (!password) { showError('password', 'Enter a password.'); ok = false; }
     else if (password.length < 8) {
       showError('password', 'Password must be at least 8 characters.'); ok = false;
+    }
+    if (form.agree && !form.agree.checked) {
+      showError('agree', 'Please agree to the Terms and Privacy notice.'); ok = false;
     }
     if (!ok) e.preventDefault();
   });

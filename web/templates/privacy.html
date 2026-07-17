@@ -1,0 +1,55 @@
+{% extends "public_base.html" %}
+{% block title %}Privacy · BridgeMD{% endblock %}
+{% block description %}How BridgeMD handles your information.{% endblock %}
+
+{% block body %}
+<section class="legal-page">
+  <h1>Privacy</h1>
+  <p class="legal-lead">Plain-language summary of what we collect, why, and your choices.
+    Last updated {{ legal_updated }}.</p>
+
+  <h2>What we collect</h2>
+  <ul>
+    <li><b>Your search details</b> - the condition or treatment you look for and your
+      location (city or postal code), so we can find recruiting trials near you.</li>
+    <li><b>Optional details you enter</b> - age, sex at birth, and any notes you add to
+      improve matching. You choose what to share.</li>
+    <li><b>Account info</b> - your email (verified) and display name, if you create an account.</li>
+    <li><b>Application details</b> - the answers and any documents you submit when you apply
+      to a specific trial.</li>
+  </ul>
+
+  <h2>Why we collect it</h2>
+  <p>To match you to relevant recruiting trials, let you track your applications, and - only
+    after you apply to a study - let that study's team contact you about it. Trial information
+    itself comes from the public <a href="https://clinicaltrials.gov" target="_blank" rel="noopener">ClinicalTrials.gov</a> registry.</p>
+
+  <h2>Who sees your information</h2>
+  <ul>
+    <li>We share your contact and application details with a study team <b>only for a trial you
+      chose to apply to</b>. We don't share your details with a study you didn't apply to.</li>
+    <li><b>We do not sell your personal information</b>, and we don't use it for advertising.</li>
+    <li>Emails from us only ever go to your own verified account email.</li>
+  </ul>
+
+  <h2>Your choices</h2>
+  <ul>
+    <li>Trial alerts are <b>off by default</b>. You turn them on, tune them, or delete them anytime.</li>
+    <li>You can withdraw an application at any time from <a href="{{ url_for('applications') }}">My applications</a>.</li>
+    <li>To access or delete your data, email us at the address below.</li>
+  </ul>
+
+  <h2>Keeping it safe</h2>
+  <p>Connections are encrypted (HTTPS), sign-in is protected, and we limit access to what's
+    needed to run the service. No online service can promise perfect security, so please
+    only share what you're comfortable sharing.</p>
+
+  <h2>Important</h2>
+  <p>BridgeMD is an information and matching tool. It is <b>not medical advice</b> and is
+    <b>not the study sponsor</b>. Eligibility is always decided by the study team, not by
+    BridgeMD. Talk to your doctor before making health decisions.</p>
+
+  <p class="legal-contact">Questions or requests: <a href="mailto:{{ legal_contact }}">{{ legal_contact }}</a></p>
+  <p class="legal-foot"><a href="{{ url_for('terms') }}">Terms of use</a></p>
+</section>
+{% endblock %}

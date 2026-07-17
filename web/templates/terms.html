@@ -1,0 +1,44 @@
+{% extends "public_base.html" %}
+{% block title %}Terms of use · BridgeMD{% endblock %}
+{% block description %}The terms for using BridgeMD.{% endblock %}
+
+{% block body %}
+<section class="legal-page">
+  <h1>Terms of use</h1>
+  <p class="legal-lead">Please read these before using BridgeMD. Last updated {{ legal_updated }}.</p>
+
+  <h2>What BridgeMD is</h2>
+  <p>BridgeMD helps you find recruiting clinical trials (using public information from
+    <a href="https://clinicaltrials.gov" target="_blank" rel="noopener">ClinicalTrials.gov</a>)
+    and apply to ones you're interested in. It is an information and matching tool.</p>
+
+  <h2>What BridgeMD is not</h2>
+  <ul>
+    <li>It is <b>not medical advice</b>. Always talk to a qualified healthcare professional
+      about your care.</li>
+    <li>It is <b>not the study sponsor</b> and does not run the trials.</li>
+    <li>It does <b>not decide eligibility</b>. Any "fit" signal is an estimate; the study team
+      makes the final decision after their own screening.</li>
+  </ul>
+
+  <h2>No guarantee</h2>
+  <p>Applying does not guarantee you'll be contacted, screened, or enrolled. Trial listings
+    can be incomplete or out of date - we show the registry's information as-is and can't
+    guarantee its accuracy. Verify important details with the study team.</p>
+
+  <h2>Using the service</h2>
+  <ul>
+    <li>Provide accurate information about yourself, and only submit information you have the
+      right to share.</li>
+    <li>Don't misuse the service (no scraping, automated abuse, or attempts to disrupt it).</li>
+    <li>You're responsible for keeping your account secure.</li>
+  </ul>
+
+  <h2>Changes</h2>
+  <p>We may update these terms and the service over time. Continued use means you accept the
+    current version.</p>
+
+  <p class="legal-contact">Questions: <a href="mailto:{{ legal_contact }}">{{ legal_contact }}</a></p>
+  <p class="legal-foot"><a href="{{ url_for('privacy') }}">Privacy</a></p>
+</section>
+{% endblock %}
