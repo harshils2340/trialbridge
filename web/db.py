@@ -3421,6 +3421,34 @@ def web_funnel_stats(days=30, limit_terms=10, limit_sources=10):
     }
 
 
+def recent_searches(days=30, limit=40):
+    """Most recent search events (term, result count, source, when) - a live feed
+    of what real visitors are looking for. Newest first. No PHI."""
+    d = get_db()
+    since = _web_since(days)
+    out = []
+    for r in d.execute(
+        "SELECT ts, detail, "
+        "CASE WHEN source != '' THEN source WHEN referrer != '' THEN referrer "
+        "ELSE 'direct' END AS src "
+        "FROM web_events WHERE name = 'search' AND ts >= ? "
+        "ORDER BY ts DESC LIMIT ?", (since, limit)).fetchall():
+        try:
+            det = json.loads(r["detail"]) if r["detail"] else {}
+        except (TypeError, ValueError):
+            det = {}
+        term = (det.get("q") or "").strip()
+        if not term:
+            continue
+        out.append({
+            "ts": r["ts"],
+            "term": term,
+            "results": int(det.get("results") or 0),
+            "source": r["src"],
+        })
+    return out
+
+
 # --------------------------------------------------------------------------- #
 # Search result cache - shared across gunicorn workers (see web/app.py). Kept in
 # SQLite (not process memory) so a trial detail request served by a different

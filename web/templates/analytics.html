@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% import "_icons.html" as ic %}
+{% import "_ui.html" as ui %}
+{% block title %}Visitors · BridgeMD{% endblock %}
+
+{% block body %}
+<div class="page-head">
+  <h1>Visitors</h1>
+  <p>Private to you — who's coming to the site, what they search, and how they move from landing to applying · last {{ web.days }} days.</p>
+  <p class="site-hint">
+    {% for d in [7, 30, 90] %}
+      {% if d == days %}<strong>{{ d }}d</strong>{% else %}<a href="{{ url_for('owner_analytics', days=d) }}">{{ d }}d</a>{% endif %}{% if not loop.last %} · {% endif %}
+    {% endfor %}
+  </p>
+</div>
+
+<div class="stats">
+  <div class="stat"><div class="l">{{ ic.icon('activity', 'ico stat-ico') }}Visitors</div><div class="n">{{ web.totals.visits }}</div></div>
+  <div class="stat"><div class="l">{{ ic.icon('search', 'ico stat-ico') }}Searches</div><div class="n">{{ web.totals.searches }}</div></div>
+  <div class="stat"><div class="l">{{ ic.icon('user-plus', 'ico stat-ico') }}Applied</div><div class="n">{{ web.totals.applies }}</div></div>
+  <div class="stat accent"><div class="l">{{ ic.icon('award', 'ico stat-ico') }}Visit&rarr;Apply</div><div class="n">{{ web.totals.visit_to_apply }}%</div></div>
+</div>
+
+<div class="card dash-card">
+  <div class="section-title"><h2>What people are searching</h2></div>
+  {% if recent %}
+  <table class="dash-table">
+    <thead><tr><th>When</th><th>Search</th><th>Results</th><th>Source</th></tr></thead>
+    <tbody>
+      {% for r in recent %}
+      <tr>
+        <td><span class="dash-src-sub">{{ r.ts }}</span></td>
+        <td><span class="dash-trial-title">{{ r.term }}</span></td>
+        <td>{% if r.results %}{{ r.results }}{% else %}<span class="dash-conv">0</span>{% endif %}</td>
+        <td><span class="dash-src">{{ r.source }}</span></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p class="site-hint">Newest first. A search returning <strong>0 results</strong> is unmet demand — worth seeding a trial or reaching out.</p>
+  {% else %}
+  {{ ui.empty('No searches yet', 'Once visitors search, each query shows up here in real time.', 'search') }}
+  {% endif %}
+</div>
+
+<div class="card dash-card">
+  <div class="section-title"><h2>On-site funnel</h2></div>
+  {% if web.totals.visit_hits %}
+  <table class="dash-table">
+    <thead><tr><th>Stage</th><th>People</th><th>Events</th><th>Step conv</th></tr></thead>
+    <tbody>
+      {% for f in web.funnel %}
+      <tr>
+        <td>{{ f.label }}</td>
+        <td>{{ f.unique }}</td>
+        <td>{{ f.count }}</td>
+        <td>{% if loop.first %}<span class="dash-src-sub">&mdash;</span>{% else %}<span class="dash-conv">{{ f.conv_from_prev|int }}%</span>{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% if web.dropoff %}
+  <p class="site-hint">Biggest drop-off: <strong>{{ web.dropoff.from }} &rarr; {{ web.dropoff.to }}</strong> loses {{ web.dropoff.pct|int }}% ({{ web.dropoff.lost }} people).</p>
+  {% endif %}
+  {% else %}
+  {{ ui.empty('No traffic yet', 'Visits will show here once people land on the site.', 'activity') }}
+  {% endif %}
+</div>
+
+<div class="card dash-card">
+  <div class="section-title"><h2>Where visitors come from</h2></div>
+  {% if web.sources %}
+  <table class="dash-table">
+    <thead><tr><th>Source</th><th>Visitors</th><th>Landings</th><th>Applied</th></tr></thead>
+    <tbody>
+      {% for s in web.sources %}
+      <tr>
+        <td><span class="dash-src">{{ s.source }}</span></td>
+        <td>{{ s.visitors }}</td>
+        <td>{{ s.hits }}</td>
+        <td>{{ s.applies }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p class="site-hint">Tag links with <code>?utm_source=reddit&amp;utm_campaign=post_name</code> to see exactly which post drove each visit.</p>
+  {% else %}
+  {{ ui.empty('No source data yet', 'Add UTM tags to your links to attribute traffic.', 'activity') }}
+  {% endif %}
+</div>
+{% endblock %}

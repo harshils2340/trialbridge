@@ -526,6 +526,29 @@ def login_required(view):
     return wrapped
 
 
+# Private owner-only analytics. Only this account sees the visitor dashboard;
+# every other signed-in staff user gets a 404 (so its existence isn't leaked).
+OWNER_EMAIL = os.environ.get("OWNER_EMAIL", "harshils2340@gmail.com").strip().lower()
+
+
+def _is_owner():
+    try:
+        return bool(g.user and (g.user["email"] or "").strip().lower() == OWNER_EMAIL)
+    except (KeyError, TypeError):
+        return False
+
+
+def owner_required(view):
+    @functools.wraps(view)
+    def wrapped(*a, **k):
+        if not g.user:
+            return redirect(url_for("login", next=request.path))
+        if not _is_owner():
+            abort(404)
+        return view(*a, **k)
+    return wrapped
+
+
 def patient_login_required(view):
     @functools.wraps(view)
     def wrapped(*a, **k):
@@ -845,7 +868,8 @@ def inject_globals():
     # three POVs (patient / clinician / study team) without signing in.
     path = request.path or "/"
     if (path.startswith("/app/leads") or path.startswith("/app/dashboard")
-            or path.startswith("/app/site") or path.startswith("/app/messages")):
+            or path.startswith("/app/site") or path.startswith("/app/messages")
+            or path.startswith("/app/analytics")):
         pov = "study"
     elif path.startswith("/app") or path.startswith("/referral"):
         pov = "clinician"
@@ -857,7 +881,8 @@ def inject_globals():
             "records_profile": rec, "records_provider": records_mod.provider_label(),
             "records_ui": RECORDS_UI,
             "alerts_new_count": alerts_new, "messages_unread": msgs_unread,
-            "site_unread": site_unread, "patient_user": g.patient_user}
+            "site_unread": site_unread, "patient_user": g.patient_user,
+            "is_owner": _is_owner()}
 
 
 @app.route("/demo-mode", methods=["POST"])
@@ -3454,14 +3479,24 @@ def recruitment_dashboard():
         if enrolled else None
     spend["cost_per_screened"] = round(spend["total_usd"] / screened, 2) \
         if screened else None
-    try:
-        web_days = max(1, min(365, int(request.args.get("web_days", 30))))
-    except (TypeError, ValueError):
-        web_days = 30
-    web = db.web_funnel_stats(days=web_days)
     return render_template(
-        "recruitment.html", stats=stats, spend=spend, web=web,
+        "recruitment.html", stats=stats, spend=spend,
         labels=db.LEAD_LABELS, claims=db.list_study_claims(g.user["id"]))
+
+
+@app.route("/app/analytics")
+@owner_required
+def owner_analytics():
+    """Private, owner-only visitor dashboard: who's coming, what they search,
+    and how they move from landing -> search -> view -> apply. Only OWNER_EMAIL
+    can see this; any other signed-in staff user gets a 404."""
+    try:
+        days = max(1, min(365, int(request.args.get("days", 30))))
+    except (TypeError, ValueError):
+        days = 30
+    web = db.web_funnel_stats(days=days)
+    recent = db.recent_searches(days=days, limit=40)
+    return render_template("analytics.html", web=web, recent=recent, days=days)
 
 
 @app.route("/app/dashboard/spend", methods=["POST"])

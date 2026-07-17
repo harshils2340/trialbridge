@@ -47,6 +47,9 @@
       <a href="{{ url_for('invite_patient') }}" class="side-link {{ 'active' if request.endpoint == 'invite_patient' }}">{{ ic.icon('user-plus') }}Invite a patient</a>
       <a href="{{ url_for('referrals') }}" class="side-link {{ 'active' if request.endpoint in ['referrals','referral_detail'] }}">{{ ic.icon('list') }}My referrals</a>
       {% endif %}
+      {% if is_owner %}
+      <a href="{{ url_for('owner_analytics') }}" class="side-link {{ 'active' if request.endpoint == 'owner_analytics' }}">{{ ic.icon('activity') }}Visitors</a>
+      {% endif %}
     </nav>
     <div class="side-foot">
       {% if pov == 'study' %}
