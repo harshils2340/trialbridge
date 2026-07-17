@@ -398,6 +398,7 @@
       locCc = document.getElementById('locCc'), confirmEl = document.getElementById('locConfirm');
   var suggestTimer = null;
   var lastSuggestQuery = '';
+  var locCache = {};
   // Autocomplete session token: groups keystrokes + the final place-details
   // lookup into one billable Google session. Regenerated after each selection.
   function newSessionToken() {
@@ -485,19 +486,24 @@
     var q = (loc.value || '').trim();
     if (q.length < 3) { hideLocSuggest(); return; }
     lastSuggestQuery = q;
+    if (locCache[q]) { renderLocSuggest(locCache[q]); return; }
     fetch('{{ url_for("geo_suggest") }}?q=' + encodeURIComponent(q) +
           '&session=' + encodeURIComponent(locSession))
       .then(function (r) { return r.json(); })
       .then(function (d) {
+        var items = (d && d.items) ? d.items : [];
+        locCache[q] = items;
         if (!loc || (loc.value || '').trim() !== lastSuggestQuery) return;
-        renderLocSuggest((d && d.items) ? d.items : []);
+        renderLocSuggest(items);
       })
       .catch(function () { hideLocSuggest(); });
   }
   if (loc) loc.addEventListener('input', function () {
     if (locLat.value) { locLat.value = locLon.value = locCc.value = ''; confirmEl.style.display = 'none'; }
+    var q = (loc.value || '').trim();
+    if (locCache[q]) { lastSuggestQuery = q; renderLocSuggest(locCache[q]); if (suggestTimer) clearTimeout(suggestTimer); return; }
     if (suggestTimer) clearTimeout(suggestTimer);
-    suggestTimer = setTimeout(requestLocSuggest, 180);
+    suggestTimer = setTimeout(requestLocSuggest, 120);
   });
   if (loc) loc.addEventListener('keydown', function (e) {
     if (!locSuggest || locSuggest.hidden) return;

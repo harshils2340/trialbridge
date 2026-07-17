@@ -168,7 +168,7 @@
   var locSuggest = document.getElementById('alertLocSuggest');
   var locLat = document.getElementById('alertLat'), locLon = document.getElementById('alertLon'),
       locCc = document.getElementById('alertCc');
-  var locActiveIdx = -1, suggestTimer = null, lastQuery = '';
+  var locActiveIdx = -1, suggestTimer = null, lastQuery = '', locCache = {};
   function newSession() {
     try { return (crypto.randomUUID && crypto.randomUUID()) || String(Date.now()) + Math.random().toString(16).slice(2); }
     catch (e) { return String(Date.now()) + Math.random().toString(16).slice(2); }
@@ -226,16 +226,19 @@
     var q = (locInput.value || '').trim();
     if (q.length < 3) { hideLoc(); return; }
     lastQuery = q;
+    if (locCache[q]) { renderLoc(locCache[q]); return; }
     fetch('{{ url_for("geo_suggest") }}?q=' + encodeURIComponent(q) + '&session=' + encodeURIComponent(locSession))
       .then(function (r) { return r.json(); })
-      .then(function (d) { if (!locInput || (locInput.value || '').trim() !== lastQuery) return; renderLoc((d && d.items) ? d.items : []); })
+      .then(function (d) { var items = (d && d.items) ? d.items : []; locCache[q] = items; if (!locInput || (locInput.value || '').trim() !== lastQuery) return; renderLoc(items); })
       .catch(function () { hideLoc(); });
   }
   if (locInput) {
     locInput.addEventListener('input', function () {
       if (locLat && locLat.value) { locLat.value = locLon.value = locCc.value = ''; }
+      var q = (locInput.value || '').trim();
+      if (locCache[q]) { lastQuery = q; renderLoc(locCache[q]); if (suggestTimer) clearTimeout(suggestTimer); return; }
       if (suggestTimer) clearTimeout(suggestTimer);
-      suggestTimer = setTimeout(requestLoc, 180);
+      suggestTimer = setTimeout(requestLoc, 120);
     });
     locInput.addEventListener('keydown', function (e) {
       if (!locSuggest || locSuggest.hidden) return;
