@@ -1524,7 +1524,9 @@ def patient_onboarding():
     if request.method == "POST":
         f = request.form
         interest = f.get("primary_interest", "").strip()
-        notify_email = f.get("notify_email", "").strip() or g.patient_user["email"]
+        # Always the verified account email - never a user-supplied address, so
+        # our emails can't be redirected to someone else's inbox.
+        notify_email = g.patient_user["email"]
         wants_alerts = bool(f.get("email_alerts"))
         db.set_patient_onboarding(
             g.patient_user["id"], interest, notify_email, wants_alerts)
@@ -2402,14 +2404,13 @@ def patient_settings():
     if request.method == "POST":
         f = request.form
         full_name = f.get("full_name", "").strip()
-        notify_email = f.get("notify_email", "").strip()
         primary_interest = f.get("primary_interest", "").strip()
         email_alerts = bool(f.get("email_alerts"))
-        if notify_email and ("@" not in notify_email or "." not in notify_email.split("@")[-1]):
-            flash("That notification email doesn't look right.", "error")
-            return redirect(url_for("patient_settings"))
+        # notify_email is intentionally NOT editable here: our emails must only
+        # ever go to the verified account email, so a user can't redirect them
+        # to someone else's inbox.
         db.update_patient_account(
-            g.patient_user["id"], full_name=full_name, notify_email=notify_email,
+            g.patient_user["id"], full_name=full_name,
             email_alerts=email_alerts, primary_interest=primary_interest)
         g.patient_user = db.get_patient_user(g.patient_user["id"])
         flash("Settings saved.", "success")

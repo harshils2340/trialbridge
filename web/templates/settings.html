@@ -15,14 +15,19 @@
       <input type="email" value="{{ patient.email }}" disabled></label>
     <p class="find-hint">This is the email you sign in with and can't be changed here.</p>
 
-    <label class="find-field"><span>Where updates are sent</span>
-      <input type="email" name="notify_email" value="{{ patient.notify_email or patient.email }}"
-             placeholder="you@email.com"></label>
-    <p class="find-hint">Trial alerts and study-team messages go here. Defaults to your account email.</p>
+    <p class="find-hint">Trial alerts and study-team messages go to your account email, <b>{{ patient.email }}</b>.</p>
 
-    <label class="find-field"><span>Main condition / interest</span>
-      <input type="text" name="primary_interest" value="{{ patient.primary_interest or '' }}"
-             placeholder="e.g. type 2 diabetes"></label>
+    <div class="find-field"><span>Conditions / interests</span>
+      <div class="chips-input" id="interestChips">
+        <input type="text" id="interestEntry" class="chips-entry"
+               placeholder="Type a condition, then press Enter"
+               autocomplete="off" autocapitalize="off" spellcheck="false"
+               aria-label="Add a condition or interest">
+      </div>
+      <input type="hidden" name="primary_interest" id="interestValue"
+             value="{{ patient.primary_interest or '' }}">
+      <p class="find-hint">Add as many as you like. We match and alert you across all of them. Press Enter or comma to add.</p>
+    </div>
 
     <label class="filt-check"><input type="checkbox" name="email_alerts"
       {{ 'checked' if patient.email_alerts else '' }}>
@@ -37,4 +42,65 @@
     </form>
   </div>
 </section>
+
+<script>
+(function () {
+  var box = document.getElementById('interestChips');
+  var entry = document.getElementById('interestEntry');
+  var hidden = document.getElementById('interestValue');
+  if (!box || !entry || !hidden) return;
+  var items = (hidden.value || '').split(',').map(function (s) { return s.trim(); })
+    .filter(Boolean);
+
+  function sync() { hidden.value = items.join(', '); }
+
+  function render() {
+    box.querySelectorAll('.chip-tag').forEach(function (n) { n.remove(); });
+    items.forEach(function (label, i) {
+      var chip = document.createElement('span');
+      chip.className = 'chip-tag';
+      var txt = document.createElement('span');
+      txt.textContent = label;
+      var x = document.createElement('button');
+      x.type = 'button';
+      x.className = 'chip-x';
+      x.setAttribute('aria-label', 'Remove ' + label);
+      x.textContent = '\u00d7';
+      x.addEventListener('click', function () { items.splice(i, 1); render(); sync(); });
+      chip.appendChild(txt);
+      chip.appendChild(x);
+      box.insertBefore(chip, entry);
+    });
+    sync();
+  }
+
+  function add(raw) {
+    (raw || '').split(',').forEach(function (part) {
+      var v = part.trim();
+      if (!v) return;
+      var dup = items.some(function (x) { return x.toLowerCase() === v.toLowerCase(); });
+      if (!dup) items.push(v);
+    });
+    entry.value = '';
+    render();
+  }
+
+  entry.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' || e.key === ',') {
+      e.preventDefault();
+      add(entry.value);
+    } else if (e.key === 'Backspace' && !entry.value && items.length) {
+      items.pop();
+      render();
+    }
+  });
+  entry.addEventListener('blur', function () { if (entry.value.trim()) add(entry.value); });
+  box.addEventListener('click', function (e) { if (e.target === box) entry.focus(); });
+  // Make sure a typed-but-not-committed value still saves on submit.
+  var form = box.closest('form');
+  if (form) form.addEventListener('submit', function () { if (entry.value.trim()) add(entry.value); });
+
+  render();
+})();
+</script>
 {% endblock %}
