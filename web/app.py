@@ -69,6 +69,36 @@ trends.configure(app)
 app.jinja_env.globals["card_blurb"] = summarize.card_blurb
 app.jinja_env.globals["patient_card_title"] = summarize.patient_card_title
 
+
+def _patient_why(text):
+    """Trim the internal 'but lacks info / leading to unknowns' hedging from an
+    eligibility rationale so the PATIENT only sees the relevant, positive part.
+    (The full rationale is still shown to the study team.)"""
+    s = (text or "").strip()
+    if not s:
+        return s
+    low = s.lower()
+    # Cut at the first connective that introduces missing-data / unknown caveats.
+    markers = (" but lacks", " but there", " but no ", " but is missing",
+               " but insufficient", " but without", ", but ", " however",
+               " lacks information", " lacks specific", " leading to",
+               " which leaves", " with several unknowns", " with many unknowns",
+               " - leading to")
+    cut = len(s)
+    for mk in markers:
+        p = low.find(mk)
+        if 0 <= p < cut:
+            cut = p
+    trimmed = s[:cut].strip().rstrip(",;:- ")
+    if not trimmed:
+        return s  # never blank it out
+    if trimmed[-1] not in ".!?":
+        trimmed += "."
+    return trimmed
+
+
+app.jinja_env.filters["patient_why"] = _patient_why
+
 # Stable secret so sessions survive restarts. Prefer an env var (set this on any
 # host so logins survive redeploys); otherwise generate + store one locally.
 _env_secret = os.environ.get("SECRET_KEY", "").strip()
@@ -101,6 +131,11 @@ if NO_LOGIN and IS_PROD:
         "(BEHIND_PROXY=1 or ENV=production). Refusing to start: demo mode "
         "exposes the study-team ATS and patient PHI without login. Unset "
         "NO_LOGIN for production deployments.")
+
+# Health-records / EHR sync (SMART Health IT) is hidden for now — the connector
+# is still a sandbox and not patient-ready. Flip RECORDS_UI=1 to re-enable the
+# "Connect records" / sync banners across the patient UI.
+RECORDS_UI = os.environ.get("RECORDS_UI", "0") == "1"
 
 # Session cookie hardening (the session carries the auth user id). Secure is on
 # in production so the cookie is never sent over plain HTTP.
@@ -779,7 +814,7 @@ def inject_globals():
     # Whether this visitor has connected their health records once already, so
     # the apply form can auto-fill instead of asking again.
     try:
-        rec = db.get_records_profile(token) if token else None
+        rec = db.get_records_profile(token) if (token and RECORDS_UI) else None
     except Exception:
         rec = None
     try:
@@ -808,6 +843,7 @@ def inject_globals():
             "applications_count": apps_n, "pov_demo": _demo_mode_enabled(),
             "demo_available": NO_LOGIN, "pov": pov,
             "records_profile": rec, "records_provider": records_mod.provider_label(),
+            "records_ui": RECORDS_UI,
             "alerts_new_count": alerts_new, "messages_unread": msgs_unread,
             "site_unread": site_unread, "patient_user": g.patient_user}
 
@@ -1878,6 +1914,21 @@ def _prescreen_for_trial(trial):
     return questions
 
 
+def _prescreen_cached(trial):
+    """Non-blocking peek at the pre-screen cache. Returns the cached questions
+    when they've already been generated for this trial, else None. Used to keep
+    the trial detail page fast: we never trigger the (slow) LLM call on the
+    render path - that happens asynchronously via `trial_prescreen`."""
+    nct = (trial or {}).get("nctId") or ""
+    if not nct:
+        return None
+    hit = _PRESCREEN_CACHE.get(nct)
+    if hit and (time.time() - float(hit.get("ts") or 0)) <= _PRESCREEN_TTL_SECONDS:
+        _PRESCREEN_CACHE.move_to_end(nct)
+        return hit["questions"]
+    return None
+
+
 def _cache_search(results, ctx):
     sid = secrets.token_urlsafe(9)
     entry = {"results": results, "ctx": ctx, "ts": time.time()}
@@ -2130,10 +2181,31 @@ def trial_detail(search_id, nct):
     _log_event("trial_view", {"nct": nct})
     applied = db.applied_ncts(get_applicant_token())
     summary = summarize.plain(r["trial"])
-    prescreen = _prescreen_for_trial(r["trial"])
+    # Never block the page render on the (slow) LLM pre-screen call. If the
+    # questions are already cached we render them inline; otherwise the page
+    # ships instantly with the generic screener and JS upgrades it via the
+    # `trial_prescreen` endpoint below.
+    prescreen = _prescreen_cached(r["trial"]) or []
+    prescreen_ai = bool(mt.LLM_API_KEY) and bool((r["trial"] or {}).get("criteria"))
     return render_template("trial_detail.html", r=r, search_id=search_id,
                            applied=applied, summary=summary,
-                           prescreen=prescreen, **ctx)
+                           prescreen=prescreen, prescreen_ai=prescreen_ai, **ctx)
+
+
+@app.route("/trial/<search_id>/<nct>/prescreen.json")
+def trial_prescreen(search_id, nct):
+    """Async source for the AI-tailored pre-screen questions. Kept off the
+    detail-page render path so first views stay fast; the LLM call (and its
+    caching) happens here instead."""
+    r, _ = _get_cached_trial(search_id, nct)
+    if not r:
+        return jsonify({"questions": []}), 404
+    try:
+        questions = _prescreen_for_trial(r["trial"])
+    except Exception:
+        app.logger.exception("async prescreen generation failed")
+        questions = []
+    return jsonify({"questions": questions})
 
 
 @app.route("/interest", methods=["POST"])
@@ -2633,6 +2705,8 @@ def refresh_lead_redcap(lead_id):
 @app.route("/records/connect", methods=["POST"])
 def records_connect():
     """Entry point from forms/buttons: send patient to authorization step first."""
+    if not RECORDS_UI:
+        abort(404)
     if not g.patient_user:
         flash("Sign in to connect health records.", "error")
         return redirect(url_for("patient_login", next=_safe_next(request.referrer) or url_for("applications")))
@@ -2691,6 +2765,8 @@ def _finalize_records_connect(redirect_to):
 @app.route("/records/authorize", methods=["GET", "POST"])
 def records_authorize():
     """Patient-facing consent screen that mirrors real authorization flow."""
+    if not RECORDS_UI:
+        abort(404)
     if not g.patient_user:
         flash("Sign in to connect health records.", "error")
         return redirect(url_for("patient_login", next=url_for("applications")))
@@ -2721,6 +2797,8 @@ def records_authorize():
 
 @app.route("/records/refresh", methods=["POST"])
 def records_refresh():
+    if not RECORDS_UI:
+        abort(404)
     if not g.patient_user:
         flash("Sign in to refresh records.", "error")
         return redirect(url_for("patient_login", next=url_for("applications")))
@@ -2759,6 +2837,8 @@ def records_refresh():
 
 @app.route("/records/disconnect", methods=["POST"])
 def records_disconnect():
+    if not RECORDS_UI:
+        abort(404)
     if not g.patient_user:
         flash("Sign in to manage records.", "error")
         return redirect(url_for("patient_login", next=url_for("applications")))
@@ -4656,6 +4736,8 @@ def run_search(note, condition, country, require_site, coords=None, radius=50,
 
         return {"trial": t, "match": m, "site": site,
                 "site_str": _site_str(site),
+                "site_maps_url": _maps_url(site),
+                "site_dir_url": _maps_dir_url(site),
                 "coordinator": _coordinator(t, site),
                 "public_contacts": _public_contacts(t, site),
                 "distance": dist, "unit": unit, "relevance": _rel(t),
@@ -4734,6 +4816,10 @@ def run_search(note, condition, country, require_site, coords=None, radius=50,
             "match": m,
             "site": {"facility": site_name, "city": site_loc},
             "site_str": site_str,
+            "site_maps_url": _maps_url({"facility": site_name, "city": site_loc,
+                                        "lat": loc[0], "lon": loc[1]}),
+            "site_dir_url": _maps_dir_url({"facility": site_name, "city": site_loc,
+                                           "lat": loc[0], "lon": loc[1]}),
             "coordinator": coordinator,
             "public_contacts": _public_contacts(trial, {"contacts": []}),
             "distance": dist,
@@ -4772,6 +4858,36 @@ def _site_str(site):
                                  s.get("state"), s.get("country")) if p)
 
 
+def _maps_url(site):
+    """A Google Maps link that opens the EXACT site location, like a shared pin.
+
+    Prefers precise lat/lon (drops a single pin at the exact spot) so we don't
+    send patients to an ambiguous name search - many research networks (e.g.
+    'Centricity Research') have dozens of locations. Falls back to the address
+    string only when we have no coordinates."""
+    s = site or {}
+    lat, lon = s.get("lat"), s.get("lon")
+    if lat is not None and lon is not None:
+        return ("https://www.google.com/maps/search/?api=1&query="
+                + urllib.parse.quote(f"{lat},{lon}"))
+    label = _site_str(site)
+    if not label:
+        return ""
+    return ("https://www.google.com/maps/search/?api=1&query="
+            + urllib.parse.quote(label))
+
+
+def _maps_dir_url(site):
+    """Google Maps driving-directions link to the exact site (coords preferred)."""
+    s = site or {}
+    lat, lon = s.get("lat"), s.get("lon")
+    dest = f"{lat},{lon}" if (lat is not None and lon is not None) else _site_str(site)
+    if not dest:
+        return ""
+    return ("https://www.google.com/maps/dir/?api=1&destination="
+            + urllib.parse.quote(dest))
+
+
 def _clean_name(name):
     """Drop junk that CT.gov sometimes stuffs into the contact name field
     (study-ID blurbs, URLs, 'No attachments…') so we only show real names."""
@@ -4792,14 +4908,27 @@ def _fmt_contact(c):
     return " · ".join(b for b in (name, phone, email) if b)
 
 
+def _is_us_only_phone(phone):
+    p = (phone or "").lower()
+    return "u.s. only" in p or "us only" in p or "us-only" in p
+
+
 def _public_contacts(trial, site, limit=4):
     """Public trial contacts to show patients (from CT.gov or site-posted data)."""
     out, seen = [], set()
+    site_country = ((site or {}).get("country") or "").strip().lower()
+    non_us_patient = bool(site_country) and site_country not in (
+        "united states", "usa", "us", "u.s.", "u.s.a.")
 
     def _push(c):
         name = _clean_name(c.get("name")) or "Study contact"
         email = (c.get("email") or "").strip()
         phone = (c.get("phone") or "").strip()
+        # A US-only sponsor hotline is a dead end for a patient at a non-US site,
+        # so drop the number (the email works globally). Avoids showing a
+        # "(U.S. Only)" line next to a Canadian site.
+        if phone and non_us_patient and _is_us_only_phone(phone):
+            phone = ""
         role = (c.get("role") or "").strip().replace("_", " ").title()
         if not (email or phone):
             return

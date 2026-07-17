@@ -13,6 +13,7 @@
     {{ ui.btn('Find more trials', 'primary', icon='search', href=url_for('find')) }}
   </div>
 
+  {% if records_ui %}
   {% if records_profile %}
   {% set p = (records_profile.provider or '') %}
   {% if records_profile.sync_status == 'syncing' %}
@@ -48,6 +49,7 @@
     <span><b>Connect records once.</b> Future applications auto-fill from your chart. This may take a few seconds.</span>
     {{ ui.btn('Connect records', 'primary', type='submit') }}
   </form>
+  {% endif %}
   {% endif %}
 
   {% if not apps %}
@@ -132,38 +134,6 @@
 
     {% if not is_closed and ld.records_connected %}
     <div class="app-records ok">{{ ic.icon('check') }} <span>Records attached - the study team can pre-screen you from your history.</span></div>
-    {% endif %}
-
-    {% set sup = a.support %}
-    {% if not is_closed %}
-    <div class="app-support-grid">
-      <form class="app-support-card" method="post" action="{{ url_for('application_coverage_check', token=ld.token) }}">
-        <div class="thread-head">{{ ic.icon('check') }} Coverage check</div>
-        <div class="tag">Status: {{ support_coverage_labels.get(sup.coverage_status, sup.coverage_status or 'Not checked') }}</div>
-        {% if sup.coverage_note %}<p class="thread-empty">{{ sup.coverage_note }}</p>{% endif %}
-        <div class="support-grid">
-          <input type="text" name="payer_name" value="{{ sup.coverage_payload.payer_name or '' }}" placeholder="Payer (e.g., Blue Cross)">
-          <input type="text" name="member_id" value="{{ sup.coverage_payload.member_id or '' }}" placeholder="Member ID">
-          <input type="text" name="group_id" value="{{ sup.coverage_payload.group_id or '' }}" placeholder="Group ID">
-          <input type="text" name="zip" value="{{ sup.coverage_payload.patient_zip or '' }}" placeholder="ZIP / Postal">
-          <input class="support-span" type="text" name="dob_year" value="{{ sup.coverage_payload.dob_year or '' }}" placeholder="Birth year">
-          <div class="support-actions">{{ ui.btn('Run check', 'ghost', 'sm', type='submit') }}</div>
-        </div>
-      </form>
-
-      <form class="app-support-card" method="post" action="{{ url_for('application_travel_support', token=ld.token) }}">
-        <div class="thread-head">{{ ic.icon('activity') }} Travel support</div>
-        <div class="tag">Status: {{ support_travel_labels.get(sup.travel_status, sup.travel_status or 'Not planned') }}</div>
-        {% if sup.travel_note %}<p class="thread-empty">{{ sup.travel_note }}</p>{% endif %}
-        <div class="support-grid">
-          <input type="text" name="distance" value="{{ sup.travel_payload.distance or '' }}" placeholder="Distance to site">
-          <input type="text" name="preferred_mode" value="{{ sup.travel_payload.preferred_mode or '' }}" placeholder="Car, transit, rideshare">
-          <input class="support-span" type="text" name="needs" value="{{ sup.travel_payload.needs or '' }}" placeholder="Mobility / schedule needs">
-          <input class="support-span" type="text" name="city" value="{{ sup.travel_payload.city or ld.location or '' }}" placeholder="City">
-          <div class="support-actions">{{ ui.btn('Plan travel', 'ghost', 'sm', type='submit') }}</div>
-        </div>
-      </form>
-    </div>
     {% endif %}
 
     {% if a.tasks %}

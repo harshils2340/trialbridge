@@ -555,6 +555,7 @@ CREATE TABLE IF NOT EXISTS alerts (
     unit            TEXT DEFAULT 'km',
     email           TEXT DEFAULT '',
     active          INTEGER DEFAULT 1,
+    strong_only     INTEGER DEFAULT 1,
     created_at      TEXT NOT NULL,
     last_checked_at TEXT DEFAULT '',
     last_notified_at TEXT DEFAULT '',
@@ -704,6 +705,7 @@ _MIGRATIONS = {
     "alerts": {
         "last_notified_at": "TEXT DEFAULT ''",
         "notify_min_days": "INTEGER DEFAULT 7",
+        "strong_only": "INTEGER DEFAULT 1",
     },
     "leads": {
         "applicant_token": "TEXT DEFAULT ''",

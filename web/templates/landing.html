@@ -11,6 +11,7 @@
 {% endif %}
 <a class="pub-apps" href="{{ url_for('applications') }}">My applications{% if messages_unread %} <span class="nav-badge nav-badge-new">{{ messages_unread }}</span>{% elif applications_count %} <span class="nav-badge">{{ applications_count }}</span>{% endif %}</a>
 <a class="pub-apps" href="{{ url_for('alerts') }}">Alerts{% if alerts_new_count %} <span class="nav-badge nav-badge-new">{{ alerts_new_count }}</span>{% endif %}</a>
+{% if records_ui %}
 {% if records_profile %}
 <form method="post" action="{{ url_for('records_refresh') }}" style="margin:0;">
   <button class="btn btn-ghost btn-sm" type="submit">Refresh records</button>
@@ -20,6 +21,7 @@
   <input type="hidden" name="next" value="{{ url_for('home') }}">
   <button class="btn btn-primary btn-sm" type="submit">Connect records</button>
 </form>
+{% endif %}
 {% endif %}
 <span class="nav-user" title="Records: {{ 'Connected' if records_profile else 'Not connected' }}">{{ ic.icon('user-plus') }} <b>{{ welcome_name }}</b>{% if pov_demo %} <em>Test user</em>{% endif %}</span>
 <form method="post" action="{{ url_for('patient_logout') }}" style="margin:0;">
@@ -31,11 +33,8 @@
 {% block body %}
 <section class="hero">
   <div class="hero-in">
-    {% if not patient_user %}
-    <span class="hero-eyebrow"><span class="hero-eyebrow-dot"></span> Free clinical-trial finder</span>
-    {% endif %}
     <h1>{{ 'Find your next trial match.' if patient_user else 'Find recruiting trials near you.' }}</h1>
-    <p class="hero-sub">{{ 'Search again with your saved context and keep applications moving.' if patient_user else 'Search by your condition, or describe it in plain English. We match you to recruiting trials nearby.' }}</p>
+    <p class="hero-sub">{{ 'Search again with your saved context and keep applications moving.' if patient_user else 'Search by your condition, or describe it in plain English — we match you to recruiting trials nearby.' }}</p>
 
     <form id="heroForm" method="post" action="{{ url_for('find') }}" autocomplete="off">
       <div class="search-modes" role="tablist" aria-label="How to search">
@@ -45,28 +44,32 @@
                 data-mode="describe" role="tab" aria-selected="false">Describe it</button>
       </div>
       <div class="hero-search">
-        <div class="hero-field" id="condField">
-          {{ ic.icon('search') }}
-          <input id="conditionInput" name="condition" type="text"
-                 placeholder="e.g. type 2 diabetes"
-                 value="{{ condition_value|default('') }}"
-                 autocomplete="off" autocapitalize="off" spellcheck="false" required>
-          <div id="heroCondSuggest" class="hero-suggest" hidden></div>
+        <div class="hero-search-query">
+          <div class="hero-field" id="condField">
+            {{ ic.icon('search') }}
+            <input id="conditionInput" name="condition" type="text"
+                   placeholder="e.g. type 2 diabetes"
+                   value="{{ condition_value|default('') }}"
+                   autocomplete="off" autocapitalize="off" spellcheck="false" required>
+            <div id="heroCondSuggest" class="hero-suggest" hidden></div>
+          </div>
+          <div class="hero-field" id="descField" hidden>
+            {{ ic.icon('search') }}
+            <input id="describeInput" name="condition" type="text"
+                   placeholder="e.g. I have obesity and want to try new treatments"
+                   autocomplete="off" autocapitalize="off" spellcheck="false" required disabled>
+          </div>
         </div>
-        <div class="hero-field" id="descField" hidden>
-          {{ ic.icon('search') }}
-          <input id="describeInput" name="condition" type="text"
-                 placeholder="Describe it — e.g. I have obesity and want new treatments"
-                 autocomplete="off" autocapitalize="off" spellcheck="false" required disabled>
+        <div class="hero-search-go">
+          <div class="hero-field">
+            {{ ic.icon('pin') }}
+            <input id="location" name="location" type="text" placeholder="City or postal code"
+                   value="{{ location_value|default('') }}" autocomplete="off"
+                   autocapitalize="words" spellcheck="false" required>
+            <div id="heroLocSuggest" class="hero-loc-suggest" hidden></div>
+          </div>
+          <button class="btn btn-primary btn-lg" type="submit">Find trials{{ ic.icon('arrow-right') }}</button>
         </div>
-        <div class="hero-field hero-field-loc">
-          {{ ic.icon('pin') }}
-          <input id="location" name="location" type="text" placeholder="City or postal code"
-                 value="{{ location_value|default('') }}" autocomplete="off"
-                 autocapitalize="words" spellcheck="false" required>
-          <div id="heroLocSuggest" class="hero-loc-suggest" hidden></div>
-        </div>
-        <button class="btn btn-primary btn-lg" type="submit">Find trials{{ ic.icon('arrow-right') }}</button>
       </div>
       <p class="hero-hint" id="heroHint">Know your condition? Search it directly. Not sure? Switch to “Describe it” and write in plain English.</p>
       <input type="hidden" id="locLat" name="lat">
@@ -126,13 +129,6 @@
     </div>
     {% endif %}
 
-    {% if not patient_user %}
-    <ul class="hero-trust">
-      <li>{{ ic.icon('check') }} Free for patients</li>
-      <li>{{ ic.icon('check') }} No account needed to search</li>
-      <li>{{ ic.icon('activity') }} Trials from ClinicalTrials.gov</li>
-    </ul>
-    {% endif %}
   </div>
 </section>
 

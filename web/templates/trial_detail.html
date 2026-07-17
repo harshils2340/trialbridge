@@ -37,7 +37,7 @@
     {% if weak_reason %}
     <div class="td-why"><b>Why this could be a match for you:</b> Basic details look relevant, but we still need age, medical history, and current meds to estimate fit more accurately.</div>
     {% else %}
-    <div class="td-why"><b>Why this could be a match for you:</b> {{ raw_why }}</div>
+    <div class="td-why"><b>Why this could be a match for you:</b> {{ raw_why|patient_why }}</div>
     {% endif %}
     {% endif %}
 
@@ -76,7 +76,9 @@
 
     <div class="td-section">
       <h2>Where it runs</h2>
-      {% if r.site_str %}<p class="td-site">{{ ic.icon('pin') }} <b>Nearest site:</b> {{ r.site_str }}{% if r.distance is not none %} · {{ '%.0f'|format(r.distance) }} {{ r.unit }} away{% endif %}</p>{% endif %}
+      {% if r.site_str %}<p class="td-site">{{ ic.icon('pin') }} <b>Nearest site:</b>
+        {% if r.site_maps_url %}<a class="site-map-link" href="{{ r.site_maps_url }}" target="_blank" rel="noopener">{{ r.site_str }}{{ ic.icon('external') }}</a>{% else %}{{ r.site_str }}{% endif %}{% if r.distance is not none %} · {{ '%.0f'|format(r.distance) }} {{ r.unit }} away{% endif %}
+        {% if r.site_dir_url %}<a class="site-map-dir" href="{{ r.site_dir_url }}" target="_blank" rel="noopener">{{ ic.icon('pin') }} Directions</a>{% endif %}</p>{% endif %}
       {% if r.other_regions %}
       <p class="td-other">Also recruiting in: {{ r.other_regions|join(' · ') }}{% if r.other_count > r.other_regions|length %} and more{% endif %}</p>
       {% endif %}
@@ -152,6 +154,7 @@
       <h3 class="td-apply-title">{{ ic.icon('user-plus') }} Ask to be contacted</h3>
       <p class="td-apply-sub">Answer 4 questions and submit contact info. Contact is shared after acceptance.</p>
 
+      {% if records_ui %}
       {% if records_profile %}
       {% set p = (records_profile.provider or '') %}
       {% if records_profile.sync_status == 'syncing' %}
@@ -180,6 +183,7 @@
         <span class="rec-connect-hint">One-time connection for faster pre-screening. This can take a few seconds.</span>
       </form>
       {% endif %}
+      {% endif %}
 
       <form class="interest-form" method="post" action="{{ url_for('interest') }}">
         <input type="hidden" name="nct" value="{{ t.nctId }}">
@@ -192,8 +196,10 @@
         <input type="hidden" name="eligibility" value='{{ {"verdict": m.verdict, "rationale": m.rationale, "met": m.met, "unknown": m.unknown, "not_met": m.not_met}|tojson }}'>
 
         {% set q_total = (prescreen|length + 2) if prescreen else 4 %}
-        <div class="if-screener">
-          <div class="if-screener-head">A few quick questions ({{ q_total }}) to pre-screen you for this study</div>
+        <div class="if-screener" id="ifScreener"{% if prescreen_ai and not prescreen %} data-prescreen-url="{{ url_for('trial_prescreen', search_id=search_id, nct=t.nctId) }}"{% endif %}>
+          <div class="if-screener-head" id="ifScreenerHead">A few quick questions ({{ q_total }}) to pre-screen you for this study</div>
+          {% if prescreen_ai and not prescreen %}<div class="if-screener-note" id="ifScreenerNote">Tailoring questions to this study…</div>{% endif %}
+          <div class="if-screener-body" id="ifScreenerBody">
           {% if prescreen %}
             {% for q in prescreen %}
             <label><span>{{ loop.index }}. {{ q.q }}</span>
@@ -218,6 +224,7 @@
             <label><span>4. Can you give your own informed consent?</span>
               <select name="consent_capable"><option value="yes">Yes</option><option value="no">No</option></select></label>
           {% endif %}
+          </div>
         </div>
 
         <div class="if-row two">

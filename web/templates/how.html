@@ -13,7 +13,9 @@
     <ol class="how-steps">
       <li><b>Search</b><span>Enter condition and location to see recruiting studies.</span></li>
       <li><b>Apply</b><span>Submit contact details for a study you're interested in.</span></li>
+      {% if records_ui %}
       <li><b>Optional records</b><span>Connect records once to speed up pre-screening.</span></li>
+      {% endif %}
       <li><b>Track status</b><span>View updates in <a href="{{ url_for('applications') }}">My applications</a>.</span></li>
     </ol>
   </div>
