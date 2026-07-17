@@ -381,7 +381,7 @@ RATE_LIMIT_ROUTES = {
 LLM_DAILY_SEARCH_CAP = max(0, int(os.environ.get("LLM_DAILY_SEARCH_CAP", "600")))
 
 # Contact + last-updated shown on the Privacy / Terms pages and footer.
-LEGAL_CONTACT = os.environ.get("LEGAL_CONTACT", "hello@bridgemd.app").strip()
+LEGAL_CONTACT = os.environ.get("LEGAL_CONTACT", "hello@bridgemd.health").strip()
 LEGAL_UPDATED = os.environ.get("LEGAL_UPDATED", "July 2026").strip()
 
 
