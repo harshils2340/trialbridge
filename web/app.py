@@ -1958,6 +1958,41 @@ SEED_DRUGS = [
     "Semaglutide", "Tirzepatide", "Retatrutide", "Survodutide",
     "Orforglipron", "CagriSema", "Liraglutide", "Dulaglutide",
 ]
+# Common generic + brand names (and short forms) people actually type, mapped to
+# the canonical drug we search CT.gov by. Lets "reta" -> Retatrutide instead of
+# the freeform LLM collapsing it to a broad indication like "obesity".
+_DRUG_ALIASES = {
+    # generics
+    "semaglutide": "Semaglutide", "tirzepatide": "Tirzepatide",
+    "retatrutide": "Retatrutide", "survodutide": "Survodutide",
+    "orforglipron": "Orforglipron", "cagrisema": "CagriSema",
+    "cagrilintide": "CagriSema", "liraglutide": "Liraglutide",
+    "dulaglutide": "Dulaglutide",
+    # brand names
+    "ozempic": "Semaglutide", "wegovy": "Semaglutide", "rybelsus": "Semaglutide",
+    "mounjaro": "Tirzepatide", "zepbound": "Tirzepatide",
+    "saxenda": "Liraglutide", "victoza": "Liraglutide", "trulicity": "Dulaglutide",
+}
+
+
+def _detect_drug_query(text):
+    """Return the canonical drug name when `text` is (or clearly begins) a known
+    peptide/GLP-1 drug the user typed (e.g. "reta" -> "Retatrutide"). Returns ""
+    for anything that isn't an obvious drug-name query, so real conditions and
+    free-text descriptions fall through to the normal condition path."""
+    q = (text or "").strip().lower()
+    if not q:
+        return ""
+    if q in _DRUG_ALIASES:
+        return _DRUG_ALIASES[q]
+    # Only treat a short, single term as a drug-name query - never hijack a
+    # sentence like "I take ozempic for diabetes" (that stays a description).
+    if len(q.split()) > 1 or len(q) < 4:
+        return ""
+    for alias, canon in _DRUG_ALIASES.items():
+        if alias.startswith(q) or canon.lower().startswith(q):
+            return canon
+    return ""
 _COND_BY_SLUG = {slugify(c): c for c in SEED_CONDITIONS}
 _CITY_BY_SLUG = {slugify(c): c for c in SEED_CITIES}
 
@@ -2248,10 +2283,21 @@ def find():
     about = request.form.get("about", "").strip()
     pregnant = request.form.get("pregnant", "").strip()
     other_trial = request.form.get("other_trial", "").strip()
+    freeform = request.form.get("freeform", "") == "1"
+    # Drug/peptide search: if the typed query is a known drug (e.g. "reta" ->
+    # Retatrutide, "ozempic" -> Semaglutide), search CT.gov by intervention so we
+    # return that drug's actual trials, instead of the freeform LLM collapsing it
+    # to a broad indication like "obesity" (many of which aren't that drug).
+    if not intervention:
+        drug = _detect_drug_query(condition) or _detect_drug_query(about)
+        if drug:
+            intervention = drug
+            condition = ""      # searched by drug, not a guessed condition
+            about = ""          # the typed term was the drug, not a description
+            freeform = False
     # Free-text ("describe it in your own words") mode: the box holds a sentence,
     # not a condition term. Route it to the note and let the matcher extract the
     # condition (LLM) instead of querying CT.gov with a whole sentence.
-    freeform = request.form.get("freeform", "") == "1"
     if freeform and condition:
         about = (condition + ("\n" + about if about else "")).strip()
         condition = ""
