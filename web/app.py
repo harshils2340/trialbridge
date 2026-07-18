@@ -813,19 +813,45 @@ def _notify_site_new_candidate(token):
     return _notify(to_addr, subject, body)
 
 
-def _notify_owner_new_application(token):
+def _dedup_email_list(raw, exclude=None):
+    """Split a comma-separated address string into a de-duplicated, order-
+    preserving list, dropping any addresses in `exclude` (case-insensitive).
+    Prevents the same inbox from getting the same notification twice."""
+    ex = set()
+    for e in (exclude or []):
+        for part in str(e or "").split(","):
+            part = part.strip().lower()
+            if part:
+                ex.add(part)
+    out, seen = [], set()
+    for part in str(raw or "").split(","):
+        part = part.strip()
+        key = part.lower()
+        if not part or key in seen or key in ex:
+            continue
+        seen.add(key)
+        out.append(part)
+    return out
+
+
+def _notify_owner_new_application(token, exclude_emails=None):
     """Heads-up to the operator's inbox (OWNER_NOTIFY_EMAIL) that a new
     application came in, so they can confirm the funnel is producing real,
     legit applications. De-identified: links to the dashboard for details.
-    No-op while notifications are off (NOTIFY_LIVE) or no recipient set."""
-    if not OWNER_NOTIFY_EMAIL:
+    No-op while notifications are off (NOTIFY_LIVE) or no recipient set.
+
+    `exclude_emails` are addresses that already received a notification for this
+    application (e.g. the site-candidate email), so a poster who is also the
+    operator doesn't get two near-duplicate emails for one apply."""
+    recipients = _dedup_email_list(OWNER_NOTIFY_EMAIL, exclude=exclude_emails)
+    if not recipients:
         return False
     lead = db.get_lead_by_token(token)
     if not lead:
         return False
     link = _abs_url("leads")
     subject, body = mailer.build_owner_new_application(lead, link)
-    return _notify(OWNER_NOTIFY_EMAIL, subject, body)
+    return _notify(", ".join(recipients), subject, body)
 
 
 def _notify_applicant(token, kind):
@@ -2488,7 +2514,13 @@ def interest():
     # NOTIFY_LIVE is off, so nothing is emailed during testing.
     _notify_site_new_candidate(token)
     # Internal heads-up so the operator can confirm real applications are landing.
-    _notify_owner_new_application(token)
+    # For BridgeMD (site-posted) studies the poster is the operator, so the site
+    # already got the candidate email above - exclude that address to avoid a
+    # duplicate heads-up landing in the same inbox.
+    _lead_for_notify = db.get_lead_by_token(token)
+    _site_to = ((db.site_contact_for_nct(_lead_for_notify["nct"]) or SITE_NOTIFY_EMAIL)
+                if _lead_for_notify else "")
+    _notify_owner_new_application(token, exclude_emails=[_site_to] if _site_to else None)
     # Confirm receipt to the applicant (job-application style). The in-app system
     # message always shows in their thread; the email sends only when go-live is
     # on, so both surfaces stay in sync.
