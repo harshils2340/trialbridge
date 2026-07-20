@@ -1952,6 +1952,106 @@ SEED_CITIES = [
     "New York, NY", "Los Angeles, CA", "Chicago, IL", "Houston, TX",
     "Miami, FL", "Boston, MA",
 ]
+
+# --------------------------------------------------------------------------- #
+# Programmatic SEO surface. These drive the condition + condition/city landing
+# pages, their internal links, and sitemap.xml. Curated (not dumped) so every
+# generated page targets a real, high-search condition that CT.gov actually has
+# recruiting trials for -> no thin/empty pages that Google would penalize.
+# People search "<condition> clinical trials near me"; each entry becomes a page.
+# --------------------------------------------------------------------------- #
+SEO_CONDITIONS = [
+    # Metabolic / endocrine
+    "Obesity", "Type 2 diabetes", "Type 1 diabetes", "Prediabetes", "Weight loss",
+    "Metabolic syndrome", "High cholesterol", "High triglycerides",
+    "High blood pressure", "PCOS", "Hypothyroidism", "Thyroid disease", "Gout",
+    "Fatty liver disease (NAFLD/NASH)",
+    # Cardiovascular
+    "Heart failure", "Coronary artery disease", "Atrial fibrillation", "Stroke",
+    "Stroke recovery", "Peripheral artery disease", "Pulmonary hypertension",
+    "Deep vein thrombosis",
+    # Renal
+    "Chronic kidney disease", "Diabetic kidney disease", "IgA nephropathy",
+    "Polycystic kidney disease",
+    # Neurology
+    "Migraine", "Alzheimer's disease", "Parkinson's disease", "Multiple sclerosis",
+    "Epilepsy", "ALS", "Huntington's disease", "Peripheral neuropathy",
+    "Restless legs syndrome", "Essential tremor", "Dementia",
+    # Mental health
+    "Depression", "Anxiety", "Bipolar disorder", "Schizophrenia", "PTSD", "OCD",
+    "ADHD", "Insomnia", "Postpartum depression", "Alcohol use disorder",
+    "Substance use disorder",
+    # Respiratory
+    "COPD", "Asthma", "Long COVID", "Cystic fibrosis", "Pulmonary fibrosis",
+    "Sleep apnea", "Chronic cough",
+    # Gastrointestinal
+    "Crohn's disease", "Ulcerative colitis", "Irritable bowel syndrome",
+    "Celiac disease", "GERD", "Eosinophilic esophagitis", "Gastroparesis",
+    # Rheumatology / immune
+    "Rheumatoid arthritis", "Lupus", "Psoriatic arthritis", "Ankylosing spondylitis",
+    "Osteoarthritis", "Knee osteoarthritis", "Osteoporosis", "Sjogren's syndrome",
+    "Scleroderma", "Fibromyalgia",
+    # Dermatology
+    "Psoriasis", "Eczema (atopic dermatitis)", "Acne", "Vitiligo",
+    "Hidradenitis suppurativa", "Rosacea", "Alopecia areata",
+    # Women's / men's health
+    "Endometriosis", "Uterine fibroids", "Menopause", "Infertility",
+    "Erectile dysfunction", "Enlarged prostate (BPH)",
+    # Oncology
+    "Breast cancer", "Prostate cancer", "Lung cancer", "Non-small cell lung cancer",
+    "Colorectal cancer", "Pancreatic cancer", "Ovarian cancer", "Melanoma",
+    "Leukemia", "Lymphoma", "Multiple myeloma", "Bladder cancer", "Kidney cancer",
+    "Liver cancer", "Glioblastoma", "Head and neck cancer", "Cervical cancer",
+    "Endometrial cancer", "Gastric cancer",
+    # Eye
+    "Age-related macular degeneration", "Diabetic retinopathy", "Glaucoma",
+    "Dry eye disease",
+    # Infectious disease
+    "HIV", "Hepatitis B", "Hepatitis C", "COVID-19", "Influenza", "RSV",
+    # Blood
+    "Sickle cell disease", "Anemia", "Hemophilia", "Thalassemia",
+    # Pain / other
+    "Chronic pain", "Low back pain", "Smoking cessation", "Tinnitus",
+    "Hearing loss", "Chronic fatigue syndrome",
+]
+
+SEO_CITIES = [
+    # Canada
+    "Toronto, ON", "Vancouver, BC", "Montreal, QC", "Calgary, AB", "Edmonton, AB",
+    "Ottawa, ON", "Winnipeg, MB", "Quebec City, QC", "Hamilton, ON",
+    "Kitchener, ON", "London, ON", "Halifax, NS",
+    # United States
+    "New York, NY", "Los Angeles, CA", "Chicago, IL", "Houston, TX",
+    "Phoenix, AZ", "Philadelphia, PA", "San Antonio, TX", "San Diego, CA",
+    "Dallas, TX", "Miami, FL", "Boston, MA", "Atlanta, GA", "Seattle, WA",
+    "Denver, CO", "Washington, DC", "Minneapolis, MN", "Detroit, MI",
+    "Portland, OR", "San Francisco, CA", "Nashville, TN", "Cleveland, OH",
+    "Pittsburgh, PA",
+]
+
+# Fixed coordinates for the SEO cities so each condition/city page can show
+# genuinely LOCAL recruiting trials (CT.gov distance filter) -> unique content per
+# city, which avoids Google's "doorway page" penalty for near-duplicate pages.
+SEO_CITY_COORDS = {
+    "Toronto, ON": (43.6532, -79.3832), "Vancouver, BC": (49.2827, -123.1207),
+    "Montreal, QC": (45.5019, -73.5674), "Calgary, AB": (51.0447, -114.0719),
+    "Edmonton, AB": (53.5461, -113.4938), "Ottawa, ON": (45.4215, -75.6972),
+    "Winnipeg, MB": (49.8951, -97.1384), "Quebec City, QC": (46.8139, -71.2080),
+    "Hamilton, ON": (43.2557, -79.8711), "Kitchener, ON": (43.4516, -80.4925),
+    "London, ON": (42.9849, -81.2453), "Halifax, NS": (44.6488, -63.5752),
+    "New York, NY": (40.7128, -74.0060), "Los Angeles, CA": (34.0522, -118.2437),
+    "Chicago, IL": (41.8781, -87.6298), "Houston, TX": (29.7604, -95.3698),
+    "Phoenix, AZ": (33.4484, -112.0740), "Philadelphia, PA": (39.9526, -75.1652),
+    "San Antonio, TX": (29.4241, -98.4936), "San Diego, CA": (32.7157, -117.1611),
+    "Dallas, TX": (32.7767, -96.7970), "Miami, FL": (25.7617, -80.1918),
+    "Boston, MA": (42.3601, -71.0589), "Atlanta, GA": (33.7490, -84.3880),
+    "Seattle, WA": (47.6062, -122.3321), "Denver, CO": (39.7392, -104.9903),
+    "Washington, DC": (38.9072, -77.0369), "Minneapolis, MN": (44.9778, -93.2650),
+    "Detroit, MI": (42.3314, -83.0458), "Portland, OR": (45.5152, -122.6784),
+    "San Francisco, CA": (37.7749, -122.4194), "Nashville, TN": (36.1627, -86.7816),
+    "Cleveland, OH": (41.4993, -81.6944), "Pittsburgh, PA": (40.4406, -79.9959),
+}
+
 # The GLP-1 / peptide trend: people search by drug name, not condition. These
 # power intervention-based landing pages and are queried via CT.gov query.intr.
 SEED_DRUGS = [
@@ -1993,8 +2093,10 @@ def _detect_drug_query(text):
         if alias.startswith(q) or canon.lower().startswith(q):
             return canon
     return ""
-_COND_BY_SLUG = {slugify(c): c for c in SEED_CONDITIONS}
-_CITY_BY_SLUG = {slugify(c): c for c in SEED_CITIES}
+# Build slug -> canonical maps from the FULL SEO surface (seeds + SEO list),
+# so every generated condition/city page resolves and links cleanly.
+_COND_BY_SLUG = {slugify(c): c for c in (SEO_CONDITIONS + SEED_CONDITIONS)}
+_CITY_BY_SLUG = {slugify(c): c for c in (SEO_CITIES + SEED_CITIES)}
 
 
 def _titleize(slug):
@@ -3385,6 +3487,73 @@ def connect_records(token):
     return records_connect()
 
 
+# Cached recruiting-trial fetch for SEO landing pages. Search-engine crawlers hit
+# thousands of these pages, so we cache each condition's recruiting studies for a
+# few hours instead of calling ClinicalTrials.gov on every crawl.
+_SEO_TRIAL_CACHE = OrderedDict()
+_SEO_TRIAL_TTL = 6 * 3600      # refresh a condition's trials at most every 6h
+_SEO_TRIAL_MAX = 600           # cap distinct conditions held in memory
+
+
+def _fetch_recruiting(condition, geo=None, limit=12):
+    raw = mt.fetch_trials(condition, max_n=40, geo=geo)
+    raw = [t for t in raw
+           if (t.get("overallStatus") or "RECRUITING").upper() == "RECRUITING"
+           and (t.get("studyType") or "").upper() != "OBSERVATIONAL"]
+    return raw[:limit]
+
+
+def _seo_trials(condition, city=None, limit=12):
+    """Recruiting trials for an SEO page, cached per (condition, city). When a
+    known city is given, results are geo-filtered to trials near it so each city
+    page has unique local content; if none are local, fall back to the national
+    list so the page is never empty."""
+    cond_key = (condition or "").strip().lower()
+    if not cond_key:
+        return []
+    key = (cond_key, (city or "").strip().lower())
+    now_ts = time.time()
+    hit = _SEO_TRIAL_CACHE.get(key)
+    if hit and (now_ts - hit[0]) < _SEO_TRIAL_TTL:
+        _SEO_TRIAL_CACHE.move_to_end(key)
+        return hit[1][:limit]
+    trials = []
+    try:
+        geo = None
+        coords = SEO_CITY_COORDS.get(city) if city else None
+        if coords:
+            geo = f"distance({coords[0]},{coords[1]},100mi)"
+        trials = _fetch_recruiting(condition, geo=geo, limit=limit)
+        if not trials and geo:                      # no local trials -> national
+            trials = _fetch_recruiting(condition, geo=None, limit=limit)
+    except Exception:
+        app.logger.exception("seo trials fetch failed for %s", condition)
+    _SEO_TRIAL_CACHE[key] = (now_ts, trials)
+    _SEO_TRIAL_CACHE.move_to_end(key)
+    while len(_SEO_TRIAL_CACHE) > _SEO_TRIAL_MAX:
+        _SEO_TRIAL_CACHE.popitem(last=False)
+    return trials[:limit]
+
+
+def _related_conditions(condition, n=24):
+    """A short, topically-relevant set of other conditions for internal links.
+    SEO_CONDITIONS is grouped by therapeutic area, so a window around the current
+    condition surfaces neighbours in the same area; then we top up to `n`."""
+    cur = (condition or "").lower()
+    if condition in SEO_CONDITIONS:
+        i = SEO_CONDITIONS.index(condition)
+        window = SEO_CONDITIONS[max(0, i - 12):i] + SEO_CONDITIONS[i + 1:i + 13]
+    else:
+        window = []
+    out = [c for c in window if c.lower() != cur]
+    for c in SEO_CONDITIONS:
+        if len(out) >= n:
+            break
+        if c.lower() != cur and c not in out:
+            out.append(c)
+    return out[:n]
+
+
 @app.route("/trials/<slug>")
 def condition_page(slug):
     condition = _COND_BY_SLUG.get(slug) or _titleize(slug)
@@ -3394,29 +3563,27 @@ def condition_page(slug):
         db.log_search_term(condition, "condition")
     except Exception:
         pass
-    trials = []
-    try:
-        raw = mt.fetch_trials(condition, max_n=40)
-        raw = [t for t in raw
-               if (t.get("overallStatus") or "RECRUITING").upper() == "RECRUITING"
-               and (t.get("studyType") or "").upper() != "OBSERVATIONAL"]
-        trials = raw[:12]
-    except Exception:
-        app.logger.exception("condition page fetch failed")
-    return render_template("condition.html", condition=condition, city=None,
-                           trials=trials, cities=SEED_CITIES,
-                           conditions=SEED_CONDITIONS, slugify=slugify)
+    return render_template(
+        "condition.html", condition=condition, city=None,
+        trials=_seo_trials(condition), cities=SEO_CITIES[:16],
+        conditions=_related_conditions(condition), slugify=slugify,
+        canonical_url=_abs_url("condition_page", slug=slugify(condition)))
 
 
 @app.route("/trials/<slug>/<city_slug>")
 def condition_city_page(slug, city_slug):
-    condition = _COND_BY_SLUG.get(slug)
+    condition = _COND_BY_SLUG.get(slug) or _titleize(slug)
     city = _CITY_BY_SLUG.get(city_slug)
+    # Condition can be inferred from the slug, but the city must be one we know
+    # (keeps the crawl surface to real metros, not arbitrary strings).
     if not condition or not city:
         abort(404)
-    return render_template("condition.html", condition=condition, city=city,
-                           trials=[], cities=SEED_CITIES,
-                           conditions=SEED_CONDITIONS, slugify=slugify)
+    return render_template(
+        "condition.html", condition=condition, city=city,
+        trials=_seo_trials(condition, city=city), cities=SEO_CITIES[:16],
+        conditions=_related_conditions(condition), slugify=slugify,
+        canonical_url=_abs_url("condition_city_page",
+                               slug=slugify(condition), city_slug=city_slug))
 
 
 SCREENER_LABELS = {
@@ -4628,6 +4795,15 @@ def update_lead(lead_id):
     return redirect(url_for("leads"))
 
 
+@app.route("/googlea0e509518fe5134f.html")
+def google_site_verification():
+    """Google Search Console ownership check (HTML-file method). These files
+    always contain exactly one line: 'google-site-verification: <filename>'."""
+    return app.response_class(
+        "google-site-verification: googlea0e509518fe5134f.html\n",
+        mimetype="text/html")
+
+
 @app.route("/robots.txt")
 def robots():
     body = ("User-agent: *\nAllow: /\nSitemap: "
@@ -4637,12 +4813,18 @@ def robots():
 
 @app.route("/sitemap.xml")
 def sitemap():
-    urls = [url_for("home", _external=True), url_for("find", _external=True)]
-    for c in SEED_CONDITIONS:
-        urls.append(url_for("condition_page", slug=slugify(c), _external=True))
-        for city in SEED_CITIES:
-            urls.append(url_for("condition_city_page", slug=slugify(c),
-                                city_slug=slugify(city), _external=True))
+    # Static + how-it-works, then the full programmatic SEO surface: one page per
+    # condition, plus one per condition x city (real local trials on each).
+    def loc(endpoint, **kw):
+        return _abs_url(endpoint, **kw) if PUBLIC_BASE_URL \
+            else url_for(endpoint, _external=True, **kw)
+    urls = [loc("home"), loc("find"), loc("how_it_works")]
+    for c in SEO_CONDITIONS:
+        cslug = slugify(c)
+        urls.append(loc("condition_page", slug=cslug))
+        for city in SEO_CITIES:
+            urls.append(loc("condition_city_page", slug=cslug,
+                            city_slug=slugify(city)))
     items = "".join(f"<url><loc>{u}</loc></url>" for u in urls)
     xml = ('<?xml version="1.0" encoding="UTF-8"?>'
            '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'

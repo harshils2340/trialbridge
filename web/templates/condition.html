@@ -1,6 +1,41 @@
 {% extends "public_base.html" %}
 {% block title %}{{ condition }} clinical trials{% if city %} in {{ city }}{% endif %} · BridgeMD{% endblock %}
-{% block description %}Recruiting {{ condition }} clinical trials{% if city %} near {{ city }}{% endif %}.{% endblock %}
+{% block description %}Find recruiting {{ condition|lower }} clinical trials{% if city %} near {{ city }}{% endif %} and apply online. Real, currently-enrolling studies from ClinicalTrials.gov.{% endblock %}
+
+{% block head_extra %}
+{% set _canon = canonical_url|default(request.url) %}
+<link rel="canonical" href="{{ _canon }}">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="BridgeMD">
+<meta property="og:title" content="{{ condition }} clinical trials{% if city %} in {{ city }}{% endif %}">
+<meta property="og:description" content="Find recruiting {{ condition|lower }} clinical trials{% if city %} near {{ city }}{% endif %} and apply online.">
+<meta property="og:url" content="{{ _canon }}">
+<meta name="twitter:card" content="summary">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+        {"@type": "ListItem", "position": 1, "name": "Home", "item": {{ url_for('home', _external=True)|tojson }}},
+        {"@type": "ListItem", "position": 2, "name": {{ condition|tojson }}, "item": {{ _canon|tojson }}}{% if city %},
+        {"@type": "ListItem", "position": 3, "name": {{ city|tojson }}, "item": {{ _canon|tojson }}}{% endif %}
+      ]
+    }{% if trials %},
+    {
+      "@type": "ItemList",
+      "name": {{ (condition ~ ' clinical trials' ~ (' in ' ~ city if city else ''))|tojson }},
+      "numberOfItems": {{ trials|length }},
+      "itemListElement": [
+        {% for t in trials %}{"@type": "ListItem", "position": {{ loop.index }}, "name": {{ (t.title or 'Clinical trial')|tojson }}}{% if not loop.last %},{% endif %}
+        {% endfor %}
+      ]
+    }{% endif %}
+  ]
+}
+</script>
+{% endblock %}
 
 {% block body %}
 <section class="cond-hero">
@@ -97,7 +132,7 @@
 
 {% if trials %}
 <section class="cond-list">
-  <h2>Recruiting {{ condition|lower }} studies right now</h2>
+  <h2>Recruiting {{ condition|lower }} studies{% if city %} near {{ city }}{% endif %} right now</h2>
   {% for t in trials %}
   <a class="cond-item" href="{{ url_for('find', condition=condition) }}">
     <div class="cond-item-main">
