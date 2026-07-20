@@ -14,12 +14,12 @@
   </p>
   <p class="site-hint">
     Bots are filtered out and visits are counted only for real browsers, so
-    these are legit numbers. Your IP: <strong>{{ your_ip or 'unknown' }}</strong> ·
+    these are legit numbers. Your IP: <strong>{{ your_ip_masked or 'unknown' }}</strong> ·
     {% if ip_ignored %}
       your visits are <strong>excluded</strong>.
     {% else %}
-      your visits are <strong>counted</strong> — to exclude them, set
-      <code>ANALYTICS_IGNORE_IPS={{ your_ip }}</code> and restart.
+      your visits are <strong>counted</strong> — sign in as the owner to
+      auto-exclude, or add your IP to <code>ANALYTICS_IGNORE_IPS</code> and restart.
     {% endif %}
   </p>
 </div>

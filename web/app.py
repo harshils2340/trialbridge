@@ -552,6 +552,20 @@ def _client_ip():
     return (request.remote_addr or "").strip()
 
 
+def _mask_ip(ip):
+    """Partly redact an IP for on-screen display so the owner can recognize it
+    without exposing the full address (e.g. in screenshots / screen shares)."""
+    ip = (ip or "").strip()
+    if not ip:
+        return ""
+    if ":" in ip:  # IPv6 - keep first group only
+        return ip.split(":", 1)[0] + ":\u2022\u2022\u2022\u2022"
+    parts = ip.split(".")
+    if len(parts) == 4:  # IPv4 - keep first two octets
+        return parts[0] + "." + parts[1] + ".\u2022\u2022\u2022.\u2022\u2022\u2022"
+    return "\u2022\u2022\u2022"
+
+
 # Substrings that mark a request as automated (crawlers, scrapers, monitors,
 # link previewers, headless browsers, CLI HTTP clients). Matched case-insensitively
 # against the User-Agent. This is the standard, low-maintenance way to keep bots
@@ -4162,7 +4176,8 @@ def owner_analytics():
     series = db.web_timeseries(days=days)
     return render_template("analytics.html", web=web, recent=recent, days=days,
                            series=series,
-                           your_ip=_client_ip(), ip_ignored=_analytics_ignored())
+                           your_ip_masked=_mask_ip(_client_ip()),
+                           ip_ignored=_analytics_ignored())
 
 
 @app.route("/app/analytics/reset", methods=["POST"])
