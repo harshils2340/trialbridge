@@ -22,7 +22,19 @@
       auto-exclude, or add your IP to <code>ANALYTICS_IGNORE_IPS</code> and restart.
     {% endif %}
   </p>
+  <div class="page-head-actions">
+    {{ ui.btn('Reset history', variant='danger', size='sm', icon='trash', extra='data-ui-open="resetModal"') }}
+  </div>
 </div>
+
+{% call ui.modal('resetModal', 'Reset analytics history?', icon='trash') %}
+  <p>This permanently deletes every recorded visitor event and cannot be undone.
+    All visitor, search, and apply counts restart from zero.</p>
+  <form method="post" action="{{ url_for('owner_analytics_reset') }}" class="modal-actions">
+    {{ ui.btn('Cancel', variant='ghost', extra='data-ui-close') }}
+    {{ ui.btn('Delete all history', variant='danger', type='submit') }}
+  </form>
+{% endcall %}
 
 <div class="stats">
   <div class="stat"><div class="l">{{ ic.icon('activity', 'ico stat-ico') }}Visitors</div><div class="n">{{ web.totals.visits }}</div></div>

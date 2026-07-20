@@ -1003,6 +1003,8 @@ body.home-screen .landing-legal-links { margin: 0; flex: 0 0 auto; font-size: 12
   border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 .presearch-row textarea { resize: vertical; }
 .presearch-actions { display: flex; gap: var(--space-3); margin-top: var(--space-5); }
+.modal-actions { display: flex; gap: var(--space-3); justify-content: flex-end;
+  margin-top: var(--space-5); }
 .hero-loc-actions { display: flex; flex-wrap: wrap; justify-content: center; align-items: center;
   gap: 12px; max-width: 760px; margin: 12px auto 0; }
 .hero-loc-actions .loc-use { margin-left: 0; font-size: 14px; }
