@@ -4,14 +4,7 @@
 {% block title %}BridgeMD - find recruiting clinical trials{% endblock %}
 
 {% block pub_nav_extra %}
-{% if patient_user %}
-{% set welcome_name = (patient_user.full_name.split(' ')[0] if patient_user.full_name else 'Patient') %}
-{% if pov_demo and (welcome_name|lower in ['demo', 'patient']) %}
-  {% set welcome_name = 'Harshil' %}
-{% endif %}
-<a class="pub-apps" href="{{ url_for('applications') }}">My applications{% if messages_unread %} <span class="nav-badge nav-badge-new">{{ messages_unread }}</span>{% elif applications_count %} <span class="nav-badge">{{ applications_count }}</span>{% endif %}</a>
-<a class="pub-apps" href="{{ url_for('alerts') }}">Alerts{% if alerts_new_count %} <span class="nav-badge nav-badge-new">{{ alerts_new_count }}</span>{% endif %}</a>
-{% if records_ui %}
+{% if patient_user and records_ui %}
 {% if records_profile %}
 <form method="post" action="{{ url_for('records_refresh') }}" style="margin:0;">
   <button class="btn btn-ghost btn-sm" type="submit">Refresh records</button>
@@ -22,14 +15,6 @@
   <button class="btn btn-primary btn-sm" type="submit">Connect records</button>
 </form>
 {% endif %}
-{% endif %}
-<a href="{{ url_for('patient_settings') }}">Settings</a>
-<span class="nav-user" title="Signed in as {{ patient_user.email or welcome_name }}">
-  <span class="nav-user-av">{{ (patient_user.full_name or patient_user.email or 'P')[0]|upper }}</span>
-  <b>{{ welcome_name }}</b>{% if pov_demo %} <em>Test user</em>{% endif %}</span>
-<form method="post" action="{{ url_for('patient_logout') }}" style="margin:0;">
-  <button type="submit" class="link-btn">Sign out</button>
-</form>
 {% endif %}
 {% endblock %}
 

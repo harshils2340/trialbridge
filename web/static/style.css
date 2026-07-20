@@ -679,8 +679,21 @@ tr { transition: background .12s; }
 body.pub { background: var(--surface); }
 .btn-lg { padding: 13px 22px; font-size: 15px; border-radius: 12px; }
 
-.pub-nav { display: flex; align-items: center; justify-content: space-between;
-  padding: 20px 40px; flex-wrap: wrap; row-gap: 10px; }
+.pub-nav { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center;
+  gap: 16px; padding: 14px 40px; }
+.pub-nav .brand { justify-self: start; }
+.pub-nav-center { display: flex; align-items: center; gap: 4px; justify-self: center; }
+.pub-nav-center a { color: var(--muted); text-decoration: none; font-weight: 500;
+  font-size: 14px; padding: 7px 12px; border-radius: var(--radius-sm); }
+.pub-nav-center a:hover { color: var(--ink); background: var(--surface-2); text-decoration: none; }
+.pub-nav-alerts { display: inline-flex; align-items: center; gap: 6px; }
+.pub-nav-alerts .ico { width: 15px; height: 15px; }
+.pub-nav-auth { display: flex; align-items: center; gap: 14px; justify-self: end; }
+.pub-nav-auth a { color: var(--muted); text-decoration: none; font-weight: 500; font-size: 14px; }
+.pub-nav-auth a:hover { color: var(--ink); }
+.pub-nav-auth .pub-signup { color: var(--accent-ink); border-radius: var(--radius-pill); }
+.pub-nav-auth .pub-signup:hover { color: var(--accent-ink); text-decoration: none; }
+/* Legacy right-aligned nav container (kept for any page not yet migrated). */
 .pub-nav-links { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; justify-content: flex-end; }
 .nav-user { display: inline-flex; align-items: center; gap: 7px; font-size: 13px;
   color: var(--ink-soft); padding: 3px 11px 3px 3px; border: 1px solid var(--border);
@@ -817,6 +830,49 @@ body.demo-home .hero-search { max-width: 680px; margin-top: 14px; }
   .hero-stat { flex: 1 1 0; min-width: 0; padding: 10px 8px; }
   .hero-stat-l { font-size: 10.5px; }
   .hero-card { padding: 16px; }
+}
+
+/* ==========================================================================
+   Homepage single-screen layout (1:1 with the Figma): nav / vertically-centered
+   hero / pinned footer bar, all inside one viewport. Scoped to body.home-screen
+   so no other page is affected. The Figma is set in Inter on a flat #f8fafc bg.
+   ========================================================================== */
+body.home-screen { display: flex; flex-direction: column; min-height: 100vh;
+  background: var(--bg);
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+body.home-screen .pub-main { flex: 1 1 auto; display: flex; flex-direction: column; min-height: 0; }
+body.home-screen .hero { flex: 1 1 auto; display: flex; align-items: center; justify-content: center;
+  max-width: none; margin: 0; padding: 32px 24px; }
+body.home-screen .hero::before { display: none; }          /* flat background, no halo */
+body.home-screen .hero-in { max-width: 820px; width: 100%; margin: 0 auto; }
+body.home-screen .hero h1 { font-family: inherit; max-width: none; margin: 0 auto;
+  font-size: 54px; line-height: 1.05; letter-spacing: -.03em; font-weight: 800; white-space: nowrap; }
+body.home-screen .hero-sub { font-size: 17px; margin-top: 14px; }
+body.home-screen .hero-hint { display: none; }             /* Figma has no hint line */
+
+/* Trending: sentence-case inline label + chips (not the uppercase pill label). */
+body.home-screen .chips-block { margin-top: 18px; }
+body.home-screen .chip-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+body.home-screen .chip-label { text-transform: none; letter-spacing: 0; font-size: 14px;
+  font-weight: 500; color: var(--faint); padding: 0; gap: 0; justify-content: flex-start; }
+body.home-screen .chip-label::after { content: ":"; }
+
+/* The Figma nav has no theme toggle. */
+body.home-screen .theme-toggle { display: none; }
+
+/* Legal line becomes the pinned full-width footer bar (matches the Figma footer). */
+body.home-screen .landing-legal { margin: 0; padding: 14px 40px; background: var(--surface);
+  border-top: 1px solid var(--border); display: flex; align-items: center;
+  justify-content: space-between; flex-wrap: wrap; gap: 6px 24px; text-align: left; }
+body.home-screen .landing-legal-disc { margin: 0; flex: 1 1 420px; font-size: 12px;
+  color: var(--faint); max-width: 720px; line-height: 1.5; }
+body.home-screen .landing-legal-links { margin: 0; flex: 0 0 auto; font-size: 12px; white-space: nowrap; }
+
+@media (max-width: 760px) {
+  body.home-screen .hero { padding: 22px 16px; }
+  body.home-screen .hero h1 { font-size: 32px; white-space: normal; }
+  body.home-screen .hero-sub { font-size: 15.5px; }
+  body.home-screen .landing-legal { padding: 14px 16px; }
 }
 
 /* Trust bar - light inline credibility markers directly under the hero. */
@@ -2212,8 +2268,12 @@ h1, h2, h3 {
   top: 0;
   z-index: 20;
   backdrop-filter: blur(10px);
-  background: rgba(247,247,245,.84);
-  border-bottom: 1px solid rgba(226,226,233,.85);
+  background: rgba(255,255,255,.88);
+  border-bottom: 1px solid var(--border);
+}
+@media (max-width: 760px) {
+  .pub-nav { display: flex; flex-wrap: wrap; justify-content: space-between; }
+  .pub-nav-center { order: 3; width: 100%; justify-content: flex-start; flex-wrap: wrap; }
 }
 
 .hero {
