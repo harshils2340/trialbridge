@@ -1089,6 +1089,7 @@ body.demo-home .hero-search { max-width: 680px; margin-top: 14px; }
 .filt-check .dot-good { background: var(--green); }
 .filt-check .dot-maybe { background: var(--amber); }
 .filt-check .dot-no { background: var(--red); }
+.filt-check .dot-pay { background: var(--violet); border-radius: 3px; }
 .filt-note { font-size: 12px; color: var(--muted); line-height: 1.5; display: flex;
   align-items: flex-start; gap: 6px; }
 .filt-note .ico { width: 14px; height: 14px; color: var(--green); flex-shrink: 0; margin-top: 1px; }

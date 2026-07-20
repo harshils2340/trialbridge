@@ -60,6 +60,16 @@
       </select>
     </div>
 
+    {% set pay_ns = namespace(n=0) %}
+    {% for r in results %}{% if r.pay and r.pay.label %}{% set pay_ns.n = pay_ns.n + 1 %}{% endif %}{% endfor %}
+    {% if pay_ns.n %}
+    <div class="filt-group">
+      <label class="filt-label">{{ ic.icon('dollar') }} Compensation</label>
+      <label class="filt-check"><input type="checkbox" id="fPayOnly" class="f-pay">
+        <span class="dot dot-pay"></span>Only trials that mention pay ({{ pay_ns.n }})</label>
+    </div>
+    {% endif %}
+
     {% if fit_set|length > 1 %}
     <div class="filt-group">
       <label class="filt-label">{{ ic.icon('sparkle') }} Match quality</label>
@@ -128,10 +138,10 @@
         <span class="fit fit-{{ lab[1] }}">{{ ic.icon('check') if lab[1]=='good' else (ic.icon('x') if lab[1]=='no' else ic.icon('sparkle')) }}{{ lab[0] }}</span>
         {% if r.distance is not none %}<span class="pr-dist">{{ ic.icon('pin') }}{{ '%.0f'|format(r.distance) }} {{ r.unit }} away</span>{% endif %}
         {% if t.phase %}<span class="pr-phase">{{ t.phase.replace('_',' ')|title if t.phase != 'NA' else 'N/A' }}</span>{% endif %}
-        {% if r.pay and r.pay.label %}<span class="pr-pay pr-pay-{{ r.pay.tier }}">{{ ic.icon('activity') }}{{ r.pay.label }}</span>{% endif %}
+        {% if r.pay and r.pay.label %}<span class="pr-pay pr-pay-{{ r.pay.tier }}">{{ ic.icon('dollar') }}{{ r.pay.label }}</span>{% endif %}
         {% if r.support and r.support.travel %}<span class="pr-benefit">{{ ic.icon('pin') }}Travel support</span>{% endif %}
         {% if r.support and r.support.coverage %}<span class="pr-benefit">{{ ic.icon('check') }}Cost coverage</span>{% endif %}
-        {% if r.support and r.support.stipend %}<span class="pr-benefit pr-benefit-money">{{ ic.icon('activity') }}Stipend/compensation</span>{% endif %}
+        {% if r.support and r.support.stipend %}<span class="pr-benefit pr-benefit-money">{{ ic.icon('dollar') }}Stipend/compensation</span>{% endif %}
         <span class="pr-phase">{{ 'Posted by study site' if t.source == 'site_posted' else 'Public listing' }}</span>
         <span class="pr-recruiting">{{ ic.icon('check') }} Recruiting</span>
       </div>
@@ -206,12 +216,14 @@
     var phases = checkedValues('f-phase');
     var hasFit = document.querySelector('.f-fit');
     var hasPhase = document.querySelector('.f-phase');
+    var payOnly = document.getElementById('fPayOnly');
     var radius = fRadius ? (parseInt(fRadius.value, 10) || 0) : 0;
     var shown = 0;
     cards.forEach(function (c) {
       var ok = true;
       if (hasFit && fits.indexOf(c.getAttribute('data-fit')) === -1) ok = false;
       if (hasPhase && phases.indexOf(c.getAttribute('data-phase')) === -1) ok = false;
+      if (payOnly && payOnly.checked && parseFloat(c.getAttribute('data-pay')) <= 0) ok = false;
       if (radius > 0 && parseFloat(c.getAttribute('data-dist')) > radius) ok = false;
       c.style.display = ok ? '' : 'none';
       if (ok) shown++;
@@ -238,7 +250,7 @@
       cards.forEach(function (c) { list.appendChild(c); }); // original (best-match) order
     }
   }
-  document.querySelectorAll('.f-fit, .f-phase').forEach(function (c) {
+  document.querySelectorAll('.f-fit, .f-phase, .f-pay').forEach(function (c) {
     c.addEventListener('change', apply);
   });
   if (sortSel) sortSel.addEventListener('change', sortCards);
@@ -247,6 +259,8 @@
     // Default view hides "Probably not a fit" studies; the rest start shown.
     document.querySelectorAll('.f-fit').forEach(function (c) { c.checked = c.value !== 'no'; });
     document.querySelectorAll('.f-phase').forEach(function (c) { c.checked = true; });
+    var payOnly = document.getElementById('fPayOnly');
+    if (payOnly) payOnly.checked = false;
     if (sortSel) sortSel.value = 'best';
     sortCards(); apply();
   }
