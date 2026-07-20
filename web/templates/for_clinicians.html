@@ -1,0 +1,154 @@
+{% extends "public_base.html" %}
+{% import "_icons.html" as ic %}
+{% block title %}BridgeMD for clinics, sites & sponsors — fill trials faster{% endblock %}
+{% block description %}Get pre-screened, consented applicants and the tools to move them from applied to enrolled. Book a live demo of BridgeMD for your study team.{% endblock %}
+{% block og_title %}BridgeMD for clinics, research sites & sponsors{% endblock %}
+{% block og_description %}Pre-screened, consented applicants plus an enrollment funnel your coordinators actually use. Book a 20-minute live demo.{% endblock %}
+
+{% block body %}
+<section class="b2b-hero">
+  <div class="b2b-in">
+    <span class="hero-eyebrow">{{ ic.icon('activity') }} For research sites, clinics &amp; sponsors</span>
+    <h1>Fill your trials faster.</h1>
+    <p class="b2b-sub">BridgeMD sends your team pre-screened, consented applicants — and the tools to
+      move them from applied to enrolled. No new headcount, no per-referral fees.</p>
+    <div class="b2b-cta">
+      <a class="btn btn-primary btn-lg" href="#demo">Book a live demo {{ ic.icon('arrow-right') }}</a>
+      <a class="btn btn-ghost btn-lg" href="#snapshots">See what you get</a>
+    </div>
+    <p class="b2b-note">{{ ic.icon('check') }} Free for physicians · sites &amp; sponsors pay a flat license, never per referral</p>
+  </div>
+</section>
+
+<section class="steps-wrap">
+  <h2 class="steps-title">Everything you need to enroll, in one place</h2>
+  <div class="steps">
+    <div class="step">
+      <div class="step-ic">{{ ic.icon('user-plus') }}</div>
+      <h3>Pre-screened intake</h3>
+      <p>Applicants arrive already matched to your inclusion criteria and consented to be
+        contacted, so coordinators spend their time on real candidates — not dead ends.</p>
+    </div>
+    <div class="step">
+      <div class="step-ic">{{ ic.icon('activity') }}</div>
+      <h3>An enrollment funnel that runs itself</h3>
+      <p>Watch every applicant move applied → contacted → screened → enrolled, with conversion
+        and time-in-stage, so you can see exactly where enrollment is stalling.</p>
+    </div>
+    <div class="step">
+      <div class="step-ic">{{ ic.icon('award') }}</div>
+      <h3>Recruit your own patients, compliantly</h3>
+      <p>Give clinicians a compliant way to tell eligible patients about your studies, and post
+        studies patients can find and apply to directly — de-identified until they consent.</p>
+    </div>
+  </div>
+</section>
+
+<section id="snapshots" class="snaps">
+  <div class="snaps-in">
+    <p class="snaps-eyebrow">A look inside the workspace</p>
+
+    <div class="snap">
+      <div class="snap-ui">
+        <div class="snap-win">
+          <div class="snap-bar"><span class="snap-dot"></span><span class="snap-dot"></span><span class="snap-dot"></span><b>Applicant intake</b></div>
+          <div class="snap-rows">
+            <div class="snap-row"><span class="snap-av">JM</span>
+              <div class="snap-row-main"><b>Type 2 diabetes</b><span>Applied 2h ago · 4 mi away</span></div>
+              <span class="pill likely_eligible">Likely eligible</span></div>
+            <div class="snap-row"><span class="snap-av">AR</span>
+              <div class="snap-row-main"><b>Obesity · BMI 34</b><span>Applied 5h ago · 11 mi away</span></div>
+              <span class="pill likely_eligible">Likely eligible</span></div>
+            <div class="snap-row"><span class="snap-av">DP</span>
+              <div class="snap-row-main"><b>Prediabetes</b><span>Applied yesterday · 8 mi away</span></div>
+              <span class="pill possible">Possible</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="snap-txt">
+        <h3>Every applicant, pre-screened and consented</h3>
+        <p>A live queue of matched patients with an eligibility read and distance, ready for your
+          coordinator to advance or decline in one click. Contact details unlock only after the
+          patient consents.</p>
+      </div>
+    </div>
+
+    <div class="snap snap-reverse">
+      <div class="snap-ui">
+        <div class="snap-win">
+          <div class="snap-bar"><span class="snap-dot"></span><span class="snap-dot"></span><span class="snap-dot"></span><b>Enrollment funnel</b></div>
+          <div class="snap-funnel">
+            <div class="snap-frow"><span class="snap-flabel">Applied</span><div class="snap-ftrack"><i style="width:100%"></i></div><b>128</b></div>
+            <div class="snap-frow"><span class="snap-flabel">Contacted</span><div class="snap-ftrack"><i style="width:80%"></i></div><b>102</b></div>
+            <div class="snap-frow"><span class="snap-flabel">Screened</span><div class="snap-ftrack"><i style="width:56%"></i></div><b>72</b></div>
+            <div class="snap-frow"><span class="snap-flabel">Enrolled</span><div class="snap-ftrack"><i class="is-ok" style="width:31%"></i></div><b>40</b></div>
+          </div>
+          <div class="snap-foot">Screen → enroll conversion <b>55%</b> · median 6 days in stage</div>
+        </div>
+      </div>
+      <div class="snap-txt">
+        <h3>Know where enrollment is stalling</h3>
+        <p>Conversion and time-in-stage across the whole funnel update as applicants move, so you
+          can fix the leaky step instead of guessing — and prove velocity to your sponsor.</p>
+      </div>
+    </div>
+
+    <div class="snap">
+      <div class="snap-ui">
+        <div class="snap-win">
+          <div class="snap-bar"><span class="snap-dot"></span><span class="snap-dot"></span><span class="snap-dot"></span><b>Eligibility read</b></div>
+          <div class="snap-elig">
+            <div class="snap-elig-h"><b>GLP-1 weight-management study</b><span class="pill likely_eligible">Likely eligible</span></div>
+            <ul class="snap-crit">
+              <li class="ok">{{ ic.icon('check') }} BMI 30–40 (patient 34)</li>
+              <li class="ok">{{ ic.icon('check') }} Age 18–75 (patient 52)</li>
+              <li class="ok">{{ ic.icon('check') }} On a stable metformin dose</li>
+              <li class="no">{{ ic.icon('x') }} No GLP-1 use in the last 90 days — confirm</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+      <div class="snap-txt">
+        <h3>Plain-English eligibility, not a wall of criteria</h3>
+        <p>Each applicant comes with a criteria-by-criteria read against the protocol, so your team
+          knows what to confirm at screening before anyone picks up the phone.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="demo" class="b2b-demo">
+  <div class="b2b-demo-card">
+    <div class="b2b-demo-head">
+      <h2>Book a live demo</h2>
+      <p>See BridgeMD running on studies like yours in about 20 minutes. Tell us a little and we'll
+        reach out to schedule.</p>
+    </div>
+    <form method="post" action="{{ url_for('demo_request') }}" class="b2b-form" data-friendly-validate>
+      <div class="b2b-form-row">
+        <label class="b2b-field"><span>Name</span>
+          <input type="text" name="name" autocomplete="name" required></label>
+        <label class="b2b-field"><span>Organization</span>
+          <input type="text" name="org" autocomplete="organization" placeholder="Site, clinic, or sponsor" required></label>
+      </div>
+      <div class="b2b-form-row">
+        <label class="b2b-field"><span>Work email</span>
+          <input type="email" name="email" autocomplete="email" required></label>
+        <label class="b2b-field"><span>You are a…</span>
+          <select name="role">
+            <option value="Research site / coordinator">Research site / coordinator</option>
+            <option value="Sponsor / CRO">Sponsor / CRO</option>
+            <option value="Clinic / health system">Clinic / health system</option>
+            <option value="Physician">Physician</option>
+            <option value="Other">Other</option>
+          </select></label>
+      </div>
+      <label class="b2b-field"><span>What are you recruiting for? <em>(optional)</em></span>
+        <textarea name="message" rows="3" placeholder="e.g. a Phase 2 obesity study, 3 sites, 60 patients by Q4"></textarea></label>
+      <button class="btn btn-primary btn-lg btn-block" type="submit">Request my demo {{ ic.icon('arrow-right') }}</button>
+      <p class="b2b-or">Prefer email? Write us at
+        <a href="mailto:{{ legal_contact }}?subject=BridgeMD%20live%20demo">{{ legal_contact }}</a>.</p>
+    </form>
+  </div>
+</section>
+{% endblock %}

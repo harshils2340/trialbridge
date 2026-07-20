@@ -534,16 +534,16 @@ td.num { font-variant-numeric: tabular-nums; }
 @keyframes card-in { from { transform: translateY(10px) scale(.98); opacity: 0; }
   to { transform: none; opacity: 1; } }
 .loading-spark { width: 34px; height: 34px; margin: 0 auto 18px; border-radius: 10px;
-  background: var(--ink); animation: spark 1.3s ease-in-out infinite; }
+  background: var(--accent); animation: spark 1.3s ease-in-out infinite; }
 @keyframes spark { 0%,100% { transform: scale(1); opacity: 1; }
   50% { transform: scale(.8); opacity: .6; } }
 .loading-title { font-weight: 700; font-size: 18px; letter-spacing: -.02em; }
 .loading-sub { color: var(--muted); font-size: 14px; margin-top: 6px; min-height: 20px; }
 .loading-foot { color: var(--faint); font-size: 12px; margin-top: 4px; }
-.progress { height: 6px; background: #ededea; border-radius: 999px;
+.progress { height: 6px; background: var(--surface-2); border-radius: 999px;
   overflow: hidden; margin: 20px 0 12px; }
 .progress-bar { position: relative; height: 100%; width: 0%; border-radius: 999px;
-  background: var(--ink); transition: width .3s ease; }
+  background: var(--accent); transition: width .3s ease; }
 .progress-bar::after { content: ""; position: absolute; inset: 0;
   background: linear-gradient(90deg, transparent, rgba(255,255,255,.5), transparent);
   transform: translateX(-100%); animation: gloss 1.3s ease-in-out infinite; }
@@ -840,7 +840,11 @@ body.demo-home .hero-search { max-width: 680px; margin-top: 14px; }
 body.home-screen { display: flex; flex-direction: column; min-height: 100vh;
   background: var(--bg);
   font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-body.home-screen .pub-main { flex: 1 1 auto; display: flex; flex-direction: column; min-height: 0; }
+/* Grow to fill tall screens (pins the footer to the bottom) but never shrink
+   below the hero's natural height - otherwise short viewports clip the footer
+   instead of scrolling. */
+body.home-screen .pub-main { flex: 1 0 auto; display: flex; flex-direction: column; }
+body.home-screen .landing-legal { flex-shrink: 0; }
 body.home-screen .hero { flex: 1 1 auto; display: flex; align-items: center; justify-content: center;
   max-width: none; margin: 0; padding: 20px 24px; }
 body.home-screen .hero::before { display: none; }          /* flat background, no halo */
@@ -859,9 +863,6 @@ body.home-screen .chip-row { display: flex; flex-wrap: wrap; align-items: center
 body.home-screen .chip-label { text-transform: none; letter-spacing: 0; font-size: 14px;
   font-weight: 500; color: var(--faint); padding: 0; gap: 0; justify-content: flex-start; }
 body.home-screen .chip-label::after { content: ":"; }
-
-/* The Figma nav has no theme toggle. */
-body.home-screen .theme-toggle { display: none; }
 
 /* Legal line becomes the pinned full-width footer bar (matches the Figma footer). */
 body.home-screen .landing-legal { margin: 0; padding: 14px 40px; background: var(--surface);
@@ -1021,6 +1022,16 @@ body.home-screen .landing-legal-links { margin: 0; flex: 0 0 auto; font-size: 12
   background: var(--accent-soft); transform: translateY(-1px); }
 .chip-trend::before { content: ""; width: 6px; height: 6px; border-radius: 50%;
   background: var(--accent); opacity: .75; }
+/* Signed-in home: personal shortcuts + "search again" (no marketing chrome) */
+.home-you { display: grid; gap: var(--space-3); margin-top: var(--space-4); }
+.home-you-links { display: flex; flex-wrap: wrap; gap: var(--space-3); }
+.home-you-link { display: inline-flex; align-items: center; gap: 7px; text-decoration: none;
+  font-size: 13.5px; font-weight: 600; color: var(--ink-soft); padding: 8px 14px;
+  border: 1px solid var(--border); border-radius: var(--radius-pill); background: var(--surface);
+  transition: border-color .15s, color .15s, background .15s; }
+.home-you-link:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.home-you-link .ico { width: 15px; height: 15px; }
+.recent-chip { font-family: inherit; }
 .cond-item-link { display: inline-flex; align-items: center; gap: 5px; margin-top: 8px;
   font-size: 13px; color: var(--accent); text-decoration: none; }
 .cond-item-link .ico { width: 13px; height: 13px; }
@@ -3963,3 +3974,100 @@ body.col-resizing iframe { pointer-events: none; }
 .ui-modal-x:hover { background: var(--surface-2); color: var(--ink); }
 .ui-modal-x .ico { width: 18px; height: 18px; }
 .ui-modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+
+/* ==========================================================================
+   For-clinics / study-team (B2B) marketing page. Same blue/slate theme; hero
+   headline uses Inter to match the homepage vibe. Product "snapshots" are
+   token-based CSS mock-ups (not screenshots) that mirror the real workspace.
+   ========================================================================== */
+.b2b-hero { max-width: 860px; margin: 0 auto; padding: 56px 24px 8px; text-align: center; }
+.b2b-in { max-width: 720px; margin: 0 auto; }
+.b2b-hero h1 { font-family: "Inter", var(--sans); font-size: 48px; line-height: 1.05;
+  letter-spacing: -.03em; font-weight: 800; color: var(--display-ink); margin: 18px 0 0; }
+.b2b-sub { font-size: 18px; color: var(--muted); line-height: 1.6; margin: 14px auto 0; max-width: 620px; }
+.b2b-cta { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin: 24px 0 0; }
+.b2b-note { display: inline-flex; align-items: center; gap: 7px; margin: 16px 0 0;
+  font-size: 13px; font-weight: 500; color: var(--muted); }
+.b2b-note .ico { width: 15px; height: 15px; color: var(--green); }
+
+/* Snapshots: alternating mock-UI + copy rows. */
+.snaps { max-width: 1000px; margin: 8px auto 0; padding: 24px 24px 8px; }
+.snaps-eyebrow { text-align: center; font-size: 12px; font-weight: 700; letter-spacing: .07em;
+  text-transform: uppercase; color: var(--faint); margin: 0 0 26px; }
+.snap { display: grid; grid-template-columns: 1.05fr .95fr; gap: 36px; align-items: center;
+  margin: 0 0 44px; }
+.snap-reverse .snap-ui { order: 2; }
+.snap-txt h3 { font-size: 22px; letter-spacing: -.02em; margin: 0 0 10px; }
+.snap-txt p { font-size: 15px; color: var(--muted); line-height: 1.6; margin: 0; }
+
+/* Mock window chrome shared by all snapshots. */
+.snap-win { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  box-shadow: var(--shadow-lift); overflow: hidden; }
+.snap-bar { display: flex; align-items: center; gap: 6px; padding: 11px 14px;
+  border-bottom: 1px solid var(--border); background: var(--surface-2); font-size: 12.5px;
+  font-weight: 700; color: var(--ink-soft); }
+.snap-bar b { margin-left: 8px; font-weight: 700; }
+.snap-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--border-strong); }
+.snap-rows { padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+.snap-row { display: flex; align-items: center; gap: 11px; padding: 10px 12px;
+  border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); }
+.snap-av { width: 30px; height: 30px; border-radius: 50%; background: var(--accent-soft);
+  color: var(--accent); font-size: 11.5px; font-weight: 700; display: inline-flex;
+  align-items: center; justify-content: center; flex-shrink: 0; }
+.snap-row-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.snap-row-main b { font-size: 13.5px; color: var(--ink); }
+.snap-row-main span { font-size: 11.5px; color: var(--faint); }
+
+/* Funnel snapshot. */
+.snap-funnel { padding: 14px; display: flex; flex-direction: column; gap: 11px; }
+.snap-frow { display: flex; align-items: center; gap: 12px; font-size: 12.5px; }
+.snap-flabel { width: 74px; flex-shrink: 0; color: var(--muted); font-weight: 600; }
+.snap-ftrack { flex: 1; height: 10px; border-radius: var(--radius-pill); background: var(--surface-2);
+  overflow: hidden; }
+.snap-ftrack i { display: block; height: 100%; border-radius: var(--radius-pill); background: var(--accent); }
+.snap-ftrack i.is-ok { background: var(--green); }
+.snap-frow b { width: 34px; text-align: right; color: var(--ink); font-weight: 700; }
+.snap-foot { padding: 11px 14px; border-top: 1px solid var(--border); font-size: 12px;
+  color: var(--muted); }
+.snap-foot b { color: var(--ink); }
+
+/* Eligibility snapshot. */
+.snap-elig { padding: 14px; }
+.snap-elig-h { display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  margin: 0 0 10px; }
+.snap-elig-h b { font-size: 13.5px; color: var(--ink); }
+.snap-crit { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.snap-crit li { display: flex; align-items: center; gap: 9px; font-size: 12.5px; color: var(--ink-soft); }
+.snap-crit li .ico { width: 15px; height: 15px; flex-shrink: 0; }
+.snap-crit li.ok .ico { color: var(--green); }
+.snap-crit li.no { color: var(--muted); }
+.snap-crit li.no .ico { color: var(--amber); }
+
+/* Demo request. */
+.b2b-demo { max-width: 620px; margin: 0 auto; padding: 16px 24px 72px; }
+.b2b-demo-card { background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); box-shadow: var(--shadow); padding: 30px 28px; }
+.b2b-demo-head { text-align: center; margin: 0 0 22px; }
+.b2b-demo-head h2 { font-size: 28px; letter-spacing: -.02em; margin: 0 0 8px; }
+.b2b-demo-head p { color: var(--muted); font-size: 14.5px; line-height: 1.55; margin: 0; }
+.b2b-form { display: flex; flex-direction: column; gap: 14px; }
+.b2b-form-row { display: flex; gap: 14px; }
+.b2b-field { display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 0;
+  font-size: 13px; font-weight: 600; color: var(--ink-soft); }
+.b2b-field em { font-weight: 400; color: var(--faint); font-style: normal; }
+.b2b-field input, .b2b-field select, .b2b-field textarea { border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm); padding: 11px 13px; font-size: 15px; font-family: var(--sans);
+  background: var(--surface); color: var(--ink); outline: 0; width: 100%; }
+.b2b-field input:focus, .b2b-field select:focus, .b2b-field textarea:focus {
+  border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.b2b-field textarea { resize: vertical; }
+.b2b-or { text-align: center; font-size: 13px; color: var(--muted); margin: 4px 0 0; }
+
+@media (max-width: 760px) {
+  .b2b-hero { padding: 36px 18px 4px; }
+  .b2b-hero h1 { font-size: 34px; }
+  .snap { grid-template-columns: 1fr; gap: 18px; margin-bottom: 32px; }
+  .snap-reverse .snap-ui { order: 0; }
+  .b2b-form-row { flex-direction: column; }
+  .b2b-demo-card { padding: 22px 18px; }
+}

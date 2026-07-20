@@ -164,7 +164,8 @@ def build_apply_confirmation(lead, link):
     """Warm, job-application-style confirmation sent to the applicant right after
     they apply. Sets expectations (someone will respond) and respects their time."""
     title = lead["title"] or lead["nct"] or "a clinical trial"
-    subject = f"We got your application - {lead['nct'] or title}"
+    subj_title = title if len(title) <= 60 else title[:57].rstrip() + "..."
+    subject = f"We got your application - {subj_title}"
     lines = [
         f"Hi {lead['name'] or 'there'},",
         "",
@@ -173,6 +174,10 @@ def build_apply_confirmation(lead, link):
         "next:",
         "",
         f"Trial: {title}",
+    ]
+    if lead["nct"]:
+        lines.append(f"Reference number: {lead['nct']}")
+    lines += [
         "",
         "What's next:",
         "  - The study team reviews your application.",

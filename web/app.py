@@ -378,6 +378,8 @@ RATE_LIMIT_ROUTES = {
     # Public search is the one expensive public endpoint (LLM calls per query),
     # so cap it per IP to blunt bursts/bots. Generous for real users.
     "find": max(1, int(os.environ.get("RATE_LIMIT_FIND_MAX", "20"))),
+    # Public "book a demo" form on the For-clinics page (emails the team).
+    "demo_request": max(1, int(os.environ.get("RATE_LIMIT_DEMO_MAX", "6"))),
 }
 
 # Global daily ceiling on LLM-backed searches so a traffic spike or abuse can't
@@ -2353,17 +2355,78 @@ HOME_STATS = {
 }
 
 
+def _patient_search_ctx():
+    """Prefill + shortcuts for a signed-in patient's search page, so returning
+    users don't start from scratch: reuse their known location and age/sex, and
+    offer one-tap re-search of conditions they've looked at. Uses only the
+    patient's own data; nothing is exposed to other users."""
+    p = g.patient_user
+    if not p:
+        return None
+    token = p["applicant_token"]
+    leads = db.list_leads_by_applicant(token) if token else []
+    alerts = db.list_alerts(token) if token else []
+    # Location: prefer a saved alert (it carries lat/lon/cc), else last applied lead.
+    loc = {"location": "", "lat": "", "lon": "", "cc": ""}
+    for a in alerts:
+        if a["location"]:
+            loc = {"location": a["location"], "lat": a["lat"] or "",
+                   "lon": a["lon"] or "", "cc": a["cc"] or ""}
+            break
+    if not loc["location"]:
+        for ld in leads:
+            if ld["location"]:
+                loc["location"] = ld["location"]
+                break
+    # Age/sex from the most recent application that has them -> lets us skip
+    # re-asking the intake questions on every search.
+    age, sex = "", ""
+    for ld in leads:
+        if not age and (ld["age"] or "").strip():
+            age = ld["age"].strip()
+        if not sex and ld["sex"] in ("male", "female"):
+            sex = ld["sex"]
+        if age and sex:
+            break
+    # Recent conditions for one-tap re-search (deduped, order preserved).
+    recent, seen = [], set()
+    for ld in leads:
+        c = (ld["condition"] or "").strip()
+        k = c.lower()
+        if c and k not in seen:
+            seen.add(k)
+            recent.append(c)
+        if len(recent) >= 4:
+            break
+    full = (p["full_name"] or "").strip()
+    return {
+        "location": loc["location"], "lat": loc["lat"], "lon": loc["lon"],
+        "cc": loc["cc"], "age": age, "sex": sex,
+        "interest": (p["primary_interest"] or "").strip(),
+        "recent": recent,
+        "apps_count": db.count_applications(token),
+        "alerts_count": len(alerts),
+        "first_name": full.split(" ")[0] if full else "",
+    }
+
+
 def _render_landing():
     condition_options = _merge_terms(
         trending_conditions(12), SEARCH_CONDITION_OPTIONS, 30)
     condition_prefill = request.args.get("condition", "").strip()
     location_prefill = request.args.get("location", "").strip()
+    patient_ctx = _patient_search_ctx()
+    # For a signed-in patient with no query-string prefill, fall back to their
+    # own saved location so the field is filled instead of blank.
+    if patient_ctx and not location_prefill:
+        location_prefill = patient_ctx["location"]
     return render_template("landing.html", vertical=VERTICAL,
                            conditions=trending_conditions(8),
                            drugs=trending_drugs(6), slugify=slugify,
                            condition_options=condition_options,
                            condition_value=condition_prefill,
                            location_value=location_prefill,
+                           patient_ctx=patient_ctx,
                            home_stats=HOME_STATS,
                            landing_page=True)
 
@@ -2899,6 +2962,51 @@ def interest():
 def how_it_works():
     return render_template("how.html", pipeline=db.LEAD_PIPELINE,
                            labels=db.LEAD_LABELS, blurb=db.LEAD_BLURB)
+
+
+@app.route("/for-clinicians")
+def for_clinicians():
+    """B2B marketing page for research sites, clinics and sponsors: what BridgeMD
+    does for study teams (pre-screened intake, enrollment funnel, compliant
+    in-clinic recruitment) plus a live-demo request form. Patient-free by design
+    to keep the page role-pure."""
+    _log_event("view_for_clinicians")
+    return render_template("for_clinicians.html", legal_contact=LEGAL_CONTACT)
+
+
+@app.route("/for-clinicians/demo", methods=["POST"])
+def demo_request():
+    """Handle the 'book a live demo' form. Records the request (so it is never
+    lost even if email delivery is off) and emails the team. Compliance: this is
+    a SaaS sales lead, not a referral - no money moves to any referral source."""
+    blocked = _guard_ip_rate_limit("demo_request")
+    if blocked is not None:
+        return redirect(url_for("for_clinicians") + "#demo")
+    name = request.form.get("name", "").strip()
+    org = request.form.get("org", "").strip()
+    email = request.form.get("email", "").strip()
+    role = request.form.get("role", "").strip()
+    message = request.form.get("message", "").strip()
+    if not (name and org and email):
+        flash("Please add your name, organization, and work email.", "error")
+        return redirect(url_for("for_clinicians") + "#demo")
+    # Log first so the lead is captured even when SMTP/notifications are off.
+    _log_event("demo_request", {"org": org, "role": role})
+    subject = f"BridgeMD demo request - {org}"
+    body = "\n".join([
+        "New live-demo request from the For-clinics page:",
+        "",
+        f"Name:          {name}",
+        f"Organization:  {org}",
+        f"Work email:    {email}",
+        f"Role / type:   {role or '-'}",
+        "",
+        "What they're recruiting for / notes:",
+        message or "-",
+    ])
+    _notify(OWNER_NOTIFY_EMAIL, subject, body)
+    flash("Thanks - we'll email you shortly to schedule your live demo.", "success")
+    return redirect(url_for("for_clinicians") + "#demo")
 
 
 @app.route("/privacy")

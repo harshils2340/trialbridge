@@ -55,6 +55,7 @@
   <nav class="pub-nav-center" aria-label="Primary">
     <a href="{{ url_for('find') }}">Find a trial</a>
     <a href="{{ url_for('how_it_works') }}">How it works</a>
+    <a href="{{ url_for('for_clinicians') }}">For clinics</a>
     <a href="{{ url_for('alerts') }}" class="pub-nav-alerts">{{ ic.icon('bell') }} Alerts{% if alerts_new_count %} <span class="nav-badge nav-badge-new">{{ alerts_new_count }}</span>{% endif %}</a>
   </nav>
   {% endif %}

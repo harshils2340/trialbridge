@@ -1,5 +1,13 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32" role="img" aria-label="BridgeMD">
   <rect width="32" height="32" rx="8" fill="#1a6eb0"/>
-  <circle cx="16" cy="16" r="9" fill="none" stroke="#ffffff" stroke-opacity="0.3" stroke-width="2"/>
-  <path d="M11 16h10M16 11v10" fill="none" stroke="#ffffff" stroke-width="2.6" stroke-linecap="round"/>
+  <!-- bridge span connecting the two anchor nodes (patient <-> trial) -->
+  <path d="M6.5 22.2 C 6.5 12.6, 25.5 12.6, 25.5 22.2" fill="none" stroke="#ffffff"
+        stroke-width="2.2" stroke-linecap="round"/>
+  <!-- anchor nodes -->
+  <circle cx="6.5" cy="22.2" r="2.2" fill="#ffffff"/>
+  <circle cx="25.5" cy="22.2" r="2.2" fill="#ffffff"/>
+  <!-- medical keystone hub at the center of the bridge -->
+  <circle cx="16" cy="13.4" r="5" fill="#ffffff"/>
+  <path d="M16 10.8 V16 M13.4 13.4 H18.6" fill="none" stroke="#1a6eb0"
+        stroke-width="2.2" stroke-linecap="round"/>
 </svg>
