@@ -4,18 +4,16 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="csrf-token" content="{{ csrf_token() }}">
-  <meta name="color-scheme" content="light dark">
+  <meta name="color-scheme" content="light">
   <script>
-  /* Set the theme before first paint to avoid a flash. Honors a saved choice,
-     otherwise follows the OS setting (prefers-color-scheme). */
+  /* Set the theme before first paint to avoid a flash. Default to light for
+     everyone; only go dark if the visitor explicitly chose it via the toggle.
+     (We intentionally do NOT follow the OS prefers-color-scheme, so phones set
+     to system dark mode still get our light default.) */
   (function () {
     try {
       var t = localStorage.getItem('theme');
-      if (t !== 'light' && t !== 'dark') {
-        t = (window.matchMedia &&
-             window.matchMedia('(prefers-color-scheme: dark)').matches)
-            ? 'dark' : 'light';
-      }
+      if (t !== 'dark') { t = 'light'; }
       document.documentElement.setAttribute('data-theme', t);
     } catch (e) {}
   })();

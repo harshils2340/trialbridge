@@ -232,6 +232,7 @@
   syncPreg();
 
   function startOverlay() {
+    if (!ov || ov.classList.contains('show')) return;  // guard against double-start
     ov.classList.add('show'); ov.setAttribute('aria-hidden', 'false');
     var pct = 0, i = 0;
     setInterval(function () { i++; if (i < steps.length) sub.textContent = steps[i]; }, 4200);
@@ -256,6 +257,12 @@
   function submitWithIntake() {
     intakeDone = true;
     closePre();
+    // Show the loading overlay here, not only from the submit handler:
+    // form.submit() (the requestSubmit fallback on older mobile Safari) does
+    // NOT fire the 'submit' event, so relying on the listener leaves mobile
+    // users staring at a frozen page. startOverlay() is guarded, so the extra
+    // submit-event call is a no-op.
+    startOverlay();
     if (form.requestSubmit) form.requestSubmit(); else form.submit();
   }
   var preGo = document.getElementById('preSearchGo');
