@@ -22,11 +22,6 @@
       <code>ANALYTICS_IGNORE_IPS={{ your_ip }}</code> and restart.
     {% endif %}
   </p>
-  <form method="post" action="{{ url_for('owner_analytics_reset') }}"
-        onsubmit="return confirm('Clear all visitor analytics history? This removes bot-inflated data and cannot be undone.');"
-        style="margin-top:8px;">
-    {{ ui.btn('Reset analytics history', variant='ghost', size='sm', icon='trash', type='submit') }}
-  </form>
 </div>
 
 <div class="stats">
@@ -39,12 +34,13 @@
 <div class="card dash-card ts-card">
   <div class="section-title ts-head">
     <h2>Visitors over time</h2>
-    <div class="ts-legend">
-      <span class="ts-key ts-key-visitors">Visitors</span>
-      <span class="ts-key ts-key-searches">Searches</span>
-      <span class="ts-key ts-key-applies">Applied</span>
+    <div class="ts-legend" id="tsLegend">
+      <button type="button" class="ts-key ts-key-visitors" data-series="visitors" aria-pressed="true">Visitors</button>
+      <button type="button" class="ts-key ts-key-searches" data-series="searches" aria-pressed="true">Searches</button>
+      <button type="button" class="ts-key ts-key-applies" data-series="applies" aria-pressed="true">Applied</button>
     </div>
   </div>
+  <p class="site-hint ts-legend-hint">Tap a metric to show or hide it — the chart rescales to what's visible.</p>
   <div class="ts-chart" id="tsChart" role="img"
        aria-label="Daily visitors, searches, and applications over the last {{ days }} days">
     <svg class="ts-svg" viewBox="0 0 1000 320" preserveAspectRatio="none">
@@ -84,14 +80,22 @@
 
   var W = 1000, H = 320, padT = 16, padB = 20, padL = 8, padR = 8;
   var plotH = H - padT - padB, plotW = W - padL - padR;
-  var maxV = 1;
-  data.forEach(function (d) {
-    maxV = Math.max(maxV, d.visitors || 0, d.searches || 0, d.applies || 0);
-  });
-  // Round the top of the scale up to something clean.
-  var step = Math.pow(10, Math.floor(Math.log10(maxV)));
-  var top = Math.ceil(maxV / step) * step;
-  if (top < maxV) top += step;
+  var SERIES = ['visitors', 'searches', 'applies'];
+  // Which series are currently drawn. Toggled via the clickable legend so the
+  // owner can isolate a metric; the y-scale rescales to what's visible.
+  var visible = { visitors: true, searches: true, applies: true };
+  var top = 1;  // current y-scale ceiling; recomputed on every render()
+
+  function computeTop() {
+    var m = 1;
+    data.forEach(function (d) {
+      SERIES.forEach(function (k) { if (visible[k]) m = Math.max(m, d[k] || 0); });
+    });
+    var step = Math.pow(10, Math.floor(Math.log10(m)));
+    var t = Math.ceil(m / step) * step;
+    if (t < m) t += step;
+    return t || 1;
+  }
 
   function x(i) {
     return data.length === 1 ? padL + plotW / 2
@@ -104,31 +108,66 @@
       return (i ? 'L' : 'M') + x(i).toFixed(1) + ' ' + y(d[key] || 0).toFixed(1);
     }).join(' ');
   }
-  var areaPath = linePath('visitors')
-    + ' L' + x(data.length - 1).toFixed(1) + ' ' + y(0).toFixed(1)
-    + ' L' + x(0).toFixed(1) + ' ' + y(0).toFixed(1) + ' Z';
 
-  document.getElementById('tsArea').setAttribute('d', areaPath);
-  document.getElementById('tsLineVisitors').setAttribute('d', linePath('visitors'));
-  document.getElementById('tsLineSearches').setAttribute('d', linePath('searches'));
-  document.getElementById('tsLineApplies').setAttribute('d', linePath('applies'));
-
-  // Horizontal gridlines + y labels (4 bands).
   var grid = document.getElementById('tsGrid');
-  var bands = 4;
-  for (var b = 0; b <= bands; b++) {
-    var val = Math.round(top * b / bands);
-    var gy = y(val);
-    var ln = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-    ln.setAttribute('x1', padL); ln.setAttribute('x2', W - padR);
-    ln.setAttribute('y1', gy.toFixed(1)); ln.setAttribute('y2', gy.toFixed(1));
-    ln.setAttribute('class', 'ts-gridline');
-    grid.appendChild(ln);
-    var tx = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-    tx.setAttribute('x', padL + 2); tx.setAttribute('y', (gy - 4).toFixed(1));
-    tx.setAttribute('class', 'ts-ylabel');
-    tx.textContent = val;
-    grid.appendChild(tx);
+  var area = document.getElementById('tsArea');
+  var lineEls = {
+    visitors: document.getElementById('tsLineVisitors'),
+    searches: document.getElementById('tsLineSearches'),
+    applies: document.getElementById('tsLineApplies')
+  };
+
+  function drawGrid() {
+    grid.innerHTML = '';
+    var bands = 4;
+    for (var b = 0; b <= bands; b++) {
+      var val = Math.round(top * b / bands);
+      var gy = y(val);
+      var ln = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      ln.setAttribute('x1', padL); ln.setAttribute('x2', W - padR);
+      ln.setAttribute('y1', gy.toFixed(1)); ln.setAttribute('y2', gy.toFixed(1));
+      ln.setAttribute('class', 'ts-gridline');
+      grid.appendChild(ln);
+      var tx = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      tx.setAttribute('x', padL + 2); tx.setAttribute('y', (gy - 4).toFixed(1));
+      tx.setAttribute('class', 'ts-ylabel');
+      tx.textContent = val;
+      grid.appendChild(tx);
+    }
+  }
+
+  function render() {
+    top = computeTop();
+    drawGrid();
+    if (visible.visitors) {
+      area.setAttribute('d', linePath('visitors')
+        + ' L' + x(data.length - 1).toFixed(1) + ' ' + y(0).toFixed(1)
+        + ' L' + x(0).toFixed(1) + ' ' + y(0).toFixed(1) + ' Z');
+      area.style.display = '';
+    } else {
+      area.style.display = 'none';
+    }
+    SERIES.forEach(function (k) {
+      if (visible[k]) { lineEls[k].setAttribute('d', linePath(k)); lineEls[k].style.display = ''; }
+      else { lineEls[k].style.display = 'none'; }
+    });
+  }
+  render();
+
+  // Clickable legend: toggle a series on/off (keep at least one visible).
+  var legend = document.getElementById('tsLegend');
+  if (legend) {
+    legend.querySelectorAll('.ts-key').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var k = btn.getAttribute('data-series');
+        var anyOther = SERIES.some(function (s) { return s !== k && visible[s]; });
+        if (visible[k] && !anyOther) return;  // don't allow hiding everything
+        visible[k] = !visible[k];
+        btn.setAttribute('aria-pressed', visible[k] ? 'true' : 'false');
+        btn.classList.toggle('is-off', !visible[k]);
+        render();
+      });
+    });
   }
 
   // X-axis labels: first, middle, last dates (short).
@@ -167,7 +206,10 @@
   }
   function showTip(i, clientX) {
     var d = data[i];
-    var px = x(i), py = y(d.visitors || 0);
+    // Anchor the dot to Visitors when shown, otherwise the first visible series.
+    var dotKey = visible.visitors ? 'visitors'
+      : (SERIES.filter(function (s) { return visible[s]; })[0] || 'visitors');
+    var px = x(i), py = y(d[dotKey] || 0);
     cursor.setAttribute('x1', px); cursor.setAttribute('x2', px);
     cursor.hidden = false;
     dot.setAttribute('cx', px); dot.setAttribute('cy', py); dot.hidden = false;

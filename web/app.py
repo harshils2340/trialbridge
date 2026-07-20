@@ -370,6 +370,11 @@ RATE_LIMIT_ROUTES = {
     "account_verify_resend": max(
         1, int(os.environ.get("RATE_LIMIT_VERIFY_RESEND_MAX", "5"))),
     "interest": max(1, int(os.environ.get("RATE_LIMIT_INTEREST_MAX", "12"))),
+    # Inline "verify your email to apply" flow. Sending a code hits SMTP, so keep
+    # it tighter than the verify check (which just compares a code).
+    "apply_send_code": max(1, int(os.environ.get("RATE_LIMIT_APPLY_SEND_MAX", "6"))),
+    "apply_verify_code": max(
+        1, int(os.environ.get("RATE_LIMIT_APPLY_VERIFY_MAX", "12"))),
     # Public search is the one expensive public endpoint (LLM calls per query),
     # so cap it per IP to blunt bursts/bots. Generous for real users.
     "find": max(1, int(os.environ.get("RATE_LIMIT_FIND_MAX", "20"))),
@@ -1378,7 +1383,10 @@ def _issue_patient_code(patient, purpose):
     code = _gen_code()
     exp = int(time.time()) + (10 * 60)  # 10 minutes
     db.create_patient_code(patient["id"], purpose, code, exp)
-    action = "sign-up verification" if purpose == "signup" else "login verification"
+    action = {
+        "signup": "sign-up verification",
+        "apply": "email verification",
+    }.get(purpose, "login verification")
     subject = f"Your BridgeMD {action} code"
     body = "\n".join([
         f"Hi {patient['full_name'] or 'there'},",
@@ -1494,11 +1502,33 @@ def patient_signup():
             flash("Use at least 8 characters for your password.", "error")
             return render_template("patient_signup.html",
                                    google_enabled=_google_ready())
-        if db.get_patient_by_email(email):
-            flash("An account with that email already exists. Try signing in.", "error")
-            return redirect(url_for("patient_login"))
-        pid = db.create_patient_user(
-            email, generate_password_hash(pw, method="pbkdf2:sha256"), full_name)
+        pw_hash = generate_password_hash(pw, method="pbkdf2:sha256")
+        existing = db.get_patient_by_email(email)
+        if existing:
+            # A real, password-protected account already owns this email.
+            if existing["password_hash"]:
+                flash("An account with that email already exists. Try signing in.",
+                      "error")
+                return redirect(url_for("patient_login"))
+            # Apply-first (passwordless) account: claim it by setting a password on
+            # the SAME account, so every application they already submitted with
+            # this email stays attached to their new login.
+            db.set_patient_password(existing["id"], pw_hash)
+            if existing["verified"]:
+                session[PATIENT_SESSION_KEY] = existing["id"]
+                flash("Account created - your earlier application is saved here.",
+                      "success")
+                return _post_patient_login_redirect()
+            ok, msg = _issue_patient_code(existing, "signup")
+            if not ok:
+                flash(msg, "error")
+                return render_template("patient_signup.html",
+                                       google_enabled=_google_ready())
+            session[PATIENT_PENDING_KEY] = existing["id"]
+            session[PATIENT_PENDING_PURPOSE_KEY] = "signup"
+            flash("Check your email for a 6-digit verification code.", "success")
+            return redirect(url_for("patient_verify"))
+        pid = db.create_patient_user(email, pw_hash, full_name)
         patient = db.get_patient_user(pid)
         ok, msg = _issue_patient_code(patient, "signup")
         if not ok:
@@ -1560,6 +1590,90 @@ def patient_verify_resend():
     return redirect(url_for("patient_verify"))
 
 
+def _rate_limited_json(route_key):
+    """Lightweight per-IP rate limit for JSON endpoints (no template rendering)."""
+    limit = RATE_LIMIT_ROUTES.get(route_key, 0)
+    ip = (request.remote_addr or "").strip()
+    if not ip or limit <= 0 or RATE_LIMIT_WINDOW_SECONDS <= 0:
+        return jsonify({"ok": False, "error": "unavailable",
+                        "message": "Temporarily unavailable. Please try again shortly."}), 503
+    try:
+        ok, retry_after = db.check_and_bump_ip_limit(
+            route_key, ip, limit, RATE_LIMIT_WINDOW_SECONDS)
+    except Exception:
+        app.logger.exception("rate-limit check failed for %s", route_key)
+        ok, retry_after = False, RATE_LIMIT_WINDOW_SECONDS
+    if ok:
+        return None
+    mins = max(1, int(math.ceil(float(retry_after) / 60.0)))
+    return jsonify({"ok": False, "error": "rate_limited",
+                    "message": f"Too many attempts. Try again in about {mins} minute(s)."}), 429
+
+
+def _find_or_create_apply_patient(email, name=""):
+    """Return an existing patient account for `email`, or create a passwordless one.
+
+    Apply-first accounts store an empty password_hash to mark them "claimable":
+    the visitor never set a password, so a later sign-up with the same email just
+    sets one on THIS same account (keeping their applications), and sign-in works
+    by email code. The empty hash never matches a password, so it's safe."""
+    existing = db.get_patient_by_email(email)
+    if existing:
+        return existing
+    pid = db.create_patient_user(email, "", (name or "").strip())
+    return db.get_patient_user(pid)
+
+
+@app.route("/apply/send-code", methods=["POST"])
+def apply_send_code():
+    """Inline anti-bot step on the apply form: email a 6-digit code to the address
+    the visitor typed. No account/password wall - just proves a real inbox. Creates
+    (or reuses) a passwordless patient account behind the scenes for follow-up."""
+    limited = _rate_limited_json("apply_send_code")
+    if limited:
+        return limited
+    email = (request.form.get("email", "") or "").strip().lower()
+    name = (request.form.get("name", "") or "").strip()
+    if not email or "@" not in email or "." not in email.split("@")[-1]:
+        return jsonify({"ok": False, "error": "bad_email",
+                        "message": "Enter a valid email address."}), 400
+    # Already signed in with this email? No need to verify again.
+    if g.patient_user and (g.patient_user["email"] or "").lower() == email \
+            and g.patient_user["verified"]:
+        return jsonify({"ok": True, "already_verified": True})
+    patient = _find_or_create_apply_patient(email, name)
+    ok, msg = _issue_patient_code(patient, "apply")
+    if not ok:
+        return jsonify({"ok": False, "error": "send_failed",
+                        "message": msg or "Couldn't send the code. Try again."}), 502
+    _log_event("apply_code_sent")
+    return jsonify({"ok": True})
+
+
+@app.route("/apply/verify-code", methods=["POST"])
+def apply_verify_code():
+    """Check the code the visitor entered; on success mark the email verified and
+    sign them in so the normal apply POST goes through with no login wall."""
+    limited = _rate_limited_json("apply_verify_code")
+    if limited:
+        return limited
+    email = (request.form.get("email", "") or "").strip().lower()
+    code = (request.form.get("code", "") or "").strip()
+    if not email or not code:
+        return jsonify({"ok": False, "error": "missing",
+                        "message": "Enter the code we emailed you."}), 400
+    patient = db.get_patient_by_email(email)
+    if not patient or not db.verify_patient_code(
+            patient["id"], "apply", code, int(time.time())):
+        return jsonify({"ok": False, "error": "bad_code",
+                        "message": "Invalid or expired code. Send a new one."}), 400
+    if not patient["verified"]:
+        db.mark_patient_verified(patient["id"])
+    session[PATIENT_SESSION_KEY] = patient["id"]
+    _log_event("apply_verified")
+    return jsonify({"ok": True})
+
+
 @app.route("/account/login", methods=["GET", "POST"])
 def patient_login():
     if g.patient_user:
@@ -1576,7 +1690,25 @@ def patient_login():
         email = request.form.get("email", "").strip().lower()
         pw = request.form.get("password", "")
         patient = db.get_patient_by_email(email)
-        if not patient or not check_password_hash(patient["password_hash"], pw):
+        if not patient:
+            flash("Wrong email or password.", "error")
+            return render_template("patient_login.html",
+                                   google_enabled=_google_ready())
+        # Apply-first account that never set a password: don't reject - send an
+        # email sign-in code so they can reach the applications tied to this email.
+        if not patient["password_hash"]:
+            purpose = "login" if patient["verified"] else "signup"
+            ok, msg = _issue_patient_code(patient, purpose)
+            if not ok:
+                flash(msg, "error")
+                return render_template("patient_login.html",
+                                       google_enabled=_google_ready())
+            session[PATIENT_PENDING_KEY] = patient["id"]
+            session[PATIENT_PENDING_PURPOSE_KEY] = purpose
+            flash("You applied without a password. We emailed you a 6-digit "
+                  "sign-in code.", "success")
+            return redirect(url_for("patient_verify"))
+        if not check_password_hash(patient["password_hash"], pw):
             flash("Wrong email or password.", "error")
             return render_template("patient_login.html",
                                    google_enabled=_google_ready())
@@ -1600,6 +1732,40 @@ def patient_login():
         flash("Enter the 6-digit code we sent to your email.", "success")
         return redirect(url_for("patient_verify"))
     return render_template("patient_login.html", google_enabled=_google_ready())
+
+
+@app.route("/account/code", methods=["GET", "POST"])
+def patient_code_login():
+    """Passwordless email-code sign-in. Meant for people who applied first (their
+    account has no password) and for anyone who'd rather not use a password. We
+    email a 6-digit code and hand off to the shared verify step, which signs them
+    in and shows their applications."""
+    if g.patient_user:
+        return _post_patient_login_redirect()
+    nxt = _safe_next(request.args.get("next", ""))
+    if nxt:
+        session[PATIENT_NEXT_KEY] = nxt
+    if request.method == "POST":
+        blocked = _guard_ip_rate_limit("account_login",
+                                       template_name="patient_code_login.html")
+        if blocked:
+            return blocked
+        email = request.form.get("email", "").strip().lower()
+        patient = db.get_patient_by_email(email)
+        if patient:
+            purpose = "login" if patient["verified"] else "signup"
+            ok, msg = _issue_patient_code(patient, purpose)
+            if ok:
+                session[PATIENT_PENDING_KEY] = patient["id"]
+                session[PATIENT_PENDING_PURPOSE_KEY] = purpose
+                return redirect(url_for("patient_verify"))
+            flash(msg, "error")
+            return render_template("patient_code_login.html")
+        # Neutral message so we don't reveal which emails have accounts.
+        flash("If that email has applications with us, we just sent a 6-digit "
+              "sign-in code. Check your inbox.", "success")
+        return render_template("patient_code_login.html")
+    return render_template("patient_code_login.html")
 
 
 @app.route("/account/google")
@@ -2363,6 +2529,17 @@ def _render_cached_results(search_id):
                            search_id=search_id, applied=applied, **ctx)
 
 
+def _finish_find_redirect(search_id, nct=""):
+    """Send the searcher to their results - or straight into a specific trial's
+    detail page when a deep-open NCT was requested (an SEO trial card) and it's in
+    the result set. Falls back to the results list if that trial isn't matched."""
+    if nct:
+        r_open, _ = _get_cached_trial(search_id, nct)
+        if r_open:
+            return redirect(url_for("trial_detail", search_id=search_id, nct=nct))
+    return redirect(url_for("find_results", search_id=search_id))
+
+
 @app.route("/find", methods=["GET", "POST"])
 def find():
     """Public, no-login patient search. The search form lives on the homepage;
@@ -2386,6 +2563,9 @@ def find():
     pregnant = request.form.get("pregnant", "").strip()
     other_trial = request.form.get("other_trial", "").strip()
     freeform = request.form.get("freeform", "") == "1"
+    # Optional deep-open target: SEO trial cards POST the study's NCT so we can
+    # drop the searcher directly on that trial's detail page after the search.
+    nct = request.form.get("nct", "").strip()
     # Drug/peptide search: if the typed query is a known drug (e.g. "reta" ->
     # Retatrutide, "ozempic" -> Semaglutide), search CT.gov by intervention so we
     # return that drug's actual trials, instead of the freeform LLM collapsing it
@@ -2454,7 +2634,7 @@ def find():
     cached_sid = _lookup_query_sid(qkey)
     if cached_sid:
         _log_event("search", {"q": label, "cached": 1})
-        return redirect(url_for("find_results", search_id=cached_sid))
+        return _finish_find_redirect(cached_sid, nct)
     try:
         detected, results = run_search(note, condition_query, "", False, coords,
                                        radius, unit, interventional_only=True,
@@ -2496,7 +2676,7 @@ def find():
            "q_lat": lat_in, "q_lon": lon_in, "q_cc": cc_in}
     search_id = _cache_search(results, ctx)
     _remember_query_sid(qkey, search_id)
-    return redirect(url_for("find_results", search_id=search_id))
+    return _finish_find_redirect(search_id, nct)
 
 
 @app.route("/find/<search_id>")
@@ -2551,8 +2731,11 @@ def interest():
     blocked = _guard_ip_rate_limit("interest")
     if blocked:
         return blocked
+    # Apply-first flow: the form verifies the visitor's email inline (which signs
+    # them into a passwordless account), so g.patient_user is normally set here.
+    # This stays as a fallback for a stale tab or a bot posting without verifying.
     if not g.patient_user:
-        flash("Sign in or create an account to apply.", "error")
+        flash("Verify your email on the form to apply.", "error")
         return redirect(url_for("patient_login", next=_safe_next(request.referrer) or request.path))
     f = request.form
     if not f.get("consent"):

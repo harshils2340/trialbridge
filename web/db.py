@@ -933,6 +933,17 @@ def mark_patient_verified(patient_id):
     db.commit()
 
 
+def set_patient_password(patient_id, password_hash):
+    """Set (or replace) the password on an existing account. Used to 'claim' an
+    apply-first passwordless account so the visitor's earlier applications stay
+    attached to the same account when they later create a password."""
+    db = get_db()
+    db.execute(
+        "UPDATE patient_users SET password_hash = ? WHERE id = ?",
+        (password_hash, patient_id))
+    db.commit()
+
+
 def set_patient_onboarding(patient_id, primary_interest="", notify_email="",
                            email_alerts=True):
     db = get_db()

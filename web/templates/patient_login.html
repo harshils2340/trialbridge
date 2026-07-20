@@ -32,6 +32,7 @@
         <p class="find-error" data-error-for="password"></p>
       <button class="btn btn-primary" type="submit">Continue</button>
     </form>
+    <p class="cond-note"><a href="{{ url_for('patient_code_login', next=request.args.get('next', '')) }}">Applied already? Sign in with an email code</a></p>
     <p class="cond-note">No account yet? <a href="{{ url_for('patient_signup') }}">Create one</a></p>
   </article>
 </section>

@@ -169,15 +169,7 @@
 
   <aside class="td-aside">
     <div class="td-apply">
-      {% if not patient_user %}
-      <h3 class="td-apply-title">{{ ic.icon('user-plus') }} Apply to this study</h3>
-      <p class="td-apply-sub">Create your patient account to apply and track status updates.</p>
-      <a class="btn btn-primary btn-block" href="{{ url_for('patient_signup', next=request.path) }}">Sign up to apply</a>
-      <a class="btn btn-ghost btn-block" href="{{ url_for('patient_login', next=request.path) }}">Sign in</a>
-      {% if r.public_contacts and r.public_contacts[0].email %}
-      <a class="btn btn-ghost btn-block" href="mailto:{{ r.public_contacts[0].email }}">Contact study directly</a>
-      {% endif %}
-      {% elif applied and t.nctId in applied %}
+      {% if applied and t.nctId in applied %}
       <div class="td-applied">
         <div class="td-applied-ic">{{ ic.icon('check') }}</div>
         <h3>Application submitted</h3>
@@ -185,6 +177,7 @@
         <a class="btn btn-primary btn-block" href="{{ url_for('applications') }}">Track it in My applications{{ ic.icon('arrow-right') }}</a>
       </div>
       {% else %}
+      {% set need_verify = not (patient_user and patient_user.verified) %}
       <h3 class="td-apply-title">{{ ic.icon('user-plus') }} Ask to be contacted</h3>
       <p class="td-apply-sub">Answer a few quick questions and submit contact info. Contact is shared after acceptance.</p>
 
@@ -270,12 +263,29 @@
           <label>Your name<input name="name" type="text" value="{{ patient_user.full_name if patient_user else '' }}" required></label>
           <label>Phone <span class="opt">(optional)</span><input name="phone" type="tel"></label>
         </div>
-        <label>Email<input name="email" type="email" value="{{ patient_user.email if patient_user else '' }}" required></label>
+        <label>Email<input name="email" id="ifEmail" type="email" value="{{ patient_user.email if patient_user else '' }}" required{% if not need_verify %} readonly{% endif %}></label>
+        {% if need_verify %}
+        <div class="if-verify" id="ifVerify"
+             data-send-url="{{ url_for('apply_send_code') }}"
+             data-verify-url="{{ url_for('apply_verify_code') }}">
+          <div class="if-verify-row">
+            <button class="btn btn-ghost btn-sm" type="button" id="ifSendCode">{{ ic.icon('mail') }} Verify email</button>
+            <span class="if-verify-hint" id="ifVerifyHint">Takes ~30 seconds - keeps bots out.</span>
+          </div>
+          <div class="if-code-row" id="ifCodeRow" hidden>
+            <input type="text" id="ifCode" inputmode="numeric" autocomplete="one-time-code"
+                   maxlength="6" placeholder="6-digit code" aria-label="Verification code">
+            <button class="btn btn-primary btn-sm" type="button" id="ifConfirmCode">Confirm</button>
+          </div>
+          <div class="if-verified-badge" id="ifVerifiedBadge" hidden>{{ ic.icon('check') }} Email verified</div>
+        </div>
+        {% endif %}
         <label class="if-consent">
           <input type="checkbox" name="consent" required>
           <span>I agree to share a blinded summary for review and contact details after acceptance.</span>
         </label>
-        <button class="btn btn-primary btn-block" type="submit">{{ ic.icon('arrow-right') }} Submit application</button>
+        <button class="btn btn-primary btn-block" type="submit" id="ifSubmit"{% if need_verify %} disabled{% endif %}>{{ ic.icon('arrow-right') }} Submit application</button>
+        {% if need_verify %}<p class="if-verify-gate" id="ifVerifyGate">Verify your email above to enable submit.</p>{% endif %}
       </form>
       {% endif %}
     </div>
@@ -352,6 +362,99 @@
       if (note) note.remove();
     })
     .catch(function () { if (note) note.remove(); });
+})();
+</script>
+
+<script>
+/* Inline "verify your email to apply": emails a 6-digit code, confirms it, and
+   only then enables Submit. Signs the visitor into a passwordless account server
+   side, so the normal apply POST goes through with no login wall. Anti-bot: real
+   inbox required, no automated mass-apply. */
+(function () {
+  var box = document.getElementById('ifVerify');
+  if (!box) return;
+  var sendUrl = box.getAttribute('data-send-url');
+  var verifyUrl = box.getAttribute('data-verify-url');
+  var emailEl = document.getElementById('ifEmail');
+  var sendBtn = document.getElementById('ifSendCode');
+  var hint = document.getElementById('ifVerifyHint');
+  var codeRow = document.getElementById('ifCodeRow');
+  var codeEl = document.getElementById('ifCode');
+  var confirmBtn = document.getElementById('ifConfirmCode');
+  var badge = document.getElementById('ifVerifiedBadge');
+  var submit = document.getElementById('ifSubmit');
+  var gate = document.getElementById('ifVerifyGate');
+  var csrf = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
+
+  function post(url, data) {
+    var fd = new FormData();
+    Object.keys(data).forEach(function (k) { fd.append(k, data[k]); });
+    fd.append('_csrf_token', csrf);
+    return fetch(url, {
+      method: 'POST', credentials: 'same-origin', body: fd,
+      headers: { 'X-CSRF-Token': csrf, 'X-Requested-With': 'XMLHttpRequest' }
+    }).then(function (r) { return r.json().catch(function () { return {}; }); });
+  }
+  function say(msg, isErr) {
+    if (!hint) return;
+    hint.textContent = msg;
+    hint.classList.toggle('is-error', !!isErr);
+  }
+  function markVerified() {
+    if (codeRow) codeRow.hidden = true;
+    if (sendBtn) sendBtn.hidden = true;
+    if (hint) hint.hidden = true;
+    if (badge) badge.hidden = false;
+    if (emailEl) emailEl.setAttribute('readonly', 'readonly');
+    if (submit) submit.disabled = false;
+    if (gate) gate.hidden = true;
+  }
+
+  sendBtn && sendBtn.addEventListener('click', function () {
+    var email = (emailEl && emailEl.value || '').trim();
+    if (!email || email.indexOf('@') < 0) { say('Enter your email first.', true); emailEl && emailEl.focus(); return; }
+    sendBtn.disabled = true;
+    say('Sending code…', false);
+    var name = (document.querySelector('input[name="name"]') || {}).value || '';
+    post(sendUrl, { email: email, name: name }).then(function (d) {
+      sendBtn.disabled = false;
+      if (d && d.ok) {
+        if (d.already_verified) { markVerified(); return; }
+        sendBtn.textContent = 'Resend code';
+        if (codeRow) codeRow.hidden = false;
+        say('We emailed a 6-digit code. Enter it below.', false);
+        codeEl && codeEl.focus();
+      } else {
+        say((d && d.message) || 'Could not send the code. Try again.', true);
+      }
+    }).catch(function () { sendBtn.disabled = false; say('Network error. Try again.', true); });
+  });
+
+  confirmBtn && confirmBtn.addEventListener('click', function () {
+    var email = (emailEl && emailEl.value || '').trim();
+    var code = (codeEl && codeEl.value || '').trim();
+    if (!code) { codeEl && codeEl.focus(); return; }
+    confirmBtn.disabled = true;
+    post(verifyUrl, { email: email, code: code }).then(function (d) {
+      confirmBtn.disabled = false;
+      if (d && d.ok) { markVerified(); }
+      else { say((d && d.message) || 'Invalid code.', true); codeEl && codeEl.focus(); }
+    }).catch(function () { confirmBtn.disabled = false; say('Network error. Try again.', true); });
+  });
+
+  codeEl && codeEl.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { e.preventDefault(); confirmBtn && confirmBtn.click(); }
+  });
+  // If the visitor edits the email after verifying, require re-verification.
+  emailEl && emailEl.addEventListener('input', function () {
+    if (badge && !badge.hidden) {
+      badge.hidden = true;
+      if (sendBtn) { sendBtn.hidden = false; sendBtn.textContent = 'Verify email'; }
+      if (hint) hint.hidden = false;
+      if (submit) submit.disabled = true;
+      if (gate) gate.hidden = false;
+    }
+  });
 })();
 </script>
 {% endblock %}

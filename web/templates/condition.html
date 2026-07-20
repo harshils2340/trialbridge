@@ -85,9 +85,18 @@
   var ov = document.getElementById('loadingOverlay');
   var bar = document.getElementById('progressBar');
   var sub = document.getElementById('loadingSub');
+  var loc = document.getElementById('location');
+  var locLat = document.getElementById('locLat'), locLon = document.getElementById('locLon'),
+      locCc = document.getElementById('locCc'), confirmEl = document.getElementById('locConfirm');
+  var useLoc = document.getElementById('useLoc');
+  var cityVal = {{ (city or '')|tojson }};
+  var geoUrl = '{{ url_for("geo_reverse") }}';
   var steps = ['Fetching recruiting studies', 'Checking which are near you',
                'Reading eligibility for each', 'Ranking your best matches'];
-  form.addEventListener('submit', function () {
+
+  var overlayStarted = false;
+  function showOverlay() {
+    if (overlayStarted) return; overlayStarted = true;
     ov.classList.add('show'); ov.setAttribute('aria-hidden', 'false');
     var pct = 0, i = 0;
     setInterval(function () { i++; if (i < steps.length) sub.textContent = steps[i]; }, 4200);
@@ -95,37 +104,88 @@
       pct += Math.max(0.4, (92 - pct) * 0.05); if (pct > 92) pct = 92;
       bar.style.width = pct.toFixed(1) + '%';
     }, 220);
-  });
+  }
   window.addEventListener('pagehide', function () { if (bar) bar.style.width = '100%'; });
 
-  var useLoc = document.getElementById('useLoc');
-  var loc = document.getElementById('location');
-  var locLat = document.getElementById('locLat'), locLon = document.getElementById('locLon'),
-      locCc = document.getElementById('locCc'), confirmEl = document.getElementById('locConfirm');
+  // Ask the browser for coords, reverse-geocode to a readable place, then call back.
+  function geolocate(onOk, onErr) {
+    if (!navigator.geolocation) { onErr && onErr(); return; }
+    navigator.geolocation.getCurrentPosition(function (pos) {
+      var la = pos.coords.latitude.toFixed(6), lo = pos.coords.longitude.toFixed(6);
+      fetch(geoUrl + '?lat=' + la + '&lon=' + lo)
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          onOk({ lat: la, lon: lo, cc: (d && d.ok && d.cc) || '',
+                 label: (d && d.ok && d.label) || 'Current location' });
+        }).catch(function () { onOk({ lat: la, lon: lo, cc: '', label: 'Current location' }); });
+    }, function () { onErr && onErr(); },
+    { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 });
+  }
+  function setTopLoc(g) {
+    locLat.value = g.lat; locLon.value = g.lon; locCc.value = g.cc || ''; loc.value = g.label;
+    confirmEl.className = 'loc-confirm ok';
+    confirmEl.innerHTML = '📍 Using your location: <b>' + g.label + '</b>';
+    confirmEl.style.display = 'block';
+  }
+  function askLoc(msg) {
+    confirmEl.style.display = 'block'; confirmEl.className = 'loc-confirm err';
+    confirmEl.textContent = msg || 'Enter your city or postal code to search.';
+    if (loc.scrollIntoView) loc.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    loc.focus();
+  }
+
   if (loc) loc.addEventListener('input', function () {
     if (locLat.value) { locLat.value = locLon.value = locCc.value = ''; confirmEl.style.display = 'none'; }
   });
+
+  // Main search: if no location yet, grab it instantly, then search. No dead ends.
+  form.addEventListener('submit', function (e) {
+    var hasLoc = (locLat.value && locLon.value) || loc.value.trim();
+    if (!hasLoc) {
+      e.preventDefault();
+      confirmEl.style.display = 'block'; confirmEl.className = 'loc-confirm';
+      confirmEl.textContent = '📍 Getting your location…';
+      geolocate(function (g) { setTopLoc(g); showOverlay(); form.submit(); },
+                function () { askLoc(); });
+      return;
+    }
+    showOverlay();
+  });
+
   if (useLoc) useLoc.addEventListener('click', function () {
-    if (!navigator.geolocation) { return; }
     var orig = useLoc.innerHTML; useLoc.textContent = 'Locating…'; useLoc.disabled = true;
-    navigator.geolocation.getCurrentPosition(function (pos) {
-      var la = pos.coords.latitude.toFixed(6), lo = pos.coords.longitude.toFixed(6);
-      locLat.value = la; locLon.value = lo;
-      fetch('{{ url_for("geo_reverse") }}?lat=' + la + '&lon=' + lo)
-        .then(function (r) { return r.json(); })
-        .then(function (d) {
-          if (d && d.ok) { loc.value = d.label; locCc.value = d.cc || '';
-            confirmEl.className = 'loc-confirm ok';
-            confirmEl.innerHTML = '📍 Using your location: <b>' + d.label + '</b>'; }
-          else { loc.value = loc.value || 'Current location';
-            confirmEl.className = 'loc-confirm ok'; confirmEl.textContent = '📍 Using your current location.'; }
-          confirmEl.style.display = 'block'; useLoc.disabled = false; useLoc.innerHTML = orig;
-        }).catch(function () { useLoc.disabled = false; useLoc.innerHTML = orig; });
-    }, function () {
-      confirmEl.style.display = 'block'; confirmEl.className = 'loc-confirm err';
-      confirmEl.textContent = 'Couldn’t get your location - type a city or postal code.';
-      useLoc.disabled = false; useLoc.innerHTML = orig;
-    }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 });
+    geolocate(function (g) { setTopLoc(g); useLoc.disabled = false; useLoc.innerHTML = orig; },
+              function () {
+                confirmEl.style.display = 'block'; confirmEl.className = 'loc-confirm err';
+                confirmEl.textContent = 'Couldn’t get your location - type a city or postal code.';
+                useLoc.disabled = false; useLoc.innerHTML = orig;
+              });
+  });
+
+  // Trial cards run the real matcher for that study near the visitor, then deep-open
+  // its detail page. Location precedence: resolved coords -> typed city -> page city
+  // -> ask the browser -> prompt on-site. Never a dead-end link.
+  Array.prototype.forEach.call(document.querySelectorAll('.js-card-search'), function (f) {
+    f.addEventListener('submit', function (e) {
+      var typed = loc.value.trim();
+      if (locLat.value && locLon.value) {
+        f.querySelector('.card-lat').value = locLat.value;
+        f.querySelector('.card-lon').value = locLon.value;
+        f.querySelector('.card-cc').value = locCc.value;
+        if (typed) f.querySelector('.card-loc').value = typed;
+        showOverlay(); return;
+      }
+      if (typed) { f.querySelector('.card-loc').value = typed; showOverlay(); return; }
+      if (cityVal) { showOverlay(); return; }   // card already carries the page city
+      e.preventDefault();
+      geolocate(function (g) {
+        f.querySelector('.card-lat').value = g.lat;
+        f.querySelector('.card-lon').value = g.lon;
+        f.querySelector('.card-cc').value = g.cc || '';
+        f.querySelector('.card-loc').value = g.label;
+        showOverlay(); f.submit();
+      }, function () { askLoc('Add your city or postal code, then tap the study again.'); });
+    });
   });
 })();
 </script>
@@ -134,16 +194,31 @@
 <section class="cond-list">
   <h2>Recruiting {{ condition|lower }} studies{% if city %} near {{ city }}{% endif %} right now</h2>
   {% for t in trials %}
-  <a class="cond-item" href="{{ url_for('find', condition=condition) }}">
-    <div class="cond-item-main">
-      <h3>{{ t.title }}</h3>
-      {% if t.briefSummary %}<p>{{ t.briefSummary[:180] }}{{ '…' if t.briefSummary|length > 180 }}</p>{% endif %}
-    </div>
-    <div class="cond-item-meta">
-      {% if t.phase %}<span class="pr-phase">{{ t.phase }}</span>{% endif %}
-      <span class="status-tag">Recruiting</span>
-    </div>
-  </a>
+  <div class="cond-item-wrap">
+    <form class="js-card-search" method="post" action="{{ url_for('find') }}">
+      <input type="hidden" name="condition" value="{{ condition }}">
+      <input type="hidden" name="location" value="{{ city or '' }}" class="card-loc">
+      <input type="hidden" name="lat" class="card-lat">
+      <input type="hidden" name="lon" class="card-lon">
+      <input type="hidden" name="cc" class="card-cc">
+      <input type="hidden" name="radius" value="50">
+      <input type="hidden" name="nct" value="{{ t.nctId }}">
+      <button type="submit" class="cond-item">
+        <div class="cond-item-main">
+          <h3>{{ t.title }}</h3>
+          {% if t.briefSummary %}<p>{{ t.briefSummary[:180] }}{{ '…' if t.briefSummary|length > 180 }}</p>{% endif %}
+        </div>
+        <div class="cond-item-meta">
+          {% if t.phase %}<span class="pr-phase">{{ t.phase }}</span>{% endif %}
+          <span class="status-tag">Recruiting</span>
+          <span class="cond-item-go">Check my eligibility {{ ic.icon('arrow-right') }}</span>
+        </div>
+      </button>
+    </form>
+    {% if t.nctId %}
+    <a class="cond-item-ext" href="https://clinicaltrials.gov/study/{{ t.nctId }}" target="_blank" rel="noopener">{{ ic.icon('external') }} View study record on ClinicalTrials.gov</a>
+    {% endif %}
+  </div>
   {% endfor %}
 </section>
 {% endif %}

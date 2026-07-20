@@ -1,0 +1,42 @@
+{% extends "public_base.html" %}
+{% block title %}Sign in with an email code · BridgeMD{% endblock %}
+{% block body %}
+<section class="auth-shell">
+  <article class="auth-card">
+    <a class="auth-brand" href="{{ url_for('home') }}">
+      <img src="{{ url_for('static', filename='logo.svg') }}" alt="">
+      <span>BridgeMD</span>
+    </a>
+    <h1 class="auth-title">Sign in with an email code</h1>
+    <p class="auth-sub">Applied without creating a password? Enter your email and
+      we'll send a 6-digit code to sign you in and show your applications.</p>
+    <form method="post" class="find-form" novalidate data-friendly-validate>
+      <label class="find-field"><span>Email</span>
+        <input type="email" name="email" required></label>
+        <p class="find-error" data-error-for="email"></p>
+      <button class="btn btn-primary" type="submit">{{ ic.icon('mail') }} Email me a sign-in code</button>
+    </form>
+    <p class="cond-note">Prefer a password? <a href="{{ url_for('patient_login') }}">Sign in the usual way</a></p>
+  </article>
+</section>
+<script>
+(function () {
+  var form = document.querySelector('form[data-friendly-validate]');
+  if (!form) return;
+  function showError(name, message) {
+    var input = form.querySelector('[name="' + name + '"]');
+    var err = form.querySelector('[data-error-for="' + name + '"]');
+    if (input) input.classList.toggle('input-invalid', !!message);
+    if (err) { err.textContent = message || ''; err.classList.toggle('show', !!message); }
+  }
+  form.email.addEventListener('input', function () { showError('email', ''); });
+  form.addEventListener('submit', function (e) {
+    var email = (form.email.value || '').trim();
+    if (!email) { showError('email', 'Enter your email address.'); e.preventDefault(); }
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      showError('email', 'Enter a valid email address.'); e.preventDefault();
+    }
+  });
+})();
+</script>
+{% endblock %}
