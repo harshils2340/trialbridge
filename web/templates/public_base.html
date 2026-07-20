@@ -21,6 +21,23 @@
   <title>{% block title %}BridgeMD - find a clinical trial near you{% endblock %}</title>
   <meta name="description" content="{% block description %}Find recruiting clinical trials and apply online.{% endblock %}">
   <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='logo.svg') }}">
+  {# Social share cards: rich preview when a link is posted to Reddit / Facebook /
+     WhatsApp / iMessage / X. Pages override og_title/og_description/og_image/og_url
+     as needed; everything falls back to the page title + a branded default card. #}
+  {% block social %}
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="BridgeMD">
+  <meta property="og:title" content="{% block og_title %}{{ self.title() }}{% endblock %}">
+  <meta property="og:description" content="{% block og_description %}{{ self.description() }}{% endblock %}">
+  <meta property="og:url" content="{% block og_url %}{{ request.url }}{% endblock %}">
+  <meta property="og:image" content="{% block og_image %}{{ url_for('static', filename='og-default.png', _external=True) }}{% endblock %}">
+  <meta property="og:image:width" content="1536">
+  <meta property="og:image:height" content="1024">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="{{ self.og_title() }}">
+  <meta name="twitter:description" content="{{ self.og_description() }}">
+  <meta name="twitter:image" content="{{ self.og_image() }}">
+  {% endblock %}
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Inter:wght@400;500;600;700&family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&display=swap" rel="stylesheet">

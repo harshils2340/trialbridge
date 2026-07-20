@@ -2,15 +2,13 @@
 {% block title %}{{ condition }} clinical trials{% if city %} in {{ city }}{% endif %} · BridgeMD{% endblock %}
 {% block description %}Find recruiting {{ condition|lower }} clinical trials{% if city %} near {{ city }}{% endif %} and apply online. Real, currently-enrolling studies from ClinicalTrials.gov.{% endblock %}
 
+{% block og_title %}{{ condition }} clinical trials{% if city %} in {{ city }}{% endif %} - recruiting now{% endblock %}
+{% block og_description %}Find recruiting {{ condition|lower }} clinical trials{% if city %} near {{ city }}{% endif %} and apply online. Real, currently-enrolling studies from ClinicalTrials.gov.{% endblock %}
+{% block og_url %}{{ canonical_url|default(request.url) }}{% endblock %}
+
 {% block head_extra %}
 {% set _canon = canonical_url|default(request.url) %}
 <link rel="canonical" href="{{ _canon }}">
-<meta property="og:type" content="website">
-<meta property="og:site_name" content="BridgeMD">
-<meta property="og:title" content="{{ condition }} clinical trials{% if city %} in {{ city }}{% endif %}">
-<meta property="og:description" content="Find recruiting {{ condition|lower }} clinical trials{% if city %} near {{ city }}{% endif %} and apply online.">
-<meta property="og:url" content="{{ _canon }}">
-<meta name="twitter:card" content="summary">
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",

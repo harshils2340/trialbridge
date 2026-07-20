@@ -6,26 +6,26 @@
    * ============================================================= */
 
   /* Surfaces & ink ------------------------------------------------ */
-  --bg: #f7f7f5;
+  --bg: #f8fafc;
   --surface: #ffffff;
-  --surface-2: #fbfbfa;
-  --ink: #111114;
-  --ink-soft: #33333a;
-  --muted: #6b6b74;
-  --faint: #a2a2aa;
-  --border: #ececf0;
-  --border-strong: #dededa;
+  --surface-2: #f1f5f9;
+  --ink: #0f172a;
+  --ink-soft: #334155;
+  --muted: #5a6a7e;
+  --faint: #94a3b8;
+  --border: #e2e8f0;
+  --border-strong: #cbd5e1;
 
-  /* Brand & actions ---------------------------------------------- */
-  --accent: #4f46e5;
-  --accent-soft: #eef0fe;
+  /* Brand & actions (BridgeMD blue) ------------------------------ */
+  --accent: #1a6eb0;
+  --accent-soft: #e8f2fb;
   --accent-ink: #ffffff;
-  --btn: #141417;
-  --btn-hover: #2b2b31;
+  --btn: #1a6eb0;
+  --btn-hover: #155a90;
 
   /* Status tones (one per meaning - do not add new greens/reds) --- */
-  --green: #157a5b;
-  --green-bg: #e9f4ef;
+  --green: #16a34a;
+  --green-bg: #e7f7ec;
   --ok: var(--green);            /* alias: success == brand green */
   --ok-bg: var(--green-bg);
   --amber: #97620f;
@@ -60,10 +60,10 @@
   /* Editorial serif for display headlines - reads authoritative/academic. */
   --serif: "Newsreader", Georgia, "Times New Roman", serif;
 
-  /* Deep navy for headline ink + academic accents (indigo stays the ACTION
-   * accent). --display-ink flips light in dark mode via the theme override. */
-  --navy: #14213d;
-  --navy-soft: #2a3a5c;
+  /* Slate ink for display headlines (blue stays the ACTION accent).
+   * --display-ink flips light in dark mode via the theme override. */
+  --navy: #0f172a;
+  --navy-soft: #475569;
   --display-ink: var(--navy);
 }
 
@@ -82,7 +82,7 @@ body {
 a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
 h1, h2, h3, h4 { color: var(--ink); }
-::selection { background: #dfe0ff; }
+::selection { background: #cfe4f5; }
 
 /* ---------- Sidebar layout ---------- */
 .layout { display: flex; min-height: 100vh; align-items: stretch; }
@@ -783,6 +783,42 @@ body.demo-home .hero-search { max-width: 680px; margin-top: 14px; }
 .hero-sub { font-size: 18.5px; color: var(--muted); max-width: 600px; margin: 18px auto 0;
   line-height: 1.6; }
 
+/* Stats bar - three credibility cells with hairline dividers (design homepage). */
+.hero-stats { display: inline-flex; align-items: stretch; gap: 1px; margin: 22px auto 0;
+  border: 1px solid var(--border); background: var(--border);
+  border-radius: var(--radius-sm); overflow: hidden; }
+.hero-stat { display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 2px; padding: 10px 20px; background: var(--surface); min-width: 132px; }
+.hero-stat-v { font-size: 17px; font-weight: 800; letter-spacing: -.02em; color: var(--ink);
+  line-height: 1.1; }
+.hero-stat-v.hero-stat-green { color: var(--green); }
+.hero-stat-l { font-size: 11.5px; color: var(--faint); line-height: 1.25; text-align: center; }
+
+/* Search card - wraps the mode toggle, search bar and "use my location". */
+.hero-card { max-width: 780px; margin: 24px auto 0; background: var(--surface);
+  border: 1px solid var(--border); border-radius: var(--radius);
+  box-shadow: 0 2px 20px rgba(15,23,42,.06), 0 1px 4px rgba(15,23,42,.04);
+  padding: 20px; text-align: left; }
+.hero-card .search-modes { margin: 0 0 14px; }
+.hero-card .hero-search { margin: 0; box-shadow: 0 1px 2px rgba(15,23,42,.04);
+  border-color: var(--border); }
+.hero-card .hero-search:focus-within { box-shadow: 0 0 0 3px var(--accent-soft); }
+.hero-card .hero-loc-actions { justify-content: flex-end; margin: 8px 0 0; }
+.hero-card .hero-hint { text-align: left; margin: 10px 0 0; }
+
+/* Single trust line under the search card (design homepage). */
+.hero-trust { max-width: 640px; margin: 22px auto 0; text-align: center;
+  font-size: 12.5px; color: var(--faint); line-height: 1.6; }
+.hero-trust a { color: var(--faint); text-decoration: underline; }
+.hero-trust a:hover { color: var(--muted); }
+
+@media (max-width: 640px) {
+  .hero-stats { width: 100%; }
+  .hero-stat { flex: 1 1 0; min-width: 0; padding: 10px 8px; }
+  .hero-stat-l { font-size: 10.5px; }
+  .hero-card { padding: 16px; }
+}
+
 /* Trust bar - light inline credibility markers directly under the hero. */
 .trust-bar { max-width: 900px; margin: 40px auto 0; padding: 0 24px; }
 .trust-bar-in { display: flex; flex-wrap: wrap; justify-content: center;
@@ -878,8 +914,9 @@ body.demo-home .hero-search { max-width: 680px; margin-top: 14px; }
   font-weight: 600; color: var(--muted); cursor: pointer;
   transition: background .15s ease, color .15s ease, box-shadow .15s ease; }
 .search-mode:hover { color: var(--ink); }
-.search-mode.is-active { background: var(--surface); color: var(--accent);
-  box-shadow: var(--shadow); }
+.search-mode.is-active { background: var(--accent); color: var(--accent-ink);
+  box-shadow: 0 1px 5px rgba(26,110,176,.28); }
+.search-mode.is-active:hover { color: var(--accent-ink); }
 /* Reusable typeahead dropdown (alerts "new alert" form matches hero search). */
 .ac-field { position: relative; }
 .ac-suggest { position: absolute; left: 0; right: 0; top: calc(100% + 4px);
@@ -2781,11 +2818,11 @@ main:focus { outline: none; }
   --faint: #71747f;
   --border: #2a2e37;
   --border-strong: #3a3f4b;
-  --accent: #a4a6fb;
-  --accent-soft: #24263c;
+  --accent: #6bb2e6;
+  --accent-soft: #16283a;
   --accent-ink: #0f1115;
-  --btn: #5b5ef0;
-  --btn-hover: #6f72f4;
+  --btn: #2a86c9;
+  --btn-hover: #3f97d8;
   --green: #4ecb9c;
   --green-bg: #10261e;
   --amber: #e2ab55;

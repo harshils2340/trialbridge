@@ -1,13 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32" role="img" aria-label="BridgeMD">
-  <rect width="32" height="32" rx="8" fill="#141417"/>
-  <g fill="none" stroke="#ffffff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
-    <!-- bridge deck -->
-    <line x1="7" y1="22" x2="25" y2="22"/>
-    <!-- mast + medical cross -->
-    <line x1="16" y1="22" x2="16" y2="6"/>
-    <line x1="12" y1="10" x2="20" y2="10"/>
-    <!-- suspension cables -->
-    <line x1="16" y1="6" x2="7.5" y2="22"/>
-    <line x1="16" y1="6" x2="24.5" y2="22"/>
-  </g>
+  <rect width="32" height="32" rx="8" fill="#1a6eb0"/>
+  <circle cx="16" cy="16" r="9" fill="none" stroke="#ffffff" stroke-opacity="0.3" stroke-width="2"/>
+  <path d="M11 16h10M16 11v10" fill="none" stroke="#ffffff" stroke-width="2.6" stroke-linecap="round"/>
 </svg>

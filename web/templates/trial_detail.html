@@ -1,6 +1,7 @@
 {% extends "public_base.html" %}
 {% set t = r.trial %}{% set m = r.match %}
 {% block title %}{{ t.title }} · BridgeMD{% endblock %}
+{% block og_description %}See if you may be eligible for this recruiting{% if condition %} {{ condition|lower }}{% endif %} study{% if location %} near {{ location }}{% endif %} and apply online in minutes. Trial details from ClinicalTrials.gov; the study team decides eligibility.{% endblock %}
 
 {% set labels = {
   'likely_eligible': ('You may be a good fit', 'good'),

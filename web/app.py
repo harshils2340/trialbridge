@@ -2339,6 +2339,20 @@ def track_visit():
     return ("", 204)
 
 
+# Homepage credibility stats. Baked from a ClinicalTrials.gov scrape (run
+# tools/refresh_home_stats.py to recompute) instead of hitting the API on every
+# page load. Floors are rounded DOWN so the "+" stays truthful.
+#   Refreshed 2026-07-20 against https://clinicaltrials.gov/api/v2/studies:
+#     overallStatus=RECRUITING ............................. 65,213  -> 65,000+
+#     RECRUITING + (compensation wording OR healthy volunteers)  2,680  ->  2,500+
+#       (paid-study proxy; CT.gov rarely indexes pay wording, so this is a
+#        conservative floor of trials that may compensate participants.)
+HOME_STATS = {
+    "recruiting": "65,000+",
+    "paid": "2,500+",
+}
+
+
 def _render_landing():
     condition_options = _merge_terms(
         trending_conditions(12), SEARCH_CONDITION_OPTIONS, 30)
@@ -2350,6 +2364,7 @@ def _render_landing():
                            condition_options=condition_options,
                            condition_value=condition_prefill,
                            location_value=location_prefill,
+                           home_stats=HOME_STATS,
                            landing_page=True)
 
 
