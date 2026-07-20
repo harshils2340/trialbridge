@@ -846,26 +846,28 @@ body.home-screen { display: flex; flex-direction: column; min-height: 100vh;
 body.home-screen .pub-main { flex: 1 0 auto; display: flex; flex-direction: column; }
 body.home-screen .landing-legal { flex-shrink: 0; }
 body.home-screen .hero { flex: 1 1 auto; display: flex; align-items: center; justify-content: center;
-  max-width: none; margin: 0; padding: 20px 24px; }
+  max-width: none; margin: 0; padding: 14px 24px 18px; }
 body.home-screen .hero::before { display: none; }          /* flat background, no halo */
 body.home-screen .hero-in { max-width: 820px; width: 100%; margin: 0 auto; }
 body.home-screen .hero h1 { font-family: inherit; max-width: none; margin: 0 auto;
-  font-size: 52px; line-height: 1.04; letter-spacing: -.03em; font-weight: 800; white-space: nowrap; }
-body.home-screen .hero-sub { font-size: 16.5px; margin-top: 10px; }
+  font-size: 46px; line-height: 1.04; letter-spacing: -.03em; font-weight: 800; white-space: nowrap; }
+body.home-screen .hero-sub { font-size: 16px; margin-top: 8px; }
 body.home-screen .hero-hint { display: none; }             /* Figma has no hint line */
-body.home-screen .hero-stats { margin-top: 14px; }
-body.home-screen .hero-card { margin-top: 16px; }
-body.home-screen .hero-trust { margin-top: 12px; }
+body.home-screen .hero-stats { margin-top: 12px; }
+body.home-screen .hero-stat { padding: 8px 18px; }
+body.home-screen .hero-card { margin-top: 12px; padding: 16px; }
+body.home-screen .hero-card .search-modes { margin-bottom: 10px; }
+body.home-screen .hero-trust { margin-top: 10px; }
 
 /* Trending: sentence-case inline label + chips (not the uppercase pill label). */
-body.home-screen .chips-block { margin-top: 12px; }
+body.home-screen .chips-block { margin-top: 10px; }
 body.home-screen .chip-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 body.home-screen .chip-label { text-transform: none; letter-spacing: 0; font-size: 14px;
   font-weight: 500; color: var(--faint); padding: 0; gap: 0; justify-content: flex-start; }
 body.home-screen .chip-label::after { content: ":"; }
 
 /* Legal line becomes the pinned full-width footer bar (matches the Figma footer). */
-body.home-screen .landing-legal { margin: 0; padding: 14px 40px; background: var(--surface);
+body.home-screen .landing-legal { margin: 0; padding: 12px 40px; background: var(--surface);
   border-top: 1px solid var(--border); display: flex; align-items: center;
   justify-content: space-between; flex-wrap: wrap; gap: 6px 24px; text-align: left; }
 body.home-screen .landing-legal-disc { margin: 0; flex: 1 1 420px; font-size: 12px;
