@@ -490,6 +490,18 @@ CREATE TABLE IF NOT EXISTS web_events (
     detail      TEXT DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_web_events_ts ON web_events(ts);
+
+-- Scoped SEO surface for per-study pages: the set of trials we consider worth
+-- indexing (populated from our condition/city SEO pages). Keeps /study/<nct>
+-- pages and the sitemap bounded to real, on-topic recruiting trials instead of
+-- every study on ClinicalTrials.gov.
+CREATE TABLE IF NOT EXISTS seo_study_index (
+    nct         TEXT PRIMARY KEY,
+    title       TEXT DEFAULT '',
+    condition   TEXT DEFAULT '',
+    updated_at  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_seo_study_updated ON seo_study_index(updated_at);
 CREATE INDEX IF NOT EXISTS idx_web_events_name ON web_events(name);
 
 -- Plain-English trial summaries (see web/summarize.py). Cached per study so we
@@ -3834,6 +3846,36 @@ def list_alerts(applicant_token):
 def list_active_alerts():
     return get_db().execute(
         "SELECT * FROM alerts WHERE active = 1 ORDER BY id").fetchall()
+
+
+def upsert_seo_study(nct, title="", condition=""):
+    """Record a trial as part of our indexable SEO surface (idempotent)."""
+    nct = (nct or "").strip().upper()
+    if not nct:
+        return
+    db = get_db()
+    db.execute(
+        "INSERT INTO seo_study_index (nct, title, condition, updated_at) "
+        "VALUES (?, ?, ?, ?) "
+        "ON CONFLICT(nct) DO UPDATE SET title=excluded.title, "
+        "condition=excluded.condition, updated_at=excluded.updated_at",
+        (nct, (title or "").strip(), (condition or "").strip(), now()))
+    db.commit()
+
+
+def is_seo_study(nct):
+    nct = (nct or "").strip().upper()
+    if not nct:
+        return False
+    return get_db().execute(
+        "SELECT 1 FROM seo_study_index WHERE nct = ?", (nct,)).fetchone() is not None
+
+
+def list_seo_studies(limit=5000):
+    """NCTs in our indexable SEO surface, most-recently-seen first."""
+    return get_db().execute(
+        "SELECT nct, title, condition, updated_at FROM seo_study_index "
+        "ORDER BY updated_at DESC, nct LIMIT ?", (limit,)).fetchall()
 
 
 def list_notifiable_alerts():

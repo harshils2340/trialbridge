@@ -1,0 +1,251 @@
+{% extends "public_base.html" %}
+{% set _title = trial.title or (condition ~ ' clinical trial') %}
+{% block title %}{{ _title }}{% if condition %} · {{ condition }} trial{% endif %} · BridgeMD{% endblock %}
+{% block description %}{{ blurb or _title }}{% if recruiting %} Recruiting now - check your eligibility and apply online, free.{% endif %}{% endblock %}
+
+{% block og_title %}{{ _title }}{% endblock %}
+{% block og_description %}{{ blurb or _title }}{% endblock %}
+{% block og_url %}{{ canonical_url|default(request.url) }}{% endblock %}
+
+{% block head_extra %}
+{% set _canon = canonical_url|default(request.url) %}
+{% if indexable %}
+<link rel="canonical" href="{{ _canon }}">
+{% else %}
+<meta name="robots" content="noindex,follow">
+{% endif %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "MedicalTrial",
+      "name": {{ _title|tojson }},
+      "description": {{ (summary_text or blurb or _title)|tojson }},
+      "url": {{ _canon|tojson }},
+      "status": {{ ('Recruiting' if recruiting else (trial.overallStatus or 'Unknown'))|tojson }},
+      {% if facts.phase %}"phase": {{ facts.phase|tojson }},{% endif %}
+      "identifier": {"@type": "PropertyValue", "propertyID": "ClinicalTrials.gov", "value": {{ nct|tojson }}},
+      "sameAs": {{ ('https://clinicaltrials.gov/study/' ~ nct)|tojson }},
+      {% if facts.sponsor %}"sponsor": {"@type": "Organization", "name": {{ facts.sponsor|tojson }}},{% endif %}
+      {% if trial.conditions %}"healthCondition": [
+        {% for c in trial.conditions[:8] %}{"@type": "MedicalCondition", "name": {{ c|tojson }}}{% if not loop.last %},{% endif %}{% endfor %}
+      ],{% endif %}
+      {% if facts.where %}"studyLocation": [
+        {% for w in facts.where[:20] %}{"@type": "Place", "name": {{ w|tojson }}}{% if not loop.last %},{% endif %}{% endfor %}
+      ]{% else %}"studyLocation": []{% endif %}
+    },
+    {
+      "@type": "FAQPage",
+      "mainEntity": [
+        {% for q, a in faqs %}{"@type": "Question", "name": {{ q|tojson }},
+          "acceptedAnswer": {"@type": "Answer", "text": {{ a|tojson }}}}{% if not loop.last %},{% endif %}
+        {% endfor %}
+      ]
+    },
+    {
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+        {"@type": "ListItem", "position": 1, "name": "Home", "item": {{ url_for('home', _external=True)|tojson }}}{% if condition %},
+        {"@type": "ListItem", "position": 2, "name": {{ condition|tojson }}, "item": {{ url_for('condition_page', slug=slugify(condition), _external=True)|tojson }}}{% endif %},
+        {"@type": "ListItem", "position": {{ 3 if condition else 2 }}, "name": {{ _title|tojson }}, "item": {{ _canon|tojson }}}
+      ]
+    }
+  ]
+}
+</script>
+{% endblock %}
+
+{% block body %}
+<article class="study">
+  <nav class="crumbs">
+    <a href="{{ url_for('home') }}">Home</a>
+    {% if condition %} › <a href="{{ url_for('condition_page', slug=slugify(condition)) }}">{{ condition }}</a>{% endif %}
+    › <span>Trial</span>
+  </nav>
+
+  <header class="study-head">
+    <div class="study-tags">
+      {% if recruiting %}<span class="status-tag">Recruiting</span>{% else %}
+        <span class="pr-phase">{{ (trial.overallStatus or 'Status unknown')|replace('_', ' ')|title }}</span>{% endif %}
+      {% if facts.phase %}<span class="pr-phase">{{ facts.phase }}</span>{% endif %}
+      {% if condition %}<span class="study-cond">{{ condition }}</span>{% endif %}
+    </div>
+    <h1>{{ _title }}</h1>
+    {% if blurb %}<p class="study-lead">{{ blurb }}</p>{% endif %}
+    <p class="study-id">ClinicalTrials.gov ID: <strong>{{ nct }}</strong></p>
+  </header>
+
+  <div class="study-grid">
+    <div class="study-main">
+      {% if summary_text %}
+      <section class="study-block">
+        <h2>About this study</h2>
+        <p>{{ summary_text }}</p>
+      </section>
+      {% endif %}
+
+      {% if incl or excl %}
+      <section class="study-block">
+        <h2>Who can take part</h2>
+        <div class="study-facts">
+          <div><span class="sf-l">Ages</span><span class="sf-v">{{ facts.ages }}</span></div>
+          <div><span class="sf-l">Sex</span><span class="sf-v">{{ facts.sex }}</span></div>
+          <div><span class="sf-l">Healthy volunteers</span><span class="sf-v">{{ facts.healthy }}</span></div>
+        </div>
+        {% if incl %}
+        <h3>You may be eligible if</h3>
+        <ul class="study-crit">{% for c in incl %}<li>{{ c }}</li>{% endfor %}</ul>
+        {% endif %}
+        {% if excl %}
+        <h3>You may not be eligible if</h3>
+        <ul class="study-crit study-crit-ex">{% for c in excl %}<li>{{ c }}</li>{% endfor %}</ul>
+        {% endif %}
+        <p class="study-note">The study team makes the final eligibility decision.</p>
+      </section>
+      {% endif %}
+
+      {% if facts.where %}
+      <section class="study-block">
+        <h2>Where it's taking place</h2>
+        <ul class="study-locs">
+          {% for w in facts.where[:20] %}<li>{{ ic.icon('pin') }} {{ w }}</li>{% endfor %}
+        </ul>
+        {% if facts.where|length > 20 %}<p class="study-note">+ {{ facts.where|length - 20 }} more site(s).</p>{% endif %}
+      </section>
+      {% endif %}
+
+      <section class="study-block">
+        <h2>Questions & answers</h2>
+        {% for q, a in faqs %}
+        <details class="study-faq"{% if loop.first %} open{% endif %}>
+          <summary>{{ q }}</summary>
+          <p>{{ a }}</p>
+        </details>
+        {% endfor %}
+      </section>
+    </div>
+
+    <aside class="study-side">
+      <div class="study-cta card">
+        <h2>{{ 'Check your eligibility' if recruiting else 'Search similar trials' }}</h2>
+        <p>Answer a few quick questions. If you match, apply to the study team in minutes.</p>
+        {% if applied %}
+        <a class="btn btn-primary btn-block" href="{{ url_for('applications') }}">View your application{{ ic.icon('arrow-right') }}</a>
+        {% else %}
+        <form id="studyForm" method="post" action="{{ url_for('find') }}">
+          <input type="hidden" name="condition" value="{{ condition or trial.title }}">
+          <input type="hidden" name="nct" value="{{ nct }}">
+          <input type="hidden" name="radius" value="50">
+          <input type="hidden" id="locLat" name="lat">
+          <input type="hidden" id="locLon" name="lon">
+          <input type="hidden" id="locCc" name="cc">
+          <div class="hero-field">{{ ic.icon('pin') }}
+            <input id="location" name="location" type="text" placeholder="Your city or postal code" required aria-label="Location"></div>
+          <button class="btn btn-primary btn-block" type="submit">Check my eligibility{{ ic.icon('arrow-right') }}</button>
+          <button type="button" id="useLoc" class="link-btn loc-use">{{ ic.icon('crosshair') }} Use my current location</button>
+          <div id="locConfirm" class="loc-confirm" style="display:none;"></div>
+        </form>
+        {% endif %}
+        <a class="study-ext" href="https://clinicaltrials.gov/study/{{ nct }}" target="_blank" rel="noopener">{{ ic.icon('external') }} Full record on ClinicalTrials.gov</a>
+      </div>
+      {% if facts.sponsor or facts.enrollment %}
+      <div class="study-meta card">
+        {% if facts.sponsor %}<div><span class="sf-l">Sponsor</span><span class="sf-v">{{ facts.sponsor }}</span></div>{% endif %}
+        {% if facts.enrollment %}<div><span class="sf-l">Target enrollment</span><span class="sf-v">{{ facts.enrollment }}</span></div>{% endif %}
+      </div>
+      {% endif %}
+    </aside>
+  </div>
+
+  {% if related %}
+  <section class="cond-cities">
+    <h2>Explore other conditions</h2>
+    <div class="chip-grid">
+      {% for c in related[:16] %}<a class="chip" href="{{ url_for('condition_page', slug=slugify(c)) }}">{{ c }}</a>{% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  <p class="study-disc">BridgeMD is an information and trial-matching tool - not medical advice, and not the
+    study sponsor. Details come from ClinicalTrials.gov; the study team decides eligibility.</p>
+</article>
+
+<div class="loading-overlay" id="loadingOverlay" aria-hidden="true">
+  <div class="loading-card">
+    <div class="loading-spark"></div>
+    <div class="loading-title">Checking your eligibility…</div>
+    <div class="loading-sub" id="loadingSub">Reading this study's criteria</div>
+    <div class="progress"><div class="progress-bar" id="progressBar"></div></div>
+    <div class="loading-foot">One moment</div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var form = document.getElementById('studyForm');
+  if (!form) return;
+  var ov = document.getElementById('loadingOverlay');
+  var bar = document.getElementById('progressBar');
+  var sub = document.getElementById('loadingSub');
+  var loc = document.getElementById('location');
+  var locLat = document.getElementById('locLat'), locLon = document.getElementById('locLon'),
+      locCc = document.getElementById('locCc'), confirmEl = document.getElementById('locConfirm');
+  var useLoc = document.getElementById('useLoc');
+  var geoUrl = '{{ url_for("geo_reverse") }}';
+  var steps = ['Reading this study\u2019s criteria', 'Checking if it\u2019s near you',
+               'Matching your details', 'Preparing your result'];
+  var started = false;
+  function showOverlay() {
+    if (started) return; started = true;
+    ov.classList.add('show'); ov.setAttribute('aria-hidden', 'false');
+    var pct = 0, i = 0;
+    setInterval(function () { i++; if (i < steps.length) sub.textContent = steps[i]; }, 3600);
+    setInterval(function () {
+      pct += Math.max(0.4, (92 - pct) * 0.05); if (pct > 92) pct = 92;
+      bar.style.width = pct.toFixed(1) + '%';
+    }, 220);
+  }
+  window.addEventListener('pagehide', function () { if (bar) bar.style.width = '100%'; });
+
+  function geolocate(onOk, onErr) {
+    if (!navigator.geolocation) { onErr && onErr(); return; }
+    navigator.geolocation.getCurrentPosition(function (pos) {
+      var la = pos.coords.latitude.toFixed(6), lo = pos.coords.longitude.toFixed(6);
+      fetch(geoUrl + '?lat=' + la + '&lon=' + lo).then(function (r) { return r.json(); })
+        .then(function (d) { onOk({ lat: la, lon: lo, cc: (d && d.ok && d.cc) || '',
+          label: (d && d.ok && d.label) || 'Current location' }); })
+        .catch(function () { onOk({ lat: la, lon: lo, cc: '', label: 'Current location' }); });
+    }, function () { onErr && onErr(); }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 });
+  }
+  function setLoc(g) {
+    locLat.value = g.lat; locLon.value = g.lon; locCc.value = g.cc || ''; loc.value = g.label;
+    confirmEl.className = 'loc-confirm ok'; confirmEl.style.display = 'block';
+    confirmEl.innerHTML = '\uD83D\uDCCD Using your location: <b>' + g.label + '</b>';
+  }
+  if (loc) loc.addEventListener('input', function () {
+    if (locLat.value) { locLat.value = locLon.value = locCc.value = ''; confirmEl.style.display = 'none'; }
+  });
+  form.addEventListener('submit', function (e) {
+    var hasLoc = (locLat.value && locLon.value) || loc.value.trim();
+    if (!hasLoc) {
+      e.preventDefault();
+      confirmEl.style.display = 'block'; confirmEl.className = 'loc-confirm';
+      confirmEl.textContent = '\uD83D\uDCCD Getting your location…';
+      geolocate(function (g) { setLoc(g); showOverlay(); form.submit(); },
+                function () { confirmEl.className = 'loc-confirm err';
+                  confirmEl.textContent = 'Enter your city or postal code to search.'; loc.focus(); });
+      return;
+    }
+    showOverlay();
+  });
+  if (useLoc) useLoc.addEventListener('click', function () {
+    var orig = useLoc.innerHTML; useLoc.textContent = 'Locating…'; useLoc.disabled = true;
+    geolocate(function (g) { setLoc(g); useLoc.disabled = false; useLoc.innerHTML = orig; },
+              function () { confirmEl.style.display = 'block'; confirmEl.className = 'loc-confirm err';
+                confirmEl.textContent = 'Couldn\u2019t get your location - type a city or postal code.';
+                useLoc.disabled = false; useLoc.innerHTML = orig; });
+  });
+})();
+</script>
+{% endblock %}

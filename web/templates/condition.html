@@ -214,7 +214,10 @@
       </button>
     </form>
     {% if t.nctId %}
-    <a class="cond-item-ext" href="https://clinicaltrials.gov/study/{{ t.nctId }}" target="_blank" rel="noopener">{{ ic.icon('external') }} View study record on ClinicalTrials.gov</a>
+    <div class="cond-item-links">
+      <a class="cond-item-more" href="{{ url_for('study_page', nct=t.nctId) }}">{{ ic.icon('arrow-right') }} Study details &amp; eligibility</a>
+      <a class="cond-item-ext" href="https://clinicaltrials.gov/study/{{ t.nctId }}" target="_blank" rel="noopener">{{ ic.icon('external') }} ClinicalTrials.gov record</a>
+    </div>
     {% endif %}
   </div>
   {% endfor %}

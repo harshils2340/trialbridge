@@ -2264,9 +2264,14 @@ SEO_CITY_COORDS = {
 
 # The GLP-1 / peptide trend: people search by drug name, not condition. These
 # power intervention-based landing pages and are queried via CT.gov query.intr.
+# Ordered most-viral first; these are the metabolic/weight peptides driving the
+# current wave of consumer interest (Ozempic/Mounjaro/Zepbound + the next-gen
+# candidates people read about on social/news). Every entry has recruiting
+# trials on CT.gov, so chips built from this list never dead-end.
 SEED_DRUGS = [
-    "Semaglutide", "Tirzepatide", "Retatrutide", "Survodutide",
-    "Orforglipron", "CagriSema", "Liraglutide", "Dulaglutide",
+    "Semaglutide", "Tirzepatide", "Retatrutide", "Orforglipron",
+    "CagriSema", "Survodutide", "Mazdutide", "Pemvidutide",
+    "Cagrilintide", "Ecnoglutide", "Liraglutide", "Dulaglutide",
 ]
 # Common generic + brand names (and short forms) people actually type, mapped to
 # the canonical drug we search CT.gov by. Lets "reta" -> Retatrutide instead of
@@ -2276,8 +2281,9 @@ _DRUG_ALIASES = {
     "semaglutide": "Semaglutide", "tirzepatide": "Tirzepatide",
     "retatrutide": "Retatrutide", "survodutide": "Survodutide",
     "orforglipron": "Orforglipron", "cagrisema": "CagriSema",
-    "cagrilintide": "CagriSema", "liraglutide": "Liraglutide",
-    "dulaglutide": "Dulaglutide",
+    "cagrilintide": "Cagrilintide", "liraglutide": "Liraglutide",
+    "dulaglutide": "Dulaglutide", "mazdutide": "Mazdutide",
+    "pemvidutide": "Pemvidutide", "ecnoglutide": "Ecnoglutide",
     # brand names
     "ozempic": "Semaglutide", "wegovy": "Semaglutide", "rybelsus": "Semaglutide",
     "mounjaro": "Tirzepatide", "zepbound": "Tirzepatide",
@@ -2303,6 +2309,11 @@ def _detect_drug_query(text):
         if alias.startswith(q) or canon.lower().startswith(q):
             return canon
     return ""
+# Hand the curated candidate pools to the trends engine so it can rank them by
+# live CT.gov recruiting volume (see trends.py). Configured after the app object
+# in trends.configure(app); seeds are only available here once defined.
+trends.set_seeds(drug_seeds=SEED_DRUGS, condition_seeds=SEED_CONDITIONS)
+
 # Build slug -> canonical maps from the FULL SEO surface (seeds + SEO list),
 # so every generated condition/city page resolves and links cleanly.
 _COND_BY_SLUG = {slugify(c): c for c in (SEO_CONDITIONS + SEED_CONDITIONS)}
@@ -3878,6 +3889,14 @@ def _seo_trials(condition, city=None, limit=12):
         trials = _fetch_recruiting(condition, geo=geo, limit=limit)
         if not trials and geo:                      # no local trials -> national
             trials = _fetch_recruiting(condition, geo=None, limit=limit)
+        # Record these trials as part of our indexable SEO surface so each gets a
+        # crawlable /study/<nct> page and a sitemap entry (scoped to on-topic,
+        # recruiting trials - never the whole of ClinicalTrials.gov).
+        for t in trials:
+            try:
+                db.upsert_seo_study(t.get("nctId"), t.get("title"), condition)
+            except Exception:
+                pass
     except Exception:
         app.logger.exception("seo trials fetch failed for %s", condition)
     _SEO_TRIAL_CACHE[key] = (now_ts, trials)
@@ -3936,6 +3955,144 @@ def condition_city_page(slug, city_slug):
         conditions=_related_conditions(condition), slugify=slugify,
         canonical_url=_abs_url("condition_city_page",
                                slug=slugify(condition), city_slug=city_slug))
+
+
+_STUDY_CACHE = OrderedDict()
+_STUDY_TTL = 6 * 3600          # re-fetch a study from CT.gov at most every 6h
+_STUDY_MAX = 800               # cap distinct studies held in memory
+_NCT_RE = re.compile(r"^NCT\d{8}$")
+
+
+def _get_study(nct):
+    """Fetch one CT.gov study (cached). Returns the extracted trial dict or None."""
+    nct = (nct or "").strip().upper()
+    if not _NCT_RE.match(nct):
+        return None
+    now_ts = time.time()
+    hit = _STUDY_CACHE.get(nct)
+    if hit and (now_ts - hit[0]) < _STUDY_TTL:
+        _STUDY_CACHE.move_to_end(nct)
+        return hit[1]
+    try:
+        trial = mt.fetch_study(nct)
+    except Exception:
+        trial = None
+    if trial and trial.get("nctId"):
+        _STUDY_CACHE[nct] = (now_ts, trial)
+        _STUDY_CACHE.move_to_end(nct)
+        while len(_STUDY_CACHE) > _STUDY_MAX:
+            _STUDY_CACHE.popitem(last=False)
+        return trial
+    return None
+
+
+@app.route("/study/<nct>")
+def study_page(nct):
+    """Crawlable, server-rendered page for a single trial: neutral registry facts
+    + MedicalTrial/FAQ structured data, with a CTA into the real eligibility
+    matcher. Indexable only when the trial is recruiting AND in our scoped SEO
+    surface; any other valid study still renders but is marked noindex so we
+    don't index the whole of ClinicalTrials.gov."""
+    key = (nct or "").strip().upper()
+    trial = _get_study(key)
+    if not trial:
+        abort(404)
+    try:
+        _log_event("study_view", {"nct": key})
+    except Exception:
+        pass
+    recruiting = (trial.get("overallStatus") or "").upper() == "RECRUITING"
+    indexable = recruiting and db.is_seo_study(key)
+    condition = (trial.get("conditions") or [""])[0] or ""
+    blurb = summarize.card_blurb(trial)
+    summary_text = summarize.tidy(trial.get("briefSummary") or "")
+    incl, excl = _study_criteria(trial.get("criteria") or "")
+    facts = _study_facts(trial)
+    faqs = _study_faqs(trial, facts, condition, recruiting)
+    applied = key in db.applied_ncts(get_applicant_token())
+    return render_template(
+        "study.html", trial=trial, nct=key, recruiting=recruiting,
+        indexable=indexable, condition=condition, blurb=blurb,
+        summary_text=summary_text, incl=incl, excl=excl, facts=facts, faqs=faqs,
+        related=_related_conditions(condition) if condition else [],
+        slugify=slugify, applied=applied,
+        canonical_url=_abs_url("study_page", nct=key))
+
+
+def _study_facts(trial):
+    """Human-readable, factual fields for the study page + its structured data."""
+    def _age(v):
+        return (v or "").replace("Years", "years").strip()
+    lo, hi = _age(trial.get("minAge")), _age(trial.get("maxAge"))
+    if lo and hi:
+        ages = f"{lo} to {hi}"
+    elif lo:
+        ages = f"{lo} and older"
+    elif hi:
+        ages = f"up to {hi}"
+    else:
+        ages = "All ages"
+    sex = (trial.get("sex") or "ALL").upper()
+    sex_text = {"ALL": "All sexes", "FEMALE": "Female", "MALE": "Male"}.get(sex, "All sexes")
+    hv = (trial.get("healthyVolunteers") or "")
+    healthy = "Yes" if str(hv).lower() in ("yes", "true", "y") else "No"
+    # Distinct "City, Country" locations (deduped, order-preserving).
+    where, seen = [], set()
+    for l in trial.get("locations") or []:
+        parts = [p for p in [l.get("city"), l.get("state"), l.get("country")] if p]
+        label = ", ".join(parts)
+        if label and label.lower() not in seen:
+            seen.add(label.lower())
+            where.append(label)
+    return {"ages": ages, "sex": sex_text, "healthy": healthy, "where": where,
+            "phase": trial.get("phase") or "", "sponsor": trial.get("leadSponsor") or "",
+            "enrollment": trial.get("enrollment") or ""}
+
+
+def _study_faqs(trial, facts, condition, recruiting):
+    """Q&A pairs powering both the on-page FAQ and FAQPage JSON-LD (AEO)."""
+    title = trial.get("title") or "this clinical trial"
+    faqs = []
+    who = f"This study is enrolling {facts['sex'].lower()}, {facts['ages'].lower()}."
+    if facts["healthy"] == "Yes":
+        who += " Healthy volunteers may be eligible."
+    faqs.append(("Who can join this trial?", who))
+    if facts["where"]:
+        top = facts["where"][:6]
+        more = f" and {len(facts['where']) - len(top)} more location(s)" if len(facts["where"]) > len(top) else ""
+        faqs.append(("Where is this trial taking place?",
+                     "Study sites include " + "; ".join(top) + more + "."))
+    faqs.append(("Is this trial recruiting participants?",
+                 "Yes - it is currently recruiting." if recruiting
+                 else f"Its current status is {(trial.get('overallStatus') or 'unknown').replace('_', ' ').title()}."))
+    if facts["phase"]:
+        faqs.append(("What phase is this trial?", f"This is a {facts['phase']} study."))
+    faqs.append(("How do I apply?",
+                 "Check your eligibility on BridgeMD in a few questions and, if you "
+                 "match, send your interest to the study team - free, no account needed to search."))
+    return faqs
+
+
+def _study_criteria(raw, limit=12):
+    """Split a CT.gov eligibility block into (inclusion, exclusion) bullet lists
+    for readable, crawlable content. Falls back gracefully on odd formatting."""
+    if not raw:
+        return [], []
+    text = raw.replace("\r", "\n")
+    incl, excl, bucket = [], [], None
+    for line in text.split("\n"):
+        s = re.sub(r"^\s*[-*•\d.]+\s*", "", line).strip()
+        low = s.lower()
+        if low.startswith("inclusion"):
+            bucket = incl
+            continue
+        if low.startswith("exclusion"):
+            bucket = excl
+            continue
+        if not s:
+            continue
+        (bucket if bucket is not None else incl).append(s)
+    return incl[:limit], excl[:limit]
 
 
 SCREENER_LABELS = {
@@ -5178,6 +5335,12 @@ def sitemap():
         for city in SEO_CITIES:
             urls.append(loc("condition_city_page", slug=cslug,
                             city_slug=slugify(city)))
+    # Per-study pages, scoped to trials surfaced by our condition/city pages.
+    try:
+        for s in db.list_seo_studies(limit=5000):
+            urls.append(loc("study_page", nct=s["nct"]))
+    except Exception:
+        app.logger.exception("sitemap study list failed")
     items = "".join(f"<url><loc>{u}</loc></url>" for u in urls)
     xml = ('<?xml version="1.0" encoding="UTF-8"?>'
            '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
