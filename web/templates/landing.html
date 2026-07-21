@@ -311,8 +311,12 @@
     // that tab first (e.g. clicking a popular condition while in plain-English
     // mode should flip tabs and fill the condition in).
     setMode('condition');
-    if (!isDrug && condInput) condInput.value = term;
-    if (interv) { interv.value = isDrug ? term : ''; }
+    // Always show the term in the visible box so the click has clear feedback.
+    // For a drug we ALSO set the hidden intervention field so /find searches
+    // CT.gov by drug (not by condition=<drug>, which returns ~nothing).
+    if (condInput) condInput.value = term;
+    if (interv) interv.value = isDrug ? term : '';
+    hideCondSuggest();
     form.scrollIntoView({ behavior: 'smooth', block: 'center' });
     if (locInput && !locInput.value.trim()) locInput.focus();
   }
@@ -396,7 +400,12 @@
     });
   });
   if (condInput) {
-    condInput.addEventListener('input', showCondSuggest);
+    // Typing your own condition clears any drug carried over from a chip, so we
+    // don't keep filtering by a stale intervention the user has since edited.
+    condInput.addEventListener('input', function () {
+      if (interv) interv.value = '';
+      showCondSuggest();
+    });
     condInput.addEventListener('keydown', function (e) {
       if (!condSuggest || condSuggest.hidden) return;
       if (e.key === 'ArrowDown') {

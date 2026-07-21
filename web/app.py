@@ -2688,6 +2688,12 @@ def find():
 
     condition = request.form.get("condition", "").strip()
     intervention = request.form.get("intervention", "").strip()
+    # A trending drug chip fills the visible condition box (for feedback) AND the
+    # hidden intervention field with the same drug. Treat that as a drug-only
+    # search so we don't also filter by condition=<drug>, which over-narrows to
+    # near-zero results.
+    if intervention and condition.lower() == intervention.lower():
+        condition = ""
     location = request.form.get("location", "").strip()
     age = request.form.get("age", "").strip()
     sex = request.form.get("sex", "").strip()
