@@ -96,6 +96,36 @@ def fetch_trials(condition, max_n=300, geo=None, intervention=""):
     return trials[:max_n]
 
 
+def count_trials(condition="", intervention="", geo=None):
+    """Return the number of currently-RECRUITING trials matching the query.
+
+    Uses CT.gov's `countTotal=true` so we get the real total in a single tiny
+    request (pageSize=1) instead of paging every study. This is a cheap,
+    external "how much active research is there right now" signal - useful for
+    ranking trending drugs/conditions by real trial volume. Returns 0 on error.
+    """
+    params = {
+        "filter.overallStatus": "RECRUITING",
+        "countTotal": "true",
+        "pageSize": "1",
+        "format": "json",
+    }
+    if condition:
+        params["query.cond"] = condition
+    if intervention:
+        params["query.intr"] = intervention
+    if geo:
+        params["filter.geo"] = geo
+    url = f"{CT_API}?{urllib.parse.urlencode(params)}"
+    req = urllib.request.Request(url, headers={"User-Agent": "trial-matcher/0.1"})
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:
+            data = json.load(r)
+        return int(data.get("totalCount") or 0)
+    except Exception:
+        return 0
+
+
 def extract_trial(study):
     p = study.get("protocolSection", {})
     ident = p.get("identificationModule", {})
