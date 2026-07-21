@@ -349,11 +349,9 @@
     items[condActiveIdx].click();
     return true;
   }
-  function showCondSuggest() {
-    if (!condInput || !condSuggest) return;
-    var q = (condInput.value || '').trim().toLowerCase();
-    var list = [];
-    if (!q) { hideCondSuggest(); return; }
+  var condReqSeq = 0;
+  var condDebounce = null;
+  function localCondMatches(q) {
     var starts = conditionOptions.filter(function (o) {
       return (o || '').toLowerCase().indexOf(q) === 0;
     });
@@ -361,7 +359,19 @@
       var lo = (o || '').toLowerCase();
       return lo.indexOf(q) > 0;
     });
-    list = starts.concat(contains).slice(0, 8);
+    return starts.concat(contains);
+  }
+  function mergeCondUnique(a, b, cap) {
+    var out = [], seen = {};
+    a.concat(b).forEach(function (x) {
+      var k = (x || '').toLowerCase();
+      if (k && !seen[k]) { seen[k] = 1; out.push(x); }
+    });
+    return out.slice(0, cap || 10);
+  }
+  function renderCondList(list) {
+    if (!condInput || !condSuggest) return;
+    list = (list || []).slice(0, 10);
     if (!list.length) { hideCondSuggest(); return; }
     condSuggest.innerHTML = '';
     list.forEach(function (label) {
@@ -378,6 +388,29 @@
     });
     condSuggest.hidden = false;
     condActiveIdx = -1;
+  }
+  function showCondSuggest() {
+    if (!condInput || !condSuggest) return;
+    var raw = (condInput.value || '').trim();
+    var q = raw.toLowerCase();
+    if (!q) { hideCondSuggest(); return; }
+    // Show instant local matches first so the box never feels empty...
+    renderCondList(localCondMatches(q));
+    // ...then pull the FULL ClinicalTrials.gov condition list (debounced) so
+    // every real condition (ADHD variants, etc.) is suggested, not just our seeds.
+    if (q.length < 2) return;
+    if (condDebounce) clearTimeout(condDebounce);
+    var seq = ++condReqSeq;
+    condDebounce = setTimeout(function () {
+      fetch('{{ url_for("condition_suggest") }}?q=' + encodeURIComponent(raw))
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          if (seq !== condReqSeq) return;                       // stale response
+          if ((condInput.value || '').trim().toLowerCase() !== q) return;
+          renderCondList(mergeCondUnique(localCondMatches(q), (d && d.items) || [], 10));
+        })
+        .catch(function () { /* keep local matches on network error */ });
+    }, 160);
   }
 
   document.querySelectorAll('.cond-chip').forEach(function (chip) {

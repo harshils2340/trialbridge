@@ -2356,6 +2356,71 @@ def trending_drugs(limit=6):
         return SEED_DRUGS[:limit]
 
 
+# Condition typeahead: proxy ClinicalTrials.gov's own condition dictionary so the
+# search box suggests the SAME full universe of conditions CT.gov does (every
+# ADHD/lupus/etc. variant), not a short hardcoded list. Cached + falls back to
+# our local lists if CT.gov is slow/unreachable, so the box always suggests
+# something.
+_COND_SUGGEST_CACHE = OrderedDict()
+_COND_SUGGEST_TTL = 6 * 3600
+_COND_SUGGEST_MAX = 1000
+_CT_SUGGEST_URL = "https://clinicaltrials.gov/api/int/suggest"
+
+
+def _clean_suggest(s):
+    """CT.gov returns regex-escaped strings (e.g. 'Lupus \\(LN\\)') for its own
+    highlighting. Strip the escapes so suggestions read cleanly."""
+    for a, b in (("\\(", "("), ("\\)", ")"), ("\\[", "["), ("\\]", "]"),
+                 ("\\-", "-"), ("\\.", ".")):
+        s = s.replace(a, b)
+    return " ".join(s.split())
+
+
+def _local_condition_matches(q, limit=12):
+    ql = q.lower()
+    out, seen = [], set()
+    for c in (SEARCH_CONDITION_OPTIONS + SEO_CONDITIONS):
+        lc = c.lower()
+        if ql in lc and lc not in seen:
+            seen.add(lc)
+            out.append(c)
+        if len(out) >= limit:
+            break
+    return out
+
+
+@app.route("/api/condition-suggest")
+def condition_suggest():
+    q = (request.args.get("q") or "").strip()
+    if len(q) < 2:
+        return jsonify({"items": []})
+    key = q.lower()
+    now_ts = time.time()
+    hit = _COND_SUGGEST_CACHE.get(key)
+    if hit and (now_ts - hit[0]) < _COND_SUGGEST_TTL:
+        _COND_SUGGEST_CACHE.move_to_end(key)
+        return jsonify({"items": hit[1]})
+    items = []
+    try:
+        url = (_CT_SUGGEST_URL + "?dictionary=Condition&input="
+               + urllib.parse.quote(q))
+        req = urllib.request.Request(url, headers={"User-Agent": "BridgeMD/1.0"})
+        with urllib.request.urlopen(req, timeout=6) as r:
+            data = json.load(r)
+        if isinstance(data, list):
+            items = [_clean_suggest(str(x)) for x in data if str(x).strip()]
+            items = [x for x in items if x][:12]
+    except Exception:
+        items = []
+    if not items:                                    # CT.gov down/slow -> local
+        items = _local_condition_matches(q)
+    _COND_SUGGEST_CACHE[key] = (now_ts, items)
+    _COND_SUGGEST_CACHE.move_to_end(key)
+    while len(_COND_SUGGEST_CACHE) > _COND_SUGGEST_MAX:
+        _COND_SUGGEST_CACHE.popitem(last=False)
+    return jsonify({"items": items})
+
+
 def build_patient_note(condition, age="", sex="", about="", pregnant="",
                        other_trial=""):
     """Turn a patient's self-reported details into a note the matcher can read.
