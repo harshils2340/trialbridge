@@ -62,6 +62,7 @@ import redcap  # noqa: E402
 import reminders as reminders_mod  # noqa: E402
 import summarize  # noqa: E402
 import trends  # noqa: E402
+import ctis  # noqa: E402
 
 app = Flask(__name__)
 trends.configure(app)
@@ -3906,6 +3907,40 @@ def _seo_trials(condition, city=None, limit=12):
     return trials[:limit]
 
 
+_SEO_EU_CACHE = OrderedDict()
+
+
+def _seo_ctis_trials(condition, limit=6):
+    """EU CTIS trials for a condition, cached like `_seo_trials`. Used only for
+    the 'also recruiting in Europe' discovery block + to register each EU trial
+    as a crawlable /study/<ctNumber> page. Never feeds the geo-ranked matcher, so
+    it broadens coverage without touching 'near me' relevance. Best-effort: any
+    failure returns [] so the (crawler-hit) condition page never breaks."""
+    cond_key = (condition or "").strip().lower()
+    if not cond_key:
+        return []
+    now_ts = time.time()
+    hit = _SEO_EU_CACHE.get(cond_key)
+    if hit and (now_ts - hit[0]) < _SEO_TRIAL_TTL:
+        _SEO_EU_CACHE.move_to_end(cond_key)
+        return hit[1][:limit]
+    cards = []
+    try:
+        cards = ctis.search(condition, size=limit)
+        for c in cards:
+            try:
+                db.upsert_seo_study(c.get("ctNumber"), c.get("title"), condition)
+            except Exception:
+                pass
+    except Exception:
+        app.logger.exception("ctis seo fetch failed for %s", condition)
+    _SEO_EU_CACHE[cond_key] = (now_ts, cards)
+    _SEO_EU_CACHE.move_to_end(cond_key)
+    while len(_SEO_EU_CACHE) > _SEO_TRIAL_MAX:
+        _SEO_EU_CACHE.popitem(last=False)
+    return cards[:limit]
+
+
 def _related_conditions(condition, n=24):
     """A short, topically-relevant set of other conditions for internal links.
     SEO_CONDITIONS is grouped by therapeutic area, so a window around the current
@@ -3937,6 +3972,7 @@ def condition_page(slug):
     return render_template(
         "condition.html", condition=condition, city=None,
         trials=_seo_trials(condition), cities=SEO_CITIES[:16],
+        eu_trials=_seo_ctis_trials(condition),
         conditions=_related_conditions(condition), slugify=slugify,
         canonical_url=_abs_url("condition_page", slug=slugify(condition)))
 
@@ -3986,56 +4022,125 @@ def _get_study(nct):
     return None
 
 
+def _get_ctis_study(ct):
+    """Fetch one EU CTIS trial (cached, same store as CT.gov - keys never clash
+    since CT numbers aren't NCT ids). Returns a normalised trial dict or None."""
+    ct = (ct or "").strip()
+    if not ctis.is_ct_number(ct):
+        return None
+    now_ts = time.time()
+    hit = _STUDY_CACHE.get(ct)
+    if hit and (now_ts - hit[0]) < _STUDY_TTL:
+        _STUDY_CACHE.move_to_end(ct)
+        return hit[1]
+    trial = ctis.fetch(ct)
+    if trial and trial.get("ctNumber"):
+        _STUDY_CACHE[ct] = (now_ts, trial)
+        _STUDY_CACHE.move_to_end(ct)
+        while len(_STUDY_CACHE) > _STUDY_MAX:
+            _STUDY_CACHE.popitem(last=False)
+        return trial
+    return None
+
+
 @app.route("/study/<nct>")
 def study_page(nct):
     """Crawlable, server-rendered page for a single trial: neutral registry facts
     + MedicalTrial/FAQ structured data, with a CTA into the real eligibility
-    matcher. Indexable only when the trial is recruiting AND in our scoped SEO
-    surface; any other valid study still renders but is marked noindex so we
-    don't index the whole of ClinicalTrials.gov."""
-    key = (nct or "").strip().upper()
-    trial = _get_study(key)
-    if not trial:
+    matcher. Serves both ClinicalTrials.gov (NCT) and EU CTIS (EU CT number)
+    trials. Indexable only when the trial is recruiting/active AND in our scoped
+    SEO surface; any other valid study still renders but is marked noindex."""
+    raw = (nct or "").strip()
+    key = raw.upper()
+    source = ("ctgov" if _NCT_RE.match(key)
+              else ("ctis" if ctis.is_ct_number(raw) else None))
+    if source is None:
         abort(404)
+
+    if source == "ctgov":
+        trial = _get_study(key)
+        if not trial:
+            abort(404)
+        study_id = key
+        recruiting = (trial.get("overallStatus") or "").upper() == "RECRUITING"
+        plain_title = summarize.patient_card_title(trial)
+        # Structured LLM explainer when configured; otherwise plain_terms below
+        # still carries the "what/who/how long" content.
+        summary = summarize.plain(trial)
+        plain_terms = summarize.plain_terms(trial)
+        pay = _pay_likelihood(trial)
+        support = _participant_support_signal(trial)
+        source_name = "ClinicalTrials.gov"
+        source_url = "https://clinicaltrials.gov/study/" + key
+        applied = key in db.applied_ncts(get_applicant_token())
+    else:  # EU CTIS - discovery/content only (no LLM/pay enrichment, no geo match)
+        study_id = raw
+        trial = _get_ctis_study(study_id)
+        if not trial:
+            abort(404)
+        recruiting = bool(trial.get("_recruiting"))
+        plain_title = trial.get("title") or ""
+        summary = None
+        incl, excl = trial.get("_incl") or [], trial.get("_excl") or []
+        plain_terms = {
+            "who": incl[:6], "rule_out": excl[:6], "who_basics": "",
+            "has_more": (len(incl) > 6 or len(excl) > 6),
+            "inc_all": incl, "exc_all": excl,
+            "phase": trial.get("phase") or "", "time": "", "design": "",
+        }
+        pay, support = {}, {}
+        source_name = "EU CTIS"
+        source_url = trial.get("_view_url")
+        applied = False
+
     try:
-        _log_event("study_view", {"nct": key})
+        _log_event("study_view", {"id": study_id, "src": source})
     except Exception:
         pass
-    recruiting = (trial.get("overallStatus") or "").upper() == "RECRUITING"
-    indexable = recruiting and db.is_seo_study(key)
+    indexable = recruiting and db.is_seo_study(study_id)
     condition = (trial.get("conditions") or [""])[0] or ""
     blurb = summarize.card_blurb(trial)
     summary_text = summarize.tidy(trial.get("briefSummary") or "")
-    incl, excl = _study_criteria(trial.get("criteria") or "")
     facts = _study_facts(trial)
-    faqs = _study_faqs(trial, facts, condition, recruiting)
-    applied = key in db.applied_ncts(get_applicant_token())
+    faqs = _study_faqs(trial, facts, condition, recruiting, pay, support,
+                       plain_terms.get("time", ""))
     return render_template(
-        "study.html", trial=trial, nct=key, recruiting=recruiting,
-        indexable=indexable, condition=condition, blurb=blurb,
-        summary_text=summary_text, incl=incl, excl=excl, facts=facts, faqs=faqs,
+        "study.html", trial=trial, nct=study_id, study_id=study_id,
+        source=source, source_name=source_name, source_url=source_url,
+        recruiting=recruiting, indexable=indexable, condition=condition,
+        blurb=blurb, plain_title=plain_title, summary=summary,
+        summary_text=summary_text, plain_terms=plain_terms, facts=facts,
+        faqs=faqs, pay=pay, support=support,
         related=_related_conditions(condition) if condition else [],
         slugify=slugify, applied=applied,
-        canonical_url=_abs_url("study_page", nct=key))
+        canonical_url=_abs_url("study_page", nct=study_id))
 
 
 def _study_facts(trial):
     """Human-readable, factual fields for the study page + its structured data."""
     def _age(v):
         return (v or "").replace("Years", "years").strip()
-    lo, hi = _age(trial.get("minAge")), _age(trial.get("maxAge"))
-    if lo and hi:
-        ages = f"{lo} to {hi}"
-    elif lo:
-        ages = f"{lo} and older"
-    elif hi:
-        ages = f"up to {hi}"
+    if trial.get("_ages_text"):          # source-provided human string (CTIS)
+        ages = trial["_ages_text"]
     else:
-        ages = "All ages"
-    sex = (trial.get("sex") or "ALL").upper()
+        lo, hi = _age(trial.get("minAge")), _age(trial.get("maxAge"))
+        if lo and hi:
+            ages = f"{lo} to {hi}"
+        elif lo:
+            ages = f"{lo} and older"
+        elif hi:
+            ages = f"up to {hi}"
+        else:
+            ages = "Not specified"
+    sex = (trial.get("sex") or "").upper()
     sex_text = {"ALL": "All sexes", "FEMALE": "Female", "MALE": "Male"}.get(sex, "All sexes")
-    hv = (trial.get("healthyVolunteers") or "")
-    healthy = "Yes" if str(hv).lower() in ("yes", "true", "y") else "No"
+    hv = str(trial.get("healthyVolunteers") or "").strip().lower()
+    if hv in ("yes", "true", "y"):
+        healthy = "Yes"
+    elif hv in ("no", "false", "n"):
+        healthy = "No"
+    else:
+        healthy = "Not specified"
     # Distinct "City, Country" locations (deduped, order-preserving).
     where, seen = [], set()
     for l in trial.get("locations") or []:
@@ -4049,50 +4154,68 @@ def _study_facts(trial):
             "enrollment": trial.get("enrollment") or ""}
 
 
-def _study_faqs(trial, facts, condition, recruiting):
-    """Q&A pairs powering both the on-page FAQ and FAQPage JSON-LD (AEO)."""
-    title = trial.get("title") or "this clinical trial"
+def _study_faqs(trial, facts, condition, recruiting, pay=None, support=None,
+                time_text=""):
+    """Q&A pairs powering both the on-page FAQ and the FAQPage JSON-LD (AEO).
+
+    These deliberately answer the HIGH-INTENT questions people actually Google
+    about a trial ("do you get paid", "is it free", "how long") - not a restate
+    of the sections already visible on the page. All money/cost answers stay
+    hedged and defer to the study team (compliance-safe, no promises)."""
+    pay, support = pay or {}, support or {}
     faqs = []
+
+    # #1 search intent for trials: compensation. Kept hedged + team-confirmed.
+    has_pay_signal = bool(pay.get("label")) or bool(support.get("stipend"))
+    if has_pay_signal:
+        pay_ans = ("This study's listing includes signals that participants may "
+                   "be compensated or receive a stipend. Amounts vary and are "
+                   "set by the study team - confirm the details with them.")
+    else:
+        pay_ans = ("This listing doesn't specify compensation. Many trials still "
+                   "reimburse travel or offer a stipend, so it's worth asking the "
+                   "study team when you connect.")
+    faqs.append(("Do participants get paid in this trial?", pay_ans))
+
+    # Cost + insurance - a very common blocker/question, hedged.
+    cost_ans = ("Searching and applying through BridgeMD is free. In clinical "
+                "trials the study-related treatment and visits are generally "
+                "provided at no cost to you")
+    if support.get("travel"):
+        cost_ans += ", and this study mentions travel support"
+    cost_ans += (". You usually don't need insurance to take part - confirm "
+                 "specifics with the study team.")
+    faqs.append(("Is it free to join, and do I need insurance?", cost_ans))
+
+    # Time commitment - only give a number when the source states one.
+    if time_text:
+        faqs.append(("How long does this study last?",
+                     f"The study runs {time_text} per participant, based on its "
+                     "public description. The team confirms the exact schedule "
+                     "and number of visits before you enroll."))
+    else:
+        faqs.append(("How long does this study last?",
+                     "The listing doesn't state an exact length. The study team "
+                     "walks you through the schedule and number of visits before "
+                     "you decide to enroll."))
+
+    # Who can join - retained (top search + FAQ rich-result eligibility).
     who = f"This study is enrolling {facts['sex'].lower()}, {facts['ages'].lower()}."
     if facts["healthy"] == "Yes":
         who += " Healthy volunteers may be eligible."
+    who += " The study team makes the final eligibility decision."
     faqs.append(("Who can join this trial?", who))
+
+    # Location - powers "clinical trials near me" queries.
     if facts["where"]:
         top = facts["where"][:6]
-        more = f" and {len(facts['where']) - len(top)} more location(s)" if len(facts["where"]) > len(top) else ""
+        more = (f" and {len(facts['where']) - len(top)} more location(s)"
+                if len(facts["where"]) > len(top) else "")
         faqs.append(("Where is this trial taking place?",
-                     "Study sites include " + "; ".join(top) + more + "."))
-    faqs.append(("Is this trial recruiting participants?",
-                 "Yes - it is currently recruiting." if recruiting
-                 else f"Its current status is {(trial.get('overallStatus') or 'unknown').replace('_', ' ').title()}."))
-    if facts["phase"]:
-        faqs.append(("What phase is this trial?", f"This is a {facts['phase']} study."))
-    faqs.append(("How do I apply?",
-                 "Check your eligibility on BridgeMD in a few questions and, if you "
-                 "match, send your interest to the study team - free, no account needed to search."))
+                     "Study sites include " + "; ".join(top) + more +
+                     ". Enter your location above to see the nearest site and "
+                     "check your eligibility."))
     return faqs
-
-
-def _study_criteria(raw, limit=12):
-    """Split a CT.gov eligibility block into (inclusion, exclusion) bullet lists
-    for readable, crawlable content. Falls back gracefully on odd formatting."""
-    if not raw:
-        return [], []
-    text = raw.replace("\r", "\n")
-    incl, excl, bucket = [], [], None
-    for line in text.split("\n"):
-        s = re.sub(r"^\s*[-*•\d.]+\s*", "", line).strip()
-        low = s.lower()
-        if low.startswith("inclusion"):
-            bucket = incl
-            continue
-        if low.startswith("exclusion"):
-            bucket = excl
-            continue
-        if not s:
-            continue
-        (bucket if bucket is not None else incl).append(s)
-    return incl[:limit], excl[:limit]
 
 
 SCREENER_LABELS = {
@@ -5328,20 +5451,27 @@ def sitemap():
     def loc(endpoint, **kw):
         return _abs_url(endpoint, **kw) if PUBLIC_BASE_URL \
             else url_for(endpoint, _external=True, **kw)
-    urls = [loc("home"), loc("find"), loc("how_it_works")]
+    # lastmod gives crawlers a freshness signal (important when "recruiting"
+    # status is time-sensitive). Programmatic pages recompute continuously, so
+    # they carry today's date; study pages carry when we last saw the trial.
+    today = time.strftime("%Y-%m-%d")
+    urls = [(loc("home"), today), (loc("find"), today),
+            (loc("how_it_works"), today)]
     for c in SEO_CONDITIONS:
         cslug = slugify(c)
-        urls.append(loc("condition_page", slug=cslug))
+        urls.append((loc("condition_page", slug=cslug), today))
         for city in SEO_CITIES:
-            urls.append(loc("condition_city_page", slug=cslug,
-                            city_slug=slugify(city)))
+            urls.append((loc("condition_city_page", slug=cslug,
+                             city_slug=slugify(city)), today))
     # Per-study pages, scoped to trials surfaced by our condition/city pages.
     try:
         for s in db.list_seo_studies(limit=5000):
-            urls.append(loc("study_page", nct=s["nct"]))
+            lm = ((s["updated_at"] or today)[:10]) or today
+            urls.append((loc("study_page", nct=s["nct"]), lm))
     except Exception:
         app.logger.exception("sitemap study list failed")
-    items = "".join(f"<url><loc>{u}</loc></url>" for u in urls)
+    items = "".join(
+        f"<url><loc>{u}</loc><lastmod>{lm}</lastmod></url>" for u, lm in urls)
     xml = ('<?xml version="1.0" encoding="UTF-8"?>'
            '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
            + items + "</urlset>")
