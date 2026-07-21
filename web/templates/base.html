@@ -18,11 +18,11 @@
   })();
   </script>
   <title>{% block title %}BridgeMD{% endblock %}</title>
-  <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='logo.svg') }}">
+  <link rel="icon" type="image/svg+xml" href="{{ static_url('logo.svg') }}">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <link rel="stylesheet" href="{{ static_url('style.css') }}">
 </head>
 <body>
 {% import "_icons.html" as ic %}
@@ -30,7 +30,7 @@
 {% if user %}
 <div class="layout">
   <aside class="sidebar">
-    <a class="brand" href="{{ url_for('leads') if pov == 'study' else url_for('dashboard') }}"><img class="brand-mark" src="{{ url_for('static', filename='logo.svg') }}" width="24" height="24" alt="">BridgeMD</a>
+    <a class="brand" href="{{ url_for('leads') if pov == 'study' else url_for('dashboard') }}"><img class="brand-mark" src="{{ static_url('logo.svg') }}" width="24" height="24" alt="">BridgeMD</a>
     {% if demo_available %}<div class="side-pov">{% include "_pov_bar.html" %}</div>{% endif %}
     <nav class="side-nav">
       {% if pov == 'study' %}
