@@ -80,11 +80,13 @@
 
   <div class="study-grid">
     <div class="study-main">
+      {% set _drug = summary.drug if summary else None %}
       {% set _has_struct = summary and (summary.purpose or summary.who or summary.what or summary.commitment) %}
       {% set _has_facts = plain_terms.phase or plain_terms.time or plain_terms.design %}
-      {% if _has_struct or summary_text or _has_facts %}
+      {% if _has_struct or summary_text or _has_facts or (_drug and _drug.what) %}
       <section class="study-block">
         <h2>What this study is testing</h2>
+        {{ ui.drug_explainer(_drug) }}
         {% if _has_struct %}
         <dl class="td-summary-struct">
           {% if summary.purpose %}<div><dt>What it's testing</dt><dd>{{ summary.purpose }}</dd></div>{% endif %}

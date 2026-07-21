@@ -42,9 +42,11 @@
     {% endif %}
     {% endif %}
 
-    {% if summary and (summary.purpose or summary.who or summary.what or summary.commitment or summary.one_liner) %}
+    {% set _drug = summary.drug if summary else None %}
+    {% if summary and (summary.purpose or summary.who or summary.what or summary.commitment or summary.one_liner or (_drug and _drug.what)) %}
     <div class="td-section">
       <h2>About this study</h2>
+      {{ ui.drug_explainer(_drug) }}
       {% if summary.purpose or summary.who or summary.what or summary.commitment %}
       <dl class="td-summary-struct">
         {% if summary.purpose %}<div><dt>What it's testing</dt><dd>{{ summary.purpose }}</dd></div>{% endif %}

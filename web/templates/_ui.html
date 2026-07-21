@@ -55,6 +55,22 @@
   </div>
 {%- endmacro %}
 
+{# --- Drug explainer -------------------------------------------------------
+   Plain-language "What is <drug>?" callout for the investigational treatment.
+   Pass the `drug` dict from summarize.plain(trial).drug (keys: name, what, how,
+   aka). Renders nothing unless there's a `what`. Keeps every trial page's
+   "what is this medicine" explanation identical and low-jargon. #}
+{% macro drug_explainer(drug) -%}
+  {%- if drug and drug.what -%}
+  <div class="study-drug">
+    <h3>{{ ic.icon('sparkle') }} What is {{ drug.name }}?</h3>
+    <p>{{ drug.what }}{% if drug.how %} {{ drug.how }}{% endif %}</p>
+    {% if drug.aka %}<p class="study-drug-aka">Also referred to as {{ drug.aka }}.</p>{% endif %}
+    <p class="study-drug-note">Plain-language explanation of the investigational treatment - it is being studied and is not an approved or proven therapy. The study team can confirm the details.</p>
+  </div>
+  {%- endif -%}
+{%- endmacro %}
+
 {# --- Modal ----------------------------------------------------------------
    Usage:
      {% call ui.modal("myId", "Title", icon="send") %}

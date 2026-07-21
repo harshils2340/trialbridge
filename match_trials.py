@@ -141,6 +141,13 @@ def extract_trial(study):
     mesh_terms = [m.get("term", "") for m in cbm.get("meshes", []) if m.get("term")]
     mesh_ancestors = [a.get("term", "") for a in cbm.get("ancestors", []) if a.get("term")]
     intr_mesh = [m.get("term", "") for m in ibm.get("meshes", []) if m.get("term")]
+    interventions = [
+        {"type": i.get("type", ""), "name": i.get("name", ""),
+         "description": i.get("description", ""),
+         "otherNames": i.get("otherNames", []) or []}
+        for i in p.get("armsInterventionsModule", {}).get("interventions", [])
+        if i.get("name")
+    ]
     return {
         "nctId": ident.get("nctId", ""),
         "title": ident.get("briefTitle", ""),
@@ -161,6 +168,7 @@ def extract_trial(study):
         "meshTerms": mesh_terms,
         "meshAncestors": mesh_ancestors,
         "intrMesh": intr_mesh,
+        "interventions": interventions,
         "criteria": elig.get("eligibilityCriteria", ""),
         "sex": elig.get("sex", ""),
         "minAge": elig.get("minimumAge", ""),

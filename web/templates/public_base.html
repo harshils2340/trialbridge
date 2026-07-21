@@ -77,6 +77,7 @@
   {% block head_extra %}{% endblock %}
 </head>
 {% import "_icons.html" as ic %}
+{% import "_ui.html" as ui %}
 {% set demo_home = (request.endpoint == 'home' and pov_demo) %}
 {% set home_screen = (request.endpoint == 'home' and not demo_home) %}
 <body class="pub{{ ' demo-home' if demo_home else '' }}{{ ' home-screen' if home_screen else '' }}">

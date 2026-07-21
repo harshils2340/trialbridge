@@ -414,6 +414,127 @@ def plain_terms(trial):
     }
 
 
+_PLACEBO_RE = re.compile(
+    r"\b(placebo|sham|standard of care|best supportive care|no intervention|"
+    r"usual care|matching placebo)\b", re.I)
+_DRUG_TYPES = {"DRUG", "BIOLOGICAL", "GENETIC", "COMBINATION_PRODUCT"}
+
+
+def _primary_intervention(trial):
+    """Pick the main investigational drug/biologic to explain (skip placebo,
+    standard-of-care, and non-drug arms). Returns the intervention dict or None."""
+    for iv in (trial or {}).get("interventions") or []:
+        if (iv.get("type") or "").upper() not in _DRUG_TYPES:
+            continue
+        name = (iv.get("name") or "").strip()
+        if not name or _PLACEBO_RE.search(name):
+            continue
+        return iv
+    return None
+
+
+def _route_phrase(text):
+    """Detect administration route/frequency from source text, deterministically.
+    Returns a noun phrase with NO leading article (e.g. 'injection under the skin')."""
+    t = (text or "").lower()
+    route = ""
+    if re.search(r"subcutaneous|\bsc\b|\bs\.c\.", t):
+        route = "injection under the skin"
+    elif re.search(r"intravenous|\biv\b|infusion", t):
+        route = "infusion into a vein"
+    elif re.search(r"\boral|\btablet|\bcapsule|by mouth|\bpill", t):
+        route = "pill taken by mouth"
+    elif re.search(r"intramuscular|\bim\b", t):
+        route = "injection into a muscle"
+    elif re.search(r"topical|cream|ointment|gel", t):
+        route = "treatment applied to the skin"
+    elif re.search(r"inhal|nebuli", t):
+        route = "inhaled treatment"
+    elif re.search(r"injection|injectable", t):
+        route = "injectable medicine"
+    freq = ""
+    if re.search(r"once[-\s]?weekly|once a week|weekly", t):
+        freq = "once-weekly "
+    elif re.search(r"once[-\s]?daily|once a day|daily", t):
+        freq = "once-daily "
+    elif re.search(r"twice[-\s]?daily|twice a day", t):
+        freq = "twice-daily "
+    elif re.search(r"monthly|once a month", t):
+        freq = "monthly "
+    return (freq + route).strip()
+
+
+def _intervention_explainer(trial):
+    """Plain-English 'What is <drug>?' for the study's main investigational
+    treatment. Grounded in the CT.gov intervention record (LLM when configured,
+    deterministic otherwise) and hedged as investigational - never an efficacy
+    or safety claim - so it's patient-friendly AND compliance-safe."""
+    trial = trial or {}
+    iv = _primary_intervention(trial)
+    if not iv:
+        return {}
+    name = (iv.get("name") or "").strip()
+    condition = _first_condition(trial)
+    other_names = [str(x).strip() for x in (iv.get("otherNames") or []) if str(x).strip()]
+    ground = tidy(" ".join([
+        iv.get("description") or "", trial.get("briefSummary") or "",
+        trial.get("detailedDescription") or ""]))
+    route = _route_phrase(iv.get("description", "") + " " + ground)
+
+    # Deterministic fallback: state only what we can defend (kind of thing +
+    # route + what it's being studied for). No invented mechanism.
+    if route:
+        art = "an" if route[0] in "aeiou" else "a"
+        what = f"{name} is an investigational medicine, given as {art} {route}"
+    else:
+        what = f"{name} is an investigational medicine"
+    if condition:
+        what += f", being studied as a potential treatment for {condition.lower()}."
+    else:
+        what += ", being studied in this trial."
+    data = {"name": name, "what": what, "how": "",
+            "aka": ", ".join(other_names[:2])}
+
+    if not (DETAIL_SUMMARY_LLM and mt.LLM_API_KEY):
+        return data
+    try:
+        system = (
+            "You explain investigational clinical-trial treatments to patients "
+            "in plain, grade-8 English. Be accurate and cautious. NEVER claim a "
+            "treatment is safe, effective, approved, or better than alternatives; "
+            "always frame it as investigational / being studied. Reply with ONLY "
+            "a JSON object with keys: name, what, how, aka.")
+        user = (
+            f"DRUG NAME: {name}\n"
+            f"OTHER NAMES: {', '.join(other_names) or 'none listed'}\n"
+            f"TYPE: {iv.get('type','')}\n"
+            f"STUDY IS FOR: {condition or (trial.get('conditions') or '')}\n"
+            f"INTERVENTION DETAILS: {tidy(iv.get('description',''))[:900]}\n"
+            f"STUDY DESCRIPTION: {ground[:1500]}\n\n"
+            "Return JSON:\n"
+            '- "name": the treatment name a patient would see (keep the code if '
+            "that's all there is).\n"
+            '- "what": ONE short sentence - what kind of thing it is (e.g. an '
+            "investigational once-weekly injectable medicine) and what it is being "
+            'studied as a potential treatment for. Must include "investigational" '
+            'or "being studied".\n'
+            '- "how": ONE short sentence on how it is DESIGNED to work in the body, '
+            "ONLY if the mechanism is well established for this drug or its drug "
+            'class; otherwise "". Phrase as "is designed to..."; never invent a '
+            "mechanism.\n"
+            '- "aka": other common names (e.g. a generic name) if well known, '
+            'else "".\n'
+            "No efficacy or safety claims.")
+        parsed = mt._extract_json(mt.llm_chat(system, user))
+        out = {k: str(parsed.get(k, "") or "").strip() for k in ("name", "what", "how", "aka")}
+        if out.get("what"):
+            out["name"] = out.get("name") or name
+            return out
+    except Exception:
+        pass
+    return data
+
+
 def plain(trial):
     """Structured plain-English summary for the detail page (LLM + cache)."""
     trial = trial or {}
@@ -421,6 +542,13 @@ def plain(trial):
     if nct:
         cached = db.get_trial_summary(nct)
         if cached:
+            # Upgrade older cached summaries in place with the drug explainer.
+            if "drug" not in cached:
+                cached["drug"] = _intervention_explainer(trial)
+                try:
+                    db.set_trial_summary(nct, cached)
+                except Exception:
+                    pass
             return cached
 
     data = _fallback(trial)
@@ -440,10 +568,11 @@ def plain(trial):
         except Exception:
             pass  # fall back to the deterministic version
 
+    data["drug"] = _intervention_explainer(trial)
     # Only cache polished (AI) results, so a fallback can upgrade later once a
     # key is configured.
     data["_qa"] = evaluate_summary_quality(trial, data)
-    if nct and data.get("_ai"):
+    if nct and (data.get("_ai") or data.get("drug")):
         try:
             db.set_trial_summary(nct, data)
         except Exception:
