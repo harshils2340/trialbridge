@@ -1,4 +1,5 @@
 {% extends "public_base.html" %}
+{% import "_icons.html" as ic %}
 {% set _title = trial.title or (condition ~ ' clinical trial') %}
 {% block title %}{{ _title }}{% if condition %} · {{ condition }} trial{% endif %} · BridgeMD{% endblock %}
 {% block description %}{{ blurb or _title }}{% if recruiting %} Recruiting now - check your eligibility and apply online, free.{% endif %}{% endblock %}
@@ -23,10 +24,10 @@
       "name": {{ _title|tojson }},
       "description": {{ (summary_text or blurb or _title)|tojson }},
       "url": {{ _canon|tojson }},
-      "status": {{ ('Recruiting' if recruiting else (trial.overallStatus or 'Unknown'))|tojson }},
+      "status": {{ ('Recruiting' if (recruiting and source == 'ctgov') else (trial.overallStatus or 'Unknown'))|tojson }},
       {% if facts.phase %}"phase": {{ facts.phase|tojson }},{% endif %}
-      "identifier": {"@type": "PropertyValue", "propertyID": "ClinicalTrials.gov", "value": {{ nct|tojson }}},
-      "sameAs": {{ ('https://clinicaltrials.gov/study/' ~ nct)|tojson }},
+      "identifier": {"@type": "PropertyValue", "propertyID": {{ source_name|tojson }}, "value": {{ study_id|tojson }}},
+      "sameAs": {{ source_url|tojson }},
       {% if facts.sponsor %}"sponsor": {"@type": "Organization", "name": {{ facts.sponsor|tojson }}},{% endif %}
       {% if trial.conditions %}"healthCondition": [
         {% for c in trial.conditions[:8] %}{"@type": "MedicalCondition", "name": {{ c|tojson }}}{% if not loop.last %},{% endif %}{% endfor %}
@@ -66,40 +67,69 @@
 
   <header class="study-head">
     <div class="study-tags">
-      {% if recruiting %}<span class="status-tag">Recruiting</span>{% else %}
+      {% if recruiting and source == 'ctgov' %}<span class="status-tag">Recruiting</span>{% else %}
         <span class="pr-phase">{{ (trial.overallStatus or 'Status unknown')|replace('_', ' ')|title }}</span>{% endif %}
       {% if facts.phase %}<span class="pr-phase">{{ facts.phase }}</span>{% endif %}
       {% if condition %}<span class="study-cond">{{ condition }}</span>{% endif %}
     </div>
-    <h1>{{ _title }}</h1>
-    {% if blurb %}<p class="study-lead">{{ blurb }}</p>{% endif %}
-    <p class="study-id">ClinicalTrials.gov ID: <strong>{{ nct }}</strong></p>
+    <h1>{{ plain_title or _title }}</h1>
+    {% if trial.title and trial.title != (plain_title or _title) %}
+    <p class="study-official"><span>Official title</span> {{ trial.title }}</p>{% endif %}
+    <p class="study-id">{{ source_name }} ID: <strong>{{ study_id }}</strong></p>
   </header>
 
   <div class="study-grid">
     <div class="study-main">
-      {% if summary_text %}
+      {% set _has_struct = summary and (summary.purpose or summary.who or summary.what or summary.commitment) %}
+      {% set _has_facts = plain_terms.phase or plain_terms.time or plain_terms.design %}
+      {% if _has_struct or summary_text or _has_facts %}
       <section class="study-block">
-        <h2>About this study</h2>
+        <h2>What this study is testing</h2>
+        {% if _has_struct %}
+        <dl class="td-summary-struct">
+          {% if summary.purpose %}<div><dt>What it's testing</dt><dd>{{ summary.purpose }}</dd></div>{% endif %}
+          {% if summary.who %}<div><dt>Who it's for</dt><dd>{{ summary.who }}</dd></div>{% endif %}
+          {% if summary.what %}<div><dt>What's involved</dt><dd>{{ summary.what }}</dd></div>{% endif %}
+          {% if summary.commitment %}<div><dt>Time commitment</dt><dd>{{ summary.commitment }}</dd></div>{% endif %}
+        </dl>
+        {% elif summary_text %}
         <p>{{ summary_text }}</p>
+        {% endif %}
+        {% if _has_facts %}
+        <ul class="tp-facts">
+          {% if plain_terms.phase %}<li>{{ ic.icon('activity') }} {{ plain_terms.phase }}</li>{% endif %}
+          {% if plain_terms.time %}<li>{{ ic.icon('activity') }} Time commitment: {{ plain_terms.time }}</li>{% endif %}
+          {% if plain_terms.design %}<li>{{ ic.icon('sparkle') }} {{ plain_terms.design }}</li>{% endif %}
+        </ul>
+        {% endif %}
+        <p class="study-note">A plain-language read of the study's public {{ source_name }} listing. The study team confirms the details.</p>
       </section>
       {% endif %}
 
-      {% if incl or excl %}
+      {% if plain_terms.who or plain_terms.rule_out or plain_terms.who_basics %}
       <section class="study-block">
         <h2>Who can take part</h2>
-        <div class="study-facts">
-          <div><span class="sf-l">Ages</span><span class="sf-v">{{ facts.ages }}</span></div>
-          <div><span class="sf-l">Sex</span><span class="sf-v">{{ facts.sex }}</span></div>
-          <div><span class="sf-l">Healthy volunteers</span><span class="sf-v">{{ facts.healthy }}</span></div>
+        {% if plain_terms.who_basics %}<p class="tp-basics">{{ plain_terms.who_basics }}</p>{% endif %}
+        <div class="tp-grid">
+          {% if plain_terms.who %}
+          <div class="tp-col tp-join">
+            <h3>{{ ic.icon('check') }} You may be able to join if</h3>
+            <ul>{% for x in plain_terms.who %}<li>{{ x }}</li>{% endfor %}</ul>
+          </div>
+          {% endif %}
+          {% if plain_terms.rule_out %}
+          <div class="tp-col tp-rule">
+            <h3>{{ ic.icon('x') }} You likely can't join if</h3>
+            <ul>{% for x in plain_terms.rule_out %}<li>{{ x }}</li>{% endfor %}</ul>
+          </div>
+          {% endif %}
         </div>
-        {% if incl %}
-        <h3>You may be eligible if</h3>
-        <ul class="study-crit">{% for c in incl %}<li>{{ c }}</li>{% endfor %}</ul>
-        {% endif %}
-        {% if excl %}
-        <h3>You may not be eligible if</h3>
-        <ul class="study-crit study-crit-ex">{% for c in excl %}<li>{{ c }}</li>{% endfor %}</ul>
+        {% if plain_terms.has_more and (plain_terms.inc_all or plain_terms.exc_all) %}
+        <details class="tp-full">
+          <summary>See the full eligibility criteria</summary>
+          {% if plain_terms.inc_all %}<div class="tp-full-b"><b>Who can join</b><ul>{% for x in plain_terms.inc_all %}<li>{{ x }}</li>{% endfor %}</ul></div>{% endif %}
+          {% if plain_terms.exc_all %}<div class="tp-full-b"><b>What rules you out</b><ul>{% for x in plain_terms.exc_all %}<li>{{ x }}</li>{% endfor %}</ul></div>{% endif %}
+        </details>
         {% endif %}
         <p class="study-note">The study team makes the final eligibility decision.</p>
       </section>
@@ -112,6 +142,21 @@
           {% for w in facts.where[:20] %}<li>{{ ic.icon('pin') }} {{ w }}</li>{% endfor %}
         </ul>
         {% if facts.where|length > 20 %}<p class="study-note">+ {{ facts.where|length - 20 }} more site(s).</p>{% endif %}
+      </section>
+      {% endif %}
+
+      {% if (pay and pay.label) or (support and (support.travel or support.coverage or support.stipend)) %}
+      <section class="study-block">
+        <h2>Compensation & support</h2>
+        {% if support and (support.travel or support.coverage or support.stipend) %}
+        <p class="td-pay-note">
+          {% if support.travel %}Travel support may be available.{% endif %}
+          {% if support.coverage %} Some study costs may be covered.{% endif %}
+          {% if support.stipend %} A stipend or compensation may be offered.{% endif %}
+        </p>
+        {% endif %}
+        {% if pay and pay.label %}<p class="td-pay-note">{{ pay.label }}.</p>{% endif %}
+        <p class="td-source">ClinicalTrials.gov doesn't provide a reliable structured field for payment or travel support - confirm details with the study team.</p>
       </section>
       {% endif %}
 
@@ -128,14 +173,18 @@
 
     <aside class="study-side">
       <div class="study-cta card">
-        <h2>{{ 'Check your eligibility' if recruiting else 'Search similar trials' }}</h2>
+        <h2>{{ 'Check your eligibility' if (recruiting and source == 'ctgov') else 'Find trials near you' }}</h2>
+        {% if source == 'ctis' %}
+        <p>This trial is registered in the EU. Search recruiting trials near you{% if condition %} for {{ condition }}{% endif %} - answer a few quick questions and apply in minutes.</p>
+        {% else %}
         <p>Answer a few quick questions. If you match, apply to the study team in minutes.</p>
+        {% endif %}
         {% if applied %}
         <a class="btn btn-primary btn-block" href="{{ url_for('applications') }}">View your application{{ ic.icon('arrow-right') }}</a>
         {% else %}
         <form id="studyForm" method="post" action="{{ url_for('find') }}">
           <input type="hidden" name="condition" value="{{ condition or trial.title }}">
-          <input type="hidden" name="nct" value="{{ nct }}">
+          {% if source == 'ctgov' %}<input type="hidden" name="nct" value="{{ study_id }}">{% endif %}
           <input type="hidden" name="radius" value="50">
           <input type="hidden" id="locLat" name="lat">
           <input type="hidden" id="locLon" name="lon">
@@ -147,7 +196,7 @@
           <div id="locConfirm" class="loc-confirm" style="display:none;"></div>
         </form>
         {% endif %}
-        <a class="study-ext" href="https://clinicaltrials.gov/study/{{ nct }}" target="_blank" rel="noopener">{{ ic.icon('external') }} Full record on ClinicalTrials.gov</a>
+        <a class="study-ext" href="{{ source_url }}" target="_blank" rel="noopener">{{ ic.icon('external') }} Full record on {{ source_name }}</a>
       </div>
       {% if facts.sponsor or facts.enrollment %}
       <div class="study-meta card">
@@ -168,7 +217,7 @@
   {% endif %}
 
   <p class="study-disc">BridgeMD is an information and trial-matching tool - not medical advice, and not the
-    study sponsor. Details come from ClinicalTrials.gov; the study team decides eligibility.</p>
+    study sponsor. Details come from {{ source_name }}; the study team decides eligibility.</p>
 </article>
 
 <div class="loading-overlay" id="loadingOverlay" aria-hidden="true">

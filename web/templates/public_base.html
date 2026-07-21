@@ -49,6 +49,31 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Inter:wght@400;500;600;700&family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ static_url('style.css') }}">
+  {# Sitewide brand entity so Google + answer engines recognize BridgeMD as one
+     consistent organization/site across every page. Page-specific schema (e.g.
+     MedicalTrial / FAQPage on study pages) is added via head_extra. #}
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "Organization",
+        "@id": "{{ url_for('home', _external=True) }}#org",
+        "name": "BridgeMD",
+        "url": "{{ url_for('home', _external=True) }}",
+        "logo": "{{ url_for('static', filename='logo.svg', _external=True) }}",
+        "description": "BridgeMD helps people find recruiting clinical trials near them and apply online, free."
+      },
+      {
+        "@type": "WebSite",
+        "@id": "{{ url_for('home', _external=True) }}#website",
+        "name": "BridgeMD",
+        "url": "{{ url_for('home', _external=True) }}",
+        "publisher": {"@id": "{{ url_for('home', _external=True) }}#org"}
+      }
+    ]
+  }
+  </script>
   {% block head_extra %}{% endblock %}
 </head>
 {% import "_icons.html" as ic %}

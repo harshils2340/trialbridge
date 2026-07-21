@@ -224,6 +224,28 @@
 </section>
 {% endif %}
 
+{% if eu_trials and not city %}
+<section class="cond-list cond-eu">
+  <h2>Also recruiting in Europe</h2>
+  <p class="cond-lead">{{ condition }} trials registered in the EU Clinical Trials Information System (CTIS). These are outside the "near me" matcher above - open a study for full details.</p>
+  {% for t in eu_trials %}
+  <div class="cond-item-wrap">
+    <a class="cond-item" href="{{ url_for('study_page', nct=t.ctNumber) }}">
+      <div class="cond-item-main">
+        <h3>{{ t.title }}</h3>
+        {% if t.countries %}<p class="cond-eu-geo">{{ ic.icon('pin') }} {{ t.countries[:6]|join(', ') }}{% if t.countries|length > 6 %} +{{ t.countries|length - 6 }} more{% endif %}</p>{% endif %}
+      </div>
+      <div class="cond-item-meta">
+        {% if t.phase %}<span class="pr-phase">{{ t.phase }}</span>{% endif %}
+        <span class="badge-eu">EU CTIS</span>
+        <span class="cond-item-go">Study details {{ ic.icon('arrow-right') }}</span>
+      </div>
+    </a>
+  </div>
+  {% endfor %}
+</section>
+{% endif %}
+
 <section class="cond-cities">
   <h2>{{ condition }} trials by city</h2>
   <div class="chip-grid">
