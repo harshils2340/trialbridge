@@ -7,6 +7,9 @@ referrals/
 
 # Web app: local DB (contains patient notes + accounts), secret, venv
 web/bridgemd.db
+web/bridgemd.db-shm
+web/bridgemd.db-wal
+web/bridgemd.db-journal
 web/.secret
 .venv/
 __pycache__/
