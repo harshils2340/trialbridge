@@ -1,45 +1,88 @@
 {% extends "public_base.html" %}
 {% import "_icons.html" as ic %}
 {% block title %}BridgeMD for clinics, sites & sponsors — fill trials faster{% endblock %}
-{% block description %}Get pre-screened, consented applicants and the tools to move them from applied to enrolled. Book a live demo of BridgeMD for your study team.{% endblock %}
+{% block description %}Match patients from your EHR on de-identified data, get pre-screened consented applicants, and run enrollment as an operation. Book a live demo of BridgeMD.{% endblock %}
 {% block og_title %}BridgeMD for clinics, research sites & sponsors{% endblock %}
-{% block og_description %}Pre-screened, consented applicants plus an enrollment funnel your coordinators actually use. Book a 20-minute live demo.{% endblock %}
+{% block og_description %}EHR matching on de-identified data, pre-screened consented applicants, and an enrollment funnel your coordinators actually use. Book a 20-minute demo.{% endblock %}
 
 {% block body %}
 <section class="b2b-hero">
   <div class="b2b-in">
     <span class="hero-eyebrow">{{ ic.icon('activity') }} For research sites, clinics &amp; sponsors</span>
     <h1>Fill your trials faster.</h1>
-    <p class="b2b-sub">BridgeMD sends your team pre-screened, consented applicants — and the tools to
-      move them from applied to enrolled. No new headcount, no per-referral fees.</p>
+    <p class="b2b-sub">Match patients from your own EHR — on de-identified data — then work a queue of
+      pre-screened, consented applicants from applied to enrolled. No new headcount, no per-referral fees.</p>
     <div class="b2b-cta">
       <a class="btn btn-primary btn-lg" href="#demo">Book a live demo {{ ic.icon('arrow-right') }}</a>
-      <a class="btn btn-ghost btn-lg" href="#snapshots">See what you get</a>
+      <a class="btn btn-ghost btn-lg" href="#matching">How matching works</a>
     </div>
     <p class="b2b-note">{{ ic.icon('check') }} Free for physicians · sites &amp; sponsors pay a flat license, never per referral</p>
   </div>
 </section>
 
 <section class="steps-wrap">
-  <h2 class="steps-title">Everything you need to enroll, in one place</h2>
+  <h2 class="steps-title">Everything your team needs to enroll — in one workspace</h2>
   <div class="steps">
     <div class="step">
+      <div class="step-ic">{{ ic.icon('search') }}</div>
+      <h3>Find candidates in your EHR</h3>
+      <p>BridgeMD screens your existing patients against every recruiting protocol using only
+        de-identified, structured facts — so hidden candidates surface without manual chart review.</p>
+    </div>
+    <div class="step">
       <div class="step-ic">{{ ic.icon('user-plus') }}</div>
-      <h3>Pre-screened intake</h3>
-      <p>Applicants arrive already matched to your inclusion criteria and consented to be
-        contacted, so coordinators spend their time on real candidates — not dead ends.</p>
+      <h3>Pre-screened, consented intake</h3>
+      <p>Applicants arrive already matched to your criteria and consented to be contacted. Coordinators
+        spend their time on real candidates instead of dead ends.</p>
     </div>
     <div class="step">
       <div class="step-ic">{{ ic.icon('activity') }}</div>
-      <h3>An enrollment funnel that runs itself</h3>
-      <p>Watch every applicant move applied → contacted → screened → enrolled, with conversion
-        and time-in-stage, so you can see exactly where enrollment is stalling.</p>
+      <h3>A funnel you can actually see</h3>
+      <p>Every applicant moves applied → contacted → screened → enrolled, with conversion and
+        time-in-stage, so you can fix the leaky step instead of guessing.</p>
     </div>
-    <div class="step">
-      <div class="step-ic">{{ ic.icon('award') }}</div>
-      <h3>Recruit your own patients, compliantly</h3>
-      <p>Give clinicians a compliant way to tell eligible patients about your studies, and post
-        studies patients can find and apply to directly — de-identified until they consent.</p>
+  </div>
+</section>
+
+<section id="matching" class="snaps">
+  <div class="snaps-in">
+    <p class="snaps-eyebrow">How matching works — safely</p>
+
+    <div class="snap">
+      <div class="snap-ui">
+        <div class="snap-win">
+          <div class="snap-bar"><span class="snap-dot"></span><span class="snap-dot"></span><span class="snap-dot"></span><b>Patient match · de-identified</b></div>
+          <div class="snap-rows">
+            <div class="snap-row"><span class="snap-av">1</span>
+              <div class="snap-row-main"><b>Connect the EHR</b><span>SMART on FHIR · read-only</span></div>
+              <span class="pill likely_eligible">Read-only</span></div>
+            <div class="snap-row"><span class="snap-av">2</span>
+              <div class="snap-row-main"><b>Take only what matches</b><span>Age, sex, conditions, meds, labs</span></div>
+              <span class="pill likely_eligible">No names</span></div>
+            <div class="snap-row"><span class="snap-av">3</span>
+              <div class="snap-row-main"><b>Normalize to concepts</b><span>RxNorm · ICD-10 · MeSH</span></div>
+              <span class="pill likely_eligible">Structured</span></div>
+            <div class="snap-row"><span class="snap-av">4</span>
+              <div class="snap-row-main"><b>Score against the protocol</b><span>Criteria-by-criteria read</span></div>
+              <span class="pill likely_eligible">Explained</span></div>
+            <div class="snap-row"><span class="snap-av">5</span>
+              <div class="snap-row-main"><b>Reveal only on consent</b><span>Patient opts in to be contacted</span></div>
+              <span class="pill possible">Then contact</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="snap-txt">
+        <h3>Matching runs on de-identified data</h3>
+        <p>BridgeMD checks your patients against recruiting trials without shipping charts around. We
+          pull the minimum needed to match, and identities stay sealed until the patient says yes.</p>
+        <ul class="snap-crit">
+          <li class="ok">{{ ic.icon('shield') }} De-identified by default — built around HIPAA Safe Harbor</li>
+          <li class="ok">{{ ic.icon('check') }} Only structured facts (age, dx, meds, labs) — never names</li>
+          <li class="ok">{{ ic.icon('lock') }} Patients stay blinded to the site until they consent</li>
+          <li class="ok">{{ ic.icon('check') }} BAAs available · we never sell patient data</li>
+          <li class="ok">{{ ic.icon('check') }} You choose what's connected and can disconnect anytime</li>
+        </ul>
+      </div>
     </div>
   </div>
 </section>
@@ -112,6 +155,72 @@
         <h3>Plain-English eligibility, not a wall of criteria</h3>
         <p>Each applicant comes with a criteria-by-criteria read against the protocol, so your team
           knows what to confirm at screening before anyone picks up the phone.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="admin" class="steps-wrap">
+  <p class="snaps-eyebrow">Admin &amp; controls</p>
+  <h2 class="steps-title">Run recruiting like an operation</h2>
+  <div class="steps">
+    <div class="step">
+      <div class="step-ic">{{ ic.icon('award') }}</div>
+      <h3>Claim your studies</h3>
+      <p>Add your NCTs and scope each coordinator to only their trials. Every action is
+        ownership-checked, so teams never touch another site's candidates.</p>
+    </div>
+    <div class="step">
+      <div class="step-ic">{{ ic.icon('dollar') }}</div>
+      <h3>Recruitment spend &amp; ROI</h3>
+      <p>Log spend by channel and see cost per screened and cost per enrolled — the numbers that
+        justify budget to your sponsor or CRO.</p>
+    </div>
+    <div class="step">
+      <div class="step-ic">{{ ic.icon('check') }}</div>
+      <h3>Verified enrollment</h3>
+      <p>Reconcile outcomes against REDCap or your CTMS so every "enrolled" is source-backed proof,
+        not a self-reported guess.</p>
+    </div>
+    <div class="step">
+      <div class="step-ic">{{ ic.icon('lock') }}</div>
+      <h3>Access &amp; consent controls</h3>
+      <p>Candidates stay blinded until consent, access is role-scoped, and every status change is
+        logged — an activity trail you can hand to an auditor.</p>
+    </div>
+    <div class="step">
+      <div class="step-ic">{{ ic.icon('bell') }}</div>
+      <h3>Reminders &amp; messaging</h3>
+      <p>Automatic visit reminders and quiet-patient nudges keep candidates from going dark — the
+        single biggest driver of retention.</p>
+    </div>
+    <div class="step">
+      <div class="step-ic">{{ ic.icon('file') }}</div>
+      <h3>Sponsor-ready exports</h3>
+      <p>One-click CSV/JSON of your funnel and ROI for sponsor updates — no more rebuilding a
+        spreadsheet the night before a call.</p>
+    </div>
+  </div>
+</section>
+
+<section class="snaps">
+  <div class="snaps-in">
+    <div class="snap snap-reverse">
+      <div class="snap-ui">
+        <div class="snap-win">
+          <div class="snap-bar"><span class="snap-dot"></span><span class="snap-dot"></span><span class="snap-dot"></span><b>Recruitment ROI</b></div>
+          <div class="snap-stats">
+            <div class="snap-stat"><b>$214</b><span>Cost per screened</span></div>
+            <div class="snap-stat"><b>$1.4k</b><span>Cost per enrolled</span></div>
+            <div class="snap-stat ok"><b>92%</b><span>Verified enrolled</span></div>
+          </div>
+          <div class="snap-foot">Broken out by channel · exportable to CSV/JSON · updates live</div>
+        </div>
+      </div>
+      <div class="snap-txt">
+        <h3>Prove velocity, don't just claim it</h3>
+        <p>Spend, conversion, and source-verified enrollment sit in one place, so your budget
+          conversations rest on numbers your sponsor can audit — not anecdotes.</p>
       </div>
     </div>
   </div>

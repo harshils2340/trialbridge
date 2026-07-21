@@ -748,6 +748,14 @@ def _web_analytics_cookies(resp):
                             httponly=True, secure=secure)
     except Exception:
         pass
+    # Never let a CDN/browser serve a stale HTML page - otherwise it keeps
+    # pointing at old (cached) CSS/JS even after we ship fixes. Static assets
+    # are exempt (they're long-cached and busted via ?v= in static_url()).
+    try:
+        if resp.headers.get("Content-Type", "").startswith("text/html"):
+            resp.headers["Cache-Control"] = "no-cache, must-revalidate, max-age=0"
+    except Exception:
+        pass
     return resp
 
 
