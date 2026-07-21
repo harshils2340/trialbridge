@@ -608,9 +608,17 @@ def now():
 
 def get_db():
     if "db" not in g:
-        g.db = sqlite3.connect(DB_PATH)
+        # timeout + busy_timeout: with multiple gunicorn workers (and cron sweeps
+        # writing across every alert), a plain connect throws "database is locked"
+        # the instant another writer holds the lock. Wait/retry for up to 15s
+        # instead. WAL lets readers and a single writer run concurrently, which
+        # is what removes the intermittent 500s on /alerts/run and /reminders/run.
+        g.db = sqlite3.connect(DB_PATH, timeout=15)
         g.db.row_factory = sqlite3.Row
         g.db.execute("PRAGMA foreign_keys = ON")
+        g.db.execute("PRAGMA busy_timeout = 15000")
+        g.db.execute("PRAGMA journal_mode = WAL")
+        g.db.execute("PRAGMA synchronous = NORMAL")
     return g.db
 
 
@@ -3899,7 +3907,11 @@ def alert_notify_due(alert, min_days=7):
         min_days = max(1, int(a["notify_min_days"] or min_days))
     except Exception:
         min_days = max(1, int(min_days or 7))
-    ts = _parse_ts(a.get("last_notified_at", ""))
+    try:
+        last = a["last_notified_at"]  # sqlite3.Row has no .get()
+    except (KeyError, IndexError, TypeError):
+        last = ""
+    ts = _parse_ts(last or "")
     if not ts:
         return True
     return (dt.datetime.now() - ts).total_seconds() >= (min_days * 86400)

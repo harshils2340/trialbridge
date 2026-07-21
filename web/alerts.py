@@ -196,13 +196,19 @@ def check_alert(alert):
 
 
 def check_all():
-    """Check every active alert once. Safe to call from a request or a cron."""
+    """Check every active alert once. Safe to call from a request or a cron.
+    One failing alert (transient CT.gov / DB-lock hiccup) must not abort the
+    whole sweep, so each alert is guarded independently."""
     if _app is None:
         return 0
     total = 0
     with _app.app_context():
         for alert in db.list_active_alerts():
-            total += check_alert(alert)
+            try:
+                total += check_alert(alert)
+            except Exception:
+                _app.logger.exception(
+                    "alert check failed for id=%s", _alert_val(alert, "id"))
     return total
 
 

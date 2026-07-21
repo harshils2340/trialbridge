@@ -1312,6 +1312,26 @@ def _csrf_token():
 app.jinja_env.globals["csrf_token"] = _csrf_token
 
 
+_ASSET_VER_CACHE = {}
+
+
+def static_url(filename):
+    """url_for('static', ...) with a ?v=<mtime> cache-buster so browsers/CDNs
+    fetch a fresh copy whenever a static asset changes (otherwise long-lived
+    caches keep serving stale CSS/JS/logo)."""
+    ver = _ASSET_VER_CACHE.get(filename)
+    if ver is None or app.debug:
+        try:
+            ver = int(os.path.getmtime(os.path.join(app.static_folder, filename)))
+        except OSError:
+            ver = 0
+        _ASSET_VER_CACHE[filename] = ver
+    return url_for("static", filename=filename) + (f"?v={ver}" if ver else "")
+
+
+app.jinja_env.globals["static_url"] = static_url
+
+
 @app.before_request
 def _csrf_guard():
     _csrf_token()
@@ -3797,7 +3817,11 @@ def reminders_run():
             abort(403)
     elif not NO_LOGIN:
         abort(403)
-    return jsonify(reminders_mod.run_all())
+    try:
+        return jsonify(reminders_mod.run_all())
+    except Exception:
+        app.logger.exception("reminders sweep failed")
+        return jsonify({"checked": False, "error": "sweep_failed"}), 200
 
 
 @app.route("/applications/connect-records/<token>", methods=["POST"])
