@@ -533,21 +533,35 @@ td.num { font-variant-numeric: tabular-nums; }
   box-shadow: 0 24px 70px rgba(17,17,20,.28); animation: card-in .25s ease; }
 @keyframes card-in { from { transform: translateY(10px) scale(.98); opacity: 0; }
   to { transform: none; opacity: 1; } }
-.loading-spark { width: 34px; height: 34px; margin: 0 auto 18px; border-radius: 10px;
-  background: var(--accent); animation: spark 1.3s ease-in-out infinite; }
-@keyframes spark { 0%,100% { transform: scale(1); opacity: 1; }
-  50% { transform: scale(.8); opacity: .6; } }
+/* Branded "pulse" loader: an accent core that gently breathes, with concentric
+   rings radiating out (radar/heartbeat feel). All colors derive from --accent. */
+.loading-spark { position: relative; width: 44px; height: 44px; margin: 6px auto 24px;
+  border-radius: var(--radius-pill); background: var(--accent);
+  box-shadow: 0 10px 24px color-mix(in srgb, var(--accent) 32%, transparent);
+  animation: spark-pulse 1.4s ease-in-out infinite; }
+.loading-spark::before, .loading-spark::after { content: ""; position: absolute;
+  inset: -2px; border-radius: var(--radius-pill); border: 2px solid var(--accent);
+  animation: spark-ring 1.8s cubic-bezier(.22,.61,.36,1) infinite; }
+.loading-spark::after { animation-delay: .9s; }
+@keyframes spark-pulse { 0%,100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(.84); opacity: .92; } }
+@keyframes spark-ring { 0% { transform: scale(.85); opacity: .5; }
+  100% { transform: scale(2.3); opacity: 0; } }
 .loading-title { font-weight: 700; font-size: 18px; letter-spacing: -.02em; }
 .loading-sub { color: var(--muted); font-size: 14px; margin-top: 6px; min-height: 20px; }
 .loading-foot { color: var(--faint); font-size: 12px; margin-top: 4px; }
-.progress { height: 6px; background: var(--surface-2); border-radius: 999px;
-  overflow: hidden; margin: 20px 0 12px; }
-.progress-bar { position: relative; height: 100%; width: 0%; border-radius: 999px;
-  background: var(--accent); transition: width .3s ease; }
+.progress { height: 6px; background: var(--surface-2); border-radius: var(--radius-pill);
+  overflow: hidden; margin: 22px 0 12px; }
+.progress-bar { position: relative; height: 100%; width: 0%; border-radius: var(--radius-pill);
+  background: linear-gradient(90deg, var(--btn-hover), var(--accent)); transition: width .3s ease; }
 .progress-bar::after { content: ""; position: absolute; inset: 0;
   background: linear-gradient(90deg, transparent, rgba(255,255,255,.5), transparent);
   transform: translateX(-100%); animation: gloss 1.3s ease-in-out infinite; }
 @keyframes gloss { 100% { transform: translateX(100%); } }
+@media (prefers-reduced-motion: reduce) {
+  .loading-spark, .loading-spark::before, .loading-spark::after,
+  .progress-bar::after { animation: none; }
+}
 
 /* ---------- Icons ---------- */
 .ico { width: 16px; height: 16px; stroke: currentColor; fill: none;
