@@ -3836,6 +3836,18 @@ def list_active_alerts():
         "SELECT * FROM alerts WHERE active = 1 ORDER BY id").fetchall()
 
 
+def list_notifiable_alerts():
+    """Active alerts the cron sweep should actually process: only those owned by
+    an existing account that has email alerts switched on. This is what makes the
+    sweep a no-op until someone signs up and opts into alerts - we never do CT.gov
+    work (or email) for guests or patients who turned alerts off."""
+    return get_db().execute(
+        "SELECT a.* FROM alerts a "
+        "JOIN patient_users p ON p.applicant_token = a.applicant_token "
+        "WHERE a.active = 1 AND p.email_alerts = 1 "
+        "ORDER BY a.id").fetchall()
+
+
 def get_alert(alert_id):
     return get_db().execute(
         "SELECT * FROM alerts WHERE id = ?", (alert_id,)).fetchone()

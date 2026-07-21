@@ -203,7 +203,12 @@ def check_all():
         return 0
     total = 0
     with _app.app_context():
-        for alert in db.list_active_alerts():
+        alerts = db.list_notifiable_alerts()
+        if not alerts:
+            # Nobody has an account with alerts enabled -> nothing to sweep.
+            # Skip all CT.gov calls and writes; the cron becomes a cheap no-op.
+            return 0
+        for alert in alerts:
             try:
                 total += check_alert(alert)
             except Exception:
