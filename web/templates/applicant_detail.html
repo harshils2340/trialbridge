@@ -100,13 +100,31 @@
         {% endfor %}
       </div>
       {% if l['revealed'] %}
+      <div class="app-chips" id="quickReplies" style="margin-bottom:10px;">
+        <button type="button" class="ui-chip" data-msg="Hi {{ (view.name or 'there').split(' ')[0] }}, just checking in on your interest in the study - happy to answer any questions.">Check in</button>
+        <button type="button" class="ui-chip" data-msg="Friendly reminder to book your screening visit using the link we sent - let me know if you need another time.">Booking reminder</button>
+        <button type="button" class="ui-chip" data-msg="Are you still available for your screening visit? If not, we can easily reschedule.">Reschedule</button>
+        <button type="button" class="ui-chip" data-msg="Thanks so much - we've received everything we need for now and will follow up with next steps shortly.">Thanks</button>
+      </div>
       <form method="post" action="{{ url_for('message_lead', lead_id=l['id']) }}" class="composer">
-        <textarea name="body" placeholder="Write a message…" required></textarea>
+        <textarea name="body" id="composerBody" placeholder="Write a message…" required></textarea>
         <div class="bar">
           <span class="bar-sp sp"></span>
           {{ ui.btn('Send', 'primary', 'sm', type='submit', icon='send') }}
         </div>
       </form>
+      <script>
+      (function () {
+        var box = document.getElementById('composerBody');
+        document.querySelectorAll('#quickReplies .ui-chip').forEach(function (c) {
+          c.addEventListener('click', function () {
+            if (!box) return;
+            box.value = c.getAttribute('data-msg') || '';
+            box.focus();
+          });
+        });
+      })();
+      </script>
       {% else %}
       <div class="callout info">{{ ic.icon('lock') }} Accept this applicant to unlock two-way messaging.</div>
       {% endif %}
@@ -147,20 +165,32 @@
       <div class="app-card-title">{{ ic.icon('calendar') }} Screening &amp; scheduling</div>
       {% if l['revealed'] %}
       {% if l['schedule_url'] %}
-      <div class="callout info" style="margin-bottom:12px;">
+      <div class="callout info" style="margin-bottom:8px;">
         {{ ic.icon('check') }}
         <span>Booking link sent. <a href="{{ l['schedule_url'] }}" target="_blank" rel="noopener">Open link</a></span>
       </div>
       {% endif %}
+      {% if l['video_url'] %}
+      <div class="callout info" style="margin-bottom:8px;">
+        {{ ic.icon('phone') }}
+        <span>Video call ready. <a href="{{ l['video_url'] }}" target="_blank" rel="noopener">Join link</a></span>
+      </div>
+      {% endif %}
       <form method="post" action="{{ url_for('schedule_lead', lead_id=l['id']) }}" style="display:flex;flex-direction:column;gap:8px;">
         <input type="hidden" name="next" value="{{ url_for('applicant_detail', lead_id=l['id']) }}">
+        <label class="app-sub" style="font-size:12px;color:var(--faint);">Booking calendar (they self-book on yours)</label>
         <input type="url" name="schedule_url" placeholder="https://calendly.com/your-team/screening" value="{{ l['schedule_url'] or default_schedule }}">
+        <label class="app-sub" style="font-size:12px;color:var(--faint);">Video call link (Zoom / Google Meet)</label>
+        <input type="url" name="video_url" placeholder="https://meet.google.com/abc-defg-hij" value="{{ l['video_url'] }}">
         <label class="doc-attest" style="font-size:12px;">
           <input type="checkbox" name="set_default" value="1" {{ 'checked' if default_schedule and not l['schedule_url'] }}>
-          <span>Save as this study's default booking link</span>
+          <span>Save booking link as this study's default</span>
         </label>
-        {{ ui.btn('Send booking link', 'primary', 'sm', type='submit', icon='calendar', extra='style="justify-content:center;"') }}
+        {{ ui.btn('Send to applicant', 'primary', 'sm', type='submit', icon='calendar', extra='style="justify-content:center;"') }}
       </form>
+      {% if not default_schedule %}
+      <div class="verdict-fine">Tip: set your booking calendar once in <a href="{{ url_for('site_setup') }}">Settings</a> and it prefills here for everyone.</div>
+      {% endif %}
       {% else %}
       <div class="callout info">{{ ic.icon('lock') }} Accept this applicant to send a self-scheduling link.</div>
       {% endif %}

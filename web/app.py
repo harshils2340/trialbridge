@@ -4989,7 +4989,10 @@ def applicant_detail(lead_id):
     it = _decode_lead(lead, db.latest_reconciliation(lead_id))
     view = _queue_item(it)
     view["initials"] = _initials(lead["name"] or view["code"])
-    default_schedule = db.get_claim_schedule_url(g.user["id"], lead["nct"])
+    # Booking-link prefill hierarchy: this lead's link > study default >
+    # the coordinator's own account calendar.
+    default_schedule = (db.get_claim_schedule_url(g.user["id"], lead["nct"])
+                        or db.get_site_calendar_url(g.user["id"]))
     return render_template("applicant_detail.html", it=it, l=lead, view=view,
                            statuses=db.LEAD_STATUSES, labels=db.LEAD_LABELS,
                            screener_labels=SCREENER_LABELS,
@@ -5169,6 +5172,11 @@ def site_setup():
             f.get("ctms_endpoint", ""),
             redcap._row_get(prof, "redcap_endpoint"),
             redcap._row_get(prof, "redcap_project_label"))
+        # Coordinator's own booking calendar - patients self-book onto it.
+        cal = f.get("calendar_url", "").strip()
+        if cal and not cal.startswith(("http://", "https://")):
+            cal = "https://" + cal
+        db.set_site_calendar_url(g.user["id"], cal)
         flash("Site profile saved.", "success")
         return redirect(url_for("site_setup"))
     return _render_site_setup()
@@ -5394,20 +5402,34 @@ def schedule_lead(lead_id):
     candidate so the patient can self-schedule their screening call. Can also
     save the link as the study's reusable default (set_default=1)."""
     back = _lead_action_return()
-    url = request.form.get("schedule_url", "").strip()
-    if url and not url.startswith(("http://", "https://")):
-        url = "https://" + url
+
+    def _norm_link(v):
+        v = (v or "").strip()
+        if v and not v.startswith(("http://", "https://")):
+            v = "https://" + v
+        return v
+
+    url = _norm_link(request.form.get("schedule_url", ""))
+    video = _norm_link(request.form.get("video_url", ""))
     lead = db.set_lead_schedule(lead_id, url)
     if not lead:
         flash("Couldn't find that candidate.", "error")
         return redirect(back)
-    # Optionally remember it as the study's default so every applicant prefills.
+    # Optionally remember the booking link as the study's default.
     if url and request.form.get("set_default") and lead["nct"]:
         db.set_claim_schedule_url(g.user["id"], lead["nct"], url)
+    # Video-call link: save it and drop it into the patient's thread.
+    if "video_url" in request.form and video != (lead["video_url"] or ""):
+        db.set_lead_video(lead_id, video)
+        if video and lead["revealed"]:
+            db.add_message(lead_id, "site",
+                           f"Video call link for your screening visit: {video}")
     if url:
         _notify_applicant_schedule(lead)
         flash("Booking link sent - the applicant can now self-schedule their "
               "screening call.", "success")
+    elif video:
+        flash("Video call link saved and shared with the applicant.", "success")
     else:
         flash("Booking link removed.", "success")
     return redirect(back)

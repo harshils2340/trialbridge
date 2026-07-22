@@ -809,6 +809,10 @@ _MIGRATIONS = {
     "site_profiles": {
         "intake_sla_hours": "TEXT DEFAULT ''",
         "escalation_email": "TEXT DEFAULT ''",
+        # The coordinator's own booking calendar (Calendly/Cal.com/Google
+        # appointment schedule). Patients book straight onto their calendar; it's
+        # the account-wide default the applicant screen falls back to.
+        "calendar_url": "TEXT DEFAULT ''",
         "ctms_endpoint": "TEXT DEFAULT ''",
         "redcap_endpoint": "TEXT DEFAULT ''",
         "redcap_project_label": "TEXT DEFAULT ''",
@@ -857,6 +861,8 @@ _MIGRATIONS = {
         "decided_at": "TEXT DEFAULT ''",
         "revealed": "INTEGER DEFAULT 0",
         "schedule_url": "TEXT DEFAULT ''",
+        # Video call link (Zoom/Google Meet) for this candidate's screening visit.
+        "video_url": "TEXT DEFAULT ''",
         "nudged_at": "TEXT DEFAULT ''",
         "referred_by": "TEXT DEFAULT ''",
         "invite_token": "TEXT DEFAULT ''",
@@ -1338,6 +1344,26 @@ def update_site_redcap(user_id, endpoint=None, api_token=None, field_map=None,
     db.execute(f"UPDATE site_profiles SET {', '.join(sets)} WHERE user_id = ?",
                vals)
     db.commit()
+
+
+def set_site_calendar_url(user_id, url):
+    """Save the coordinator's own booking calendar link (Calendly/Cal.com/Google).
+    Creates a bare profile row if none exists yet so it can be set standalone."""
+    if not get_site_profile(user_id):
+        upsert_site_profile(user_id, "", "", "", "")
+    db = get_db()
+    db.execute("UPDATE site_profiles SET calendar_url = ?, updated_at = ? "
+               "WHERE user_id = ?", ((url or "").strip(), now(), user_id))
+    db.commit()
+    return True
+
+
+def get_site_calendar_url(user_id):
+    prof = get_site_profile(user_id)
+    try:
+        return (prof["calendar_url"] if prof else "") or ""
+    except (KeyError, IndexError, TypeError):
+        return ""
 
 
 def get_site_profile_for_nct(nct):
@@ -2473,6 +2499,25 @@ def set_lead_schedule(lead_id, url, actor="site"):
     return get_lead(lead_id)
 
 
+def set_lead_video(lead_id, url, actor="site"):
+    """Attach a video-call link (Zoom/Google Meet) to a candidate's screening
+    visit and log it on the timeline. Returns the lead row (or None)."""
+    lead = get_lead(lead_id)
+    if not lead:
+        return None
+    db = get_db()
+    ts = now()
+    db.execute("UPDATE leads SET video_url = ?, updated_at = ? WHERE id = ?",
+               (url, ts, lead_id))
+    db.execute(
+        "INSERT INTO lead_events (lead_id, status, note, actor, created_at) "
+        "VALUES (?,?,?,?,?)",
+        (lead_id, lead["status"],
+         "added video call link" if url else "removed video call link", actor, ts))
+    db.commit()
+    return get_lead(lead_id)
+
+
 # --------------------------------------------------------------------------- #
 # Messaging (two-way patient <-> study team, + system nudges)
 # --------------------------------------------------------------------------- #
@@ -3572,6 +3617,14 @@ def seed_demo_claims(user_id):
         db.execute(
             "UPDATE leads SET schedule_url = ? WHERE nct = ? AND schedule_url = '' "
             "AND status IN ('eligible','screening','enrolled')", (link, r["nct"]))
+    # The coordinator's own account calendar (the app-wide default) + a video
+    # link on applicants already in screening, so the calls flow shows as live.
+    if not get_site_calendar_url(user_id):
+        set_site_calendar_url(user_id, "https://calendly.com/bridgemd-demo/screening")
+    db.execute(
+        "UPDATE leads SET video_url = 'https://meet.google.com/bmd-demo-visit' "
+        "WHERE video_url = '' AND status IN ('screening','enrolled') "
+        "AND nct IN (SELECT nct FROM study_claims WHERE user_id = ?)", (user_id,))
     db.commit()
 
 

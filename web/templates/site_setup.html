@@ -46,6 +46,10 @@
       <label>CTMS endpoint / workspace URL
         <input type="url" name="ctms_endpoint" value="{{ profile['ctms_endpoint'] if profile else '' }}" placeholder="https://ctms.yoursite.org/studies/...">
       </label>
+      <label>Your booking calendar
+        <input type="url" name="calendar_url" value="{{ profile['calendar_url'] if profile else '' }}" placeholder="https://calendly.com/you/screening">
+        <span class="site-hint" style="display:block;margin-top:4px;">Your Calendly / Cal.com / Google appointment link. Patients book straight onto your calendar - it prefills on every applicant.</span>
+      </label>
       {{ ui.btn('Save profile', 'primary', type='submit', icon='check') }}
     </form>
     <p class="site-hint">
