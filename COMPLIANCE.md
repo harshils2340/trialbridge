@@ -238,6 +238,15 @@ fee-splitting.**
     Associate Agreement / data-processing agreement is in place with the site
     (the survey collects PHI directly into the site's project). Counsel/IRB
     sign-off required per §5 and §3 above.
+- [ ] **Public no-login demo of the study-team side (`PUBLIC_DEMO=1`)** — pre-launch,
+  the study-team ATS is exposed as a public, always-on demo even on the production
+  host (via `PUBLIC_DEMO=1` + `NO_LOGIN=1`), so prospects can click "See the demo"
+  on the For-clinics page without an account. This is only lawful because there is
+  **no real onboarded site and no real PHI** — the demo is scoped to a dedicated
+  demo account seeded with clearly-fake candidates. **HARD GATE: before onboarding
+  the first real site or ingesting any real patient data, turn `PUBLIC_DEMO` and
+  `NO_LOGIN` OFF and purge seeded demo leads**, or real applicant PHI could be
+  served to anonymous visitors (violates §3). Owner: revisit at first real signup.
 
 ---
 

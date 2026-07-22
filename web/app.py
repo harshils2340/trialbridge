@@ -124,16 +124,33 @@ if os.environ.get("BEHIND_PROXY", "0") == "1":
 IS_PROD = (os.environ.get("BEHIND_PROXY", "0") == "1"
            or os.environ.get("ENV", "").strip().lower() in ("prod", "production"))
 
-# TEMP no-login / demo preview. MUST be OFF in production: it opens the clinician
-# ATS to anonymous visitors and seeds fake patients into the DB. Refuse to boot
-# if it's enabled while a production indicator is set.
+# TEMP no-login / demo preview. It opens the study-team ATS to anonymous
+# visitors and seeds fake patients into the DB. Normally MUST be OFF in
+# production.
 NO_LOGIN = os.environ.get("NO_LOGIN", "0") == "1"
-if NO_LOGIN and IS_PROD:
+# Pre-launch escape hatch: while NO real sites are onboarded there is no real
+# PHI to protect, so we may want the study-team side to be a public, always-on
+# demo even on the production host. PUBLIC_DEMO=1 is an EXPLICIT, deliberate
+# acknowledgement of that trade-off - it lets NO_LOGIN run in prod.
+#
+# HARD COMPLIANCE GATE (see .cursor/rules/compliance.mdc + matcher/COMPLIANCE.md):
+# the demo is scoped to a dedicated demo account with seeded fake data, so it
+# does not expose any real applicant. BEFORE onboarding the first real site or
+# ingesting any real patient data, PUBLIC_DEMO and NO_LOGIN MUST be turned off,
+# or real PHI could be served to anonymous visitors.
+PUBLIC_DEMO = os.environ.get("PUBLIC_DEMO", "0") == "1"
+if NO_LOGIN and IS_PROD and not PUBLIC_DEMO:
     raise RuntimeError(
         "NO_LOGIN/demo mode is enabled while a production indicator is set "
         "(BEHIND_PROXY=1 or ENV=production). Refusing to start: demo mode "
         "exposes the study-team ATS and patient PHI without login. Unset "
-        "NO_LOGIN for production deployments.")
+        "NO_LOGIN for production, or set PUBLIC_DEMO=1 to intentionally run a "
+        "public, data-seeded demo (only safe while NO real sites are onboarded).")
+if NO_LOGIN and IS_PROD and PUBLIC_DEMO:
+    app.logger.warning(
+        "PUBLIC_DEMO is ON in production: the study-team side is a public "
+        "no-login demo. This is only safe pre-launch (no real PHI). Turn "
+        "PUBLIC_DEMO and NO_LOGIN OFF before onboarding any real site.")
 
 # Health-records / EHR sync (SMART Health IT) is hidden for now — the connector
 # is still a sandbox and not patient-ready. Flip RECORDS_UI=1 to re-enable the
