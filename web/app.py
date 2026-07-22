@@ -5531,6 +5531,96 @@ def message_lead(lead_id):
     return redirect(back)
 
 
+def _copilot_act_deny(token):
+    db.mark_copilot_action(token, "canceled")
+    return jsonify({"ok": False,
+                    "error": "That applicant isn't in your studies."}), 403
+
+
+@app.route("/app/copilot/act", methods=["POST"])
+@login_required
+def copilot_act():
+    """Execute a copilot action the user just CONFIRMED in the rail. The target
+    is read from the stored proposal (not the client), re-scoped to the team, and
+    performed with the same helpers as the manual UI so behavior is identical.
+    Confirming is idempotent - a token executes at most once."""
+    data = request.get_json(silent=True) or {}
+    token = (data.get("token") or "").strip()
+    edited = data.get("text")
+    row, err = copilot.actions.load_valid(g.user["id"], token)
+    if err:
+        return jsonify({"ok": False, "error": err}), 400
+    kind = row["kind"]
+    try:
+        payload = json.loads(row["payload"] or "{}")
+    except (ValueError, TypeError):
+        payload = {}
+
+    try:
+        if kind == "send_message":
+            lead_id = row["lead_id"]
+            if not db.lead_belongs_to_user(lead_id, g.user["id"]):
+                return _copilot_act_deny(token)
+            lead = db.get_lead(lead_id)
+            if not lead or not lead["revealed"]:
+                return jsonify({"ok": False,
+                                "error": "Accept the applicant first to message them."}), 400
+            text = ((edited if edited is not None else payload.get("text")) or "").strip()[:4000]
+            if not text:
+                return jsonify({"ok": False, "error": "The message is empty."}), 400
+            db.add_message(lead_id, "site", text)
+            _notify_applicant_message(lead, text)
+            db.mark_copilot_action(token, "confirmed")
+            lbl = payload.get("label") or "the applicant"
+            return jsonify({"ok": True, "answer": f"Sent to {lbl}.",
+                            "citations": [{"label": lbl, "url": payload.get("url", "")}]})
+
+        if kind == "send_booking_link":
+            lead_id = row["lead_id"]
+            if not db.lead_belongs_to_user(lead_id, g.user["id"]):
+                return _copilot_act_deny(token)
+            lead = db.get_lead(lead_id)
+            url = (payload.get("url")
+                   or db.get_claim_schedule_url(g.user["id"], lead["nct"])
+                   or db.get_site_calendar_url(g.user["id"]))
+            if not url:
+                return jsonify({"ok": False,
+                                "error": "Set your booking calendar in Settings first."}), 400
+            db.set_lead_schedule(lead_id, url)
+            lead = db.get_lead(lead_id)
+            _notify_applicant_schedule(lead)
+            db.mark_copilot_action(token, "confirmed")
+            lbl = payload.get("label") or "the applicant"
+            return jsonify({"ok": True, "answer": f"Booking link sent to {lbl}.",
+                            "citations": [{"label": lbl,
+                                           "url": payload.get("url_ref", "")}]})
+
+        if kind == "bulk_booking_reminder":
+            ids = payload.get("lead_ids") or []
+            text = ((edited if edited is not None else payload.get("text")) or "").strip()[:4000]
+            if not text:
+                return jsonify({"ok": False, "error": "The message is empty."}), 400
+            sent = 0
+            for lid in ids:
+                if not db.lead_belongs_to_user(lid, g.user["id"]):
+                    continue
+                lead = db.get_lead(lid)
+                if not lead or not lead["revealed"]:
+                    continue
+                db.add_message(lid, "site", text)
+                _notify_applicant_message(lead, text)
+                sent += 1
+            db.mark_copilot_action(token, "confirmed")
+            return jsonify({"ok": True,
+                            "answer": f"Sent booking reminders to {sent} applicant(s)."})
+
+        return jsonify({"ok": False, "error": "Unknown action."}), 400
+    except Exception:
+        app.logger.exception("copilot_act failed")
+        return jsonify({"ok": False,
+                        "error": "That action couldn't be completed."}), 500
+
+
 @app.route("/app/leads/<int:lead_id>/attach", methods=["POST"])
 @login_required
 def attach_lead_file(lead_id):

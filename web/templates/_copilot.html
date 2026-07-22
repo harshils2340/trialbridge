@@ -71,14 +71,96 @@
     wrap.appendChild(box);
     scroll();
   }
-  function addAction(wrap, action) {
-    if (!action || action.kind !== 'draft_message') return;
-    var b = document.createElement('a');
-    b.className = 'copilot-action';
-    b.href = action.url;
-    b.textContent = 'Open thread to send \u2192';
-    wrap.appendChild(b);
+  // A confirmable action card. The copilot proposes; the human reviews (and can
+  // edit the text) then clicks Confirm, which POSTs the token back to execute.
+  function renderProposal(wrap, p) {
+    if (!p || !p.token) return;
+    var card = document.createElement('div');
+    card.className = 'copilot-confirm';
+
+    var to = document.createElement('div');
+    to.className = 'cc-to';
+    to.innerHTML = '<span>To</span>' + escapeHtml(p.target || 'this applicant');
+    card.appendChild(to);
+
+    var editor = null;
+    if (p.editable) {
+      editor = document.createElement('textarea');
+      editor.className = 'cc-text';
+      editor.rows = Math.min(6, Math.max(3, (p.text || '').split('\n').length + 1));
+      editor.value = p.text || '';
+      card.appendChild(editor);
+    } else if (p.url) {
+      var u = document.createElement('div');
+      u.className = 'cc-url';
+      u.textContent = p.url;
+      card.appendChild(u);
+    }
+
+    var row = document.createElement('div');
+    row.className = 'cc-actions';
+    var confirm = document.createElement('button');
+    confirm.type = 'button';
+    confirm.className = 'cc-confirm';
+    confirm.textContent = p.confirm_label || 'Confirm';
+    var cancel = document.createElement('button');
+    cancel.type = 'button';
+    cancel.className = 'cc-cancel';
+    cancel.textContent = 'Cancel';
+    row.appendChild(confirm);
+    row.appendChild(cancel);
+    card.appendChild(row);
+
+    var note = document.createElement('div');
+    note.className = 'cc-note';
+    card.appendChild(note);
+    wrap.appendChild(card);
     scroll();
+
+    cancel.addEventListener('click', function () {
+      card.parentNode.removeChild(card);
+      addMsg('bot', 'Okay, I won\u2019t send it.');
+    });
+    confirm.addEventListener('click', function () {
+      if (confirm.disabled) return;
+      confirm.disabled = true; cancel.disabled = true;
+      confirm.textContent = 'Sending\u2026';
+      note.textContent = '';
+      var body = { token: p.token };
+      if (editor) { body.text = editor.value; }
+      fetch('/app/copilot/act', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf(),
+                   'X-Requested-With': 'XMLHttpRequest' },
+        body: JSON.stringify(body)
+      }).then(function (r) { return r.json(); }).then(function (d) {
+        if (!d || !d.ok) {
+          confirm.disabled = false; cancel.disabled = false;
+          confirm.textContent = p.confirm_label || 'Confirm';
+          note.textContent = (d && d.error) || 'That didn\u2019t go through.';
+          return;
+        }
+        // Replace the card with a done state so it can't be sent twice.
+        card.classList.add('is-done');
+        card.innerHTML = '';
+        var done = document.createElement('div');
+        done.className = 'cc-done';
+        done.textContent = '\u2713 ' + (d.answer || 'Done.');
+        card.appendChild(done);
+        addCitations(card, d.citations);
+        scroll();
+      }).catch(function () {
+        confirm.disabled = false; cancel.disabled = false;
+        confirm.textContent = p.confirm_label || 'Confirm';
+        note.textContent = 'I could not reach the server. Try again.';
+      });
+    });
+  }
+
+  function escapeHtml(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
   }
 
   function ask(q) {
@@ -97,7 +179,7 @@
       if (!d || !d.ok) { addMsg('bot', (d && d.error) || 'Something went wrong.'); return; }
       var w = addMsg('bot', d.answer || '');
       addCitations(w, d.citations);
-      addAction(w, d.action);
+      renderProposal(w, d.proposal);
     }).catch(function () {
       thinking.remove();
       addMsg('bot', 'I could not reach the assistant just now.');

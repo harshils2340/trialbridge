@@ -760,6 +760,28 @@ CREATE TABLE IF NOT EXISTS org_invites (
 );
 CREATE INDEX IF NOT EXISTS idx_memberships_user ON memberships(user_id);
 CREATE INDEX IF NOT EXISTS idx_memberships_org ON memberships(org_id);
+
+-- Copilot action proposals. The assistant never acts on its own: it writes a
+-- PROPOSED action here, the human confirms it in the rail, and only then is it
+-- executed (and marked confirmed). This gives human-in-the-loop control, an
+-- audit record of what was proposed vs. done, idempotency (a token can execute
+-- once), and expiry. The action's target (lead/recipients) is stored server-side
+-- so a client can never redirect a confirmed action to a different patient.
+CREATE TABLE IF NOT EXISTS copilot_actions (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    token        TEXT UNIQUE NOT NULL,
+    user_id      INTEGER NOT NULL,          -- the team member who proposed it
+    org_id       INTEGER,                   -- team scope snapshot
+    kind         TEXT NOT NULL,             -- send_message | send_booking_link | bulk_booking_reminder
+    lead_id      INTEGER,                   -- single-lead actions
+    payload      TEXT DEFAULT '',           -- JSON (text, url, lead_ids, label, ...)
+    status       TEXT NOT NULL DEFAULT 'proposed', -- proposed | confirmed | canceled
+    created_at   TEXT NOT NULL,
+    expires_at   TEXT DEFAULT '',
+    confirmed_at TEXT DEFAULT '',
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
+CREATE INDEX IF NOT EXISTS idx_copilot_actions_token ON copilot_actions(token);
 """
 
 # Recognized team roles + display labels. 'coordinator' is the admin role.
@@ -1204,6 +1226,45 @@ def revoke_org_invite(actor_id, token):
                (oid, token))
     db.commit()
     return True
+
+
+def create_copilot_action(user_id, kind, lead_id, payload, ttl_minutes=30):
+    """Persist a PROPOSED copilot action and return its token. The target is
+    stored here (never trusted from the client at confirm time)."""
+    token = gen_token()
+    ts = now()
+    expires = (dt.datetime.now() + dt.timedelta(minutes=max(1, ttl_minutes))
+               ).strftime("%Y-%m-%d %H:%M")
+    db = get_db()
+    db.execute(
+        "INSERT INTO copilot_actions (token, user_id, org_id, kind, lead_id, "
+        "payload, status, created_at, expires_at) VALUES (?,?,?,?,?,?,?,?,?)",
+        (token, user_id, user_org_id(user_id), kind, lead_id,
+         json.dumps(payload or {}), "proposed", ts, expires))
+    db.commit()
+    return token
+
+
+def get_copilot_action(token):
+    if not token:
+        return None
+    return get_db().execute(
+        "SELECT * FROM copilot_actions WHERE token = ?", (token,)).fetchone()
+
+
+def mark_copilot_action(token, status):
+    db = get_db()
+    db.execute(
+        "UPDATE copilot_actions SET status = ?, confirmed_at = ? WHERE token = ?",
+        (status, now() if status == "confirmed" else "", token))
+    db.commit()
+
+
+def copilot_action_expired(row):
+    if not row:
+        return True
+    exp = _parse_ts(row["expires_at"]) if row["expires_at"] else None
+    return bool(exp and exp < dt.datetime.now())
 
 
 def accept_org_invite(user_id, token):

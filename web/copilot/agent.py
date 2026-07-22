@@ -13,7 +13,7 @@ import re
 
 import match_trials as mt
 
-from . import tools
+from . import actions, tools
 
 SYSTEM_PROMPT = (
     "You are BridgeMD Copilot, an assistant for a clinical-trial study team. "
@@ -37,9 +37,18 @@ STARTERS = [
 ]
 
 
+_BULK_HINTS = ("everyone", "all of them", "each of", "each one", "stuck",
+               "hasn't booked", "haven't booked", "who hasn", "the ones",
+               "all applicants", "everybody")
+
+
 def _classify(query):
     """Return (intent, params) from keyword rules. Deterministic + cheap; the
-    LLM is only used later to phrase the grounded answer, not to route."""
+    LLM is only used later to phrase the grounded answer, not to route.
+
+    Order matters: ACTION intents (that write) are matched before READ intents,
+    so 'send a booking reminder to everyone stuck' is a bulk action, not the
+    'who is stuck' read."""
     q = (query or "").lower().strip()
 
     m = re.search(r"(mention|about|said|talk\w*|contain\w*)\s+[\"']?([\w\- ]{2,40})",
@@ -47,8 +56,26 @@ def _classify(query):
     if ("search" in q or "find" in q or "mention" in q) and m:
         return "search_messages", {"term": m.group(2).strip()}
 
-    if any(w in q for w in ("stuck", "not booked", "haven't booked",
-                            "hasn't booked", "no booking", "idle", "waiting to book")):
+    # --- Action intents (require an explicit send/booking/message verb) --------
+    booking_word = any(w in q for w in ("book", "booking", "self-schedule",
+                                        "calendly", "schedule link", "screening link"))
+    if booking_word:
+        if any(h in q for h in _BULK_HINTS):
+            return "bulk_booking", {}
+        return "send_booking", {}
+    if any(w in q for w in ("draft", "reply", "message", "write", "follow up",
+                            "followup", "nudge", "reschedule", "thank")):
+        intent = "check_in"
+        if "remind" in q:
+            intent = "booking"
+        elif "reschedul" in q:
+            intent = "reschedule"
+        elif "thank" in q:
+            intent = "thanks"
+        return "send_message", {"intent": intent}
+
+    # --- Read intents ----------------------------------------------------------
+    if any(w in q for w in ("stuck", "not booked", "no booking", "idle")):
         return "stuck_in_screening", {}
     if any(w in q for w in ("waiting on", "pending", "decide", "decision",
                             "need to review", "who's waiting", "whos waiting",
@@ -61,23 +88,19 @@ def _classify(query):
     if any(w in q for w in ("why", "verdict", "eligible", "ineligible",
                             "eligibility", "explain")):
         return "explain_verdict", {}
-    if any(w in q for w in ("draft", "reply", "message", "write", "follow up",
-                            "followup", "reminder", "reschedule", "thank")):
-        intent = "check_in"
-        if "book" in q or "remind" in q:
-            intent = "booking"
-        elif "reschedul" in q:
-            intent = "reschedule"
-        elif "thank" in q:
-            intent = "thanks"
-        return "draft_reply", {"intent": intent}
     if any(w in q for w in ("summar", "brief", "who is this", "tell me about",
                             "this applicant", "this candidate", "recap")):
         return "applicant_summary", {}
     return "help", {}
 
 
-_NEEDS_LEAD = {"applicant_summary", "explain_verdict", "draft_reply"}
+_NEEDS_LEAD = {"applicant_summary", "explain_verdict", "send_message",
+               "send_booking"}
+_PROPOSAL_INTRO = {
+    "send_message": "Here's a draft for {target} - review, edit if you like, then send:",
+    "send_booking": "I'll send the booking link to {target}. Confirm to send:",
+    "bulk_booking": "This will message {target}. Review and confirm:",
+}
 
 
 def _help_payload():
@@ -121,9 +144,12 @@ def answer(user_id, query, context=None):
             "citations": [], "suggestions": STARTERS,
         }
 
-    if intent == "help":
-        payload = _help_payload()
-    elif intent == "pending_decisions":
+    # --- Action intents: build a confirmable proposal (never auto-send) --------
+    if intent in ("send_message", "send_booking", "bulk_booking"):
+        return _propose(intent, user_id, lead_id, params)
+
+    # --- Read intents: grounded answer -----------------------------------------
+    if intent == "pending_decisions":
         payload = tools.pending_decisions(user_id)
     elif intent == "stuck_in_screening":
         payload = tools.stuck_in_screening(user_id)
@@ -135,22 +161,34 @@ def answer(user_id, query, context=None):
         payload = tools.applicant_summary(user_id, lead_id)
     elif intent == "explain_verdict":
         payload = tools.explain_verdict(user_id, lead_id)
-    elif intent == "draft_reply":
-        payload = tools.draft_reply(user_id, lead_id, params.get("intent"))
     else:
         payload = _help_payload()
 
-    # Draft replies and the help text are returned verbatim (no LLM rephrasing -
-    # a draft must be exactly the text we'll paste into the thread).
     text = payload.get("summary", "")
-    if intent not in ("draft_reply", "help"):
+    if intent != "help":
         text = _ground_with_llm(query, payload) or text
-
-    resp = {
+    return {
         "answer": text,
         "citations": payload.get("citations", []),
         "suggestions": STARTERS if intent == "help" else [],
     }
-    if payload.get("action"):
-        resp["action"] = payload["action"]
-    return resp
+
+
+def _propose(intent, user_id, lead_id, params):
+    """Build a confirmable action proposal, or explain why it can't be done."""
+    if intent == "send_message":
+        prop = actions.build_message_proposal(user_id, lead_id, params.get("intent"))
+    elif intent == "send_booking":
+        prop = actions.build_booking_proposal(user_id, lead_id)
+    else:  # bulk_booking
+        prop = actions.build_bulk_reminder_proposal(user_id)
+
+    if prop is None:
+        return {"answer": "I can't find that applicant in your studies.",
+                "citations": [], "suggestions": []}
+    if prop.get("blocked"):
+        return {"answer": prop["blocked"], "citations": [], "suggestions": []}
+
+    intro = _PROPOSAL_INTRO.get(intent, "Confirm to continue:").format(
+        target=prop.get("target", "this applicant"))
+    return {"answer": intro, "citations": [], "proposal": prop}

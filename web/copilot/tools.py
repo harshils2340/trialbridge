@@ -151,9 +151,9 @@ def pending_decisions(user_id, limit=8):
     }
 
 
-def stuck_in_screening(user_id, days=5, limit=8):
-    """In screening but not moving - no booking link sent, or idle for N+ days.
-    This is usually the biggest enrollment leak, so it gets its own tool."""
+def _stuck_leads(user_id, days=5):
+    """Leads in screening that aren't moving: no booking link sent, or idle N+
+    days. Returns [(lead_row, no_link, idle_days)], most-idle first."""
     leads = db.list_leads_for_user(user_id)
     stuck = []
     for l in leads:
@@ -164,6 +164,19 @@ def stuck_in_screening(user_id, days=5, limit=8):
         if no_link or (idle is not None and idle >= days):
             stuck.append((l, no_link, idle))
     stuck.sort(key=lambda t: -(t[2] or 0))
+    return stuck
+
+
+def stuck_lead_ids(user_id, days=5):
+    """Lead ids stuck in screening that can actually be messaged (revealed)."""
+    return [l["id"] for (l, _n, _i) in _stuck_leads(user_id, days)
+            if _row_get(l, "revealed")]
+
+
+def stuck_in_screening(user_id, days=5, limit=8):
+    """In screening but not moving - no booking link sent, or idle for N+ days.
+    This is usually the biggest enrollment leak, so it gets its own tool."""
+    stuck = _stuck_leads(user_id, days)
     items = []
     for l, no_link, idle in stuck[:limit]:
         why = "no booking link sent yet" if no_link else f"idle {idle}d"
@@ -314,22 +327,20 @@ _DRAFT_TEMPLATES = {
 }
 
 
-def draft_reply(user_id, lead_id, intent="check_in"):
+def message_draft(user_id, lead_id, intent="check_in"):
+    """Return a proposed follow-up message for one applicant (de-identified name
+    only when revealed), or None if the lead isn't in the user's team. Used to
+    seed a confirmable send_message action."""
     lead = own_lead(user_id, lead_id)
     if not lead:
-        return {"summary": "Open an applicant first and I'll draft a reply for them.",
-                "items": [], "citations": []}
-    name = lead["name"].split(" ")[0] if _row_get(lead, "revealed") and _row_get(lead, "name") else "there"
+        return None
+    revealed = bool(_row_get(lead, "revealed"))
+    name = (lead["name"].split(" ")[0]
+            if revealed and _row_get(lead, "name") else "there")
     key = "check_in"
     for k in _DRAFT_TEMPLATES:
         if k in (intent or ""):
             key = k
             break
-    text = _DRAFT_TEMPLATES[key].format(name=name)
-    return {
-        "summary": text,
-        "items": [{"code": label(lead), "url": _url(lead)}],
-        "citations": [{"label": label(lead), "url": _url(lead)}],
-        "action": {"kind": "draft_message", "lead_id": int(lead["id"]),
-                   "text": text, "url": _url(lead)},
-    }
+    return {"text": _DRAFT_TEMPLATES[key].format(name=name),
+            "label": label(lead), "url": _url(lead), "revealed": revealed}
