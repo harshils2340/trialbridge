@@ -3667,14 +3667,18 @@ main:focus { outline: none; }
 /* Inline omnibox: a real search input in the top bar with a live results
    dropdown anchored directly beneath it (pages + studies + applicants). No
    full-screen modal - the page stays visible behind the dropdown. */
-.appsearch-wrap { flex: 1; max-width: 560px; position: relative; margin: 0 auto; }
-.appsearch-ico { position: absolute; left: 13px; top: 50%; transform: translateY(-50%);
-  color: var(--faint); width: 17px; height: 17px; pointer-events: none; display: inline-flex; }
-.appsearch-input { width: 100%; padding: 9px 46px 9px 38px; border: 1px solid var(--border);
-  border-radius: var(--radius-pill); font: inherit; font-size: 14px; background: var(--bg);
-  color: var(--ink); transition: border-color .15s ease, box-shadow .15s ease; }
-.appsearch-input::placeholder { color: var(--faint); }
-.appsearch-input:focus { outline: none; border-color: var(--accent);
+.appsearch-wrap { flex: 1; max-width: 720px; position: relative; margin: 0 auto; }
+.appsearch-ico { position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
+  color: var(--faint); width: 16px; height: 16px; pointer-events: none; display: inline-flex; }
+/* Selector is intentionally .appsearch-wrap .appsearch-input so it beats the
+   global input[type=text] rule (which would otherwise reset the left padding
+   and slide the placeholder under the search icon). */
+.appsearch-wrap .appsearch-input { width: 100%; padding: 10px 48px 10px 42px;
+  border: 1px solid var(--border); border-radius: var(--radius-pill); font: inherit;
+  font-size: 14px; background: var(--bg); color: var(--ink);
+  transition: border-color .15s ease, box-shadow .15s ease; }
+.appsearch-wrap .appsearch-input::placeholder { color: var(--faint); }
+.appsearch-wrap .appsearch-input:focus { outline: none; border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-bg, rgba(26,110,176,.12)); background: var(--surface); }
 .appsearch-kbd { position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
   font: inherit; font-size: 11px; font-weight: 600; color: var(--faint);
