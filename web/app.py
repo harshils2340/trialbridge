@@ -65,9 +65,12 @@ import reminders as reminders_mod  # noqa: E402
 import summarize  # noqa: E402
 import trends  # noqa: E402
 import ctis  # noqa: E402
+import copilot  # noqa: E402
 
 app = Flask(__name__)
 trends.configure(app)
+# Right-rail assistant (grounded, scoped to the study team's own data).
+copilot.register(app)
 # Short, plain-English card teaser (deterministic) available in every template.
 app.jinja_env.globals["card_blurb"] = summarize.card_blurb
 app.jinja_env.globals["patient_card_title"] = summarize.patient_card_title
@@ -172,7 +175,7 @@ SITE_DEMO = os.environ.get("SITE_DEMO", "1") == "1"
 _STUDY_TEAM_DEMO_PREFIXES = (
     "/app/leads", "/app/messages", "/app/site", "/app/dashboard",
     "/app/campaign", "/app/intake", "/app/home", "/app/applicant",
-    "/app/documents", "/files/lead", "/files/team")
+    "/app/documents", "/app/copilot", "/app/team", "/files/lead", "/files/team")
 
 # Health-records / EHR sync (SMART Health IT) is hidden for now — the connector
 # is still a sandbox and not patient-ready. Flip RECORDS_UI=1 to re-enable the
@@ -1112,6 +1115,7 @@ def inject_globals():
             or path.startswith("/app/analytics") or path.startswith("/app/home")
             or path.startswith("/app/applicant")
             or path.startswith("/app/documents")
+            or path.startswith("/app/team")
             or path.startswith("/app/campaign") or path.startswith("/app/intake")):
         pov = "study"
     elif path.startswith("/app") or path.startswith("/referral"):
@@ -1119,12 +1123,23 @@ def inject_globals():
     else:
         pov = "patient"
     nav_study_ncts = []
+    my_role = ""
+    my_role_label = ""
+    can_manage_team = False
     if g.user:
         try:
             nav_study_ncts = sorted(db.user_claimed_ncts(g.user["id"]))
         except Exception:
             nav_study_ncts = []
+        try:
+            my_role = db.member_role(g.user["id"])
+            my_role_label = db.ORG_ROLE_LABELS.get(my_role, "")
+            can_manage_team = db.can_manage_team(g.user["id"])
+        except Exception:
+            pass
     return {"user": g.user, "llm_on": bool(mt.LLM_API_KEY),
+            "member_role": my_role, "member_role_label": my_role_label,
+            "can_manage_team": can_manage_team,
             "applications_count": apps_n, "pov_demo": _demo_mode_enabled(),
             "demo_available": NO_LOGIN, "pov": pov,
             "records_profile": rec, "records_provider": records_mod.provider_label(),
@@ -7369,10 +7384,10 @@ def _trial_dict_for_nct(nct):
 
 
 def _own_campaign_or_404(cid):
-    """Fetch a campaign and 404 unless it belongs to the current account - a
-    campaign carries no PHI but still scopes to its owner."""
+    """Fetch a campaign and 404 unless it belongs to the current team (shared
+    across the org)."""
     camp = db.get_campaign(cid)
-    if not camp or camp["user_id"] != g.user["id"]:
+    if not camp or camp["user_id"] not in set(db.org_member_ids(g.user["id"])):
         abort(404)
     return camp
 
@@ -7546,11 +7561,17 @@ _DOC_PARTY_LABEL = {"patient": "Participant", "investigator": "Investigator (PI)
 
 
 def _own_document_or_404(doc_id):
-    """Fetch a document and 404 unless it belongs to the current account."""
+    """Fetch a document and 404 unless it belongs to the current team (any org
+    member's document, or one under a study the team has claimed)."""
     doc = db.get_document(doc_id)
-    if not doc or doc["user_id"] != g.user["id"]:
+    if not doc:
         abort(404)
-    return doc
+    members = set(db.org_member_ids(g.user["id"]))
+    if doc["user_id"] in members:
+        return doc
+    if doc["nct"] and doc["nct"] in db.user_claimed_ncts(g.user["id"]):
+        return doc
+    abort(404)
 
 
 def _doc_view(doc):
@@ -7638,7 +7659,15 @@ def document_decision(doc_id):
     action = request.form.get("action", "").strip()
     note = request.form.get("note", "").strip()
     signer = request.form.get("signer", "").strip() or (g.user["email"] or "Study team")
-    role = request.form.get("role", "").strip() or "Principal Investigator"
+    my_role = db.member_role(g.user["id"])
+    role = (request.form.get("role", "").strip()
+            or db.ORG_ROLE_LABELS.get(my_role, "Principal Investigator"))
+    # Approving/signing is a privileged action: only PI or coordinator. Research
+    # students have full visibility and can review/return, but not sign off.
+    if action == "approve" and not db.can_approve_docs(g.user["id"]):
+        flash("Only a PI or coordinator can approve documents. You can review or "
+              "send back for changes.", "error")
+        return redirect(url_for("document_detail", doc_id=doc_id))
     if action == "approve":
         db.set_document_status(doc_id, "approved", actor=signer, actor_role=role,
                                meaning="Approval",
@@ -7656,6 +7685,94 @@ def document_decision(doc_id):
     else:
         flash("Unknown action.", "error")
     return redirect(url_for("document_detail", doc_id=doc_id))
+
+
+@app.route("/app/team")
+@login_required
+def team_page():
+    """The shared workspace roster: everyone on the trial with full visibility.
+    Coordinators/PIs can invite teammates and set roles; students see the team."""
+    members = db.list_org_members(g.user["id"])
+    members = [{
+        "user_id": m["user_id"], "name": m["name"], "email": m["email"],
+        "role": m["role"], "role_label": db.ORG_ROLE_LABELS.get(m["role"], m["role"]),
+        "is_me": m["user_id"] == g.user["id"],
+    } for m in members]
+    invites = [{
+        "token": i["token"], "email": i["email"],
+        "role_label": db.ORG_ROLE_LABELS.get(i["role"], i["role"]),
+        "url": url_for("team_join", token=i["token"], _external=True),
+    } for i in db.list_org_invites(g.user["id"])]
+    return render_template("team.html", members=members, invites=invites,
+                           roles=db.ORG_ROLES, role_labels=db.ORG_ROLE_LABELS)
+
+
+@app.route("/app/team/invite", methods=["POST"])
+@login_required
+def team_invite():
+    if not db.can_manage_team(g.user["id"]):
+        flash("Only a coordinator or PI can invite teammates.", "error")
+        return redirect(url_for("team_page"))
+    email = request.form.get("email", "").strip()
+    role = request.form.get("role", "student").strip()
+    token = db.create_org_invite(g.user["id"], email, role)
+    link = url_for("team_join", token=token, _external=True)
+    flash(f"Invite link ready - share it with your teammate: {link}", "ok")
+    return redirect(url_for("team_page"))
+
+
+@app.route("/app/team/role", methods=["POST"])
+@login_required
+def team_set_role():
+    if not db.can_manage_team(g.user["id"]):
+        abort(403)
+    target = request.form.get("user_id", type=int)
+    role = request.form.get("role", "").strip()
+    if target and db.set_member_role(g.user["id"], target, role):
+        flash("Role updated.", "ok")
+    else:
+        flash("Couldn't update that role.", "error")
+    return redirect(url_for("team_page"))
+
+
+@app.route("/app/team/remove", methods=["POST"])
+@login_required
+def team_remove():
+    if not db.can_manage_team(g.user["id"]):
+        abort(403)
+    target = request.form.get("user_id", type=int)
+    if target and db.remove_member(g.user["id"], target):
+        flash("Teammate removed from this workspace.", "ok")
+    else:
+        flash("Couldn't remove that member (can't remove the last coordinator).",
+              "error")
+    return redirect(url_for("team_page"))
+
+
+@app.route("/app/team/invite/revoke", methods=["POST"])
+@login_required
+def team_revoke_invite():
+    if not db.can_manage_team(g.user["id"]):
+        abort(403)
+    db.revoke_org_invite(g.user["id"], request.form.get("token", "").strip())
+    flash("Invite revoked.", "ok")
+    return redirect(url_for("team_page"))
+
+
+@app.route("/app/team/join/<token>")
+@login_required
+def team_join(token):
+    """Accept an invite: the signed-in study-team user joins the inviter's org
+    with the invited role (leaving their prior personal workspace)."""
+    inv = db.get_org_invite(token)
+    if not inv or (inv["accepted_at"] or "").strip():
+        flash("That invite link is invalid or already used.", "error")
+        return redirect(url_for("study_home"))
+    if db.accept_org_invite(g.user["id"], token):
+        flash("You've joined the team - you now share this workspace.", "ok")
+    else:
+        flash("Couldn't join that team.", "error")
+    return redirect(url_for("study_home"))
 
 
 @app.route("/app/campaign", methods=["GET", "POST"])

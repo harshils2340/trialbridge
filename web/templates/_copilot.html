@@ -1,0 +1,124 @@
+{% import "_icons.html" as ic %}
+<aside class="appdock" id="copilot" data-open="1" aria-label="Copilot assistant">
+  <header class="dock-head">
+    <div class="dock-title">
+      <span class="dock-dot"></span>
+      <div><b>Copilot</b><span>Answers from your studies only</span></div>
+    </div>
+    <button type="button" class="dock-collapse" id="copilotCollapse" aria-label="Hide copilot">{{ ic.icon('chevron-right') }}</button>
+  </header>
+  <div class="dock-log" id="copilotLog">
+    <div class="copilot-msg bot">
+      <p>Hi - I help with your applicants, screening, and funnel. I only use your
+      own study data, and I never decide eligibility. Ask me anything, or try:</p>
+      <div class="copilot-suggest" id="copilotSuggest"></div>
+    </div>
+  </div>
+  <form class="dock-form" id="copilotForm">
+    <input type="text" id="copilotInput" placeholder="Ask or tell me to do something&hellip;" autocomplete="off">
+    <button type="submit" aria-label="Send">{{ ic.icon('send') }}</button>
+  </form>
+</aside>
+<button type="button" class="dock-reopen" id="copilotReopen" aria-label="Show copilot">{{ ic.icon('chat') }}<span>Copilot</span></button>
+<script>
+(function () {
+  var dock = document.getElementById('copilot');
+  if (!dock) return;
+  var collapse = document.getElementById('copilotCollapse');
+  var reopen = document.getElementById('copilotReopen');
+  var log = document.getElementById('copilotLog');
+  var form = document.getElementById('copilotForm');
+  var input = document.getElementById('copilotInput');
+  var suggestWrap = document.getElementById('copilotSuggest');
+  var STARTERS = ["Who's waiting on my decision?", "Who's stuck in screening?", "How's my enrollment funnel?"];
+  var busy = false;
+
+  function csrf() {
+    var m = document.querySelector('meta[name="csrf-token"]');
+    return m ? m.getAttribute('content') : '';
+  }
+  function leadId() {
+    var m = (window.location.pathname || '').match(/\/app\/applicant\/(\d+)/);
+    return m ? parseInt(m[1], 10) : null;
+  }
+  function setOpen(open) {
+    dock.setAttribute('data-open', open ? '1' : '0');
+    reopen.style.display = open ? 'none' : '';
+    try { localStorage.setItem('bm_copilot_open', open ? '1' : '0'); } catch (e) {}
+    if (open) { input.focus(); }
+  }
+  function scroll() { log.scrollTop = log.scrollHeight; }
+
+  function addMsg(role, text) {
+    var wrap = document.createElement('div');
+    wrap.className = 'copilot-msg ' + role;
+    var p = document.createElement('p');
+    p.textContent = text;
+    wrap.appendChild(p);
+    log.appendChild(wrap);
+    scroll();
+    return wrap;
+  }
+  function addCitations(wrap, cites) {
+    if (!cites || !cites.length) return;
+    var box = document.createElement('div');
+    box.className = 'copilot-cites';
+    cites.forEach(function (c) {
+      var a = document.createElement('a');
+      a.href = c.url; a.textContent = c.label;
+      box.appendChild(a);
+    });
+    wrap.appendChild(box);
+    scroll();
+  }
+  function addAction(wrap, action) {
+    if (!action || action.kind !== 'draft_message') return;
+    var b = document.createElement('a');
+    b.className = 'copilot-action';
+    b.href = action.url;
+    b.textContent = 'Open thread to send \u2192';
+    wrap.appendChild(b);
+    scroll();
+  }
+
+  function ask(q) {
+    if (busy || !q) return;
+    busy = true;
+    addMsg('me', q);
+    input.value = '';
+    var thinking = addMsg('bot', 'Thinking\u2026');
+    fetch('/app/copilot/ask', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf(),
+                 'X-Requested-With': 'XMLHttpRequest' },
+      body: JSON.stringify({ q: q, lead_id: leadId() })
+    }).then(function (r) { return r.json(); }).then(function (d) {
+      thinking.remove();
+      if (!d || !d.ok) { addMsg('bot', (d && d.error) || 'Something went wrong.'); return; }
+      var w = addMsg('bot', d.answer || '');
+      addCitations(w, d.citations);
+      addAction(w, d.action);
+    }).catch(function () {
+      thinking.remove();
+      addMsg('bot', 'I could not reach the assistant just now.');
+    }).finally(function () { busy = false; });
+  }
+
+  STARTERS.forEach(function (s) {
+    var c = document.createElement('button');
+    c.type = 'button'; c.className = 'copilot-chip'; c.textContent = s;
+    c.addEventListener('click', function () { ask(s); });
+    suggestWrap.appendChild(c);
+  });
+
+  collapse.addEventListener('click', function () { setOpen(false); });
+  reopen.addEventListener('click', function () { setOpen(true); });
+  form.addEventListener('submit', function (e) { e.preventDefault(); ask(input.value.trim()); });
+
+  var saved = null;
+  try { saved = localStorage.getItem('bm_copilot_open'); } catch (e) {}
+  // Default open on wide screens; collapsed on small ones unless the user opened it.
+  var wide = window.matchMedia('(min-width: 1100px)').matches;
+  setOpen(saved === null ? wide : saved === '1');
+})();
+</script>

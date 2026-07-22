@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block title %}Team · BridgeMD for sites{% endblock %}
+{% import "_icons.html" as ic %}
+{% import "_ui.html" as ui %}
+
+{% set role_tone = {'coordinator': 'brand', 'pi': 'violet', 'student': 'neutral'} %}
+
+{% block body %}
+<div class="app-head">
+  <div>
+    <h1>Team workspace</h1>
+    <p>Everyone on the trial - PI, coordinators, and research students - shares this workspace with full visibility of applicants, documents, and campaigns.</p>
+  </div>
+  {% if can_manage_team %}{{ ui.btn('Invite teammate', 'primary', icon='user-plus', extra='data-ui-open="inviteModal"') }}{% endif %}
+</div>
+
+<div class="callout info" style="margin-bottom:18px;">
+  {{ ic.icon('shield-check') }}
+  <span>Everyone sees the same applicants and documents (shared like a Google Doc). Roles only gate sensitive actions: a <b>PI</b> or <b>coordinator</b> can approve/sign documents and manage the team; <b>research students</b> can do all day-to-day work but not sign off. Every action is logged to the audit trail.</span>
+</div>
+
+<div class="app-card">
+  <table class="app-table">
+    <thead>
+      <tr><th>Member</th><th>Role</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for m in members %}
+      <tr>
+        <td>
+          <div class="who">
+            <span class="app-av brand">{{ (m.name or m.email or '?')[:1]|upper }}</span>
+            <div>
+              <b>{{ m.name or m.email }}{% if m.is_me %} <span class="app-sub" style="color:var(--faint);font-weight:600;">(you)</span>{% endif %}</b>
+              <span>{{ m.email }}</span>
+            </div>
+          </div>
+        </td>
+        <td>
+          {% if can_manage_team and not m.is_me %}
+          <form method="post" action="{{ url_for('team_set_role') }}" style="display:flex;gap:8px;align-items:center;">
+            <input type="hidden" name="user_id" value="{{ m.user_id }}">
+            <select name="role" onchange="this.form.submit()">
+              {% for r in roles %}<option value="{{ r }}" {{ 'selected' if r == m.role }}>{{ role_labels[r] }}</option>{% endfor %}
+            </select>
+          </form>
+          {% else %}
+          {{ ui.badge(m.role_label, role_tone.get(m.role, 'neutral')) }}
+          {% endif %}
+        </td>
+        <td style="text-align:right;">
+          {% if can_manage_team and not m.is_me %}
+          <form method="post" action="{{ url_for('team_remove') }}" onsubmit="return confirm('Remove {{ m.name or m.email }} from this workspace?');" style="display:inline;">
+            <input type="hidden" name="user_id" value="{{ m.user_id }}">
+            {{ ui.btn('Remove', 'ghost', 'sm', type='submit') }}
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% if invites %}
+<div class="app-card" style="margin-top:18px;">
+  <div class="app-card-title" style="padding:14px 18px 0;"><b>Pending invites</b></div>
+  <table class="app-table">
+    <thead><tr><th>Invited</th><th>Role</th><th>Link</th><th></th></tr></thead>
+    <tbody>
+      {% for i in invites %}
+      <tr>
+        <td>{{ i.email or 'Anyone with the link' }}</td>
+        <td>{{ ui.badge(i.role_label, 'neutral') }}</td>
+        <td><input type="text" readonly value="{{ i.url }}" onclick="this.select()" style="width:100%;max-width:360px;font-size:12px;"></td>
+        <td style="text-align:right;">
+          {% if can_manage_team %}
+          <form method="post" action="{{ url_for('team_revoke_invite') }}" style="display:inline;">
+            <input type="hidden" name="token" value="{{ i.token }}">
+            {{ ui.btn('Revoke', 'ghost', 'sm', type='submit') }}
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% if can_manage_team %}
+{% call ui.modal('inviteModal', 'Invite a teammate') %}
+<form method="post" action="{{ url_for('team_invite') }}">
+  <div class="field">
+    <label>Their email (optional - the link works either way)</label>
+    <input type="email" name="email" placeholder="teammate@university.edu">
+  </div>
+  <div class="field">
+    <label>Role</label>
+    <select name="role">
+      <option value="student" selected>Research student (grad/undergrad)</option>
+      <option value="coordinator">Coordinator</option>
+      <option value="pi">Principal Investigator</option>
+    </select>
+  </div>
+  <p class="app-sub" style="color:var(--faint);font-size:12.5px;">We'll generate a join link to share. When they sign in and open it, they join this workspace with the role you picked.</p>
+  <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px;">
+    {{ ui.btn('Cancel', 'ghost', extra='data-ui-close') }}
+    {{ ui.btn('Create invite link', 'primary', type='submit', icon='user-plus') }}
+  </div>
+</form>
+{% endcall %}
+{% endif %}
+{% endblock %}

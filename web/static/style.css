@@ -4510,3 +4510,87 @@ body.col-resizing iframe { pointer-events: none; }
 [data-theme="dark"] .app-card, [data-theme="dark"] .app-stat,
 [data-theme="dark"] .rail-item { background: var(--surface); }
 [data-theme="dark"] .appnav a.active { background: var(--accent); color: #fff; }
+
+/* --------------------------------------------------------------------------
+   Copilot - a docked, always-on side panel on study-team pages (third column)
+   -------------------------------------------------------------------------- */
+.appdock {
+  width: 360px; flex-shrink: 0; background: var(--surface);
+  border-left: 1px solid var(--border); display: flex; flex-direction: column;
+  position: sticky; top: 0; height: 100vh;
+}
+.appdock[data-open="0"] { display: none; }
+.dock-head {
+  display: flex; align-items: center; gap: var(--space-3);
+  padding: 16px 18px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+}
+.dock-title { display: flex; align-items: center; gap: 10px; }
+.dock-title > div { display: flex; flex-direction: column; line-height: 1.2; }
+.dock-title b { font-size: 15px; color: var(--ink); }
+.dock-title span { font-size: 11.5px; color: var(--faint); }
+.dock-dot { width: 8px; height: 8px; border-radius: var(--radius-pill);
+  background: var(--accent); flex-shrink: 0; }
+.dock-collapse {
+  margin-left: auto; background: none; border: none; cursor: pointer;
+  color: var(--faint); display: inline-flex; padding: 4px;
+}
+.dock-collapse svg { width: 18px; height: 18px; }
+.dock-log { flex: 1; overflow-y: auto; padding: 18px; display: flex;
+  flex-direction: column; gap: var(--space-3); }
+.copilot-msg { max-width: 90%; }
+.copilot-msg p {
+  margin: 0; padding: 10px 12px; border-radius: var(--radius);
+  font-size: 13px; line-height: 1.5; white-space: pre-wrap;
+}
+.copilot-msg.bot { align-self: flex-start; }
+.copilot-msg.bot p { background: var(--bg); color: var(--ink);
+  border: 1px solid var(--border); }
+.copilot-msg.me { align-self: flex-end; }
+.copilot-msg.me p { background: var(--accent); color: #fff; }
+.copilot-suggest, .copilot-cites { display: flex; flex-wrap: wrap; gap: 6px;
+  margin-top: 8px; }
+.copilot-chip {
+  border: 1px solid var(--border); background: var(--surface); cursor: pointer;
+  color: var(--accent); font: 600 12px/1 var(--sans);
+  padding: 7px 10px; border-radius: var(--radius-pill); text-align: left;
+}
+.copilot-cites a {
+  display: inline-flex; align-items: center; gap: 4px;
+  border: 1px solid var(--border); background: var(--surface);
+  color: var(--accent); text-decoration: none; font-size: 12px; font-weight: 600;
+  padding: 5px 9px; border-radius: var(--radius-pill);
+}
+.copilot-action {
+  display: inline-block; margin-top: 8px; color: var(--accent);
+  font-size: 12px; font-weight: 700; text-decoration: none;
+}
+.dock-form { display: flex; gap: 8px; padding: 14px 18px;
+  border-top: 1px solid var(--border); flex-shrink: 0; }
+.dock-form input {
+  flex: 1; padding: 10px 12px; border: 1px solid var(--border);
+  border-radius: var(--radius-pill); font: 400 13px/1 var(--sans);
+  background: var(--bg); color: var(--ink);
+}
+.dock-form button {
+  border: none; cursor: pointer; background: var(--accent); color: #fff;
+  width: 40px; flex-shrink: 0; border-radius: var(--radius-pill);
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.dock-form button svg { width: 18px; height: 18px; }
+/* Collapsed-state reopen tab */
+.dock-reopen {
+  position: fixed; right: 0; bottom: 24px; z-index: 60; display: none;
+  align-items: center; gap: 8px; padding: 10px 14px 10px 16px; border: none;
+  cursor: pointer; background: var(--accent); color: #fff;
+  border-radius: var(--radius-pill) 0 0 var(--radius-pill); box-shadow: var(--shadow);
+  font: 600 13px/1 var(--sans);
+}
+.dock-reopen svg { width: 16px; height: 16px; }
+.appdock[data-open="0"] ~ .dock-reopen { display: inline-flex; }
+/* On narrow screens the dock overlays instead of eating a column. */
+@media (max-width: 1099px) {
+  .appdock { position: fixed; top: 0; right: 0; bottom: 0; height: 100vh;
+    width: min(380px, 100vw); z-index: 62; box-shadow: var(--shadow); }
+}
+[data-theme="dark"] .appdock, [data-theme="dark"] .copilot-chip,
+[data-theme="dark"] .copilot-cites a { background: var(--surface); }

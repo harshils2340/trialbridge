@@ -720,7 +720,59 @@ CREATE TABLE IF NOT EXISTS document_events (
 );
 CREATE INDEX IF NOT EXISTS idx_trial_docs_user ON trial_documents(user_id, nct);
 CREATE INDEX IF NOT EXISTS idx_doc_events_doc ON document_events(document_id);
+
+-- Team workspace: a study team is an ORGANIZATION. Every study-team user belongs
+-- to exactly one org (their lab/site). All members share FULL VISIBILITY of the
+-- org's applicants, documents, and campaigns (like a shared Google-Doc space);
+-- roles only gate a few sensitive actions (sign/approve, manage the team).
+-- Compliance note: this is HIPAA "minimum-necessary" access control + a per-member
+-- audit trail, so it strengthens the posture rather than adding PHI risk.
+CREATE TABLE IF NOT EXISTS organizations (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    name        TEXT DEFAULT '',
+    created_at  TEXT NOT NULL
+);
+-- Roles: 'coordinator' (admin - manages team + everything), 'pi' (investigator -
+-- reviews/approves/signs), 'student' (grad/undergrad - full visibility + all
+-- day-to-day work, but cannot sign/approve documents or manage the team).
+CREATE TABLE IF NOT EXISTS memberships (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    org_id      INTEGER NOT NULL,
+    user_id     INTEGER NOT NULL,
+    role        TEXT NOT NULL DEFAULT 'coordinator',
+    created_at  TEXT NOT NULL,
+    UNIQUE (org_id, user_id),
+    FOREIGN KEY (org_id) REFERENCES organizations(id),
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
+-- Pending invites (join link by email). Accepted when the invitee signs in and
+-- claims the token; role is assigned by the inviter.
+CREATE TABLE IF NOT EXISTS org_invites (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    org_id      INTEGER NOT NULL,
+    email       TEXT DEFAULT '',
+    role        TEXT NOT NULL DEFAULT 'student',
+    token       TEXT UNIQUE NOT NULL,
+    invited_by  INTEGER,
+    created_at  TEXT NOT NULL,
+    accepted_at TEXT DEFAULT '',
+    FOREIGN KEY (org_id) REFERENCES organizations(id)
+);
+CREATE INDEX IF NOT EXISTS idx_memberships_user ON memberships(user_id);
+CREATE INDEX IF NOT EXISTS idx_memberships_org ON memberships(org_id);
 """
+
+# Recognized team roles + display labels. 'coordinator' is the admin role.
+ORG_ROLES = ("coordinator", "pi", "student")
+ORG_ROLE_LABELS = {
+    "coordinator": "Coordinator",
+    "pi": "Principal Investigator",
+    "student": "Research student",
+}
+# Roles allowed to perform privileged actions. Everything else is open to all
+# members (full visibility + day-to-day collaboration).
+_ROLE_CAN_MANAGE_TEAM = {"coordinator", "pi"}
+_ROLE_CAN_APPROVE_DOCS = {"coordinator", "pi"}
 
 
 def now():
@@ -800,6 +852,8 @@ _MIGRATIONS = {
         "oauth_provider": "TEXT DEFAULT ''",
         "oauth_sub": "TEXT",
         "oauth_picture": "TEXT DEFAULT ''",
+        # Home organization (team workspace) this study-team user belongs to.
+        "org_id": "INTEGER",
     },
     "patient_users": {
         "oauth_provider": "TEXT DEFAULT ''",
@@ -946,6 +1000,27 @@ def _migrate(con):
                 "ON site_posted_studies(user_id, created_at)")
     con.execute("CREATE INDEX IF NOT EXISTS idx_site_posted_status "
                 "ON site_posted_studies(status)")
+    _backfill_orgs(con)
+
+
+def _backfill_orgs(con):
+    """Give every existing study-team user a home organization + a coordinator
+    membership, so the workspace model applies to accounts created before it
+    existed. Idempotent: only touches users without an org yet."""
+    ts = now()
+    rows = con.execute(
+        "SELECT id, name FROM users WHERE org_id IS NULL").fetchall()
+    for uid, name in rows:
+        org_name = (name or "").strip()
+        org_name = f"{org_name}'s team" if org_name else "My team"
+        cur = con.execute(
+            "INSERT INTO organizations (name, created_at) VALUES (?,?)",
+            (org_name, ts))
+        oid = cur.lastrowid
+        con.execute("UPDATE users SET org_id = ? WHERE id = ?", (oid, uid))
+        con.execute(
+            "INSERT OR IGNORE INTO memberships (org_id, user_id, role, created_at) "
+            "VALUES (?,?,?,?)", (oid, uid, "coordinator", ts))
 
 
 def init_db():
@@ -971,8 +1046,183 @@ def create_user(email, password_hash, name, specialty="", institution="",
          institution.strip(), 1 if verified else 0, now() if verified else "",
          (oauth_provider or "").strip(), oauth_sub, (oauth_picture or "").strip(),
          now()))
+    uid = cur.lastrowid
+    # A brand-new account starts as its own single-person team (they can invite
+    # teammates later). Coordinator = the admin role.
+    nm = name.strip()
+    org_name = f"{nm}'s team" if nm else "My team"
+    ocur = db.execute("INSERT INTO organizations (name, created_at) VALUES (?,?)",
+                      (org_name, now()))
+    oid = ocur.lastrowid
+    db.execute("UPDATE users SET org_id = ? WHERE id = ?", (oid, uid))
+    db.execute("INSERT OR IGNORE INTO memberships (org_id, user_id, role, created_at) "
+               "VALUES (?,?,?,?)", (oid, uid, "coordinator", now()))
     db.commit()
-    return cur.lastrowid
+    return uid
+
+
+# --------------------------------------------------------------------------- #
+# Team workspace (organizations, memberships, invites, roles)
+# --------------------------------------------------------------------------- #
+def user_org_id(user_id):
+    """The org this user belongs to. Self-heals a missing org (older/edge rows)
+    by creating a personal one, so callers can always assume an org exists."""
+    row = get_db().execute("SELECT org_id FROM users WHERE id = ?",
+                           (user_id,)).fetchone()
+    if row and row["org_id"]:
+        return row["org_id"]
+    return _ensure_personal_org(user_id)
+
+
+def _ensure_personal_org(user_id):
+    db = get_db()
+    u = db.execute("SELECT name FROM users WHERE id = ?", (user_id,)).fetchone()
+    nm = ((u["name"] if u else "") or "").strip()
+    org_name = f"{nm}'s team" if nm else "My team"
+    cur = db.execute("INSERT INTO organizations (name, created_at) VALUES (?,?)",
+                     (org_name, now()))
+    oid = cur.lastrowid
+    db.execute("UPDATE users SET org_id = ? WHERE id = ?", (oid, user_id))
+    db.execute("INSERT OR IGNORE INTO memberships (org_id, user_id, role, created_at) "
+               "VALUES (?,?,?,?)", (oid, user_id, "coordinator", now()))
+    db.commit()
+    return oid
+
+
+def org_member_ids(user_id):
+    """All user_ids on this user's team (including themselves). Reads union
+    across these so the whole team shares full visibility."""
+    oid = user_org_id(user_id)
+    rows = get_db().execute(
+        "SELECT user_id FROM memberships WHERE org_id = ?", (oid,)).fetchall()
+    ids = {r["user_id"] for r in rows}
+    ids.add(user_id)
+    return sorted(ids)
+
+
+def list_org_members(user_id):
+    """Team roster (for the Team page): each member's id, name, email, role."""
+    oid = user_org_id(user_id)
+    return get_db().execute(
+        "SELECT m.user_id, m.role, m.created_at, u.name, u.email "
+        "FROM memberships m JOIN users u ON u.id = m.user_id "
+        "WHERE m.org_id = ? ORDER BY "
+        "CASE m.role WHEN 'coordinator' THEN 0 WHEN 'pi' THEN 1 ELSE 2 END, "
+        "u.name", (oid,)).fetchall()
+
+
+def member_role(user_id):
+    """This user's role in their org ('' if somehow unset)."""
+    oid = user_org_id(user_id)
+    row = get_db().execute(
+        "SELECT role FROM memberships WHERE org_id = ? AND user_id = ?",
+        (oid, user_id)).fetchone()
+    return (row["role"] if row else "") or ""
+
+
+def can_manage_team(user_id):
+    return member_role(user_id) in _ROLE_CAN_MANAGE_TEAM
+
+
+def can_approve_docs(user_id):
+    return member_role(user_id) in _ROLE_CAN_APPROVE_DOCS
+
+
+def set_member_role(actor_id, target_user_id, role):
+    """Change a teammate's role. Only same-org and a valid role."""
+    if role not in ORG_ROLES:
+        return False
+    oid = user_org_id(actor_id)
+    db = get_db()
+    row = db.execute("SELECT id FROM memberships WHERE org_id = ? AND user_id = ?",
+                     (oid, target_user_id)).fetchone()
+    if not row:
+        return False
+    db.execute("UPDATE memberships SET role = ? WHERE id = ?", (role, row["id"]))
+    db.commit()
+    return True
+
+
+def remove_member(actor_id, target_user_id):
+    """Remove a teammate from the org. Can't remove the last coordinator, and a
+    removed member gets a fresh personal org so they're never orphaned."""
+    oid = user_org_id(actor_id)
+    if actor_id == target_user_id:
+        return False
+    db = get_db()
+    row = db.execute("SELECT role FROM memberships WHERE org_id = ? AND user_id = ?",
+                     (oid, target_user_id)).fetchone()
+    if not row:
+        return False
+    if row["role"] == "coordinator":
+        n = db.execute("SELECT COUNT(*) c FROM memberships WHERE org_id = ? "
+                       "AND role = 'coordinator'", (oid,)).fetchone()["c"]
+        if n <= 1:
+            return False
+    db.execute("DELETE FROM memberships WHERE org_id = ? AND user_id = ?",
+               (oid, target_user_id))
+    db.execute("UPDATE users SET org_id = NULL WHERE id = ?", (target_user_id,))
+    db.commit()
+    _ensure_personal_org(target_user_id)
+    return True
+
+
+def create_org_invite(actor_id, email, role="student"):
+    """Create a join link for a teammate. Returns the token."""
+    if role not in ORG_ROLES:
+        role = "student"
+    oid = user_org_id(actor_id)
+    token = gen_token()
+    db = get_db()
+    db.execute(
+        "INSERT INTO org_invites (org_id, email, role, token, invited_by, created_at) "
+        "VALUES (?,?,?,?,?,?)",
+        (oid, (email or "").strip().lower(), role, token, actor_id, now()))
+    db.commit()
+    return token
+
+
+def get_org_invite(token):
+    if not token:
+        return None
+    return get_db().execute(
+        "SELECT * FROM org_invites WHERE token = ?", (token,)).fetchone()
+
+
+def list_org_invites(user_id):
+    """Outstanding (unaccepted) invites for this user's org."""
+    oid = user_org_id(user_id)
+    return get_db().execute(
+        "SELECT * FROM org_invites WHERE org_id = ? AND (accepted_at IS NULL "
+        "OR accepted_at = '') ORDER BY created_at DESC", (oid,)).fetchall()
+
+
+def revoke_org_invite(actor_id, token):
+    oid = user_org_id(actor_id)
+    db = get_db()
+    db.execute("DELETE FROM org_invites WHERE org_id = ? AND token = ?",
+               (oid, token))
+    db.commit()
+    return True
+
+
+def accept_org_invite(user_id, token):
+    """Move a user into the invite's org with the invited role. Their previous
+    (personal) org is left behind. Returns the org_id on success, else None."""
+    inv = get_org_invite(token)
+    if not inv or (inv["accepted_at"] or "").strip():
+        return None
+    oid = inv["org_id"]
+    db = get_db()
+    db.execute(
+        "INSERT INTO memberships (org_id, user_id, role, created_at) VALUES (?,?,?,?) "
+        "ON CONFLICT(org_id, user_id) DO UPDATE SET role = excluded.role",
+        (oid, user_id, inv["role"], now()))
+    db.execute("UPDATE users SET org_id = ? WHERE id = ?", (oid, user_id))
+    db.execute("UPDATE org_invites SET accepted_at = ? WHERE id = ?",
+               (now(), inv["id"]))
+    db.commit()
+    return oid
 
 
 def get_user_by_email(email):
@@ -1513,11 +1763,15 @@ def remove_site_posted_study(user_id, study_id):
 
 
 def user_claimed_ncts(user_id):
-    """NCTs this account may access applicants for. Only VERIFIED claims count,
-    so an unapproved claim never exposes a trial's patient PHI."""
+    """NCTs this account may access applicants for. Scoped to the user's TEAM:
+    any study claimed by any member of their org is visible to the whole team
+    (shared workspace). Only VERIFIED claims count, so an unapproved claim never
+    exposes a trial's patient PHI."""
+    members = org_member_ids(user_id)
+    qs = ",".join("?" * len(members))
     rows = get_db().execute(
-        "SELECT nct FROM study_claims WHERE user_id = ? AND verified = 1",
-        (user_id,)).fetchall()
+        f"SELECT DISTINCT nct FROM study_claims WHERE user_id IN ({qs}) "
+        "AND verified = 1", members).fetchall()
     return {r["nct"] for r in rows if r["nct"]}
 
 
@@ -1632,15 +1886,18 @@ def get_campaign_by_token(track_token):
 
 
 def list_campaigns_for_user(user_id, ncts=None):
+    # Shared across the team (any org member's campaigns are visible to all).
+    members = org_member_ids(user_id)
+    mqs = ",".join("?" * len(members))
     ncts = sorted({_norm_nct(x) for x in (ncts or []) if x})
     if ncts:
         qs = ",".join("?" * len(ncts))
         return get_db().execute(
-            f"SELECT * FROM campaigns WHERE user_id = ? AND nct IN ({qs}) "
-            "ORDER BY created_at DESC, id DESC", [user_id] + ncts).fetchall()
+            f"SELECT * FROM campaigns WHERE user_id IN ({mqs}) AND nct IN ({qs}) "
+            "ORDER BY created_at DESC, id DESC", members + ncts).fetchall()
     return get_db().execute(
-        "SELECT * FROM campaigns WHERE user_id = ? ORDER BY created_at DESC, "
-        "id DESC", (user_id,)).fetchall()
+        f"SELECT * FROM campaigns WHERE user_id IN ({mqs}) ORDER BY created_at DESC, "
+        "id DESC", members).fetchall()
 
 
 def set_campaign_creative(campaign_id, headline, body, landing_copy):
@@ -3449,8 +3706,10 @@ def get_document(document_id):
 
 
 def list_documents(user_id, nct=None, category=None):
-    q = "SELECT * FROM trial_documents WHERE user_id = ?"
-    args = [user_id]
+    members = org_member_ids(user_id)
+    qs = ",".join("?" * len(members))
+    q = f"SELECT * FROM trial_documents WHERE user_id IN ({qs})"
+    args = list(members)
     if nct:
         q += " AND nct = ?"
         args.append(_norm_nct(nct))
@@ -3488,9 +3747,11 @@ def set_document_status(document_id, status, actor="", actor_role="", meaning=""
 
 
 def document_counts(user_id):
+    members = org_member_ids(user_id)
+    qs = ",".join("?" * len(members))
     rows = get_db().execute(
-        "SELECT status, COUNT(*) n FROM trial_documents WHERE user_id = ? "
-        "GROUP BY status", (user_id,)).fetchall()
+        f"SELECT status, COUNT(*) n FROM trial_documents WHERE user_id IN ({qs}) "
+        "GROUP BY status", members).fetchall()
     return {r["status"]: r["n"] for r in rows}
 
 
