@@ -22,17 +22,6 @@
   </div>
 </div>
 
-{# ── Triage cockpit: work counts that jump to each section (not vanity totals) ── #}
-<div class="triage">
-  {% for t in triage %}
-  <a class="triage-chip t-{{ t.tone }}{{ ' zero' if not t.n }}" href="#{{ t.key }}">
-    {{ ic.icon(t.icon) }}
-    <span class="tc-n">{{ t.n }}</span>
-    <span class="tc-l">{{ t.label }}</span>
-  </a>
-  {% endfor %}
-</div>
-
 <div class="app-split">
   <div>
     {# ── 1. Replies waiting ── #}
@@ -181,16 +170,6 @@
       <a href="{{ url_for('documents_workspace') }}" class="rail-more">View all {{ docs_pending_total }} →</a>
       {% endif %}
       {% endif %}
-    </div>
-
-    <div class="app-card pad">
-      <div class="rail-h">This week</div>
-      <div class="week-strip">
-        <div class="w"><div class="wn">{{ week.applied }}</div><div class="wl">New applicants</div></div>
-        <div class="w"><div class="wn">{{ week.booked }}</div><div class="wl">Screenings booked</div></div>
-        <div class="w"><div class="wn ok">{{ week.enrolled }}</div><div class="wl">Enrolled</div></div>
-      </div>
-      <a href="{{ url_for('recruitment_dashboard') }}" class="rail-more">Full recruitment report →</a>
     </div>
   </div>
 </div>

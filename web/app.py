@@ -5100,37 +5100,6 @@ def study_home():
     docs_pending = docs_pending[:5]
     can_approve = db.can_approve_docs(g.user["id"])
 
-    # ── Right rail 3: this week's momentum. Small and honest (not a vanity wall):
-    # is the funnel actually moving this week? ──
-    week_ago = now - dt.timedelta(days=7)
-
-    def _within_week(ts):
-        d = _parse_ts(ts)
-        return bool(d and d >= week_ago)
-
-    week = {
-        "applied": sum(1 for it in items if _within_week(it["lead"]["created_at"])),
-        "booked": sum(1 for it in items
-                      if (it["lead"]["schedule_url"] or "").strip()
-                      and _within_week(it["lead"]["updated_at"])),
-        "enrolled": sum(1 for it in items if it["lead"]["status"] == "enrolled"
-                        and _within_week(it["lead"]["updated_at"])),
-    }
-
-    # ── Triage cockpit: work counts that map to sections (jump links), NOT
-    # vanity status totals. A zero is a good signal ("caught up here"). ──
-    triage = [
-        {"key": "needs-reply", "label": "Replies waiting", "n": len(reply_queue),
-         "icon": "chat", "tone": "danger"},
-        {"key": "to-review", "label": "To review", "n": len(pending),
-         "icon": "user-plus", "tone": "brand"},
-        {"key": "follow-ups", "label": "Follow-ups", "n": len(followups),
-         "icon": "sparkle", "tone": "warn"},
-        {"key": "upcoming", "label": "Visits soon", "n": len(upcoming),
-         "icon": "calendar", "tone": "info"},
-        {"key": "approvals", "label": "To approve", "n": docs_pending_total,
-         "icon": "file-check", "tone": "violet"},
-    ]
     todo_total = len(reply_queue) + len(pending) + len(followups) + docs_pending_total
 
     hour = now.hour
@@ -5141,8 +5110,8 @@ def study_home():
         "study_home.html", claims=claims, reply_queue=reply_queue, pending=pending,
         followups=followups, has_calendar=has_calendar, upcoming=upcoming,
         docs_pending=docs_pending,
-        docs_pending_total=docs_pending_total, can_approve=can_approve, week=week,
-        triage=triage, todo_total=todo_total, greeting=greeting,
+        docs_pending_total=docs_pending_total, can_approve=can_approve,
+        todo_total=todo_total, greeting=greeting,
         org=(db.get_site_profile(g.user["id"]) or {}))
 
 

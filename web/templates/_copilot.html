@@ -6,20 +6,21 @@
         <img src="{{ static_url('logo.svg') }}" width="18" height="18" alt="">
         <span class="dock-dot" title="Online"></span>
       </span>
-      <div><b>Bridget</b><span>Enrollment copilot · your studies only</span></div>
+      <div><b>Bridget</b><span>Enrollment agent · works across your studies</span></div>
     </div>
     <button type="button" class="dock-collapse" id="copilotCollapse" aria-label="Hide Bridget">{{ ic.icon('chevron-right') }}</button>
   </header>
   <div class="dock-log" id="copilotLog">
     <div class="copilot-msg bot">
-      <p>Hi, I'm <b>Bridget</b> - I help with your applicants, screening, and
-      funnel. I only use your own study data, and I never decide eligibility.
-      Ask me anything, or try:</p>
+      <p>I'm <b>Bridget</b>, your enrollment agent. I'm wired into your studies -
+      I triage your queue, surface funnel leaks, and draft or send booking links
+      and messages for you. You approve anything that goes out; I never decide
+      eligibility. Point me at something:</p>
       <div class="copilot-suggest" id="copilotSuggest"></div>
     </div>
   </div>
   <form class="dock-form" id="copilotForm">
-    <input type="text" id="copilotInput" placeholder="Ask Bridget or tell her to do something&hellip;" autocomplete="off">
+    <input type="text" id="copilotInput" placeholder="Tell Bridget what to do&hellip;" autocomplete="off">
     <button type="submit" aria-label="Send">{{ ic.icon('send') }}</button>
   </form>
 </aside>
@@ -38,7 +39,7 @@
   var input = document.getElementById('copilotInput');
   var suggestWrap = document.getElementById('copilotSuggest');
   var sendBtn = form.querySelector('button[type="submit"]');
-  var STARTERS = ["Who's waiting on my decision?", "Who's stuck in screening?", "How's my enrollment funnel?"];
+  var STARTERS = ["Triage my review queue", "Send booking reminders to everyone stuck", "Find my biggest funnel leak"];
   var busy = false;
 
   function csrf() {
@@ -171,18 +172,39 @@
     });
   }
 
-  // Animated "..." bubble while we wait for the answer, like a chat assistant.
-  function addTyping() {
+  // A "working" row (spinner + status), like an agent narrating that it's on it.
+  function addWorking() {
     var wrap = document.createElement('div');
     wrap.className = 'copilot-msg bot';
-    var dots = document.createElement('div');
-    dots.className = 'copilot-typing';
-    dots.setAttribute('aria-label', 'Bridget is thinking');
-    dots.innerHTML = '<span></span><span></span><span></span>';
-    wrap.appendChild(dots);
+    var w = document.createElement('div');
+    w.className = 'copilot-working';
+    w.setAttribute('aria-label', 'Bridget is working');
+    w.innerHTML = '<span class="cw-spin" aria-hidden="true"></span>'
+                + '<span class="cw-label">Working\u2026</span>';
+    wrap.appendChild(w);
     log.appendChild(wrap);
     scroll();
     return wrap;
+  }
+
+  // Reveal the agent's steps one at a time with a check, like a tool run trace.
+  function renderSteps(wrap, steps, done) {
+    if (!steps || !steps.length) { if (done) done(); return; }
+    var box = document.createElement('div');
+    box.className = 'copilot-steps';
+    wrap.appendChild(box);
+    var i = 0;
+    (function next() {
+      if (i >= steps.length) { if (done) setTimeout(done, 140); return; }
+      var row = document.createElement('div');
+      row.className = 'copilot-step';
+      var c = document.createElement('span'); c.className = 'cs-check'; c.textContent = '\u2713';
+      var t = document.createElement('span'); t.className = 'cs-text'; t.textContent = steps[i];
+      row.appendChild(c); row.appendChild(t);
+      box.appendChild(row); scroll();
+      i++;
+      setTimeout(next, 170);
+    })();
   }
 
   // Stream the answer in word-by-word so it reads like a live response.
@@ -214,7 +236,7 @@
     setBusy(true);
     addMsg('me', q);
     input.value = '';
-    var typing = addTyping();
+    var working = addWorking();
     fetch('/app/copilot/ask', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf(),
@@ -229,7 +251,7 @@
         return { status: r.status, data: d };
       });
     }).then(function (res) {
-      typing.remove();
+      working.remove();
       var d = res.data;
       if (!d) {
         addMsg('bot', (res.status === 401 || res.status === 403)
@@ -245,13 +267,24 @@
               : (d.error || 'Something went wrong.')));
         return;
       }
-      var w = addMsg('bot', '');
-      revealText(w.querySelector('p'), d.answer || '', function () {
-        addCitations(w, d.citations);
-        renderProposal(w, d.proposal);
-      });
+      // Narrate what the agent did (steps), then stream the result.
+      function deliver() {
+        var w = addMsg('bot', '');
+        revealText(w.querySelector('p'), d.answer || '', function () {
+          addCitations(w, d.citations);
+          renderProposal(w, d.proposal);
+        });
+      }
+      if (d.trace && d.trace.length) {
+        var sw = document.createElement('div');
+        sw.className = 'copilot-msg bot';
+        log.appendChild(sw);
+        renderSteps(sw, d.trace, deliver);
+      } else {
+        deliver();
+      }
     }).catch(function () {
-      typing.remove();
+      working.remove();
       addMsg('bot', 'I couldn\u2019t reach the assistant. Check your connection and try again.');
     }).finally(function () { setBusy(false); });
   }

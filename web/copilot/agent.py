@@ -29,12 +29,27 @@ SYSTEM_PROMPT = (
     "4. Be concise and practical - a couple of sentences, plain language."
 )
 
-# Suggested prompts shown in the empty rail.
+# Action-first starters shown in the empty rail - phrased as work to do, not
+# questions to ask (Bridget is an agent that acts, not a Q&A bot).
 STARTERS = [
-    "Who's waiting on my decision?",
-    "Who's stuck in screening?",
-    "How's my enrollment funnel?",
+    "Triage my review queue",
+    "Send booking reminders to everyone stuck",
+    "Find my biggest funnel leak",
 ]
+
+# Honest, action-phrased trace of what Bridget actually did to answer - shown as
+# check-marked steps in the rail (like an agent narrating its tool use).
+_TRACE = {
+    "pending_decisions": ["Scanned your review queue across all studies"],
+    "stuck_in_screening": ["Checked your screening queue for stalled applicants"],
+    "funnel_overview": ["Pulled funnel metrics across all your studies"],
+    "search_messages": ["Searched your applicant message history"],
+    "applicant_summary": ["Read this applicant's record and activity"],
+    "explain_verdict": ["Reviewed this applicant's eligibility check"],
+    "send_message": ["Pulled this applicant's context", "Drafted a message for your review"],
+    "send_booking": ["Checked this applicant's booking status", "Prepared a booking link"],
+    "bulk_booking": ["Scanned your studies for applicants who haven't booked"],
+}
 
 
 _BULK_HINTS = ("everyone", "all of them", "each of", "each one", "stuck",
@@ -84,6 +99,11 @@ def _classify(query):
     if any(w in q for w in ("funnel", "velocity", "conversion", "drop", "leak",
                             "enrollment rate", "how are we doing", "overview",
                             "metrics", "stats")):
+        return "funnel_overview", {}
+    # "how many candidates / applicants do I have" -> funnel snapshot (has totals).
+    if (any(w in q for w in ("how many", "count", "total", "number of")) and
+            any(w in q for w in ("applicant", "candidate", "patient", "people",
+                                 "enrolled", "trial", "study", "studies"))):
         return "funnel_overview", {}
     if any(w in q for w in ("why", "verdict", "eligible", "ineligible",
                             "eligibility", "explain")):
@@ -146,7 +166,9 @@ def answer(user_id, query, context=None):
 
     # --- Action intents: build a confirmable proposal (never auto-send) --------
     if intent in ("send_message", "send_booking", "bulk_booking"):
-        return _propose(intent, user_id, lead_id, params)
+        res = _propose(intent, user_id, lead_id, params)
+        res.setdefault("trace", _TRACE.get(intent, []))
+        return res
 
     # --- Read intents: grounded answer -----------------------------------------
     if intent == "pending_decisions":
@@ -170,6 +192,7 @@ def answer(user_id, query, context=None):
     return {
         "answer": text,
         "citations": payload.get("citations", []),
+        "trace": _TRACE.get(intent, []),
         "suggestions": STARTERS if intent == "help" else [],
     }
 
