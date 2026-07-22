@@ -162,11 +162,14 @@
       {% if not docs_pending %}
       <div class="app-sub" style="font-size:13px;color:var(--faint);">No documents need a decision.</div>
       {% else %}
-      <div class="mini-list">
+      <div class="rail-docs">
         {% for d in docs_pending %}
-        <a class="mi mi-link" href="{{ url_for('document_detail', doc_id=d.id) }}">
-          <span class="lbl">{{ ic.icon('file-check') }} {{ d.title }}{% if d.nct %} <span class="app-sub" style="color:var(--faint);">· {{ d.nct }}</span>{% endif %}</span>
-          {{ ui.badge(d.status_label, 'warn' if d.pending else 'info') }}
+        <a class="rail-doc" href="{{ url_for('document_detail', doc_id=d.id) }}">
+          <div class="rail-doc-title">{{ d.title }}</div>
+          <div class="rail-doc-meta">
+            {{ ui.badge(d.status_label, 'warn' if d.pending else 'info') }}
+            {% if d.nct %}<span class="rail-doc-nct">{{ d.nct }}</span>{% endif %}
+          </div>
         </a>
         {% endfor %}
       </div>
