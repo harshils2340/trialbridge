@@ -90,10 +90,12 @@
           {% endfor %}
         </div>
       </details>
-      <form class="appsearch" method="get" action="{{ url_for('leads') }}">
+      <button type="button" class="appsearch cmdk-trigger" data-cmdk-open
+              aria-label="Search or jump to a page (Command or Control + K)">
         {{ ic.icon('search') }}
-        <input type="search" name="q" placeholder="Search applicants, studies…" value="{{ q if q is defined else request.args.get('q','') }}">
-      </form>
+        <span class="cmdk-trigger-label">Search or jump to…</span>
+        <kbd class="cmdk-trigger-kbd">⌘K</kbd>
+      </button>
       <span class="apptop-spacer"></span>
       <a class="appbell" href="{{ url_for('patient_inbox') }}" aria-label="Messages">{{ ic.icon('bell') }}{% if site_unread %}<span class="dot">{{ site_unread }}</span>{% endif %}</a>
       <span class="appside-avatar" title="{{ user['name'] or 'Study team' }}">{{ _initials }}</span>
@@ -139,6 +141,7 @@
 {% if pov == 'study' %}</div>{% endif %}
   {% if pov == 'study' and user %}{% include "_copilot.html" %}{% endif %}
 </div>
+{% include "_cmdk.html" %}
 {% else %}
 <button type="button" class="theme-toggle theme-toggle-float" id="themeToggle" aria-label="Switch between light and dark theme" title="Toggle light / dark theme">
   {{ ic.icon('sun', 'ico icon-sun') }}{{ ic.icon('moon', 'ico icon-moon') }}

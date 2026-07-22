@@ -1,0 +1,192 @@
+{# =========================================================================
+   Command palette (⌘K / Ctrl-K): search + jump to anywhere in the app.
+   Role-aware index built with url_for so links always resolve. Included once
+   in base.html for authenticated users. Nav-only + a fallback into the existing
+   applicant search - no new data exposure.
+   ========================================================================= #}
+{% import "_icons.html" as ic %}
+
+{# ---- Build the role-aware index (list of {g,label,kw,url,icon,action}) ---- #}
+{% set items = [] %}
+{% if pov == 'study' %}
+  {% set _ = items.append({'g':'Navigate','label':'Dashboard','kw':'home overview stats','url':url_for('study_home'),'icon':'grid'}) %}
+  {% set _ = items.append({'g':'Navigate','label':'Applicants','kw':'leads patients candidates people referrals','url':url_for('leads'),'icon':'user-plus'}) %}
+  {% set _ = items.append({'g':'Navigate','label':'Messages','kw':'inbox chat conversations replies','url':url_for('patient_inbox'),'icon':'chat'}) %}
+  {% set _ = items.append({'g':'Navigate','label':'Studies','kw':'trials protocols intake claim','url':url_for('intake_page'),'icon':'file'}) %}
+  {% set _ = items.append({'g':'Navigate','label':'Campaigns','kw':'outreach email marketing','url':url_for('campaign_list'),'icon':'megaphone'}) %}
+  {% set _ = items.append({'g':'Navigate','label':'Documents','kw':'files consent forms docs uploads','url':url_for('documents_workspace'),'icon':'file-check'}) %}
+  {% set _ = items.append({'g':'Navigate','label':'Recruitment','kw':'funnel enrollment metrics conversion','url':url_for('recruitment_dashboard'),'icon':'activity'}) %}
+  {% set _ = items.append({'g':'Navigate','label':'Team','kw':'members invite roles permissions people','url':url_for('team_page'),'icon':'users'}) %}
+  {% set _ = items.append({'g':'Navigate','label':'Settings','kw':'preferences site setup account configuration options','url':url_for('site_setup'),'icon':'gear'}) %}
+  {% if is_owner %}{% set _ = items.append({'g':'Navigate','label':'Visitors','kw':'analytics traffic owner','url':url_for('owner_analytics'),'icon':'activity'}) %}{% endif %}
+  {% for s in nav_studies %}
+    {% set _ = items.append({'g':'Your studies','label':(s.nct ~ ' · ' ~ (s.title[:44] if s.title else 'Study')),'kw':(s.nct ~ ' ' ~ (s.title or '')),'url':url_for('leads', nct=s.nct),'icon':'file'}) %}
+  {% endfor %}
+{% else %}
+  {% set _ = items.append({'g':'Navigate','label':'Find trials','kw':'search match patients dashboard','url':url_for('dashboard'),'icon':'search'}) %}
+  {% set _ = items.append({'g':'Navigate','label':'Invite a patient','kw':'refer add patient invite','url':url_for('invite_patient'),'icon':'user-plus'}) %}
+  {% set _ = items.append({'g':'Navigate','label':'My referrals','kw':'referrals list patients status','url':url_for('referrals'),'icon':'list'}) %}
+  {% if is_owner %}{% set _ = items.append({'g':'Navigate','label':'Visitors','kw':'analytics traffic owner','url':url_for('owner_analytics'),'icon':'activity'}) %}{% endif %}
+{% endif %}
+{% set _ = items.append({'g':'Actions','label':'Toggle light / dark theme','kw':'dark light mode theme appearance','action':'theme','icon':'sun'}) %}
+{% set _ = items.append({'g':'Actions','label':'Sign out','kw':'logout log out exit','url':url_for('logout'),'icon':'logout'}) %}
+
+<div class="cmdk" id="cmdk" hidden>
+  <div class="cmdk-backdrop" data-cmdk-close></div>
+  <div class="cmdk-panel" role="dialog" aria-modal="true" aria-label="Search and jump to a page">
+    <div class="cmdk-inputwrap">
+      {{ ic.icon('search') }}
+      <input id="cmdkInput" class="cmdk-input" type="text" autocomplete="off"
+             autocapitalize="off" spellcheck="false"
+             placeholder="Search or jump to a page…" aria-label="Search or jump to a page">
+      <kbd class="cmdk-esc">Esc</kbd>
+    </div>
+    <div class="cmdk-list" id="cmdkList" role="listbox" aria-label="Results"></div>
+    <div class="cmdk-empty" id="cmdkEmpty" hidden>No matches</div>
+    <div class="cmdk-foot">
+      <span><kbd>↑</kbd><kbd>↓</kbd> navigate</span>
+      <span><kbd>↵</kbd> open</span>
+      <span><kbd>esc</kbd> close</span>
+    </div>
+  </div>
+</div>
+<script id="cmdkIndex" type="application/json">{{ items|tojson }}</script>
+<script id="cmdkConfig" type="application/json">{{ {'pov': pov, 'leadsUrl': (url_for('leads') if pov == 'study' else '')}|tojson }}</script>
+<script>
+(function () {
+  var root = document.getElementById('cmdk');
+  if (!root) return;
+  var input = document.getElementById('cmdkInput');
+  var list = document.getElementById('cmdkList');
+  var emptyEl = document.getElementById('cmdkEmpty');
+  var INDEX = [];
+  var CFG = { pov: '', leadsUrl: '' };
+  try { INDEX = JSON.parse(document.getElementById('cmdkIndex').textContent) || []; } catch (e) {}
+  try { CFG = JSON.parse(document.getElementById('cmdkConfig').textContent) || CFG; } catch (e) {}
+
+  var rows = [];          // flat list of actionable {item, el}
+  var active = -1;
+
+  function iconSvg(item) {
+    // The item's row uses a text label; icons are optional flair. We fetch the
+    // matching inline SVG already rendered in the nav to avoid a server call.
+    return '';
+  }
+
+  function score(item, q) {
+    if (!q) return 0;
+    var label = (item.label || '').toLowerCase();
+    var kw = (item.kw || '').toLowerCase();
+    if (label.indexOf(q) === 0) return 0;                     // label prefix
+    var words = label.split(/[\s·|/-]+/);
+    for (var i = 0; i < words.length; i++) {
+      if (words[i].indexOf(q) === 0) return 1;                // word prefix
+    }
+    if (label.indexOf(q) > 0) return 2;                        // label substring
+    if (kw.indexOf(q) >= 0) return 3;                          // keyword hit
+    return -1;                                                 // no match
+  }
+
+  function render(q) {
+    list.innerHTML = '';
+    rows = [];
+    var matched = [];
+    for (var i = 0; i < INDEX.length; i++) {
+      var sc = score(INDEX[i], q);
+      if (sc >= 0) matched.push({ item: INDEX[i], sc: sc, ord: i });
+    }
+    matched.sort(function (a, b) { return a.sc - b.sc || a.ord - b.ord; });
+
+    // Study-team fallback: run the existing applicant/study search.
+    if (q && CFG.pov === 'study' && CFG.leadsUrl) {
+      matched.push({ item: {
+        g: 'Search', label: 'Search applicants & studies for “' + q + '”',
+        url: CFG.leadsUrl + '?q=' + encodeURIComponent(q), icon: 'search'
+      }, sc: 99, ord: 9999 });
+    }
+
+    if (!matched.length) {
+      emptyEl.hidden = false;
+      return;
+    }
+    emptyEl.hidden = true;
+
+    var lastGroup = null;
+    matched.forEach(function (m) {
+      var it = m.item;
+      if (it.g && it.g !== lastGroup) {
+        lastGroup = it.g;
+        var h = document.createElement('div');
+        h.className = 'cmdk-group';
+        h.textContent = it.g;
+        list.appendChild(h);
+      }
+      var row = document.createElement('button');
+      row.type = 'button';
+      row.className = 'cmdk-item';
+      row.setAttribute('role', 'option');
+      var lab = document.createElement('span');
+      lab.className = 'cmdk-item-label';
+      lab.textContent = it.label;
+      row.appendChild(lab);
+      var idx = rows.length;
+      row.addEventListener('click', function () { activate(it); });
+      row.addEventListener('mousemove', function () { setActive(idx); });
+      list.appendChild(row);
+      rows.push({ item: it, el: row });
+    });
+    setActive(0);
+  }
+
+  function setActive(i) {
+    if (!rows.length) return;
+    if (i < 0) i = 0;
+    if (i >= rows.length) i = rows.length - 1;
+    if (active >= 0 && rows[active]) rows[active].el.classList.remove('is-active');
+    active = i;
+    rows[active].el.classList.add('is-active');
+    rows[active].el.scrollIntoView({ block: 'nearest' });
+  }
+
+  function activate(item) {
+    if (item.action === 'theme') {
+      var next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', next);
+      try { localStorage.setItem('theme', next); } catch (e) {}
+      close();
+      return;
+    }
+    if (item.url) { window.location.href = item.url; }
+  }
+
+  function open() {
+    root.hidden = false;
+    input.value = '';
+    render('');
+    setTimeout(function () { input.focus(); }, 0);
+  }
+  function close() { root.hidden = true; }
+  function isOpen() { return !root.hidden; }
+
+  input.addEventListener('input', function () { render(input.value.trim().toLowerCase()); });
+  input.addEventListener('keydown', function (e) {
+    if (e.key === 'ArrowDown') { e.preventDefault(); setActive(active + 1); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setActive(active - 1); }
+    else if (e.key === 'Enter') { e.preventDefault(); if (rows[active]) activate(rows[active].item); }
+    else if (e.key === 'Escape') { e.preventDefault(); close(); }
+  });
+
+  document.addEventListener('click', function (e) {
+    if (e.target.closest('[data-cmdk-open]')) { e.preventDefault(); open(); return; }
+    if (e.target.closest('[data-cmdk-close]')) { close(); }
+  });
+  document.addEventListener('keydown', function (e) {
+    if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
+      e.preventDefault();
+      isOpen() ? close() : open();
+    } else if (e.key === 'Escape' && isOpen()) {
+      close();
+    }
+  });
+})();
+</script>

@@ -4274,6 +4274,51 @@ body.col-resizing iframe { pointer-events: none; }
 .appsearch .ico { position: absolute; left: 13px; top: 50%; transform: translateY(-50%);
   color: var(--faint); width: 17px; height: 17px; }
 .apptop-spacer { flex: 1; }
+
+/* Command-palette trigger (looks like a search box, opens the ⌘K palette). */
+.cmdk-trigger { display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 9px 12px 9px 38px; border: 1px solid var(--border);
+  border-radius: var(--radius-pill); background: var(--bg); color: var(--faint);
+  font: inherit; font-size: 14px; cursor: text; text-align: left;
+  transition: border-color .15s ease, box-shadow .15s ease; }
+.cmdk-trigger:hover { border-color: var(--border-strong); }
+.cmdk-trigger .ico { color: var(--faint); }
+.cmdk-trigger-label { flex: 1; }
+.cmdk-trigger-kbd, .cmdk-esc, .cmdk-foot kbd { font: inherit; font-size: 11px;
+  font-weight: 600; color: var(--faint); background: var(--surface);
+  border: 1px solid var(--border); border-radius: var(--radius-sm, 8px);
+  padding: 1px 6px; line-height: 1.5; }
+
+/* Command palette overlay. */
+.cmdk { position: fixed; inset: 0; z-index: 1000; display: flex;
+  align-items: flex-start; justify-content: center; padding: 12vh 16px 16px; }
+.cmdk[hidden] { display: none; }
+.cmdk-backdrop { position: absolute; inset: 0; background: rgba(15,23,42,.45);
+  backdrop-filter: blur(2px); }
+.cmdk-panel { position: relative; width: 100%; max-width: 620px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--shadow-lg, 0 24px 60px rgba(2,6,23,.35));
+  overflow: hidden; display: flex; flex-direction: column; max-height: 66vh;
+  animation: cmdk-pop .12s ease; }
+@keyframes cmdk-pop { from { transform: translateY(-6px); opacity: 0; } to { transform: none; opacity: 1; } }
+.cmdk-inputwrap { position: relative; display: flex; align-items: center; gap: 10px;
+  padding: 14px 16px; border-bottom: 1px solid var(--border); }
+.cmdk-inputwrap .ico { color: var(--faint); width: 18px; height: 18px; flex-shrink: 0; }
+.cmdk-input { flex: 1; border: 0; outline: none; background: none; color: var(--ink);
+  font-size: 16px; }
+.cmdk-input::placeholder { color: var(--faint); }
+.cmdk-list { overflow-y: auto; padding: 6px; }
+.cmdk-group { font-size: 11px; font-weight: 700; letter-spacing: .05em;
+  text-transform: uppercase; color: var(--faint); padding: 10px 10px 4px; }
+.cmdk-item { display: flex; align-items: center; width: 100%; text-align: left;
+  gap: 10px; padding: 9px 10px; border: 0; background: none; color: var(--ink);
+  font: inherit; font-size: 14px; border-radius: var(--radius-sm, 8px); cursor: pointer; }
+.cmdk-item.is-active { background: var(--accent-soft); color: var(--accent); }
+.cmdk-item-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cmdk-empty { padding: 28px 16px; text-align: center; color: var(--faint); font-size: 14px; }
+.cmdk-foot { display: flex; gap: 16px; padding: 10px 16px; border-top: 1px solid var(--border);
+  font-size: 12px; color: var(--faint); }
+.cmdk-foot span { display: inline-flex; align-items: center; gap: 5px; }
 .appbell { position: relative; color: var(--muted); background: none; border: none;
   cursor: pointer; padding: 6px; display: inline-flex; }
 .appbell .ico { width: 19px; height: 19px; }
