@@ -678,6 +678,48 @@ CREATE INDEX IF NOT EXISTS idx_intake_addr_user ON intake_addresses(user_id);
 CREATE INDEX IF NOT EXISTS idx_campaigns_user ON campaigns(user_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_campaigns_nct ON campaigns(nct);
 CREATE INDEX IF NOT EXISTS idx_placements_campaign ON campaign_placements(campaign_id);
+
+-- PI / coordinator document workspace ("review & approve", NOT a legally-binding
+-- 21 CFR Part 11 e-signature - see COMPLIANCE.md). A study team tracks the trial's
+-- essential documents (ICH-GCP essential-documents set + patient consent), routes
+-- them for the investigator to REVIEW and APPROVE, and every action writes an
+-- append-only row to document_events (the audit trail). Binding e-signatures and
+-- patient eConsent are deliberately deferred to a validated vendor (DocuSign Life
+-- Sciences / Part 11); this surface only records internal approvals + status.
+-- KPI tie-in: shortens the consent/paperwork wait in screened -> enrolled.
+CREATE TABLE IF NOT EXISTS trial_documents (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER NOT NULL,
+    nct         TEXT DEFAULT '',
+    lead_id     INTEGER,                 -- set for a patient-specific doc (consent etc.)
+    category    TEXT DEFAULT 'regulatory', -- consent | regulatory | patient | site
+    doc_type    TEXT DEFAULT '',         -- short code: icf, hipaa, form_1572, doa_log ...
+    title       TEXT DEFAULT '',
+    party       TEXT DEFAULT 'investigator', -- who owns/signs: patient|investigator|coordinator|sponsor
+    party_name  TEXT DEFAULT '',
+    version     TEXT DEFAULT 'v1.0',
+    status      TEXT NOT NULL DEFAULT 'pending', -- pending|in_review|approved|returned|signed
+    due_at      TEXT DEFAULT '',
+    summary     TEXT DEFAULT '',         -- short plain-language description (demo preview)
+    created_at  TEXT NOT NULL,
+    updated_at  TEXT NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
+-- Append-only audit ledger for every document action. We ONLY ever INSERT here;
+-- rows are never updated or deleted (the tamper-evident trail an auditor expects).
+CREATE TABLE IF NOT EXISTS document_events (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    document_id INTEGER NOT NULL,
+    action      TEXT DEFAULT '',         -- created|viewed|sent|received|reviewed|approved|returned
+    meaning     TEXT DEFAULT '',         -- Review | Approval | Authorship (manifestation of signature)
+    actor       TEXT DEFAULT '',
+    actor_role  TEXT DEFAULT '',
+    note        TEXT DEFAULT '',
+    created_at  TEXT NOT NULL,
+    FOREIGN KEY (document_id) REFERENCES trial_documents(id)
+);
+CREATE INDEX IF NOT EXISTS idx_trial_docs_user ON trial_documents(user_id, nct);
+CREATE INDEX IF NOT EXISTS idx_doc_events_doc ON document_events(document_id);
 """
 
 
@@ -3279,6 +3321,206 @@ def _demo_lead_specs():
             },
         })
     return specs
+
+
+# --------------------------------------------------------------------------- #
+# PI / coordinator document workspace: review & approve + append-only audit.
+# Approve-only by design - we record internal approvals with a name, timestamp
+# and meaning (the "manifestation of signature"), NOT a binding 21 CFR Part 11
+# e-signature. Binding signatures + patient eConsent are deferred to a validated
+# vendor (see COMPLIANCE.md). The trail lives in document_events (INSERT-only).
+# --------------------------------------------------------------------------- #
+DOC_CATEGORIES = ["consent", "patient", "regulatory", "site"]
+DOC_STATUSES = ["pending", "in_review", "approved", "returned", "signed"]
+DOC_STATUS_LABELS = {
+    "pending": "Awaiting review", "in_review": "In review",
+    "approved": "Approved", "returned": "Sent back", "signed": "Signed",
+}
+DOC_CATEGORY_LABELS = {
+    "consent": "Patient consent", "patient": "Patient forms",
+    "regulatory": "Regulatory / FDA", "site": "Site & training",
+}
+
+
+def create_document(user_id, title, nct="", category="regulatory", doc_type="",
+                    party="investigator", party_name="", version="v1.0",
+                    status="pending", lead_id=None, due_at="", summary=""):
+    db = get_db()
+    ts = now()
+    cur = db.execute(
+        "INSERT INTO trial_documents (user_id, nct, lead_id, category, doc_type, "
+        "title, party, party_name, version, status, due_at, summary, created_at, "
+        "updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        (user_id, _norm_nct(nct), lead_id, category, doc_type, title, party,
+         party_name, version, status, due_at, summary, ts, ts))
+    db.commit()
+    add_document_event(cur.lastrowid, "created", actor="System",
+                       note="Document added to the workspace")
+    return cur.lastrowid
+
+
+def add_document_event(document_id, action, meaning="", actor="", actor_role="",
+                       note=""):
+    """Append (never mutate) one audit row for a document action."""
+    db = get_db()
+    db.execute(
+        "INSERT INTO document_events (document_id, action, meaning, actor, "
+        "actor_role, note, created_at) VALUES (?,?,?,?,?,?,?)",
+        (document_id, action, meaning, actor, actor_role, note, now()))
+    db.commit()
+    return True
+
+
+def get_document(document_id):
+    return get_db().execute("SELECT * FROM trial_documents WHERE id = ?",
+                            (document_id,)).fetchone()
+
+
+def list_documents(user_id, nct=None, category=None):
+    q = "SELECT * FROM trial_documents WHERE user_id = ?"
+    args = [user_id]
+    if nct:
+        q += " AND nct = ?"
+        args.append(_norm_nct(nct))
+    if category:
+        q += " AND category = ?"
+        args.append(category)
+    q += " ORDER BY (status = 'pending') DESC, updated_at DESC"
+    return get_db().execute(q, args).fetchall()
+
+
+def list_document_events(document_id):
+    return get_db().execute(
+        "SELECT * FROM document_events WHERE document_id = ? ORDER BY id DESC",
+        (document_id,)).fetchall()
+
+
+def set_document_status(document_id, status, actor="", actor_role="", meaning="",
+                        note=""):
+    """Update a document's status AND append an audit event (review/approve/send
+    back). Approve-only: 'approved' records an internal approval, not a binding
+    Part 11 signature."""
+    if status not in DOC_STATUSES:
+        return False
+    if not get_document(document_id):
+        return False
+    db = get_db()
+    db.execute("UPDATE trial_documents SET status = ?, updated_at = ? WHERE id = ?",
+               (status, now(), document_id))
+    db.commit()
+    action = {"approved": "approved", "returned": "returned",
+              "in_review": "reviewed", "signed": "signed"}.get(status, status)
+    add_document_event(document_id, action, meaning=meaning, actor=actor,
+                       actor_role=actor_role, note=note)
+    return True
+
+
+def document_counts(user_id):
+    rows = get_db().execute(
+        "SELECT status, COUNT(*) n FROM trial_documents WHERE user_id = ? "
+        "GROUP BY status", (user_id,)).fetchall()
+    return {r["status"]: r["n"] for r in rows}
+
+
+def _demo_doc_specs():
+    """The standard ICH-GCP essential-documents set + patient consent forms a PI
+    and coordinator actually route and sign, staged across statuses so the demo
+    workspace looks live. (patient=True attaches it to a revealed applicant.)"""
+    return [
+        # cat, type, title, party, name, version, status, due_days, summary, patient
+        ("consent", "icf", "Informed Consent Form", "patient", None, "v2.1",
+         "signed", None,
+         "Main IRB-approved study consent (v2.1), signed via the eConsent vendor - "
+         "the approval is recorded here for the binder.", True),
+        ("patient", "hipaa", "HIPAA Authorization", "patient", None, "v1.0",
+         "signed", None,
+         "Authorizes use and disclosure of the participant's health information "
+         "for this study only.", True),
+        ("patient", "records_release", "Medical Records Release", "patient", None,
+         "v1.0", "in_review", 2,
+         "Release to obtain outside records confirming the diagnosis before "
+         "screening.", True),
+        ("regulatory", "form_1572", "FDA Form 1572 - Statement of Investigator",
+         "investigator", "Dr. A. Patel", "v1.0", "pending", 1,
+         "The PI's commitment to conduct the trial per the protocol and 21 CFR 312.",
+         False),
+        ("regulatory", "doa_log", "Delegation of Authority Log", "investigator",
+         "Dr. A. Patel", "v3", "in_review", 2,
+         "Which team members are authorized for which trial tasks - the PI must "
+         "review and sign.", False),
+        ("regulatory", "fin_disclosure", "Financial Disclosure (FDA 3455)",
+         "investigator", "Dr. A. Patel", "v1.0", "pending", 3,
+         "Investigator conflict-of-interest disclosure required by the sponsor.",
+         False),
+        ("regulatory", "irb_approval", "IRB/REB Approval Letter + Approved ICF",
+         "coordinator", "REB Office", "2026-A", "approved", None,
+         "Ethics board approval of the protocol and the current consent version.",
+         False),
+        ("regulatory", "protocol_amend", "Protocol Amendment 3 - Signature Page",
+         "investigator", "Dr. A. Patel", "Amd 3", "pending", 1,
+         "PI acknowledgement and sign-off on the latest protocol amendment.", False),
+        ("site", "ib_ack", "Investigator's Brochure - Acknowledgement",
+         "investigator", "Dr. A. Patel", "Ed 7", "in_review", 4,
+         "Confirms the PI reviewed the current IB safety information.", False),
+        ("site", "gcp_cert", "GCP Training Certificate", "coordinator",
+         "J. Chen, CRC", "2026", "approved", None,
+         "Good Clinical Practice training on file for the coordinator.", False),
+        ("site", "lab_cert", "Lab Certification (CLIA/CAP) + Normal Ranges",
+         "coordinator", "Central Lab", "2026", "approved", None,
+         "Local lab accreditation and reference ranges for the regulatory binder.",
+         False),
+    ]
+
+
+def seed_demo_trial_documents(user_id):
+    """Populate a realistic document workspace on the demo account. No-op once any
+    document exists for the user, so real data is never mixed with demo."""
+    if not user_id:
+        return
+    db = get_db()
+    if db.execute("SELECT COUNT(*) n FROM trial_documents WHERE user_id = ?",
+                  (user_id,)).fetchone()["n"]:
+        return
+    ncts = sorted(user_claimed_ncts(user_id) or [])
+    default_nct = ncts[0] if ncts else ""
+    patient_leads = db.execute(
+        "SELECT id, name, nct FROM leads WHERE revealed = 1 ORDER BY id LIMIT 4"
+    ).fetchall()
+    pi = 0
+    for (cat, dtype, title, party, pname, ver, status, due_days, summary,
+         is_patient) in _demo_doc_specs():
+        lead_id, nct = None, default_nct
+        if is_patient and patient_leads:
+            ld = patient_leads[pi % len(patient_leads)]
+            pi += 1
+            lead_id, nct, pname = ld["id"], (ld["nct"] or default_nct), ld["name"]
+        due_at = ""
+        if due_days is not None:
+            due_at = (dt.datetime.now() + dt.timedelta(days=due_days)).strftime(
+                "%Y-%m-%d %H:%M")
+        doc_id = create_document(user_id, title, nct=nct, category=cat,
+                                 doc_type=dtype, party=party,
+                                 party_name=pname or "", version=ver,
+                                 status=status, lead_id=lead_id, due_at=due_at,
+                                 summary=summary)
+        # Backfill a believable audit trail for non-pending docs.
+        if status in ("in_review", "approved", "returned", "signed"):
+            add_document_event(doc_id, "sent", actor="J. Chen, CRC",
+                               actor_role="Coordinator", note="Routed for review")
+        if is_patient:
+            add_document_event(doc_id, "received", actor=(pname or "Applicant"),
+                               actor_role="Patient", note="Returned by participant")
+        if status == "approved":
+            add_document_event(
+                doc_id, "approved", meaning="Approval", actor="Dr. A. Patel",
+                actor_role="Principal Investigator",
+                note="Reviewed and approved for the regulatory binder.")
+        if status == "signed":
+            add_document_event(
+                doc_id, "approved", meaning="Approval", actor="Dr. A. Patel",
+                actor_role="Principal Investigator",
+                note="Signed via the validated e-signature vendor; approval "
+                     "recorded here.")
 
 
 def seed_demo_leads():

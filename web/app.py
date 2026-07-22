@@ -171,7 +171,8 @@ SITE_DEMO = os.environ.get("SITE_DEMO", "1") == "1"
 # auto-impersonated, so they stay public/gated exactly as before.
 _STUDY_TEAM_DEMO_PREFIXES = (
     "/app/leads", "/app/messages", "/app/site", "/app/dashboard",
-    "/app/campaign", "/app/intake", "/files/lead", "/files/team")
+    "/app/campaign", "/app/intake", "/app/home", "/app/applicant",
+    "/app/documents", "/files/lead", "/files/team")
 
 # Health-records / EHR sync (SMART Health IT) is hidden for now — the connector
 # is still a sandbox and not patient-ready. Flip RECORDS_UI=1 to re-enable the
@@ -501,6 +502,10 @@ def _seed_demo_surfaces(user_id=None):
         _seed_demo_documents()
     except Exception:
         app.logger.exception("demo document seeding failed")
+    try:
+        db.seed_demo_trial_documents(user_id)
+    except Exception:
+        app.logger.exception("demo trial-document seeding failed")
 
 
 def _seed_demo_documents():
@@ -1081,13 +1086,21 @@ def inject_globals():
     path = request.path or "/"
     if (path.startswith("/app/leads") or path.startswith("/app/dashboard")
             or path.startswith("/app/site") or path.startswith("/app/messages")
-            or path.startswith("/app/analytics")
+            or path.startswith("/app/analytics") or path.startswith("/app/home")
+            or path.startswith("/app/applicant")
+            or path.startswith("/app/documents")
             or path.startswith("/app/campaign") or path.startswith("/app/intake")):
         pov = "study"
     elif path.startswith("/app") or path.startswith("/referral"):
         pov = "clinician"
     else:
         pov = "patient"
+    nav_study_ncts = []
+    if g.user:
+        try:
+            nav_study_ncts = sorted(db.user_claimed_ncts(g.user["id"]))
+        except Exception:
+            nav_study_ncts = []
     return {"user": g.user, "llm_on": bool(mt.LLM_API_KEY),
             "applications_count": apps_n, "pov_demo": _demo_mode_enabled(),
             "demo_available": NO_LOGIN, "pov": pov,
@@ -1095,7 +1108,8 @@ def inject_globals():
             "records_ui": RECORDS_UI,
             "alerts_new_count": alerts_new, "messages_unread": msgs_unread,
             "site_unread": site_unread, "patient_user": g.patient_user,
-            "site_demo": _site_demo_enabled(), "is_owner": _is_owner()}
+            "site_demo": _site_demo_enabled(), "nav_study_ncts": nav_study_ncts,
+            "is_owner": _is_owner()}
 
 
 @app.route("/demo-mode", methods=["POST"])
@@ -4621,6 +4635,143 @@ def candidate_code(lead):
     return f"Candidate #{lead['id']:04d}"
 
 
+# --------------------------------------------------------------------------- #
+# Study-team UI view helpers (verdict / stage / source / time). Display-only:
+# they turn the pipeline's stored data into the labels + tones the "BridgeMD
+# for sites" screens render. De-identification is preserved (name shows only
+# when a lead is revealed; otherwise the candidate code).
+# --------------------------------------------------------------------------- #
+_VERDICT_VIEW = {
+    "likely_eligible": ("Likely eligible", "ok"),
+    "possible": ("Possible", "warn"),
+    "needs_review": ("Needs review", "warn"),
+    "unlikely": ("Unlikely", "danger"),
+    "error": ("Needs review", "warn"),
+}
+_STAGE_VIEW = {
+    "submitted": ("Submitted", "info"),
+    "prescreen": ("Pre-screen", "neutral"),
+    "eligible": ("Eligible", "ok"),
+    "screening": ("Screening", "brand"),
+    "enrolled": ("Enrolled", "ok"),
+    "closed": ("Closed", "neutral"),
+    "withdrawn": ("Withdrawn", "neutral"),
+}
+# Deterministic realistic-looking source labels for seeded demo leads whose raw
+# source is the generic "demo" tag - so the queue's Source column reads real.
+_DEMO_SOURCES = ["Meta campaign", "Reddit r/ADHD", "Email intake", "Google",
+                 "CSV import", "Web form"]
+_SOURCE_LABELS = {
+    "referral": "Physician referral", "invite": "Physician referral",
+    "physician": "Physician referral", "emr": "EMR referral",
+    "csv_import": "CSV import", "intake": "Email intake", "web": "Web form",
+    "reddit": "Reddit", "meta": "Meta campaign", "google": "Google",
+}
+
+
+def _initials(name):
+    parts = [p for p in (name or "").replace("#", "").split() if p]
+    if not parts:
+        return "?"
+    if len(parts) == 1:
+        return parts[0][:2].upper()
+    return (parts[0][0] + parts[-1][0]).upper()
+
+
+def _verdict_view(elig):
+    """Return {verdict,label,tone,score} for a lead's stored eligibility read,
+    deriving a sensible verdict/score when the raw read didn't include one."""
+    elig = elig or {}
+    verdict = (elig.get("verdict") or "").strip()
+    score = int(elig.get("score") or 0)
+    met = len(elig.get("met") or [])
+    not_met = len(elig.get("not_met") or [])
+    unknown = len(elig.get("unknown") or [])
+    if not verdict:
+        if not_met:
+            verdict = "unlikely" if not_met >= 2 else "possible"
+        elif unknown:
+            verdict = "possible"
+        elif met:
+            verdict = "likely_eligible"
+        else:
+            verdict = "needs_review"
+    if not score:
+        base = {"likely_eligible": 90, "possible": 64, "needs_review": 52,
+                "unlikely": 26, "error": 50}.get(verdict, 55)
+        score = max(5, min(99, base - 7 * not_met + (4 if met else 0) - 2 * unknown))
+    label, tone = _VERDICT_VIEW.get(verdict, ("Needs review", "warn"))
+    return {"verdict": verdict, "label": label, "tone": tone, "score": score}
+
+
+def _stage_view(status):
+    label, tone = _STAGE_VIEW.get(status, (status.title(), "neutral"))
+    return {"label": label, "tone": tone}
+
+
+def _source_view(lead):
+    s = (lead["source"] or "").strip().lower()
+    if s in _SOURCE_LABELS:
+        return _SOURCE_LABELS[s]
+    if s in ("demo", ""):
+        return _DEMO_SOURCES[int(lead["id"] or 0) % len(_DEMO_SOURCES)]
+    return s.replace("_", " ").title()
+
+
+def _rel_time(ts_str):
+    """Compact 'time ago' for an app timestamp ('YYYY-MM-DD HH:MM')."""
+    if not ts_str:
+        return ""
+    try:
+        t = dt.datetime.strptime(str(ts_str)[:16], "%Y-%m-%d %H:%M")
+    except ValueError:
+        return str(ts_str)
+    secs = (dt.datetime.now() - t).total_seconds()
+    if secs < 0:
+        return "just now"
+    if secs < 3600:
+        return f"{max(1, int(secs // 60))}m ago"
+    if secs < 86400:
+        return f"{int(secs // 3600)}h ago"
+    days = int(secs // 86400)
+    if days < 7:
+        return f"{days}d ago"
+    if days < 30:
+        return f"{max(1, days // 7)}w ago"
+    return t.strftime("%b %-d")
+
+
+def _queue_item(it):
+    """Flatten a decoded lead into the fields the queue/dashboard render."""
+    l = it["lead"]
+    v = _verdict_view(it.get("elig"))
+    last = ""
+    if it.get("events"):
+        last = it["events"][-1]["created_at"]
+    last = last or l["updated_at"] or l["created_at"]
+    return {
+        "id": l["id"],
+        "name": (l["name"] if l["revealed"] else it["code"]),
+        "initials": (_initials(l["name"]) if l["revealed"]
+                     else f"#{l['id'] % 100:02d}"),
+        "full_name": l["name"] or it["code"],
+        "email": l["email"] if l["revealed"] else "",
+        "phone": l["phone"] if l["revealed"] else "",
+        "revealed": bool(l["revealed"]),
+        "code": it["code"],
+        "verdict": v,
+        "stage": _stage_view(l["status"]),
+        "status": l["status"],
+        "source": _source_view(l),
+        "nct": l["nct"],
+        "title": l["title"],
+        "unread": it.get("unread", 0),
+        "last_activity": _rel_time(last),
+        "flags": it.get("flags") or [],
+        "elig": it.get("elig") or {},
+    }
+
+
 def _decode_lead(row, recon=None):
     """Attach parsed screener/eligibility + de-identified helpers to a lead row."""
     try:
@@ -4670,25 +4821,154 @@ def leads():
     site_cfg = redcap.config_from_profile(db.get_site_profile(g.user["id"]))
     counts = db.lead_counts_for_ncts([c["nct"] for c in claims])
     review, active, done = [], [], []
+    queue = []
     for r in rows:
         item = _decode_lead(r, recon.get(r["id"]))
+        queue.append(_queue_item(item))
         if r["status"] == "prescreen" and not r["decision"]:
             review.append(item)
         elif r["revealed"] and r["status"] not in db.LEAD_CLOSED:
             active.append(item)
         else:
             done.append(item)
-    return render_template("leads.html", review=review, active=active, done=done,
-                           counts=counts, pipeline=db.LEAD_PIPELINE,
-                           statuses=db.LEAD_STATUSES, labels=db.LEAD_LABELS,
-                           screener_labels=SCREENER_LABELS,
-                           support_coverage_labels=SUPPORT_COVERAGE_LABELS,
-                           support_travel_labels=SUPPORT_TRAVEL_LABELS,
-                           recon_labels=db.RECON_LABELS,
-                           recon_outcomes=db.RECON_OUTCOMES,
-                           redcap_on=site_cfg.connected,
-                           redcap_intake_live=site_cfg.intake_live,
+    enrolled_n = sum(1 for q in queue if q["status"] == "enrolled")
+    return render_template("leads.html", queue=queue, review=review, active=active,
+                           done=done, counts=counts, enrolled_n=enrolled_n,
                            claims=claims)
+
+
+def _first_name(name, fallback="there"):
+    return (name or "").split(" ")[0].strip() or fallback
+
+
+@app.route("/app/home")
+@login_required
+def study_home():
+    """Study-team home ("Dashboard"): the day's action list built from the real
+    pipeline - AI-drafted outreach ready to send, AI pre-screened applicants
+    awaiting a human decision, today's visits, and what's new. KPI: compresses
+    contacted -> screened -> enrolled by putting the next action one click away."""
+    claims = db.list_study_claims(g.user["id"])
+    rows = db.list_leads_for_user(g.user["id"])
+    recon = db.latest_reconciliation_for_leads([r["id"] for r in rows])
+    items = [_decode_lead(r, recon.get(r["id"])) for r in rows]
+
+    # ── "Ready to send": AI-drafted follow-ups for revealed candidates who are
+    # waiting on us (unread reply) or stalled at a stage without a next step. ──
+    drafts = []
+    for it in items:
+        l = it["lead"]
+        if not l["revealed"] or l["status"] in db.LEAD_CLOSED:
+            continue
+        first = _first_name(l["name"])
+        study = l["title"] or l["condition"] or "the study"
+        tag, tag_tone, subject, preview, reason = (None,) * 5
+        if it.get("unread"):
+            tag, tag_tone = "Reply waiting", "warn"
+            reason = f"Replied {_rel_time(l['updated_at'])} · no answer yet"
+            subject = f"Re: your interest in {study}"
+            preview = (f"Hi {first}, thanks for getting back to us. Happy to answer "
+                       "that - the next step is a short screening call so we can "
+                       "confirm a few details. Do any times this week work for you?")
+        elif l["status"] == "eligible" and not (l["schedule_url"] or "").strip():
+            tag, tag_tone = "Screening invite", "brand"
+            reason = "Marked eligible · no screening call booked"
+            subject = "Ready to schedule your screening visit"
+            preview = (f"Hi {first}, good news - based on your responses you appear to "
+                       "meet our initial criteria. The next step is a brief screening "
+                       "call with our coordinator. We have openings this week.")
+        elif l["status"] == "screening":
+            tag, tag_tone = "Document reminder", "neutral"
+            reason = "At screening · consent form not returned"
+            subject = f"Consent form reminder for {study}"
+            preview = (f"Hi {first}, a quick reminder that we're still waiting on your "
+                       "signed consent form before your screening visit. Let us know "
+                       "if you'd like us to resend it.")
+        if tag:
+            drafts.append({
+                "id": l["id"], "name": l["name"] or it["code"],
+                "initials": _initials(l["name"] or it["code"]),
+                "reason": reason, "subject": subject, "preview": preview,
+                "tag": tag, "tag_tone": tag_tone})
+    drafts = drafts[:5]
+
+    # ── "Pending decisions": AI pre-screened, awaiting a human accept/decline. ──
+    pending = []
+    for it in items:
+        l = it["lead"]
+        if not (l["status"] == "prescreen" and not l["decision"]):
+            continue
+        v = _verdict_view(it.get("elig"))
+        elig = it.get("elig") or {}
+        flag = (elig.get("rationale") or "")
+        if elig.get("not_met"):
+            flag = "; ".join(elig["not_met"][:2])
+        elif not flag and elig.get("unknown"):
+            flag = "To confirm: " + "; ".join(elig["unknown"][:2])
+        pending.append({
+            "id": l["id"], "name": it["code"], "initials": f"#{l['id'] % 100:02d}",
+            "score": v["score"], "verdict": v["label"], "verdict_tone": v["tone"],
+            "flag": flag or "Ready for your review.",
+            "source": _source_view(l), "applied": _rel_time(l["created_at"])})
+    pending = pending[:6]
+
+    # ── Right rail: today's visits + what's new since yesterday. ──
+    today = []
+    now = dt.datetime.now()
+    for it in items:
+        for v in db.get_visits(it["lead"]["id"]):
+            try:
+                when = dt.datetime.strptime(str(v["visit_at"])[:16], "%Y-%m-%d %H:%M")
+            except ValueError:
+                continue
+            if 0 <= (when - now).total_seconds() <= 14 * 86400:
+                today.append({
+                    "time": when.strftime("%b %-d, %-I:%M %p"),
+                    "name": (it["lead"]["name"] if it["lead"]["revealed"]
+                             else it["code"]),
+                    "kind": (v["kind"] or "visit").replace("_", " ").title(),
+                    "tone": "brand"})
+    today = sorted(today, key=lambda x: x["time"])[:5]
+
+    new_items = []
+    for it in items:
+        for ev in it.get("events", []):
+            new_items.append((ev["created_at"], ev["note"] or ev["status"],
+                              _rel_time(ev["created_at"])))
+    new_items = [{"text": t, "time": rel} for (_ts, t, rel) in
+                 sorted(new_items, key=lambda x: x[0], reverse=True)[:6]]
+
+    stats = {
+        "awaiting": len(pending),
+        "active": sum(1 for it in items
+                      if it["lead"]["revealed"]
+                      and it["lead"]["status"] not in db.LEAD_CLOSED),
+        "enrolled": sum(1 for it in items if it["lead"]["status"] == "enrolled"),
+        "unread": db.unread_for_site(g.user["id"]),
+    }
+    return render_template("study_home.html", drafts=drafts, pending=pending,
+                           today=today, new_items=new_items, stats=stats,
+                           claims=claims,
+                           org=(db.get_site_profile(g.user["id"]) or {}))
+
+
+@app.route("/app/applicant/<int:lead_id>")
+@login_required
+def applicant_detail(lead_id):
+    """Full applicant record in the new UI: AI pre-screen verdict + reasons,
+    the message thread, tasks, documents and the activity timeline. Owner-scoped
+    to the study team's claimed studies (PHI stays isolated by user)."""
+    lead = db.get_lead(lead_id)
+    ncts = set(db.user_claimed_ncts(g.user["id"]))
+    if not lead or (lead["nct"] and lead["nct"] not in ncts
+                    and not _is_demo_account(g.user)):
+        abort(404)
+    it = _decode_lead(lead, db.latest_reconciliation(lead_id))
+    view = _queue_item(it)
+    view["initials"] = _initials(lead["name"] or view["code"])
+    return render_template("applicant_detail.html", it=it, l=lead, view=view,
+                           statuses=db.LEAD_STATUSES, labels=db.LEAD_LABELS,
+                           screener_labels=SCREENER_LABELS)
 
 
 @app.route("/app/dashboard")
@@ -7204,6 +7484,125 @@ def intake_import():
         flash("Couldn't read that CSV. Expected columns: name, email, phone, notes.",
               "error")
     return redirect(url_for("intake_page"))
+
+
+_DOC_STATUS_TONE = {"approved": "ok", "signed": "ok", "in_review": "info",
+                    "pending": "warn", "returned": "danger"}
+_DOC_PARTY_LABEL = {"patient": "Participant", "investigator": "Investigator (PI)",
+                    "coordinator": "Coordinator", "sponsor": "Sponsor"}
+
+
+def _own_document_or_404(doc_id):
+    """Fetch a document and 404 unless it belongs to the current account."""
+    doc = db.get_document(doc_id)
+    if not doc or doc["user_id"] != g.user["id"]:
+        abort(404)
+    return doc
+
+
+def _doc_view(doc):
+    """Shape a document row for the workspace UI."""
+    status = doc["status"]
+    party = doc["party"]
+    return {
+        "id": doc["id"],
+        "title": doc["title"],
+        "category": doc["category"],
+        "category_label": db.DOC_CATEGORY_LABELS.get(
+            doc["category"], (doc["category"] or "").title()),
+        "party": party,
+        "party_label": _DOC_PARTY_LABEL.get(party, (party or "").title()),
+        "party_name": doc["party_name"] or "",
+        "version": doc["version"] or "",
+        "status": status,
+        "status_label": db.DOC_STATUS_LABELS.get(status, (status or "").title()),
+        "status_tone": _DOC_STATUS_TONE.get(status, "neutral"),
+        "summary": doc["summary"] or "",
+        "nct": doc["nct"] or "",
+        "updated": _rel_time(doc["updated_at"]),
+        "due": doc["due_at"] or "",
+        "initials": _initials(doc["party_name"] or doc["title"]),
+        # Only pending/in-review docs need a human decision.
+        "actionable": status in ("pending", "in_review"),
+    }
+
+
+def _event_view(ev):
+    label = {"created": "Added to workspace", "sent": "Routed for review",
+             "received": "Returned by participant", "reviewed": "Marked in review",
+             "approved": "Approved", "returned": "Sent back",
+             "viewed": "Viewed", "signed": "Signed"}.get(ev["action"],
+                                                          (ev["action"] or "").title())
+    return {"label": label, "action": ev["action"], "meaning": ev["meaning"] or "",
+            "actor": ev["actor"] or "System", "role": ev["actor_role"] or "",
+            "note": ev["note"] or "", "when": ev["created_at"],
+            "rel": _rel_time(ev["created_at"])}
+
+
+@app.route("/app/documents")
+@login_required
+def documents_workspace():
+    """PI / coordinator document workspace: the trial's essential documents +
+    patient consent, routed for the investigator to REVIEW and APPROVE. This is
+    an internal approval record with an append-only audit trail - NOT a binding
+    21 CFR Part 11 e-signature (those + patient eConsent defer to a validated
+    vendor; see COMPLIANCE.md). KPI: shortens the consent/paperwork wait that
+    stalls screened -> enrolled."""
+    cat = request.args.get("cat", "").strip() or None
+    docs = [_doc_view(d) for d in db.list_documents(g.user["id"], category=cat)]
+    counts = db.document_counts(g.user["id"])
+    stats = {
+        "pending": counts.get("pending", 0),
+        "in_review": counts.get("in_review", 0),
+        "approved": counts.get("approved", 0) + counts.get("signed", 0),
+        "total": sum(counts.values()),
+    }
+    return render_template(
+        "documents.html", docs=docs, stats=stats, active_cat=cat or "all",
+        categories=db.DOC_CATEGORY_LABELS)
+
+
+@app.route("/app/documents/<int:doc_id>")
+@login_required
+def document_detail(doc_id):
+    """One document: plain-language preview, the review/approve panel, and the
+    immutable audit trail (who did what, when, and the meaning of each action)."""
+    doc = _own_document_or_404(doc_id)
+    db.add_document_event(doc_id, "viewed",
+                          actor=(g.user["email"] or "Team member"),
+                          actor_role="Study team")
+    events = [_event_view(e) for e in db.list_document_events(doc_id)]
+    return render_template("document_detail.html", doc=_doc_view(doc),
+                           raw=doc, events=events)
+
+
+@app.route("/app/documents/<int:doc_id>/decision", methods=["POST"])
+@login_required
+def document_decision(doc_id):
+    """Record a review decision + append it to the audit trail. 'approve' logs an
+    internal approval (name + timestamp + meaning), NOT a Part 11 signature."""
+    _own_document_or_404(doc_id)
+    action = request.form.get("action", "").strip()
+    note = request.form.get("note", "").strip()
+    signer = request.form.get("signer", "").strip() or (g.user["email"] or "Study team")
+    role = request.form.get("role", "").strip() or "Principal Investigator"
+    if action == "approve":
+        db.set_document_status(doc_id, "approved", actor=signer, actor_role=role,
+                               meaning="Approval",
+                               note=note or "Reviewed and approved.")
+        flash("Approval recorded with a timestamped audit entry.", "ok")
+    elif action == "review":
+        db.set_document_status(doc_id, "in_review", actor=signer, actor_role=role,
+                               meaning="Review", note=note or "Marked in review.")
+        flash("Marked in review.", "ok")
+    elif action == "return":
+        db.set_document_status(doc_id, "returned", actor=signer, actor_role=role,
+                               meaning="Review",
+                               note=note or "Sent back for changes.")
+        flash("Sent back for changes.", "ok")
+    else:
+        flash("Unknown action.", "error")
+    return redirect(url_for("document_detail", doc_id=doc_id))
 
 
 @app.route("/app/campaign", methods=["GET", "POST"])

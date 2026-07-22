@@ -1,793 +1,109 @@
 {% extends "base.html" %}
-{% block title %}Candidate review · BridgeMD{% endblock %}
+{% block title %}Applicants · BridgeMD for sites{% endblock %}
 {% import "_icons.html" as ic %}
 {% import "_ui.html" as ui %}
 
-{% macro active_card(it, labels, statuses, recon_labels, recon_outcomes, support_coverage_labels, support_travel_labels, redcap_on) %}
-{% set l = it.lead %}
-<div class="card outreach-card" data-nct="{{ l['nct'] or '' }}">
-  <div class="ats-head">
-    <div class="ats-main">
-      <h3>{{ l['name'] }}</h3>
-      <p>{% if l['email'] %}{{ l['email'] }}{% endif %}{% if l['phone'] %} · {{ l['phone'] }}{% endif %}</p>
-      <p class="tagline">{% if l['nct'] %}{{ l['nct'] }} · {% endif %}{{ l['title'] }}</p>
-    </div>
-    <div class="ats-badges">
-      {{ ui.badge(labels.get(l['status'], l['status']), {'submitted':'brand','screening':'warn','enrolled':'ok'}.get(l['status'], 'neutral')) }}
-      {% if it.unread %}{{ ui.badge(it.unread ~ ' new', 'danger') }}{% endif %}
-      {% if it.recon %}{{ ui.badge(recon_labels.get(it.recon['outcome'], it.recon['outcome']), 'ok') }}{% endif %}
-      <span class="tag">Coverage: {{ support_coverage_labels.get(it.support.coverage_status, it.support.coverage_status or 'Not checked') }}</span>
-      <span class="tag">Travel: {{ support_travel_labels.get(it.support.travel_status, it.support.travel_status or 'Not planned') }}</span>
-    </div>
-  </div>
-
-  <div class="ats-actions">
-    <form method="post" action="{{ url_for('message_lead', lead_id=l['id']) }}" class="ats-action">
-      <label>Message</label>
-      <div class="ats-row">
-        <input type="text" name="body" placeholder="Message candidate..." required>
-        {{ ui.btn('Send', 'primary', 'sm', type='submit') }}
-      </div>
-    </form>
-
-    <form method="post" action="{{ url_for('schedule_lead', lead_id=l['id']) }}" class="ats-action">
-      <label>Scheduling link</label>
-      <div class="ats-row">
-        <input type="url" name="schedule_url" value="{{ l['schedule_url'] }}" placeholder="https://calendly.com/...">
-        {{ ui.btn(('Update link' if l['schedule_url'] else 'Send link'), 'ghost', 'sm', type='submit') }}
-      </div>
-    </form>
-
-    <form method="post" action="{{ url_for('update_lead', lead_id=l['id']) }}" class="ats-action">
-      <label>Status</label>
-      <div class="ats-row">
-        <select name="status">
-          {% for s in statuses %}<option value="{{ s }}" {{ 'selected' if s == l['status'] else '' }}>{{ labels.get(s, s) }}</option>{% endfor %}
-        </select>
-        <input type="text" name="note" placeholder="Internal note">
-        <button class="btn btn-sm" type="submit">Save</button>
-      </div>
-    </form>
-
-    <form method="post" action="{{ url_for('reconcile_lead', lead_id=l['id']) }}" class="ats-action">
-      <label>Outcome verification</label>
-      <div class="ats-row">
-        <select name="outcome">
-          {% for k in recon_outcomes %}<option value="{{ k }}">{{ recon_labels.get(k, k) }}</option>{% endfor %}
-        </select>
-        <input type="text" name="source_system" placeholder="Source (REDCap/CTMS)">
-        <input type="text" name="source_ref" placeholder="Ref ID">
-        <input type="text" name="note" placeholder="Evidence note">
-        {{ ui.btn('Save proof', 'ghost', 'sm', type='submit') }}
-      </div>
-    </form>
-  </div>
-
-  <details class="ats-advanced">
-    <summary>{{ ic.icon('chevron-down') }} Coverage / travel checks</summary>
-    <div class="outreach-grid">
-      <div class="outreach-form">
-        <label>Coverage readiness</label>
-        <div class="tag">{{ support_coverage_labels.get(it.support.coverage_status, it.support.coverage_status or 'Not checked') }}</div>
-        {% if it.support.coverage_note %}<p class="tagline">{{ it.support.coverage_note }}</p>{% endif %}
-        <form method="post" action="{{ url_for('coverage_check_lead', lead_id=l['id']) }}" class="status-row">
-          <input type="text" name="payer_name" value="{{ it.support.coverage_payload.payer_name or '' }}" placeholder="Payer">
-          <input type="text" name="member_id" value="{{ it.support.coverage_payload.member_id or '' }}" placeholder="Member ID">
-          {{ ui.btn('Refresh', 'ghost', 'sm', type='submit') }}
-        </form>
-      </div>
-      <div class="outreach-form">
-        <label>Travel readiness</label>
-        <div class="tag">{{ support_travel_labels.get(it.support.travel_status, it.support.travel_status or 'Not planned') }}</div>
-        {% if it.support.travel_note %}<p class="tagline">{{ it.support.travel_note }}</p>{% endif %}
-        <form method="post" action="{{ url_for('travel_plan_lead', lead_id=l['id']) }}" class="status-row">
-          <input type="text" name="distance" value="{{ it.support.travel_payload.distance or '' }}" placeholder="Distance">
-          <input type="text" name="preferred_mode" value="{{ it.support.travel_payload.preferred_mode or '' }}" placeholder="Travel mode">
-          {{ ui.btn('Refresh', 'ghost', 'sm', type='submit') }}
-        </form>
-      </div>
-    </div>
-  </details>
-
-  {% if l['revealed'] %}
-  <details class="ats-advanced collab-block">
-    <summary>{{ ic.icon('list') }} Documents &amp; checklist
-      {% if it.files %}<span class="collab-count">{{ it.files|length }} file{{ 's' if it.files|length != 1 else '' }}</span>{% endif %}
-      {% set open_tasks = it.tasks|selectattr('status','equalto','open')|list %}
-      {% if open_tasks %}<span class="collab-count collab-open">{{ open_tasks|length }} open to-do{{ 's' if open_tasks|length != 1 else '' }}</span>{% endif %}
-      {% set open_reqs = it.doc_requests|selectattr('status','in',['requested','rejected'])|list %}
-      {% set review_reqs = it.doc_requests|selectattr('status','equalto','received')|list %}
-      {% if review_reqs %}<span class="collab-count collab-review">{{ review_reqs|length }} to review</span>{% elif open_reqs %}<span class="collab-count collab-open">{{ open_reqs|length }} record{{ 's' if open_reqs|length != 1 else '' }} awaited</span>{% endif %}
-    </summary>
-    <div class="collab-grid">
-      <div class="collab-col">
-        <label class="collab-h">{{ ic.icon('upload') }} Shared documents</label>
-        {% if it.files %}
-        <ul class="doc-list">
-          {% for f in it.files %}
-          <li class="doc-item">
-            <span class="doc-tag {{ 'doc-in' if f['uploaded_by'] == 'patient' else 'doc-out' }}">{{ 'From applicant' if f['uploaded_by'] == 'patient' else 'Sent' }}</span>
-            <a href="{{ url_for('download_lead_file', att_id=f['id']) }}" class="doc-link">{{ f['orig_name'] }}</a>
-          </li>
-          {% endfor %}
-        </ul>
-        {% else %}<p class="collab-empty">No documents shared yet.</p>{% endif %}
-        <form method="post" action="{{ url_for('attach_lead_file', lead_id=l['id']) }}" enctype="multipart/form-data" class="doc-drop" data-doc-drop>
-          <input type="file" name="file" id="file-{{ l['id'] }}" class="doc-file" data-doc-input>
-          <label for="file-{{ l['id'] }}" class="doc-drop-label" data-doc-label>{{ ic.icon('upload') }} Drag &amp; drop a file, or click to choose</label>
-          <div class="doc-drop-row">
-            <input type="text" name="note" placeholder="Optional note" class="doc-note">
-            {{ ui.btn('Share', 'primary', 'sm', type='submit') }}
-          </div>
-        </form>
-      </div>
-      <div class="collab-col">
-        <label class="collab-h">{{ ic.icon('check') }} Patient checklist</label>
-        {% if it.tasks %}
-        <ul class="task-list">
-          {% for t in it.tasks %}
-          <li class="task-item {{ 'task-done' if t['status'] == 'done' else '' }}">
-            <form method="post" action="{{ url_for('toggle_lead_task', lead_id=l['id'], task_id=t['id']) }}" class="task-toggle">
-              <button type="submit" class="task-check" title="Toggle done" aria-label="Toggle done">{% if t['status'] == 'done' %}{{ ic.icon('check') }}{% endif %}</button>
-            </form>
-            <span class="task-title">{{ t['title'] }}</span>
-            <span class="task-who">{{ 'you' if t['assigned_to'] == 'site' else 'patient' }}</span>
-          </li>
-          {% endfor %}
-        </ul>
-        {% else %}<p class="collab-empty">No to-dos assigned yet.</p>{% endif %}
-        <form method="post" action="{{ url_for('add_lead_task', lead_id=l['id']) }}" class="task-add">
-          <input type="text" name="title" placeholder="Add a to-do for the patient..." required>
-          {{ ui.btn('Add', 'ghost', 'sm', icon='plus', type='submit') }}
-        </form>
-      </div>
-    </div>
-    <div class="collab-reqs">
-      <label class="collab-h">{{ ic.icon('list') }} Requested records</label>
-      {% if it.doc_requests %}
-      <ul class="req-list">
-        {% for r in it.doc_requests %}
-        <li class="req req-{{ r['status'] }}">
-          <div class="req-main">
-            <span class="req-title">{{ r['title'] }}</span>
-            {% if r['status'] == 'accepted' %}{{ ui.badge('Accepted', 'ok') }}
-            {% elif r['status'] == 'received' %}{{ ui.badge('In review', 'brand') }}
-            {% elif r['status'] == 'rejected' %}{{ ui.badge('Sent back', 'warn') }}
-            {% else %}{{ ui.badge('Awaiting', 'neutral') }}{% endif %}
-          </div>
-          {% if r['note'] %}<p class="req-note">{{ r['note'] }}</p>{% endif %}
-          {% if r['file_name'] %}<a href="{{ url_for('download_lead_file', att_id=r['attachment_id']) }}" class="doc-link">{{ r['file_name'] }}</a>{% endif %}
-          {% if r['status'] == 'received' %}
-          <form method="post" action="{{ url_for('review_lead_doc', lead_id=l['id'], req_id=r['id']) }}" class="req-review">
-            <input type="text" name="review_note" placeholder="Reason (if sending back)" class="doc-note">
-            {{ ui.btn('Accept', 'primary', 'sm', type='submit', name='decision', value='accept') }}
-            {{ ui.btn('Send back', 'ghost', 'sm', type='submit', name='decision', value='reject') }}
-          </form>
-          {% elif r['status'] in ['requested', 'rejected'] %}
-          <form method="post" action="{{ url_for('upload_lead_doc', lead_id=l['id'], req_id=r['id']) }}" enctype="multipart/form-data" class="req-up">
-            <input type="file" name="file" id="reqfile-{{ r['id'] }}" class="doc-file" data-doc-input>
-            <label for="reqfile-{{ r['id'] }}" class="doc-drop-label doc-drop-mini" data-doc-label>{{ ic.icon('upload') }} Upload on their behalf</label>
-            {{ ui.btn('Add', 'ghost', 'sm', type='submit') }}
-          </form>
-          {% endif %}
-        </li>
-        {% endfor %}
-      </ul>
-      {% else %}<p class="collab-empty">No records requested yet.</p>{% endif %}
-      <form method="post" action="{{ url_for('request_lead_doc', lead_id=l['id']) }}" class="req-add">
-        <input type="text" name="title" placeholder="Request a record (e.g. pathology report confirming diagnosis)" required>
-        <input type="text" name="note" placeholder="Optional detail" class="doc-note">
-        {{ ui.btn('Request', 'ghost', 'sm', icon='plus', type='submit') }}
-      </form>
-    </div>
-  </details>
-  {% endif %}
-
-  <div class="outreach-foot">
-    <a class="cand-open" href="{{ url_for('candidate_page', token=l['site_token']) }}">{{ ic.icon('external') }} Open full workspace</a>
-    {% if l['email'] %}<a class="cand-open" href="mailto:{{ l['email'] }}">{{ ic.icon('activity') }} Email</a>{% endif %}
-    {% if l['phone'] %}<a class="cand-open" href="tel:{{ l['phone'] }}">{{ ic.icon('activity') }} Call</a>{% endif %}
-    <form method="post" action="{{ url_for('extend_lead_site_token', lead_id=l['id']) }}" class="lead-redcap-form">
-      <input type="hidden" name="days" value="30">
-      {{ ui.btn('Extend link 30d', 'ghost', 'sm', type='submit') }}
-    </form>
-    <form method="post" action="{{ url_for('revoke_lead_site_token', lead_id=l['id']) }}" class="lead-redcap-form">
-      {{ ui.btn('Revoke link', 'ghost', 'sm', type='submit') }}
-    </form>
-    {% if l['redcap_survey_status'] == 'complete' %}
-    <span class="tag">{{ ic.icon('check') }} Screening form complete</span>
-    {% elif l['redcap_survey_status'] == 'sent' %}
-    <span class="tag">{{ ic.icon('activity') }} Screening form sent</span>
-    {% endif %}
-    {% if redcap_on %}
-    <form method="post" action="{{ url_for('push_lead_redcap', lead_id=l['id']) }}" class="lead-redcap-form">
-      {{ ui.btn('Push to REDCap', 'ghost', 'sm', icon='external', type='submit') }}
-    </form>
-    <form method="post" action="{{ url_for('refresh_lead_redcap', lead_id=l['id']) }}" class="lead-redcap-form" title="Check whether this candidate finished their REDCap screening form">
-      {{ ui.btn('Check screening status', 'ghost', 'sm', icon='activity', type='submit') }}
-    </form>
-    {% endif %}
-  </div>
-</div>
-{% endmacro %}
-
 {% block body %}
-<div class="page-head page-head-row">
-  <div>
-    <h1>Intake queue</h1>
-    <p>Review and approve candidates.</p>
-  </div>
-  {% if claims %}
-  <a class="btn btn-ghost btn-sm" href="{{ url_for('patient_inbox') }}">{{ ic.icon('chat') }} Conversations{% if site_unread %} <span class="nav-badge nav-badge-new">{{ site_unread }}</span>{% endif %}</a>
-  {% endif %}
-</div>
-
-{% if claims %}
-<div class="claims-strip">
-  <span class="claims-label">{{ ic.icon('award') }} Claimed studies</span>
-  {% for c in claims %}{{ ui.badge(c.nct, 'brand') }}{% endfor %}
-  <a href="{{ url_for('site_setup') }}" class="claims-link">Manage</a>
+{% if not claims %}
+<div class="app-card pad">
+  {{ ui.empty('Claim your studies first',
+     'Applicants for the studies you claim show up here automatically - pre-screened and ready to review.',
+     'award', action=ui.btn('Set up your site', 'primary', href=url_for('site_setup'), icon='award')) }}
 </div>
 {% else %}
-<div class="card">
-  <div class="empty">
-    <h3>Claim your active studies first</h3>
-    <p>Applicants for claimed NCTs appear here automatically.</p>
-    <a class="btn btn-primary" href="{{ url_for('site_setup') }}">{{ ic.icon('award') }} Set up site and claim studies</a>
+
+<div class="app-head">
+  <div>
+    <h1>Applicants</h1>
+    <p>{{ queue|length }} total across {{ claims|length }} stud{{ 'y' if claims|length == 1 else 'ies' }}. Pre-screened by AI - you decide.</p>
   </div>
+  {{ ui.btn('Conversations', 'ghost', href=url_for('patient_inbox'), icon='chat') }}
+</div>
+
+<div class="app-stats">
+  <div class="app-stat"><div class="l">Total</div><div class="n">{{ queue|length }}</div></div>
+  <div class="app-stat accent"><div class="l">Awaiting review</div><div class="n">{{ review|length }}</div></div>
+  <div class="app-stat"><div class="l">In outreach</div><div class="n">{{ active|length }}</div></div>
+  <div class="app-stat ok"><div class="l">Enrolled</div><div class="n">{{ enrolled_n }}</div></div>
+</div>
+
+<div class="app-chips" id="queueChips">
+  <button type="button" class="ui-chip is-active" data-filter="all">All</button>
+  <button type="button" class="ui-chip" data-filter="awaiting">Awaiting review</button>
+  <button type="button" class="ui-chip" data-filter="unread">Unread</button>
+  <button type="button" class="ui-chip" data-filter="likely_eligible">Likely eligible</button>
+  <button type="button" class="ui-chip" data-filter="possible">Possible</button>
+  <button type="button" class="ui-chip" data-filter="unlikely">Unlikely</button>
+  <button type="button" class="ui-chip" data-filter="enrolled">Enrolled</button>
+</div>
+
+<div class="app-card">
+  <table class="app-table" id="queueTable">
+    <thead>
+      <tr>
+        <th>Applicant</th><th>Verdict</th><th>Score</th><th>Stage</th>
+        <th>Source</th><th>Last activity</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for q in queue %}
+      {% set sf = 'hi' if q.verdict.score >= 75 else ('mid' if q.verdict.score >= 50 else 'lo') %}
+      <tr class="link" onclick="location.href='{{ url_for('applicant_detail', lead_id=q.id) }}'"
+          data-verdict="{{ q.verdict.verdict }}" data-status="{{ q.status }}"
+          data-unread="{{ q.unread }}"
+          data-awaiting="{{ '1' if q.status == 'prescreen' else '0' }}">
+        <td>
+          <div class="who">
+            <span class="app-av{{ ' neutral' if not q.revealed }}">{{ q.initials }}</span>
+            <div>
+              <b>{{ q.name }}</b>
+              <span>{{ q.email or q.title[:38] }}</span>
+            </div>
+            {% if q.unread %}{{ ui.count(q.unread, 'danger') }}{% endif %}
+          </div>
+        </td>
+        <td>{{ ui.badge(q.verdict.label, q.verdict.tone) }}</td>
+        <td>
+          <div class="score-bar">
+            <span class="track"><span class="fill {{ sf }}" style="width:{{ q.verdict.score }}%"></span></span>
+            <b>{{ q.verdict.score }}</b>
+          </div>
+        </td>
+        <td>{{ ui.badge(q.stage.label, q.stage.tone) }}</td>
+        <td>{{ q.source }}</td>
+        <td style="white-space:nowrap;">{{ q.last_activity }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p id="queueEmpty" class="app-sub" style="display:none;padding:22px;text-align:center;color:var(--faint);">No applicants match this filter.</p>
 </div>
 {% endif %}
 
-{% if claims %}
-<div class="rev-tabs" role="tablist">
-  <button type="button" class="rev-tab active" data-tab="review">{{ ic.icon('activity') }} Awaiting review <span class="tab-n">{{ review|length }}</span></button>
-  <button type="button" class="rev-tab" data-tab="active">{{ ic.icon('user-plus') }} Active outreach <span class="tab-n">{{ active|length }}</span></button>
-  <button type="button" class="rev-tab" data-tab="list">{{ ic.icon('list') }} ATS list <span class="tab-n">{{ (review|length) + (active|length) + (done|length) }}</span></button>
-  <button type="button" class="rev-tab" data-tab="done">{{ ic.icon('list') }} Completed / closed <span class="tab-n">{{ done|length }}</span></button>
-</div>
-
-<div class="stats stats-compact">
-  <div class="stat compact"><div class="l">Total</div><div class="n">{{ (review|length) + (active|length) + (done|length) }}</div></div>
-  <div class="stat compact accent"><div class="l">Awaiting</div><div class="n">{{ review|length }}</div></div>
-  <div class="stat compact"><div class="l">Outreach</div><div class="n">{{ active|length }}</div></div>
-  <div class="stat compact"><div class="l">Enrolled</div><div class="n">{{ counts.get('enrolled', 0) }}</div></div>
-  <div class="stat compact {{ 'accent' if site_unread }}"><div class="l">Unread</div><div class="n">{{ site_unread }}</div></div>
-</div>
-
-<details class="card broadcast-card">
-  <summary class="broadcast-sum">{{ ic.icon('user-plus') }} Message everyone
-    <span class="broadcast-hint">Send an update, a to-do, or a document to every accepted candidate</span>
-  </summary>
-  <form method="post" action="{{ url_for('broadcast_leads') }}" enctype="multipart/form-data" class="broadcast-form">
-    <textarea name="body" rows="2" placeholder="Message to all accepted candidates (e.g. 'Reminder: bring your ID to your visit.')"></textarea>
-    <div class="broadcast-row">
-      <input type="text" name="task" placeholder="Optional to-do for everyone (e.g. 'Sign the consent form')">
-      <label class="broadcast-file">{{ ic.icon('upload') }} <span>Attach doc</span><input type="file" name="file"></label>
-      {{ ui.btn('Send to all', 'primary', 'sm', type='submit') }}
-    </div>
-    <p class="broadcast-note">{{ ic.icon('help') }} Delivered privately to each candidate's own thread - candidates never see each other.</p>
-  </form>
-</details>
-
-{% set trial_set = [] %}
-{% set source_set = [] %}
-{% set trial_titles = {} %}
-{% for it in review + active + done %}
-  {% set l = it.lead %}
-  {% if l['nct'] and l['nct'] not in trial_set %}{% set _ = trial_set.append(l['nct']) %}{% set _ = trial_titles.update({l['nct']: l['title']}) %}{% endif %}
-  {% set src_bucket = 'physician' if (l['source'] or '') in ['referral','invite','physician','emr','doctor_referral'] else 'patient' %}
-  {% if src_bucket not in source_set %}{% set _ = source_set.append(src_bucket) %}{% endif %}
-{% endfor %}
-
-{% if claims and trial_set|length > 1 %}
-<div class="trial-filter-bar" id="trialFilterBar">
-  <label for="trialFilter">{{ ic.icon('award') }} Filter by trial</label>
-  <select id="trialFilter">
-    <option value="">All trials</option>
-    {% for nct in trial_set %}<option value="{{ nct }}">{{ nct }}{% if trial_titles.get(nct) %} · {{ trial_titles.get(nct)[:44] }}{% endif %}</option>{% endfor %}
-  </select>
-  <span class="trial-filter-count" id="trialFilterCount"></span>
-</div>
-{% endif %}
-
-<section class="pipeline-lane rev-panel" data-panel="list" hidden>
-  <div class="lane-head">
-    <h2>{{ ic.icon('list') }} ATS intake list</h2>
-    <span class="lane-n" id="atsVisibleCount">{{ (review|length) + (active|length) + (done|length) }}</span>
-  </div>
-  <div class="card ats-list-wrap">
-    <div class="ats-toolbar">
-      <input type="search" id="atsSearch" placeholder="Search candidate, NCT, title, email, location">
-      <select id="atsLane">
-        <option value="">All lanes</option>
-        <option value="review">Awaiting review</option>
-        <option value="active">Active outreach</option>
-        <option value="done">Completed / closed</option>
-      </select>
-      <select id="atsStatus">
-        <option value="">All statuses</option>
-        {% for s in statuses %}<option value="{{ s }}">{{ labels.get(s, s) }}</option>{% endfor %}
-      </select>
-      <select id="atsSource">
-        <option value="">All sources</option>
-        {% for s in source_set %}<option value="{{ s }}">{{ 'Physician referrals' if s == 'physician' else 'Patient self-serve' }}</option>{% endfor %}
-      </select>
-      <select id="atsRecords">
-        <option value="">Records: any</option>
-        <option value="yes">Record connected</option>
-        <option value="no">No record</option>
-      </select>
-      <select id="atsAttention">
-        <option value="">Attention: any</option>
-        <option value="needs">Needs attention</option>
-        <option value="clean">No immediate issues</option>
-      </select>
-      <input type="search" id="atsTrial" list="atsTrialList" placeholder="Filter by NCT">
-      <datalist id="atsTrialList">
-        {% for nct in trial_set %}<option value="{{ nct }}"></option>{% endfor %}
-      </datalist>
-      <button type="button" class="btn btn-ghost btn-sm" id="atsReset">Reset</button>
-    </div>
-
-    <div class="ats-table-wrap">
-      <table class="ats-table" id="atsTable">
-        <thead>
-          <tr>
-            <th>Candidate</th>
-            <th>Study</th>
-            <th>Lane / status</th>
-            <th>Signals</th>
-            <th>Source</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for it in review %}
-          {% set l = it.lead %}
-          {% set src_bucket = 'physician' if (l['source'] or '') in ['referral','invite','physician','emr','doctor_referral'] else 'patient' %}
-          {% set row_search = ((l['name'] or '') ~ ' ' ~ (it.code or '') ~ ' ' ~ (l['nct'] or '') ~ ' ' ~ (l['title'] or '') ~ ' ' ~ (l['email'] or '') ~ ' ' ~ (l['location'] or '') ~ ' ' ~ (l['condition'] or ''))|lower %}
-          {% set needs_attention = (it.unread > 0) or (it.elig.get('not_met', [])|length > 0) %}
-          <tr class="ats-row-item"
-              data-search="{{ row_search }}"
-              data-lane="review"
-              data-status="{{ l['status'] }}"
-              data-source="{{ src_bucket }}"
-              data-records="{{ 'yes' if l['records_connected'] else 'no' }}"
-              data-unread="{{ it.unread }}"
-              data-blockers="{{ it.elig.get('not_met', [])|length }}"
-              data-coverage="{{ it.support.coverage_status or '' }}"
-              data-travel="{{ it.support.travel_status or '' }}"
-              data-trial="{{ l['nct'] or '' }}"
-              data-attention="{{ 'needs' if needs_attention else 'clean' }}">
-            <td><b>{{ it.code }}</b><div class="tag">{{ it.age_band }}{% if l['sex'] %} · {{ l['sex']|capitalize }}{% endif %}</div></td>
-            <td>{% if l['nct'] %}{% if l['nct'].startswith('NCT') %}<a href="https://clinicaltrials.gov/study/{{ l['nct'] }}" target="_blank" rel="noopener">{{ l['nct'] }}</a>{% else %}{{ l['nct'] }}{% endif %}{% endif %}<div class="tag">{{ l['title'][:56] }}</div></td>
-            <td>{{ ui.badge(labels.get(l['status'], l['status']), {'submitted':'brand','screening':'warn','enrolled':'ok'}.get(l['status'], 'neutral')) }}</td>
-            <td>{% if it.unread %}{{ ui.badge(it.unread ~ ' new', 'danger') }}{% endif %}<span class="tag">{{ it.elig.get('met', [])|length }} met / {{ it.elig.get('unknown', [])|length }} confirm / {{ it.elig.get('not_met', [])|length }} not met</span></td>
-            <td><span class="tag">{{ 'Physician referral' if src_bucket == 'physician' else 'Patient self-serve' }}</span><span class="tag">{{ 'Record' if l['records_connected'] else 'No record' }}</span></td>
-            <td><a class="cand-open" href="{{ url_for('candidate_page', token=l['site_token']) }}">{{ ic.icon('external') }} Open</a></td>
-          </tr>
-          {% endfor %}
-
-          {% for it in active %}
-          {% set l = it.lead %}
-          {% set src_bucket = 'physician' if (l['source'] or '') in ['referral','invite','physician','emr','doctor_referral'] else 'patient' %}
-          {% set row_search = ((l['name'] or '') ~ ' ' ~ (it.code or '') ~ ' ' ~ (l['nct'] or '') ~ ' ' ~ (l['title'] or '') ~ ' ' ~ (l['email'] or '') ~ ' ' ~ (l['location'] or '') ~ ' ' ~ (l['condition'] or ''))|lower %}
-          {% set support_watch = (it.support.coverage_status in ['likely_not_covered', 'manual_review']) or (it.support.travel_status in ['assist_required', 'not_ready']) %}
-          {% set needs_attention = (it.unread > 0) or support_watch %}
-          <tr class="ats-row-item"
-              data-search="{{ row_search }}"
-              data-lane="active"
-              data-status="{{ l['status'] }}"
-              data-source="{{ src_bucket }}"
-              data-records="{{ 'yes' if l['records_connected'] else 'no' }}"
-              data-unread="{{ it.unread }}"
-              data-blockers="{{ it.elig.get('not_met', [])|length }}"
-              data-coverage="{{ it.support.coverage_status or '' }}"
-              data-travel="{{ it.support.travel_status or '' }}"
-              data-trial="{{ l['nct'] or '' }}"
-              data-attention="{{ 'needs' if needs_attention else 'clean' }}">
-            <td><b>{{ l['name'] or it.code }}</b><div class="tag">{{ it.code }} · {{ it.age_band }}</div></td>
-            <td>{% if l['nct'] %}{% if l['nct'].startswith('NCT') %}<a href="https://clinicaltrials.gov/study/{{ l['nct'] }}" target="_blank" rel="noopener">{{ l['nct'] }}</a>{% else %}{{ l['nct'] }}{% endif %}{% endif %}<div class="tag">{{ l['title'][:56] }}</div></td>
-            <td>{{ ui.badge(labels.get(l['status'], l['status']), {'submitted':'brand','screening':'warn','enrolled':'ok'}.get(l['status'], 'neutral')) }}</td>
-            <td>{% if it.unread %}{{ ui.badge(it.unread ~ ' new', 'danger') }}{% endif %}<span class="tag">Coverage: {{ support_coverage_labels.get(it.support.coverage_status, it.support.coverage_status or 'Not checked') }}</span><span class="tag">Travel: {{ support_travel_labels.get(it.support.travel_status, it.support.travel_status or 'Not planned') }}</span></td>
-            <td><span class="tag">{{ 'Physician referral' if src_bucket == 'physician' else 'Patient self-serve' }}</span><span class="tag">{{ 'Record' if l['records_connected'] else 'No record' }}</span></td>
-            <td><a class="cand-open" href="{{ url_for('candidate_page', token=l['site_token']) }}">{{ ic.icon('external') }} Open</a></td>
-          </tr>
-          {% endfor %}
-
-          {% for it in done %}
-          {% set l = it.lead %}
-          {% set src_bucket = 'physician' if (l['source'] or '') in ['referral','invite','physician','emr','doctor_referral'] else 'patient' %}
-          {% set row_search = ((l['name'] or '') ~ ' ' ~ (it.code or '') ~ ' ' ~ (l['nct'] or '') ~ ' ' ~ (l['title'] or '') ~ ' ' ~ (l['email'] or '') ~ ' ' ~ (l['location'] or '') ~ ' ' ~ (l['condition'] or ''))|lower %}
-          <tr class="ats-row-item"
-              data-search="{{ row_search }}"
-              data-lane="done"
-              data-status="{{ l['status'] }}"
-              data-source="{{ src_bucket }}"
-              data-records="{{ 'yes' if l['records_connected'] else 'no' }}"
-              data-unread="{{ it.unread }}"
-              data-blockers="{{ it.elig.get('not_met', [])|length }}"
-              data-coverage="{{ it.support.coverage_status or '' }}"
-              data-travel="{{ it.support.travel_status or '' }}"
-              data-trial="{{ l['nct'] or '' }}"
-              data-attention="{{ 'clean' }}">
-            <td><b>{% if l['revealed'] %}{{ l['name'] }}{% else %}{{ it.code }}{% endif %}</b><div class="tag">{{ it.age_band }}{% if l['sex'] %} · {{ l['sex']|capitalize }}{% endif %}</div></td>
-            <td>{% if l['nct'] %}{% if l['nct'].startswith('NCT') %}<a href="https://clinicaltrials.gov/study/{{ l['nct'] }}" target="_blank" rel="noopener">{{ l['nct'] }}</a>{% else %}{{ l['nct'] }}{% endif %}{% endif %}<div class="tag">{{ l['title'][:56] }}</div></td>
-            <td>{{ ui.badge(labels.get(l['status'], l['status']), {'submitted':'brand','screening':'warn','enrolled':'ok'}.get(l['status'], 'neutral')) }}</td>
-            <td>{% if it.recon %}{{ ui.badge(recon_labels.get(it.recon['outcome'], it.recon['outcome']), 'ok') }}{% endif %}<span class="tag">Coverage: {{ support_coverage_labels.get(it.support.coverage_status, it.support.coverage_status or 'Not checked') }}</span></td>
-            <td><span class="tag">{{ 'Physician referral' if src_bucket == 'physician' else 'Patient self-serve' }}</span><span class="tag">{{ 'Record' if l['records_connected'] else 'No record' }}</span></td>
-            <td><a class="cand-open" href="{{ url_for('candidate_page', token=l['site_token']) }}">{{ ic.icon('external') }} Open</a></td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-      <p class="pr-empty" id="atsEmpty" style="display:none;">No candidates match these filters.</p>
-    </div>
-  </div>
-</section>
-
-<section class="pipeline-lane rev-panel" data-panel="review">
-  <div class="lane-head">
-    <h2>{{ ic.icon('activity') }} Awaiting review</h2>
-    <span class="lane-n">{{ review|length }}</span>
-  </div>
-  {% if not review %}
-  <div class="card">{{ ui.empty('All caught up', 'New candidates will appear here.', 'check') }}</div>
-  {% endif %}
-
-  {% for it in review %}
-  {% set l = it.lead %}
-  <div class="cand-row" data-nct="{{ l['nct'] or '' }}">
-    <div class="cr-left">
-      <span class="cand-code">{{ ic.icon('user-plus') }} {{ it.code }}</span>
-      <span class="cand-demo">{{ it.age_band }}{% if l['sex'] %} · {{ l['sex']|capitalize }}{% endif %}</span>
-      <div class="cand-elig">
-        <span class="ec ec-met">{{ it.elig.get('met', [])|length }} met</span>
-        <span class="ec ec-unk">{{ it.elig.get('unknown', [])|length }} to confirm</span>
-        <span class="ec ec-no">{{ it.elig.get('not_met', [])|length }} not met</span>
-      </div>
-      <span class="cr-rec {{ 'rec-yes' if l['records_connected'] else 'rec-no' }}">
-        {{ ic.icon('check') if l['records_connected'] else ic.icon('upload') }}
-        {{ 'Record connected' if l['records_connected'] else 'No record' }}</span>
-    </div>
-
-    <div class="cr-mid">
-      <div class="cand-trial">
-        {% if l['nct'] %}{% if l['nct'].startswith('NCT') %}<a href="https://clinicaltrials.gov/study/{{ l['nct'] }}" target="_blank" rel="noopener">{{ l['nct'] }}</a>{% else %}{{ l['nct'] }}{% endif %}{% endif %}
-        <div class="cand-title">{{ l['title'] }}</div>
-      </div>
-      <div class="cand-meta">
-        {% if l['condition'] %}<span>{{ ic.icon('activity') }} {{ l['condition'] }}</span>{% endif %}
-        {% if l['location'] %}<span>{{ ic.icon('pin') }} {{ l['location'] }}</span>{% endif %}
-      </div>
-
-      {% if it.flags %}
-      <div class="cand-flags">{{ ic.icon('activity') }} {{ it.flags|join(' · ') }}</div>
-      {% endif %}
-
-      <div class="cand-details">
-        {% if it.elig.get('met') or it.elig.get('unknown') or it.elig.get('not_met') %}
-        <details class="cand-detail">
-          <summary>Eligibility breakdown</summary>
-          {% if it.elig.get('rationale') %}<p class="cand-rationale">{{ it.elig.rationale }}</p>{% endif %}
-          {% if it.elig.get('met') %}<div class="eb eb-met"><b>Meets</b><ul>{% for x in it.elig.met[:8] %}<li>{{ x }}</li>{% endfor %}</ul></div>{% endif %}
-          {% if it.elig.get('unknown') %}<div class="eb eb-unk"><b>To confirm at screening</b><ul>{% for x in it.elig.unknown[:8] %}<li>{{ x }}</li>{% endfor %}</ul></div>{% endif %}
-          {% if it.elig.get('not_met') %}<div class="eb eb-no"><b>Possible barriers</b><ul>{% for x in it.elig.not_met[:8] %}<li>{{ x }}</li>{% endfor %}</ul></div>{% endif %}
-        </details>
-        {% endif %}
-
-        {% if it.screener %}
-        <details class="cand-detail">
-          <summary>Screener answers</summary>
-          <ul class="cand-screener">
-            {% for k, v in it.screener.items() %}
-            <li><span>{{ screener_labels.get(k, k) }}</span><b>{{ v|capitalize }}</b></li>
-            {% endfor %}
-          </ul>
-        </details>
-        {% endif %}
-
-        {% if l['records_connected'] and l['record_summary'] %}
-        <details class="cand-detail">
-          <summary>Connected record (de-identified)</summary>
-          <pre class="cand-record">{{ l['record_summary'] }}</pre>
-        </details>
-        {% endif %}
-      </div>
-    </div>
-
-    <div class="cr-right">
-      <form method="post" action="{{ url_for('accept_lead', lead_id=l['id']) }}">
-        <button class="btn btn-ok" type="submit">{{ ic.icon('check') }} Accept &amp; unlock contact</button>
-      </form>
-      <details class="decline-pop">
-        <summary class="btn btn-ghost">Decline</summary>
-        <form method="post" action="{{ url_for('decline_lead', lead_id=l['id']) }}">
-          <input type="text" name="reason" placeholder="Reason (optional)">
-          <button class="btn btn-sm" type="submit">Confirm decline</button>
-        </form>
-      </details>
-      {% if pov_demo %}
-      <details class="cand-share slim">
-        <summary>{{ ic.icon('external') }} External handoff link</summary>
-        <div class="cand-share-row">
-          <input type="text" readonly value="{{ url_for('candidate_page', token=l['site_token'], _external=True) }}" onclick="this.select()">
-          <button type="button" class="btn btn-sm" onclick="navigator.clipboard.writeText(this.previousElementSibling.value);this.textContent='Copied'">Copy</button>
-        </div>
-        <span class="cand-share-hint">Share this secure handoff link when the site has no account yet.</span>
-      </details>
-      {% endif %}
-    </div>
-  </div>
-  {% endfor %}
-  <div class="card trial-empty" data-trial-empty hidden>{{ ui.empty('No candidates in this trial', 'Switch trials or choose “All trials”.', 'award') }}</div>
-</section>
-
-<section class="pipeline-lane rev-panel" data-panel="active" hidden>
-  <div class="lane-head">
-    <h2>{{ ic.icon('user-plus') }} Active outreach</h2>
-    <span class="lane-n">{{ active|length }}</span>
-  </div>
-  {% set active_needs = [] %}
-  {% set active_ready = [] %}
-  {% set active_pipeline = [] %}
-  {% for it in active %}
-    {% set l = it.lead %}
-    {% set support_watch = (it.support.coverage_status in ['likely_not_covered', 'manual_review']) or (it.support.travel_status in ['assist_required', 'not_ready']) %}
-    {% set has_blockers = it.elig.get('not_met', [])|length > 0 %}
-    {% if it.unread > 0 or support_watch or has_blockers %}
-      {% set _ = active_needs.append(it) %}
-    {% elif l['status'] in ['eligible', 'screening'] %}
-      {% set _ = active_ready.append(it) %}
-    {% else %}
-      {% set _ = active_pipeline.append(it) %}
-    {% endif %}
-  {% endfor %}
-
-  <div class="active-bars">
-    <span class="active-bar needs">{{ ic.icon('activity') }} Needs attention {{ active_needs|length }}</span>
-    <span class="active-bar ready">{{ ic.icon('check') }} Ready to schedule {{ active_ready|length }}</span>
-    <span class="active-bar flow">{{ ic.icon('list') }} In progress {{ active_pipeline|length }}</span>
-  </div>
-
-  {% if not active %}
-  <div class="card">{{ ui.empty('No active outreach candidates yet.', icon='user-plus') }}</div>
-  {% endif %}
-
-  <div class="active-group">
-    <div class="active-group-head"><h3>{{ ic.icon('activity') }} Needs attention</h3><span>{{ active_needs|length }}</span></div>
-    {% if not active_needs %}<div class="card">{{ ui.empty('No urgent follow-ups right now.', icon='check') }}</div>{% endif %}
-    {% for it in active_needs %}{{ active_card(it, labels, statuses, recon_labels, recon_outcomes, support_coverage_labels, support_travel_labels, redcap_on) }}{% endfor %}
-  </div>
-
-  <details class="active-group active-fold" {% if active_ready|length <= 3 %}open{% endif %}>
-    <summary class="active-group-head"><h3>{{ ic.icon('check') }} Ready to schedule / advance</h3><span>{{ active_ready|length }}</span></summary>
-    {% if not active_ready %}<div class="card">{{ ui.empty('No candidates waiting on scheduling.', icon='check') }}</div>{% endif %}
-    {% for it in active_ready %}{{ active_card(it, labels, statuses, recon_labels, recon_outcomes, support_coverage_labels, support_travel_labels, redcap_on) }}{% endfor %}
-  </details>
-
-  <details class="active-group active-fold">
-    <summary class="active-group-head"><h3>{{ ic.icon('list') }} In progress</h3><span>{{ active_pipeline|length }}</span></summary>
-    {% if not active_pipeline %}<div class="card">{{ ui.empty('No remaining active candidates.', icon='list') }}</div>{% endif %}
-    {% for it in active_pipeline %}{{ active_card(it, labels, statuses, recon_labels, recon_outcomes, support_coverage_labels, support_travel_labels, redcap_on) }}{% endfor %}
-  </details>
-  <div class="card trial-empty" data-trial-empty hidden>{{ ui.empty('No candidates in this trial', 'Switch trials or choose “All trials”.', 'award') }}</div>
-</section>
-
-<section class="pipeline-lane rev-panel" data-panel="done" hidden>
-  <div class="lane-head">
-    <h2>{{ ic.icon('list') }} Completed / closed</h2>
-    <span class="lane-n">{{ done|length }}</span>
-  </div>
-  <div class="card">
-    {% if not done %}
-    {{ ui.empty('No completed or closed candidates yet.', icon='list') }}
-    {% else %}
-    <table>
-      <thead><tr><th>Candidate</th><th>Trial</th><th>Status</th><th>Contact</th><th>Update</th></tr></thead>
-      <tbody>
-        {% for it in done %}
-        {% set l = it.lead %}
-        <tr data-nct="{{ l['nct'] or '' }}">
-          <td><b>{% if l['revealed'] %}{{ l['name'] }}{% else %}{{ it.code }}{% endif %}</b>
-            {% if it.unread %}{{ ui.badge(it.unread ~ ' new', 'danger') }}{% endif %}
-            <div class="tag">{{ it.age_band }}{% if l['sex'] %} · {{ l['sex']|capitalize }}{% endif %}</div>
-            <a class="cand-open" href="{{ url_for('candidate_page', token=l['site_token']) }}">{{ ic.icon('external') }} Open workspace</a>
-            <div class="tag">Link exp: {{ l['site_token_expires_at'] or '-' }}</div></td>
-          <td>{% if l['nct'] %}{% if l['nct'].startswith('NCT') %}<a href="https://clinicaltrials.gov/study/{{ l['nct'] }}" target="_blank" rel="noopener">{{ l['nct'] }}</a>{% else %}{{ l['nct'] }}{% endif %}{% endif %}<div class="tag">{{ l['title'][:44] }}</div></td>
-          <td>{{ ui.badge(labels.get(l['status'], l['status']), {'submitted':'brand','screening':'warn','enrolled':'ok'}.get(l['status'], 'neutral')) }}
-            {% if l['decision'] == 'declined' and l['decision_reason'] %}<div class="tag">{{ l['decision_reason'] }}</div>{% endif %}
-            {% if it.recon %}{{ ui.badge(recon_labels.get(it.recon['outcome'], it.recon['outcome']), 'ok') }}{% endif %}
-            <div class="tag">Coverage: {{ support_coverage_labels.get(it.support.coverage_status, it.support.coverage_status or 'Not checked') }}</div>
-            <div class="tag">Travel: {{ support_travel_labels.get(it.support.travel_status, it.support.travel_status or 'Not planned') }}</div></td>
-          <td class="tag">
-            {% if l['revealed'] %}
-              {% if l['email'] %}{{ l['email'] }}{% endif %}{% if l['phone'] %}<div class="mono">{{ l['phone'] }}</div>{% endif %}
-            {% else %}<span class="locked">{{ ic.icon('check') }} hidden</span>{% endif %}
-          </td>
-          <td>
-            {% if l['status'] not in ['closed', 'withdrawn'] %}
-            <form method="post" action="{{ url_for('update_lead', lead_id=l['id']) }}" class="lead-status-form">
-              <select name="status">
-                {% for s in statuses %}<option value="{{ s }}" {{ 'selected' if s == l['status'] else '' }}>{{ labels.get(s, s) }}</option>{% endfor %}
-              </select>
-              <input type="text" name="note" placeholder="Note (optional)">
-              <button class="btn btn-sm" type="submit">Save</button>
-            </form>
-            {% if l['revealed'] %}
-            <form method="post" action="{{ url_for('push_lead_redcap', lead_id=l['id']) }}" class="lead-redcap-form" title="{{ 'Push this candidate into your REDCap project' if redcap_on else 'Connect REDCap (REDCAP_API_URL/TOKEN) to enable' }}">
-              {{ ui.btn('Push to REDCap', 'ghost', 'sm', icon='external', type='submit') }}
-            </form>
-            <form method="post" action="{{ url_for('schedule_lead', lead_id=l['id']) }}" class="lead-sched-form" title="Send the applicant a link to book their screening call">
-              <input type="url" name="schedule_url" value="{{ l['schedule_url'] }}" placeholder="Booking link (Calendly, Cal.com...)">
-              {{ ui.btn(('Update link' if l['schedule_url'] else 'Send booking link'), 'ghost', 'sm', icon='activity', type='submit') }}
-            </form>
-            {% endif %}
-            {% else %}<span class="tag">-</span>{% endif %}
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-    {% endif %}
-  </div>
-  <div class="card trial-empty" data-trial-empty hidden>{{ ui.empty('No candidates in this trial', 'Switch trials or choose “All trials”.', 'award') }}</div>
-</section>
-{% endif %}
 <script>
 (function () {
-  var tabs = document.querySelectorAll('.rev-tab');
-  var panels = document.querySelectorAll('.rev-panel');
-  if (!tabs.length) return;
-
-  // ---- Filter candidates by trial across the card lanes (review/active/done) ---- //
-  var trialFilter = document.getElementById('trialFilter');
-  var trialBar = document.getElementById('trialFilterBar');
-  var trialCount = document.getElementById('trialFilterCount');
-  function slice(nl) { return Array.prototype.slice.call(nl); }
-  function applyTrialFilter() {
-    var nct = (trialFilter && trialFilter.value) || '';
-    var cards = slice(document.querySelectorAll(
-      '.cand-row[data-nct], .outreach-card[data-nct], tr[data-nct]'));
-    cards.forEach(function (el) {
-      el.style.display = (!nct || el.getAttribute('data-nct') === nct) ? '' : 'none';
-    });
-    var total = 0;
-    ['review', 'active', 'done'].forEach(function (name) {
-      var panel = document.querySelector('.rev-panel[data-panel="' + name + '"]');
-      if (!panel) return;
-      var n = 0;
-      slice(panel.querySelectorAll('[data-nct]')).forEach(function (el) {
-        if (el.style.display !== 'none') n += 1;
-      });
-      total += n;
-      var laneN = panel.querySelector('.lane-n');
-      if (laneN) laneN.textContent = n;
-      var tabN = document.querySelector('.rev-tab[data-tab="' + name + '"] .tab-n');
-      if (tabN) tabN.textContent = n;
-      var emptyEl = panel.querySelector('[data-trial-empty]');
-      if (emptyEl) emptyEl.hidden = !(nct && n === 0);
-      if (name === 'done') {
-        var tableCard = panel.querySelector('.card:not(.trial-empty)');
-        if (tableCard) tableCard.style.display = (nct && n === 0) ? 'none' : '';
-      }
-    });
-    // Collapse empty sub-groups in the active lane so headers don't dangle.
-    slice(document.querySelectorAll('.active-group')).forEach(function (g) {
-      var any = false;
-      slice(g.querySelectorAll('.outreach-card[data-nct]')).forEach(function (c) {
-        if (c.style.display !== 'none') any = true;
-      });
-      g.style.display = any ? '' : 'none';
-    });
-    if (trialCount) trialCount.textContent = nct ? (total + ' candidate' + (total === 1 ? '' : 's')) : '';
-  }
-
-  function activateTab(name) {
-    tabs.forEach(function (x) { x.classList.toggle('active', x.getAttribute('data-tab') === name); });
-    panels.forEach(function (p) { p.hidden = p.getAttribute('data-panel') !== name; });
-    // The ATS list has its own trial filter, so hide the global one there.
-    if (trialBar) trialBar.hidden = (name === 'list');
-  }
-  tabs.forEach(function (t) {
-    t.addEventListener('click', function () {
-      var name = t.getAttribute('data-tab');
-      activateTab(name);
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    });
-  });
-  if (trialFilter) trialFilter.addEventListener('change', applyTrialFilter);
-  // Default view should always open on Awaiting review.
-  activateTab('review');
-  applyTrialFilter();
-
-  var rows = Array.prototype.slice.call(document.querySelectorAll('.ats-row-item'));
-  if (!rows.length) return;
-  var search = document.getElementById('atsSearch');
-  var lane = document.getElementById('atsLane');
-  var status = document.getElementById('atsStatus');
-  var source = document.getElementById('atsSource');
-  var records = document.getElementById('atsRecords');
-  var attention = document.getElementById('atsAttention');
-  var trial = document.getElementById('atsTrial');
-  var reset = document.getElementById('atsReset');
-  var count = document.getElementById('atsVisibleCount');
-  var empty = document.getElementById('atsEmpty');
-
-  function applyAtsFilters() {
-    var q = (search && search.value || '').toLowerCase().trim();
-    var laneV = lane && lane.value || '';
-    var statusV = status && status.value || '';
-    var sourceV = source && source.value || '';
-    var recordsV = records && records.value || '';
-    var attentionV = attention && attention.value || '';
-    var trialV = (trial && trial.value || '').toUpperCase().trim();
+  var chips = document.querySelectorAll('#queueChips .ui-chip');
+  var rows = Array.prototype.slice.call(document.querySelectorAll('#queueTable tbody tr'));
+  var empty = document.getElementById('queueEmpty');
+  if (!chips.length || !rows.length) return;
+  function apply(f) {
     var shown = 0;
     rows.forEach(function (r) {
-      var ok = true;
-      if (q && (r.getAttribute('data-search') || '').indexOf(q) === -1) ok = false;
-      if (ok && laneV && r.getAttribute('data-lane') !== laneV) ok = false;
-      if (ok && statusV && r.getAttribute('data-status') !== statusV) ok = false;
-      if (ok && sourceV && r.getAttribute('data-source') !== sourceV) ok = false;
-      if (ok && recordsV && r.getAttribute('data-records') !== recordsV) ok = false;
-      if (ok && attentionV && r.getAttribute('data-attention') !== attentionV) ok = false;
-      if (ok && trialV && (r.getAttribute('data-trial') || '').toUpperCase().indexOf(trialV) !== 0) ok = false;
+      var ok = f === 'all'
+        || (f === 'awaiting' && r.getAttribute('data-awaiting') === '1')
+        || (f === 'unread' && parseInt(r.getAttribute('data-unread'), 10) > 0)
+        || (f === 'enrolled' && r.getAttribute('data-status') === 'enrolled')
+        || (r.getAttribute('data-verdict') === f);
       r.style.display = ok ? '' : 'none';
       if (ok) shown += 1;
     });
-    if (count) count.textContent = shown;
     if (empty) empty.style.display = shown ? 'none' : '';
   }
-
-  [search, lane, status, source, records, attention, trial].forEach(function (el) {
-    if (!el) return;
-    el.addEventListener('input', applyAtsFilters);
-    el.addEventListener('change', applyAtsFilters);
-  });
-  if (reset) {
-    reset.addEventListener('click', function () {
-      if (search) search.value = '';
-      if (lane) lane.value = '';
-      if (status) status.value = '';
-      if (source) source.value = '';
-      if (records) records.value = '';
-      if (attention) attention.value = '';
-      if (trial) trial.value = '';
-      applyAtsFilters();
-    });
-  }
-  applyAtsFilters();
-})();
-</script>
-<script>
-// Drag-and-drop affordance for candidate-thread document uploads.
-(function () {
-  document.querySelectorAll('[data-doc-drop]').forEach(function (form) {
-    var input = form.querySelector('[data-doc-input]');
-    var label = form.querySelector('[data-doc-label]');
-    if (!input || !label) return;
-    function setName() {
-      if (input.files && input.files.length) {
-        label.textContent = input.files[0].name;
-        form.classList.add('has-file');
-      }
-    }
-    input.addEventListener('change', setName);
-    ['dragenter', 'dragover'].forEach(function (ev) {
-      form.addEventListener(ev, function (e) {
-        e.preventDefault(); form.classList.add('drag');
-      });
-    });
-    ['dragleave', 'drop'].forEach(function (ev) {
-      form.addEventListener(ev, function (e) {
-        e.preventDefault(); form.classList.remove('drag');
-      });
-    });
-    form.addEventListener('drop', function (e) {
-      if (e.dataTransfer && e.dataTransfer.files.length) {
-        input.files = e.dataTransfer.files;
-        setName();
-      }
+  chips.forEach(function (c) {
+    c.addEventListener('click', function () {
+      chips.forEach(function (x) { x.classList.remove('is-active'); });
+      c.classList.add('is-active');
+      apply(c.getAttribute('data-filter'));
     });
   });
 })();

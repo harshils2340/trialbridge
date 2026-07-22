@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+{% block title %}Dashboard · BridgeMD for sites{% endblock %}
+{% import "_icons.html" as ic %}
+{% import "_ui.html" as ui %}
+
+{% block body %}
+{% if not claims %}
+<div class="app-card pad">
+  {{ ui.empty('Claim your studies to get started',
+     'Applicants for the studies you claim show up here automatically, pre-screened and ready to review.',
+     'award', action=ui.btn('Set up your site', 'primary', href=url_for('site_setup'), icon='award')) }}
+</div>
+{% else %}
+
+<div class="app-head">
+  <div>
+    <h1>Good to see you{% if user['name'] %}, {{ user['name'].split()[0] }}{% endif %}</h1>
+    <p>{{ nav_study_ncts[0] if nav_study_ncts else 'Your studies' }} · your day at a glance</p>
+  </div>
+  {{ ui.btn('New campaign', 'primary', href=url_for('campaign_list'), icon='megaphone') }}
+</div>
+
+<div class="app-stats">
+  <div class="app-stat accent"><div class="l">Awaiting your decision</div><div class="n">{{ stats.awaiting }}</div><div class="s">AI pre-screened</div></div>
+  <div class="app-stat"><div class="l">Active outreach</div><div class="n">{{ stats.active }}</div><div class="s">in contact now</div></div>
+  <div class="app-stat ok"><div class="l">Enrolled</div><div class="n">{{ stats.enrolled }}</div><div class="s">this study</div></div>
+  <div class="app-stat"><div class="l">Unread replies</div><div class="n">{{ stats.unread }}</div><div class="s">across threads</div></div>
+</div>
+
+<div class="app-split">
+  <div>
+    {# ── Ready to send ── #}
+    <div class="app-sec">
+      <div class="app-sec-head">
+        {{ ic.icon('sparkle') }}<b>Ready to send</b>
+        <span>AI drafted these from each person's status. Review and send.</span>
+        {% if drafts %}{{ ui.count(drafts|length, 'danger') }}{% endif %}
+      </div>
+      {% if not drafts %}
+      <div class="app-card pad">{{ ui.empty('All caught up', 'No follow-ups need drafting right now.', 'check') }}</div>
+      {% else %}
+      <div class="app-card">
+        {% for d in drafts %}
+        <div class="app-row">
+          <span class="app-av neutral">{{ d.initials }}</span>
+          <div class="main">
+            <div class="top">
+              <b>{{ d.name }}</b>{{ ui.badge(d.tag, d.tag_tone) }}
+              <span class="reason">{{ d.reason }}</span>
+            </div>
+            <div class="subj">{{ d.subject }}</div>
+            <div class="prev">{{ d.preview }}</div>
+          </div>
+          <div class="acts">
+            {{ ui.btn('Edit', 'ghost', 'sm', href=url_for('applicant_detail', lead_id=d.id)) }}
+            <form method="post" action="{{ url_for('message_lead', lead_id=d.id) }}">
+              <input type="hidden" name="body" value="{{ d.preview }}">
+              {{ ui.btn('Send', 'primary', 'sm', type='submit') }}
+            </form>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div>
+
+    {# ── Pending decisions ── #}
+    <div class="app-sec">
+      <div class="app-sec-head">
+        {{ ic.icon('user-plus') }}<b>Pending decisions</b>
+        <span>AI pre-screened. You decide.</span>
+        {% if pending %}{{ ui.count(pending|length, 'danger') }}{% endif %}
+      </div>
+      {% if not pending %}
+      <div class="app-card pad">{{ ui.empty('Nothing awaiting review', 'New applicants appear here the moment they apply.', 'check') }}</div>
+      {% else %}
+      <div class="app-card">
+        {% for p in pending %}
+        {% set sp = 'hi' if p.score >= 70 else ('mid' if p.score >= 40 else 'lo') %}
+        <div class="app-row">
+          <span class="app-av">{{ p.initials }}</span>
+          <div class="main">
+            <div class="top">
+              <b>{{ p.name }}</b>{{ ui.badge(p.verdict, p.verdict_tone) }}
+              <span class="score-pill {{ sp }}">{{ p.score }}/100</span>
+              <span class="reason">{{ p.source }} · {{ p.applied }}</span>
+            </div>
+            <div class="prev" style="-webkit-line-clamp:2;">{{ p.flag }}</div>
+          </div>
+          <div class="acts">
+            {{ ui.btn('View', 'ghost', 'sm', href=url_for('applicant_detail', lead_id=p.id)) }}
+            <form method="post" action="{{ url_for('decline_lead', lead_id=p.id) }}">
+              {{ ui.btn('Decline', 'danger', 'sm', type='submit') }}
+            </form>
+            <form method="post" action="{{ url_for('accept_lead', lead_id=p.id) }}">
+              {{ ui.btn('Accept', 'primary', 'sm', type='submit') }}
+            </form>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  {# ── Right rail ── #}
+  <div>
+    <div class="app-card pad" style="margin-bottom:16px;">
+      <div class="rail-h">Coming up</div>
+      {% if not today %}
+      <div class="app-sub" style="font-size:13px;color:var(--faint);">No visits scheduled.</div>
+      {% else %}
+      {% for c in today %}
+      <div class="rail-item">
+        <span class="accent-bar"></span>
+        <div>
+          <div class="t">{{ c.time }}</div>
+          <div class="p">{{ c.name }}</div>
+          <div class="s">{{ c.kind }}</div>
+        </div>
+      </div>
+      {% endfor %}
+      {% endif %}
+    </div>
+
+    <div class="app-card pad">
+      <div class="rail-h">What's new</div>
+      {% if not new_items %}
+      <div class="app-sub" style="font-size:13px;color:var(--faint);">Quiet for now.</div>
+      {% else %}
+      <div class="rail-feed">
+        {% for n in new_items %}
+        <div class="fi">
+          <div class="row1"><span class="dot{{ ' urgent' if loop.index0 < 1 }}"></span><span class="tx">{{ n.text }}</span></div>
+          <span class="tm">{{ n.time }}</span>
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

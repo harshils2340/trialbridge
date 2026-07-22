@@ -4,44 +4,43 @@
 {% block title %}Intake · BridgeMD{% endblock %}
 
 {% block body %}
-<div class="page-head">
-  <h1>Intake</h1>
-  <p>Pull applicants from every source into one queue — without changing how you already collect them.</p>
+<div class="app-head">
+  <div>
+    <h1>Studies</h1>
+    <p>Pull applicants from every source into one queue — without changing how you already collect them.</p>
+  </div>
 </div>
 
-<div class="card" style="background:var(--accent-soft);border:1px solid var(--border);">
-  <p style="margin:0;">{{ ic.icon('shield') }}
-    Intake carries patient info (PHI). Addresses and imported lists are scoped to
-    your team only. Don't share intake addresses publicly.</p>
+<div class="callout info" style="margin-bottom:20px;">{{ ic.icon('shield') }}
+  <span>Intake carries patient info (PHI). Addresses and imported lists are scoped to
+  your team only — never share an intake address publicly.</span>
 </div>
 
 {% if not rows %}
-<div class="card">
-  {{ ui.empty('Claim a study to set up intake', 'Each claimed study gets its own inbound address and importer.', 'award') }}
-  <div style="text-align:center;">{{ ui.btn('Go to site setup', variant='primary', icon='award', href=url_for('site_setup')) }}</div>
+<div class="app-card pad">
+  {{ ui.empty('Claim a study to set up intake', 'Each claimed study gets its own inbound address and importer.', 'award', action=ui.btn('Go to site setup', variant='primary', icon='award', href=url_for('site_setup'))) }}
 </div>
 {% endif %}
 
 {% for r in rows %}
-<div class="card">
-  <div class="section-title"><h2>{{ r.claim['nct'] }} — {{ (r.claim['title'] or 'Study')[:70] }}</h2></div>
+<div class="app-card pad" style="margin-bottom:16px;">
+  <div class="app-card-title">{{ ic.icon('file') }} {{ r.claim['nct'] }} — {{ (r.claim['title'] or 'Study')[:70] }}</div>
 
-  <div class="field">
-    <label>Inbound intake address</label>
-    <input readonly value="{{ r.full }}" data-copy-target="addr-{{ loop.index }}" id="addr-{{ loop.index }}">
+  <label style="display:block;font-size:13px;font-weight:600;color:var(--ink);margin-bottom:6px;">Inbound intake address</label>
+  <div class="codebox" style="margin-bottom:8px;">
+    <code id="addr-{{ loop.index }}">{{ r.full }}</code>
+    {{ ui.btn('Copy', variant='ghost', size='sm', icon='copy', extra='data-copy-btn="addr-%s"'|format(loop.index)) }}
   </div>
-  <p class="site-hint">
+  <p class="app-sub" style="font-size:12.5px;color:var(--muted);margin:0 0 18px;">
     Forward your recruitment inbox (or set an auto-forward) to this address. Every
     email becomes an applicant in this study's queue, de-duplicated and pre-screened.
-    {{ ui.btn('Copy address', variant='ghost', size='sm', extra='data-copy-btn="addr-%s"'|format(loop.index)) }}
   </p>
 
-  <hr style="border:none;border-top:1px solid var(--border);margin:var(--space-4) 0;">
-
-  <form method="post" action="{{ url_for('intake_import') }}" enctype="multipart/form-data" class="row" style="align-items:flex-end;">
+  <label style="display:block;font-size:13px;font-weight:600;color:var(--ink);margin-bottom:8px;">CSV import</label>
+  <form method="post" action="{{ url_for('intake_import') }}" enctype="multipart/form-data" style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">
     <input type="hidden" name="nct" value="{{ r.claim['nct'] }}">
-    <div class="field">
-      <label for="file-{{ loop.index }}">Import a CSV (columns: name, email, phone, notes)</label>
+    <div class="field" style="flex:1;min-width:240px;margin:0;">
+      <label for="file-{{ loop.index }}" style="font-size:12px;color:var(--muted);">Columns: name, email, phone, notes</label>
       <input id="file-{{ loop.index }}" name="file" type="file" accept=".csv,text/csv" required>
     </div>
     {{ ui.btn('Import', variant='primary', icon='upload', type='submit') }}
@@ -55,9 +54,8 @@ document.querySelectorAll('[data-copy-btn]').forEach(function (btn) {
     var id = btn.getAttribute('data-copy-btn');
     var el = document.getElementById(id);
     if (!el) return;
-    el.select();
-    if (navigator.clipboard) navigator.clipboard.writeText(el.value);
-    else document.execCommand('copy');
+    var text = el.value !== undefined ? el.value : el.textContent;
+    if (navigator.clipboard) navigator.clipboard.writeText(text);
     var t = btn.textContent; btn.textContent = 'Copied'; setTimeout(function(){ btn.textContent = t; }, 1200);
   });
 });

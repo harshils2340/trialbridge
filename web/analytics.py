@@ -15,6 +15,17 @@ import db
 _FMT = "%Y-%m-%d %H:%M"
 
 
+def _recon_outcome(row):
+    """Read the 'outcome' from a reconciliation record that may be a sqlite3.Row
+    (no .get) or a plain dict. Returns '' when missing."""
+    if not row:
+        return ""
+    try:
+        return row["outcome"]
+    except (KeyError, IndexError, TypeError):
+        return ""
+
+
 def _parse(ts):
     try:
         return dt.datetime.strptime(ts, _FMT)
@@ -130,7 +141,7 @@ def funnel_stats(ncts=None):
     top = reached[0] or 1
     verified_enrolled = sum(
         1 for l in leads
-        if (recon.get(l["id"]) or {}).get("outcome") == "enrolled_verified")
+        if _recon_outcome(recon.get(l["id"])) == "enrolled_verified")
     source_breakdown = _source_breakdown(leads, recon, pipeline)
     return {
         "stages": stages,
@@ -205,7 +216,7 @@ def _source_breakdown(leads, recon, pipeline):
         row["eligible"] += 1 if mx >= _stage_index("eligible", pipeline) else 0
         row["screening"] += 1 if mx >= _stage_index("screening", pipeline) else 0
         row["enrolled"] += 1 if mx >= _stage_index("enrolled", pipeline) else 0
-        if (recon.get(lead["id"]) or {}).get("outcome") == "enrolled_verified":
+        if _recon_outcome(recon.get(lead["id"])) == "enrolled_verified":
             row["verified_enrolled"] += 1
     rows = list(out.values())
     # Keep the dashboard stable with exactly two platform sources.

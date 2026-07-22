@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}Documents · BridgeMD for sites{% endblock %}
+{% import "_icons.html" as ic %}
+{% import "_ui.html" as ui %}
+
+{% block body %}
+<div class="app-head">
+  <div>
+    <h1>Documents &amp; approvals</h1>
+    <p>Route the trial's essential documents and patient consent for the PI to review and approve - with a full audit trail on every action.</p>
+  </div>
+  {{ ui.btn('Applicants', 'ghost', href=url_for('leads'), icon='user-plus') }}
+</div>
+
+<div class="callout info" style="margin-bottom:18px;">
+  {{ ic.icon('shield-check') }}
+  <span>Every review, approval and status change is written to an append-only audit trail (who, when, and the meaning). Legally-binding 21 CFR Part 11 e-signatures and patient eConsent route through a validated vendor - this workspace records the review and approval.</span>
+</div>
+
+<div class="app-stats">
+  <div class="app-stat"><div class="l">Documents</div><div class="n">{{ stats.total }}</div></div>
+  <div class="app-stat accent"><div class="l">Awaiting review</div><div class="n">{{ stats.pending }}</div><div class="s">need a decision</div></div>
+  <div class="app-stat"><div class="l">In review</div><div class="n">{{ stats.in_review }}</div></div>
+  <div class="app-stat ok"><div class="l">Approved</div><div class="n">{{ stats.approved }}</div></div>
+</div>
+
+<div class="app-chips" id="docChips">
+  <button type="button" class="ui-chip is-active" data-filter="all">All</button>
+  <button type="button" class="ui-chip" data-filter="consent">Patient consent</button>
+  <button type="button" class="ui-chip" data-filter="patient">Patient forms</button>
+  <button type="button" class="ui-chip" data-filter="regulatory">Regulatory / FDA</button>
+  <button type="button" class="ui-chip" data-filter="site">Site &amp; training</button>
+</div>
+
+<div class="app-card">
+  {% if not docs %}
+  <div class="pad">{{ ui.empty('No documents yet', 'The trial\'s consent forms and regulatory documents will show up here, ready to route for approval.', 'file-check') }}</div>
+  {% else %}
+  <table class="app-table" id="docTable">
+    <thead>
+      <tr>
+        <th>Document</th><th>Owner</th><th>Version</th><th>Status</th><th>Updated</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for d in docs %}
+      <tr class="link" onclick="location.href='{{ url_for('document_detail', doc_id=d.id) }}'"
+          data-cat="{{ d.category }}">
+        <td>
+          <div class="who">
+            <span class="app-av {{ 'brand' if d.party == 'patient' else 'neutral' }}">{{ ic.icon('file') }}</span>
+            <div>
+              <b>{{ d.title }}</b>
+              <span>{{ d.category_label }}{% if d.nct %} · {{ d.nct }}{% endif %}</span>
+            </div>
+          </div>
+        </td>
+        <td>
+          <div>{{ d.party_label }}</div>
+          {% if d.party_name %}<div class="app-sub" style="font-size:12px;color:var(--faint);">{{ d.party_name }}</div>{% endif %}
+        </td>
+        <td style="white-space:nowrap;">{{ d.version }}</td>
+        <td>{{ ui.badge(d.status_label, d.status_tone) }}</td>
+        <td style="white-space:nowrap;">{{ d.updated }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p id="docEmpty" class="app-sub" style="display:none;padding:22px;text-align:center;color:var(--faint);">No documents in this group.</p>
+  {% endif %}
+</div>
+
+<script>
+(function () {
+  var chips = document.querySelectorAll('#docChips .ui-chip');
+  var rows = Array.prototype.slice.call(document.querySelectorAll('#docTable tbody tr'));
+  var empty = document.getElementById('docEmpty');
+  if (!chips.length || !rows.length) return;
+  function apply(f) {
+    var shown = 0;
+    rows.forEach(function (r) {
+      var ok = f === 'all' || r.getAttribute('data-cat') === f;
+      r.style.display = ok ? '' : 'none';
+      if (ok) shown += 1;
+    });
+    if (empty) empty.style.display = shown ? 'none' : '';
+  }
+  chips.forEach(function (c) {
+    c.addEventListener('click', function () {
+      chips.forEach(function (x) { x.classList.remove('is-active'); });
+      c.classList.add('is-active');
+      apply(c.getAttribute('data-filter'));
+    });
+  });
+})();
+</script>
+{% endblock %}

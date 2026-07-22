@@ -4,12 +4,11 @@
 {% block title %}Campaigns · BridgeMD{% endblock %}
 
 {% block body %}
-<div class="page-head">
-  <h1>Campaigns</h1>
-  <p>Recruit for your studies, then track every post back to enrolled patients.</p>
-</div>
-
-<div style="margin-bottom:var(--space-4);">
+<div class="app-head">
+  <div>
+    <h1>Campaigns</h1>
+    <p>Recruit for your studies, then track every post back to enrolled patients.</p>
+  </div>
   {% if claims %}
   {{ ui.btn('New campaign', variant='primary', icon='plus', extra='data-ui-open="newcamp"') }}
   {% else %}
@@ -17,27 +16,27 @@
   {% endif %}
 </div>
 
-<div class="card">
+<div class="app-card">
   {% if not camps %}
-  {{ ui.empty('No campaigns yet', 'Create a campaign to generate ad copy, post it where you already do, and see which place actually enrolls patients.', 'activity') }}
+  <div class="pad">{{ ui.empty('No campaigns yet', 'Create a campaign to generate ad copy, post it where you already do, and see which place actually enrolls patients.', 'megaphone') }}</div>
   {% else %}
-  <table class="dash-table">
+  <table class="app-table">
     <thead><tr>
-      <th>Campaign</th><th>Study</th><th>Channel</th><th>Status</th><th>IRB</th>
-      <th>Applicants</th><th>Enrolled</th><th>Cost / enrolled</th>
+      <th>Campaign</th><th>Study</th><th>Channel</th><th>Status</th>
+      <th>Applicants</th><th>Enrolled</th><th>Cost / enrolled</th><th>IRB</th>
     </tr></thead>
     <tbody>
       {% for c in camps %}
       {% set p = perf.get(c['id']) %}
-      <tr>
-        <td><a href="{{ url_for('campaign_detail', cid=c['id']) }}">{{ c['name'] or 'Untitled' }}</a></td>
-        <td><span class="dash-trial-title">{{ c['nct'] }}</span></td>
+      <tr class="link" onclick="location.href='{{ url_for('campaign_detail', cid=c['id']) }}'">
+        <td><b style="color:var(--ink);">{{ c['name'] or 'Untitled' }}</b></td>
+        <td>{{ c['nct'] }}</td>
         <td>{{ ui.badge(c['channel']|capitalize, 'brand') }}</td>
         <td>{{ ui.badge(c['status']|capitalize, 'ok' if c['status']=='active' else ('warn' if c['status']=='paused' else 'neutral')) }}</td>
-        <td>{{ ui.badge('Approved', 'ok') if c['irb_approved'] else ui.badge('Pending', 'warn') }}</td>
         <td>{{ p.applicants if p else 0 }}</td>
         <td>{{ p.enrolled if p else 0 }}</td>
-        <td>{{ '$%.2f'|format(p.cost_per_enrolled) if p and p.cost_per_enrolled else '—' }}</td>
+        <td style="font-weight:600;color:{{ 'var(--green)' if (p and p.cost_per_enrolled) else 'var(--faint)' }};">{{ '$%.2f'|format(p.cost_per_enrolled) if p and p.cost_per_enrolled else '—' }}</td>
+        <td>{{ ui.badge('Approved', 'ok') if c['irb_approved'] else ui.badge('Pending', 'warn') }}</td>
       </tr>
       {% endfor %}
     </tbody>
