@@ -5,31 +5,52 @@
 This is the living design doc. It captures the panel-derived requirements, the design
 decisions, and a progress log. Update it at the end of every phase.
 
-## THE ONE KPI: Enrollment Velocity (test EVERY feature against this before building)
-BridgeMD is not a portal. It's an **enrollment optimization engine**. There is a single
-metric everything ladders up to:
+## THE KPI: two tiers (test EVERY feature against these before building)
+BridgeMD is not a portal. It's an **enrollment optimization engine**. Safety/compliance is
+the hard gate first; within it, everything ladders up to a **two-tier KPI**.
 
+**Tier 1 — North Star (outcome): Enrollment Velocity**
 > **Enrollment Velocity** = the rate at which patients move through the funnel over time:
 > **found → contacted → screened → enrolled → retained.**
 
-Before building ANY feature, answer: *which stage of this funnel does it speed up, and by
-roughly how much?* If it doesn't move one of these, it probably shouldn't be built.
+This is the outcome the PI/coordinator is graded on and what the license is worth.
 
-**Two guardrails (a feature must pass both, or it fails the KPI):**
-1. **Net throughput, not vanity counts.** A feature must not inflate an upstream stage at
+**Tier 2 — Efficiency KPI (the lever): Operational Efficiency**
+> **Operational Efficiency** = coordinator/PI **time & capacity per enrolled patient** —
+> (a) **cycle time** (decision → consent signed → enrolled; how long a doc/task sits
+> `pending` before done) and (b) **capacity** (applicants/studies one coordinator can run
+> without screen→enroll conversion dropping).
+
+The admin/operations work (Documents & approvals, ATS triage, the PI workspace) lives in
+Tier 2. **The link to Tier 1 is explicit and is the whole pitch: less time on admin = more
+time enrolling and retaining.** Efficiency only counts when it **shortens cycle time or
+raises capacity WITHOUT degrading downstream conversion** — otherwise it's busywork.
+
+Before building ANY feature, answer: *does it move a funnel stage directly (Tier 1), or cut
+coordinator/PI cycle time/capacity in a way that traces to a funnel stage (Tier 2)?* If it
+moves neither, it probably shouldn't be built.
+
+**Guardrails (a feature must pass ALL, or it fails the KPI):**
+1. **Compliance/safety is the hard gate, FIRST.** No velocity OR efficiency gain justifies
+   breaking `.cursor/rules/compliance.mdc` (anti-kickback, blinded consent, PHI). Ever.
+   Making admin faster/easier never trumps safety.
+2. **Net throughput, not vanity counts.** A feature must not inflate an upstream stage at
    the expense of a downstream one. Raising "contacted" by sending sites unqualified
    applicants *lowers* screen→enroll conversion and burns trust — that's negative velocity.
    Optimize the whole funnel, or one stage without degrading the next.
-2. **Compliance is a hard gate, not a tradeoff.** No velocity gain justifies breaking the
-   rules in `.cursor/rules/compliance.mdc` (anti-kickback, blinded consent, PHI). Ever.
+3. **Efficiency must trace to enrollment.** A Tier-2 feature must cut cycle time or raise
+   capacity AND name the funnel stage the saved time is redirected into (usually
+   screened→enrolled or retained). "Looks organized" is not a KPI.
 
 Note on wording: *retention* is the opposite vector of "velocity" (keeping people in, not
-pushing them through), but it lives under the same KPI because a dropout is **negative net
-enrollment**. Think "throughput minus leakage."
+pushing them through), but it lives under Tier 1 because a dropout is **negative net
+enrollment**. Think "throughput minus leakage." Tier 2 (efficiency) is not a competing goal
+— it's how a swamped site actually achieves Tier 1.
 
-**Agent commitment:** for every proposed feature I will state which funnel stage(s) it moves
-and flag it explicitly if it does NOT advance Enrollment Velocity (or if it risks guardrail 1
-or 2). See `.cursor/rules/enrollment-velocity.mdc` (always on).
+**Agent commitment:** for every proposed feature I will state which tier it moves — an
+Enrollment Velocity stage (Tier 1) and/or Operational Efficiency (Tier 2, naming the funnel
+stage the saved time feeds) — and flag it explicitly if it moves neither, or risks any
+guardrail. See `.cursor/rules/enrollment-velocity.mdc` (always on).
 
 ## Founder execution preference (shipping)
 - After completing a requested implementation batch and validating it locally, **commit and push
