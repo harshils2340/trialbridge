@@ -1123,6 +1123,9 @@ def inject_globals():
     else:
         pov = "patient"
     nav_study_ncts = []
+    nav_studies = []
+    active_nct = ""
+    active_study_label = "All studies"
     my_role = ""
     my_role_label = ""
     can_manage_team = False
@@ -1131,6 +1134,19 @@ def inject_globals():
             nav_study_ncts = sorted(db.user_claimed_ncts(g.user["id"]))
         except Exception:
             nav_study_ncts = []
+        try:
+            nav_studies = [{"nct": s["nct"], "title": s["title"] or s["nct"]}
+                           for s in db.list_team_studies(g.user["id"])]
+            active_nct = session.get("active_nct", "")
+            if active_nct not in {s["nct"] for s in nav_studies}:
+                active_nct = ""
+            if active_nct:
+                for s in nav_studies:
+                    if s["nct"] == active_nct:
+                        active_study_label = s["title"] or s["nct"]
+                        break
+        except Exception:
+            nav_studies = []
         try:
             my_role = db.member_role(g.user["id"])
             my_role_label = db.ORG_ROLE_LABELS.get(my_role, "")
@@ -1147,6 +1163,8 @@ def inject_globals():
             "alerts_new_count": alerts_new, "messages_unread": msgs_unread,
             "site_unread": site_unread, "patient_user": g.patient_user,
             "site_demo": _site_demo_enabled(), "nav_study_ncts": nav_study_ncts,
+            "nav_studies": nav_studies, "active_nct": active_nct,
+            "active_study_label": active_study_label,
             "is_owner": _is_owner()}
 
 
@@ -4855,14 +4873,22 @@ def leads():
             app.logger.exception("demo claim volume seeding failed")
     rows = db.list_leads_for_user(g.user["id"])
     recon = db.latest_reconciliation_for_leads([r["id"] for r in rows])
-    claims = db.list_study_claims(g.user["id"])
+    claims = db.list_team_studies(g.user["id"])
     site_cfg = redcap.config_from_profile(db.get_site_profile(g.user["id"]))
     counts = db.lead_counts_for_ncts([c["nct"] for c in claims])
+    # Study switcher (top bar) + search box both drive this list.
+    active_nct = _set_active_study(claims)
+    q = request.args.get("q", "").strip()
     review, active, done = [], [], []
     queue = []
     for r in rows:
+        if active_nct and r["nct"] != active_nct:
+            continue
         item = _decode_lead(r, recon.get(r["id"]))
-        queue.append(_queue_item(item))
+        qi = _queue_item(item)
+        if q and not _queue_matches(qi, r, q):
+            continue
+        queue.append(qi)
         if r["status"] == "prescreen" and not r["decision"]:
             review.append(item)
         elif r["revealed"] and r["status"] not in db.LEAD_CLOSED:
@@ -4872,7 +4898,33 @@ def leads():
     enrolled_n = sum(1 for q in queue if q["status"] == "enrolled")
     return render_template("leads.html", queue=queue, review=review, active=active,
                            done=done, counts=counts, enrolled_n=enrolled_n,
-                           claims=claims)
+                           claims=claims, q=q, active_nct=active_nct)
+
+
+def _set_active_study(claims):
+    """Resolve the study-switcher selection. A `nct` query param sets it (and
+    'all' clears); otherwise the last choice persists in the session. Only a
+    study the team actually has is honored."""
+    valid = {c["nct"] for c in claims}
+    param = request.args.get("nct")
+    if param is not None:
+        if param in valid:
+            session["active_nct"] = param
+        else:
+            session.pop("active_nct", None)
+    cur = session.get("active_nct", "")
+    return cur if cur in valid else ""
+
+
+def _queue_matches(qi, row, q):
+    """Free-text search over a queue row. Matches the candidate code, study, and
+    title always; name/email only when the lead is revealed (de-identified)."""
+    ql = q.lower()
+    hay = [qi.get("code", ""), row["nct"] or "", row["title"] or "",
+           qi.get("stage", {}).get("label", ""), qi.get("source", "")]
+    if row["revealed"]:
+        hay += [row["name"] or "", row["email"] or ""]
+    return any(ql in (h or "").lower() for h in hay)
 
 
 def _first_name(name, fallback="there"):

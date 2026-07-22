@@ -70,10 +70,29 @@
   </aside>
   <div class="appmain">
     <header class="apptop">
-      <span class="appswitch">{{ nav_study_ncts[0] if nav_study_ncts else 'All studies' }} {{ ic.icon('chevron-down') }}</span>
+      <details class="appswitch-wrap" id="studySwitch">
+        <summary class="appswitch">
+          <span class="appswitch-lbl">{{ active_study_label }}</span>
+          {{ ic.icon('chevron-down') }}
+        </summary>
+        <div class="appswitch-menu" role="menu">
+          <a href="{{ url_for('leads', nct='all') }}" class="{{ 'active' if not active_nct }}" role="menuitem">
+            <span class="ss-main">All studies</span>
+            <span class="ss-sub">Everything the team manages</span>
+          </a>
+          {% for s in nav_studies %}
+          <a href="{{ url_for('leads', nct=s.nct) }}" class="{{ 'active' if active_nct == s.nct }}" role="menuitem">
+            <span class="ss-main">{{ s.nct }}</span>
+            <span class="ss-sub">{{ s.title[:52] }}</span>
+          </a>
+          {% else %}
+          <span class="appswitch-empty">No studies claimed yet</span>
+          {% endfor %}
+        </div>
+      </details>
       <form class="appsearch" method="get" action="{{ url_for('leads') }}">
         {{ ic.icon('search') }}
-        <input type="search" name="q" placeholder="Search applicants, studies…" value="{{ request.args.get('q','') }}">
+        <input type="search" name="q" placeholder="Search applicants, studies…" value="{{ q if q is defined else request.args.get('q','') }}">
       </form>
       <span class="apptop-spacer"></span>
       <a class="appbell" href="{{ url_for('patient_inbox') }}" aria-label="Messages">{{ ic.icon('bell') }}{% if site_unread %}<span class="dot">{{ site_unread }}</span>{% endif %}</a>
@@ -162,6 +181,13 @@
     attachCsrf();
   }
 })();
+</script>
+<script>
+// Close the study switcher when clicking outside it.
+document.addEventListener('click', function (e) {
+  var sw = document.getElementById('studySwitch');
+  if (sw && sw.open && !sw.contains(e.target)) sw.open = false;
+});
 </script>
 <script>
 (function () {

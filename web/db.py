@@ -1674,6 +1674,18 @@ def list_study_claims(user_id):
         (user_id,)).fetchall()
 
 
+def list_team_studies(user_id):
+    """Distinct studies visible to this user's whole team (any member's verified
+    claim). Used by the study switcher + the applicants view so every teammate
+    sees the same set. Returns rows with nct + title (latest title wins)."""
+    members = org_member_ids(user_id)
+    qs = ",".join("?" * len(members))
+    return get_db().execute(
+        f"SELECT nct, MAX(title) AS title, MIN(created_at) AS created_at "
+        f"FROM study_claims WHERE user_id IN ({qs}) AND verified = 1 "
+        "GROUP BY nct ORDER BY created_at DESC, nct", members).fetchall()
+
+
 def _gen_site_nct():
     return "SITE-" + secrets.token_hex(5).upper()
 

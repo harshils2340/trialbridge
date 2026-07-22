@@ -15,7 +15,13 @@
 <div class="app-head">
   <div>
     <h1>Applicants</h1>
+    {% if q %}
+    <p>{{ queue|length }} result{{ '' if queue|length == 1 else 's' }} for &ldquo;{{ q }}&rdquo;{% if active_nct %} in {{ active_nct }}{% endif %}. <a href="{{ url_for('leads', nct='all') }}">Clear</a></p>
+    {% elif active_nct %}
+    <p>{{ queue|length }} applicant{{ '' if queue|length == 1 else 's' }} in {{ active_nct }}. <a href="{{ url_for('leads', nct='all') }}">Show all studies</a></p>
+    {% else %}
     <p>{{ queue|length }} total across {{ claims|length }} stud{{ 'y' if claims|length == 1 else 'ies' }}. Pre-screened by AI - you decide.</p>
+    {% endif %}
   </div>
   {{ ui.btn('Conversations', 'ghost', href=url_for('patient_inbox'), icon='chat') }}
 </div>
@@ -38,6 +44,9 @@
 </div>
 
 <div class="app-card">
+  {% if not queue %}
+  <div class="pad">{{ ui.empty('No applicants match', ('Nothing matches &ldquo;' ~ q ~ '&rdquo; right now. Try a different search or clear it.') if q else 'No applicants in this study yet.', 'search') }}</div>
+  {% else %}
   <table class="app-table" id="queueTable">
     <thead>
       <tr>
@@ -77,6 +86,7 @@
     </tbody>
   </table>
   <p id="queueEmpty" class="app-sub" style="display:none;padding:22px;text-align:center;color:var(--faint);">No applicants match this filter.</p>
+  {% endif %}
 </div>
 {% endif %}
 
