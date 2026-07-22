@@ -3523,6 +3523,63 @@ def seed_demo_trial_documents(user_id):
                      "recorded here.")
 
 
+def seed_demo_claims(user_id):
+    """Claim the demo studies for this account so every study-team surface
+    (dashboard, applicants, campaigns, documents) has studies to hang data off.
+    Titles are derived from the seeded demo leads so they always match. No-op if
+    the account already claims anything (never touches a real, non-empty account)."""
+    if not user_id:
+        return
+    if list_study_claims(user_id):
+        return
+    db = get_db()
+    rows = db.execute(
+        "SELECT nct, MAX(title) title FROM leads WHERE nct != '' "
+        "GROUP BY nct ORDER BY nct").fetchall()
+    for r in rows[:6]:
+        add_study_claim(user_id, r["nct"], r["title"] or "", verified=True)
+
+
+def seed_demo_campaigns(user_id):
+    """Populate the campaigns surface so the marketing side isn't empty in the
+    demo: a live/paused/draft mix across claimed studies, each with a placement.
+    No-op once the account has any campaign."""
+    if not user_id:
+        return
+    if list_campaigns_for_user(user_id):
+        return
+    ncts = sorted(user_claimed_ncts(user_id) or [])
+    if not ncts:
+        return
+
+    def pick(i):
+        return ncts[i % len(ncts)]
+
+    specs = [
+        (pick(0), "Meta - obesity study awareness", "meta", 1200, "active", True,
+         "r/loseit + local interest", "Instagram / Facebook feed"),
+        (pick(1), "Google Search - diabetes trial", "google", 800, "active", True,
+         "Search - branded + condition", "Google Ads"),
+        (pick(2), "Reddit - r/diabetes recruitment", "reddit", 400, "paused", True,
+         "r/diabetes weekly thread", "Reddit post"),
+        (pick(3), "Campus flyers - UofT", "campus", 150, "draft", False,
+         "UofT Medical Sciences board", "Printed flyer"),
+    ]
+    for nct, name, channel, budget, status, approved, place, place_ch in specs:
+        cid = create_campaign(user_id, nct, name, channel=channel,
+                              budget_usd=budget)
+        set_campaign_creative(
+            cid, "Volunteers needed for a research study",
+            "A local research team is enrolling participants for a study. See if "
+            "you may be eligible - takes a couple of minutes.",
+            "You may qualify for a clinical research study in your area. Check your "
+            "eligibility and apply in minutes.")
+        if approved:
+            approve_campaign(cid, approved=True)
+            set_campaign_status(cid, status)
+        create_placement(cid, label=place, channel=place_ch)
+
+
 def seed_demo_leads():
     """Populate clearly-labelled DEMO candidates so the study-team review board
     shows a full end-to-end picture before any real applicants arrive.

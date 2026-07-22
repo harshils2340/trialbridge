@@ -482,6 +482,18 @@ def _seed_demo_surfaces(user_id=None):
         db.seed_demo_leads()
     except Exception:
         app.logger.exception("demo lead seeding failed")
+    # Claim the demo studies for this account FIRST - every study-team surface
+    # (dashboard, applicants, campaigns, documents) hangs off claimed studies, so
+    # without this they all show the "claim your studies" empty state.
+    try:
+        db.seed_demo_claims(user_id)
+        db.ensure_demo_claim_volume(user_id, minimum_rows=18)
+    except Exception:
+        app.logger.exception("demo claim seeding failed")
+    try:
+        db.seed_demo_campaigns(user_id)
+    except Exception:
+        app.logger.exception("demo campaign seeding failed")
     try:
         db.seed_demo_engagement(user_id)
     except Exception:
@@ -710,9 +722,20 @@ def load_user():
     _site_demo = _site_demo_enabled() and _study_team_demo_path(request.path)
     if g.user is None and (_full_demo or _site_demo):
         g.user = _ensure_demo_user()
-    # Only ever seed onto the demo account - never onto a real logged-in user.
-    if (_full_demo or _site_demo) and _is_demo_account(g.user):
-        _seed_demo_surfaces(g.user["id"])
+    # Seed demo data onto the demo account, OR onto a logged-in study-team account
+    # that is still EMPTY (no claimed studies) while the demo is on - so the person
+    # showing the product sees a populated dashboard/queue/campaigns/documents on
+    # their own account. An account that already has claims/data is never touched.
+    # Guard: SITE_DEMO must be OFF before onboarding real sites (see COMPLIANCE.md),
+    # otherwise a brand-new real account would also get demo data.
+    if (_full_demo or _site_demo) and g.user is not None:
+        try:
+            _seedable = _is_demo_account(g.user) or not db.user_claimed_ncts(
+                g.user["id"])
+        except Exception:
+            _seedable = _is_demo_account(g.user)
+        if _seedable:
+            _seed_demo_surfaces(g.user["id"])
     pid = session.get(PATIENT_SESSION_KEY)
     g.patient_user = db.get_patient_user(pid) if pid else None
     # Patient side is auto-signed-in ONLY in the full no-login demo. Under the
