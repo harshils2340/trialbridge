@@ -152,6 +152,27 @@ if NO_LOGIN and IS_PROD and PUBLIC_DEMO:
         "no-login demo. This is only safe pre-launch (no real PHI). Turn "
         "PUBLIC_DEMO and NO_LOGIN OFF before onboarding any real site.")
 
+# Study-team ("site") side public demo. Unlike NO_LOGIN (which fakes BOTH the
+# patient and the site side), SITE_DEMO ONLY exposes the study-team side, and
+# ONLY by impersonating a dedicated demo account on /app/* study-team paths -
+# the patient side keeps its normal login gating. Default ON so prospects can
+# click "See the demo" without any account.
+#
+# Why this is safe: the demo is scoped to one demo account seeded with fake
+# candidates; real study-team accounts (and their applicant PHI) require login
+# and are isolated by user_id, so an anonymous visitor only ever sees the demo
+# account. Still a HARD COMPLIANCE GATE (see matcher/COMPLIANCE.md): never put
+# real patient data on the demo account, and set SITE_DEMO=0 if you ever need
+# the site side fully locked down.
+SITE_DEMO = os.environ.get("SITE_DEMO", "1") == "1"
+
+# Study-team paths where an anonymous visitor may be shown the demo account.
+# (Excludes owner-only /app/analytics.) Patient/clinician/public paths are never
+# auto-impersonated, so they stay public/gated exactly as before.
+_STUDY_TEAM_DEMO_PREFIXES = (
+    "/app/leads", "/app/messages", "/app/site", "/app/dashboard",
+    "/app/campaign", "/app/intake", "/files/lead", "/files/team")
+
 # Health-records / EHR sync (SMART Health IT) is hidden for now — the connector
 # is still a sandbox and not patient-ready. Flip RECORDS_UI=1 to re-enable the
 # "Connect records" / sync banners across the patient UI.
@@ -533,6 +554,23 @@ def _demo_mode_enabled():
     return True
 
 
+def _site_demo_enabled():
+    """True when the study-team side runs as a public demo (default on). This is
+    independent of NO_LOGIN and never touches the patient side."""
+    return SITE_DEMO
+
+
+def _study_team_demo_path(path):
+    return (path or "").startswith(_STUDY_TEAM_DEMO_PREFIXES)
+
+
+def _is_demo_account(user):
+    try:
+        return bool(user) and (user["email"] or "").strip().lower() == _DEMO_EMAIL
+    except (KeyError, TypeError):
+        return False
+
+
 # Seed the retention/engagement surfaces (messages, visits, a physician referral)
 # on top of the demo leads so a fresh no-login demo shows the whole loop alive.
 if NO_LOGIN:
@@ -660,15 +698,21 @@ def patient_login_required(view):
 def load_user():
     uid = session.get(USER_SESSION_KEY)
     g.user = db.get_user(uid) if uid else None
-    if g.user is None and _demo_mode_enabled():
+    # Full no-login demo (NO_LOGIN) impersonates the demo user everywhere; the
+    # site-only demo (SITE_DEMO) only does so on study-team paths, so public and
+    # patient pages keep their normal (public / logged-out) layout.
+    _full_demo = _demo_mode_enabled()
+    _site_demo = _site_demo_enabled() and _study_team_demo_path(request.path)
+    if g.user is None and (_full_demo or _site_demo):
         g.user = _ensure_demo_user()
-    if _demo_mode_enabled() and g.user:
+    # Only ever seed onto the demo account - never onto a real logged-in user.
+    if (_full_demo or _site_demo) and _is_demo_account(g.user):
         _seed_demo_surfaces(g.user["id"])
     pid = session.get(PATIENT_SESSION_KEY)
     g.patient_user = db.get_patient_user(pid) if pid else None
-    # In preview mode, show patient-side flows as already signed in so demos can
-    # focus on product behavior (apply/message tracking) instead of auth prompts.
-    if g.patient_user is None and _demo_mode_enabled():
+    # Patient side is auto-signed-in ONLY in the full no-login demo. Under the
+    # site-only demo the patient side stays gated (real login required).
+    if g.patient_user is None and _full_demo:
         g.patient_user = _ensure_demo_patient()
 
 
@@ -1051,7 +1095,7 @@ def inject_globals():
             "records_ui": RECORDS_UI,
             "alerts_new_count": alerts_new, "messages_unread": msgs_unread,
             "site_unread": site_unread, "patient_user": g.patient_user,
-            "is_owner": _is_owner()}
+            "site_demo": _site_demo_enabled(), "is_owner": _is_owner()}
 
 
 @app.route("/demo-mode", methods=["POST"])

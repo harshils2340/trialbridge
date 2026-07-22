@@ -13,12 +13,8 @@
     <p class="b2b-sub">Match patients from your own EHR on de-identified data, then work a queue of
       pre-screened, consented applicants — from first contact to enrolled.</p>
     <div class="b2b-cta">
-      {% if demo_available %}
-      <form method="post" action="{{ url_for('set_demo_mode') }}" class="b2b-cta-demo">
-        <input type="hidden" name="enabled" value="1">
-        <input type="hidden" name="next" value="{{ url_for('leads') }}">
-        <button class="btn btn-primary btn-lg" type="submit">See the demo {{ ic.icon('arrow-right') }}</button>
-      </form>
+      {% if site_demo %}
+      <a class="btn btn-primary btn-lg" href="{{ url_for('leads') }}">See the demo {{ ic.icon('arrow-right') }}</a>
       <a class="btn btn-ghost btn-lg" href="#demo">Book a demo</a>
       {% else %}
       <a class="btn btn-primary btn-lg" href="#demo">Book a demo {{ ic.icon('arrow-right') }}</a>

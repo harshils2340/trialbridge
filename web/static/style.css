@@ -4086,7 +4086,6 @@ body.col-resizing iframe { pointer-events: none; }
   letter-spacing: -.03em; font-weight: 800; color: var(--display-ink); margin: 18px 0 0; }
 .b2b-sub { font-size: 18px; color: var(--muted); line-height: 1.6; margin: 14px auto 0; max-width: 620px; }
 .b2b-cta { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin: 24px 0 0; }
-.b2b-cta-demo { display: contents; }
 .b2b-note { display: inline-flex; align-items: center; gap: 7px; margin: 16px 0 0;
   font-size: 13px; font-weight: 500; color: var(--muted); }
 .b2b-note .ico { width: 15px; height: 15px; color: var(--green); }

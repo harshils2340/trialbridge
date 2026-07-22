@@ -238,15 +238,20 @@ fee-splitting.**
     Associate Agreement / data-processing agreement is in place with the site
     (the survey collects PHI directly into the site's project). Counsel/IRB
     sign-off required per §5 and §3 above.
-- [ ] **Public no-login demo of the study-team side (`PUBLIC_DEMO=1`)** — pre-launch,
-  the study-team ATS is exposed as a public, always-on demo even on the production
-  host (via `PUBLIC_DEMO=1` + `NO_LOGIN=1`), so prospects can click "See the demo"
-  on the For-clinics page without an account. This is only lawful because there is
-  **no real onboarded site and no real PHI** — the demo is scoped to a dedicated
-  demo account seeded with clearly-fake candidates. **HARD GATE: before onboarding
-  the first real site or ingesting any real patient data, turn `PUBLIC_DEMO` and
-  `NO_LOGIN` OFF and purge seeded demo leads**, or real applicant PHI could be
-  served to anonymous visitors (violates §3). Owner: revisit at first real signup.
+- [ ] **Public demo of the study-team side (`SITE_DEMO`, default ON)** — pre-launch,
+  the study-team ATS is a public, always-on demo so prospects can click "See the
+  demo" on the For-clinics page without an account. Scope + safety:
+  - `SITE_DEMO` only impersonates a **dedicated demo account** and only on
+    `/app/*` study-team paths. Real study-team accounts require login and are
+    isolated by `user_id`, so an anonymous visitor only ever sees the demo
+    account's clearly-fake candidates — never a real site's applicants.
+  - The **patient side stays gated** (normal login). `SITE_DEMO` never auto-signs-in
+    a patient or seeds fake patients into patient auth; that only happens under the
+    separate full `NO_LOGIN`/`PUBLIC_DEMO` demo.
+  - **HARD GATE:** never put real patient data on the demo account, and before the
+    site side must be fully locked down (e.g. it will hold anything real), set
+    `SITE_DEMO=0`. Revisit at the first real site signup. (`PUBLIC_DEMO=1` remains
+    the separate switch to allow the full `NO_LOGIN` demo on a prod host.)
 
 ---
 
