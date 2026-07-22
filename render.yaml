@@ -23,7 +23,11 @@ services:
       - key: PYTHON_VERSION
         value: "3.11.9"
       - key: NO_LOGIN
-        value: "0"
+        value: "0"               # patient side stays gated (real login required)
+      - key: SITE_DEMO
+        value: "1"               # study-team side runs as a seeded public demo
+                                 # (fake claimed trials + applicants + campaigns +
+                                 # documents). Set to "0" before onboarding real sites.
       - key: ALERTS_BACKGROUND
         value: "0"
       - key: REMINDERS_BACKGROUND
