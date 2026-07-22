@@ -297,6 +297,7 @@
   var locInput = document.getElementById('location');
   var locSuggest = document.getElementById('heroLocSuggest');
   var conditionOptions = {{ (condition_options[:80] if condition_options else [])|tojson }};
+  var drugOptions = {{ (drug_options if drug_options else [])|tojson }};
   var serverCond = {{ (condition_value|default('')|tojson) }};
   var serverLoc = {{ (location_value|default('')|tojson) }};
   var condActiveIdx = -1;
@@ -351,6 +352,16 @@
   }
   var condReqSeq = 0;
   var condDebounce = null;
+  // Suggestions are item objects: { label, value, kind:'condition'|'drug', note }.
+  // `value` is what we search by; for a drug we also fill the hidden intervention
+  // field so /find runs a drug (CT.gov intervention) search, not condition=<drug>.
+  function asItem(x) {
+    if (x && typeof x === 'object') {
+      return { label: x.label || x.value || '', value: x.value || x.label || '',
+               kind: x.kind || 'condition', note: x.note || '' };
+    }
+    return { label: x || '', value: x || '', kind: 'condition', note: '' };
+  }
   function localCondMatches(q) {
     var starts = conditionOptions.filter(function (o) {
       return (o || '').toLowerCase().indexOf(q) === 0;
@@ -359,13 +370,24 @@
       var lo = (o || '').toLowerCase();
       return lo.indexOf(q) > 0;
     });
-    return starts.concat(contains);
+    return starts.concat(contains).map(asItem);
   }
-  function mergeCondUnique(a, b, cap) {
+  function localDrugMatches(q) {
+    return drugOptions.filter(function (d) {
+      return (d || '').toLowerCase().indexOf(q) >= 0;
+    }).map(function (d) {
+      return { label: d, value: d, kind: 'drug', note: '' };
+    });
+  }
+  // Drugs first (rarer, more specific intent), then conditions; dedupe by value.
+  function mergeItems(lists, cap) {
     var out = [], seen = {};
-    a.concat(b).forEach(function (x) {
-      var k = (x || '').toLowerCase();
-      if (k && !seen[k]) { seen[k] = 1; out.push(x); }
+    [].concat.apply([], lists).map(asItem).forEach(function (it) {
+      var k = it.kind + '|' + (it.value || '').toLowerCase();
+      if (it.value && !seen[k]) { seen[k] = 1; out.push(it); }
+    });
+    out.sort(function (a, b) {
+      return (a.kind === 'drug' ? 0 : 1) - (b.kind === 'drug' ? 0 : 1);
     });
     return out.slice(0, cap || 10);
   }
@@ -374,13 +396,27 @@
     list = (list || []).slice(0, 10);
     if (!list.length) { hideCondSuggest(); return; }
     condSuggest.innerHTML = '';
-    list.forEach(function (label) {
+    list.forEach(function (it) {
+      it = asItem(it);
       var b = document.createElement('button');
       b.type = 'button';
       b.className = 'hero-suggest-item';
-      b.textContent = label;
+      var name = document.createElement('span');
+      name.className = 'hero-suggest-label';
+      name.textContent = it.label + (it.note ? '  \u00b7  ' + it.note : '');
+      b.appendChild(name);
+      if (it.kind === 'drug') {
+        var tag = document.createElement('span');
+        tag.className = 'hero-suggest-tag';
+        tag.textContent = 'Drug';
+        b.appendChild(tag);
+      }
       b.addEventListener('click', function () {
-        condInput.value = label;
+        setMode('condition');
+        condInput.value = it.value;
+        // Drug picks fill the hidden intervention with the SAME value so /find
+        // treats it as a drug-only search; conditions clear it.
+        if (interv) interv.value = it.kind === 'drug' ? it.value : '';
         hideCondSuggest();
         if (locInput && !locInput.value.trim()) locInput.focus();
       });
@@ -394,10 +430,10 @@
     var raw = (condInput.value || '').trim();
     var q = raw.toLowerCase();
     if (!q) { hideCondSuggest(); return; }
-    // Show instant local matches first so the box never feels empty...
-    renderCondList(localCondMatches(q));
-    // ...then pull the FULL ClinicalTrials.gov condition list (debounced) so
-    // every real condition (ADHD variants, etc.) is suggested, not just our seeds.
+    // Show instant local matches (drugs + conditions) so the box never feels empty...
+    renderCondList(mergeItems([localDrugMatches(q), localCondMatches(q)], 10));
+    // ...then pull the FULL ClinicalTrials.gov condition + drug lists (debounced)
+    // so every real condition/drug is suggested, not just our seeds.
     if (q.length < 2) return;
     if (condDebounce) clearTimeout(condDebounce);
     var seq = ++condReqSeq;
@@ -407,7 +443,8 @@
         .then(function (d) {
           if (seq !== condReqSeq) return;                       // stale response
           if ((condInput.value || '').trim().toLowerCase() !== q) return;
-          renderCondList(mergeCondUnique(localCondMatches(q), (d && d.items) || [], 10));
+          renderCondList(mergeItems(
+            [localDrugMatches(q), (d && d.items) || [], localCondMatches(q)], 10));
         })
         .catch(function () { /* keep local matches on network error */ });
     }, 160);

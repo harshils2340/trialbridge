@@ -611,6 +611,73 @@ CREATE INDEX IF NOT EXISTS idx_invites_clinician ON invites(clinician_id);
 CREATE INDEX IF NOT EXISTS idx_claims_user ON study_claims(user_id);
 CREATE INDEX IF NOT EXISTS idx_claims_nct ON study_claims(nct);
 CREATE INDEX IF NOT EXISTS idx_records_webhook_created ON records_webhook_events(created_at);
+
+-- ATS capture: each claimed study gets ONE unique inbound email address so a site
+-- can forward applicants from ANY source (their own inbox, ClinicalTrials.gov,
+-- ad lead forms, physician referrals) into a single per-trial queue - without
+-- changing how patients apply. `address` is the local-part token; the full
+-- address is <address>@<INTAKE_EMAIL_DOMAIN>. Scoped to the owning user+nct so
+-- inbound mail only ever lands in that team's queue. These emails carry PHI: a
+-- BAA with the inbound-email provider is required before production (COMPLIANCE.md).
+-- KPI: speeds contacted -> screened (nothing rots in a personal inbox).
+CREATE TABLE IF NOT EXISTS intake_addresses (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER NOT NULL,
+    nct         TEXT NOT NULL,
+    address     TEXT UNIQUE NOT NULL,
+    label       TEXT DEFAULT '',
+    active      INTEGER DEFAULT 1,
+    created_at  TEXT NOT NULL,
+    UNIQUE (user_id, nct),
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
+-- Recruitment campaigns (the "smart AI agency" side). A study team drafts a
+-- campaign for a channel; AI may draft the creative, but it stays irb_approved=0
+-- until a human confirms the copy is IRB/REB-approved and truthful. A campaign
+-- may NOT move to 'active' before then - a compliance hard gate (COMPLIANCE.md).
+-- `track_token` tags inbound applicants back to the campaign (leads.campaign_id)
+-- so we compute cost-per-applicant and cost-per-enrolled from the REAL funnel,
+-- not vanity clicks. KPI: found -> contacted.
+CREATE TABLE IF NOT EXISTS campaigns (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id      INTEGER NOT NULL,
+    nct          TEXT NOT NULL,
+    name         TEXT DEFAULT '',
+    channel      TEXT DEFAULT '',        -- meta | google | reddit | campus | email | other
+    status       TEXT NOT NULL DEFAULT 'draft', -- draft | active | paused | ended
+    budget_usd   REAL DEFAULT 0,
+    headline     TEXT DEFAULT '',
+    body         TEXT DEFAULT '',
+    landing_copy TEXT DEFAULT '',
+    irb_approved INTEGER DEFAULT 0,
+    track_token  TEXT UNIQUE NOT NULL,
+    created_at   TEXT NOT NULL,
+    updated_at   TEXT NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
+-- A single campaign is posted to many PLACES the site already uses (r/ADHD, a
+-- campus board, an IG post, their newsletter). Each placement gets its OWN
+-- tracking token so an applicant who arrives via that link is attributed to both
+-- the campaign and the exact place - answering "which channel actually enrolled
+-- patients", not just "which got clicks". Sites post manually where they like;
+-- we just hand them a copy-ready blurb + a trackable link.
+CREATE TABLE IF NOT EXISTS campaign_placements (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    campaign_id  INTEGER NOT NULL,
+    label        TEXT DEFAULT '',        -- where it was posted (free text)
+    channel      TEXT DEFAULT '',        -- overrides campaign channel if set
+    track_token  TEXT UNIQUE NOT NULL,
+    posted_url   TEXT DEFAULT '',        -- link to the live post (optional)
+    posted_at    TEXT DEFAULT '',
+    clicks       INTEGER DEFAULT 0,
+    created_at   TEXT NOT NULL,
+    FOREIGN KEY (campaign_id) REFERENCES campaigns(id)
+);
+CREATE INDEX IF NOT EXISTS idx_intake_addr_user ON intake_addresses(user_id);
+CREATE INDEX IF NOT EXISTS idx_campaigns_user ON campaigns(user_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_campaigns_nct ON campaigns(nct);
+CREATE INDEX IF NOT EXISTS idx_placements_campaign ON campaign_placements(campaign_id);
 """
 
 
@@ -750,6 +817,12 @@ _MIGRATIONS = {
         "redcap_record_id": "TEXT DEFAULT ''",
         "redcap_survey_status": "TEXT DEFAULT ''",
         "conv_tags": "TEXT DEFAULT ''",
+        # Attribution: which recruitment campaign produced this applicant (NULL
+        # for organic/direct). Lets the campaign engine measure cost-per-enrolled.
+        "campaign_id": "INTEGER",
+        # The specific placement (posting location) that produced this applicant,
+        # so a site sees which channel/place actually converts to enrolled.
+        "placement_id": "INTEGER",
     },
     "web_events": {
         # User-agent kept for bot auditing only (not PHI). Bot traffic is
@@ -801,6 +874,12 @@ def _migrate(con):
                 "ON leads(applicant_token)")
     con.execute("CREATE INDEX IF NOT EXISTS idx_leads_invite "
                 "ON leads(invite_token)")
+    con.execute("CREATE INDEX IF NOT EXISTS idx_leads_campaign "
+                "ON leads(campaign_id)")
+    con.execute("CREATE INDEX IF NOT EXISTS idx_leads_placement "
+                "ON leads(placement_id)")
+    con.execute("CREATE INDEX IF NOT EXISTS idx_leads_nct_email "
+                "ON leads(nct, email)")
     con.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_leads_site_token "
                 "ON leads(site_token)")
     con.execute("CREATE INDEX IF NOT EXISTS idx_patient_oauth "
@@ -1434,6 +1513,284 @@ def spend_summary_for_user(user_id, ncts=None):
     return {"total_usd": round(total, 2), "by_source": src_rows, "rows": rows}
 
 
+# --------------------------------------------------------------------------- #
+# Layer 2 - Part 2: recruitment campaigns (the AI "agency", wired to the funnel)
+#
+# Campaigns feed applicants into the SAME lead pipeline, so we can measure cost
+# per *enrolled* patient - not vanity clicks. AI-drafted creative always starts
+# irb_approved=0; set_campaign_status refuses to activate an unapproved campaign
+# (compliance hard gate: recruitment ads must be IRB/REB-approved + truthful).
+# --------------------------------------------------------------------------- #
+CAMPAIGN_CHANNELS = ("meta", "google", "reddit", "campus", "email", "other")
+# Lead statuses that count as having reached each funnel stage, for rollups.
+_SCREENED_STATUSES = {"screening", "screened", "eligible", "enrolled",
+                      "randomized", "active"}
+_ENROLLED_STATUSES = {"enrolled", "randomized", "active", "retained"}
+
+
+def create_campaign(user_id, nct, name, channel="other", budget_usd=0):
+    db = get_db()
+    ts = now()
+    track = "cmp-" + secrets.token_hex(6)
+    ch = (channel or "other").strip().lower()
+    if ch not in CAMPAIGN_CHANNELS:
+        ch = "other"
+    cur = db.execute(
+        "INSERT INTO campaigns (user_id, nct, name, channel, status, budget_usd, "
+        "track_token, created_at, updated_at) VALUES (?,?,?,?,'draft',?,?,?,?)",
+        (user_id, _norm_nct(nct), (name or "").strip(), ch,
+         float(budget_usd or 0), track, ts, ts))
+    db.commit()
+    return cur.lastrowid
+
+
+def get_campaign(campaign_id):
+    return get_db().execute(
+        "SELECT * FROM campaigns WHERE id = ?", (campaign_id,)).fetchone()
+
+
+def get_campaign_by_token(track_token):
+    """Resolve a landing/tracking token to its campaign so an inbound applicant
+    can be attributed. Only active campaigns attribute (paused/ended don't)."""
+    t = (track_token or "").strip()
+    if not t:
+        return None
+    return get_db().execute(
+        "SELECT * FROM campaigns WHERE track_token = ?", (t,)).fetchone()
+
+
+def list_campaigns_for_user(user_id, ncts=None):
+    ncts = sorted({_norm_nct(x) for x in (ncts or []) if x})
+    if ncts:
+        qs = ",".join("?" * len(ncts))
+        return get_db().execute(
+            f"SELECT * FROM campaigns WHERE user_id = ? AND nct IN ({qs}) "
+            "ORDER BY created_at DESC, id DESC", [user_id] + ncts).fetchall()
+    return get_db().execute(
+        "SELECT * FROM campaigns WHERE user_id = ? ORDER BY created_at DESC, "
+        "id DESC", (user_id,)).fetchall()
+
+
+def set_campaign_creative(campaign_id, headline, body, landing_copy):
+    """Store campaign copy. ANY creative edit resets IRB approval to 0 - changed
+    ad copy must be re-reviewed before it can run again (compliance)."""
+    db = get_db()
+    db.execute(
+        "UPDATE campaigns SET headline = ?, body = ?, landing_copy = ?, "
+        "irb_approved = 0, updated_at = ? WHERE id = ?",
+        ((headline or "").strip(), (body or "").strip(),
+         (landing_copy or "").strip(), now(), campaign_id))
+    db.commit()
+
+
+def approve_campaign(campaign_id, approved=True):
+    """Mark a campaign's creative as IRB/REB-approved (a human attests to this).
+    Only after this can it be activated."""
+    db = get_db()
+    db.execute("UPDATE campaigns SET irb_approved = ?, updated_at = ? WHERE id = ?",
+               (1 if approved else 0, now(), campaign_id))
+    db.commit()
+
+
+def set_campaign_status(campaign_id, status):
+    """Move a campaign through draft | active | paused | ended. Returns
+    (ok: bool, reason: str). Refuses to activate creative that isn't
+    IRB-approved - the compliance gate lives here so no route can bypass it."""
+    status = (status or "").strip().lower()
+    if status not in ("draft", "active", "paused", "ended"):
+        return False, "invalid status"
+    camp = get_campaign(campaign_id)
+    if not camp:
+        return False, "not found"
+    if status == "active" and not int(camp["irb_approved"] or 0):
+        return False, "creative must be IRB/REB-approved before going live"
+    db = get_db()
+    db.execute("UPDATE campaigns SET status = ?, updated_at = ? WHERE id = ?",
+               (status, now(), campaign_id))
+    db.commit()
+    return True, ""
+
+
+def campaign_performance(user_id, ncts=None):
+    """Per-campaign funnel + cost, computed from the REAL pipeline: applicants
+    attributed to the campaign, how many reached screened/enrolled, matched spend,
+    and derived cost-per-applicant / cost-per-enrolled. This is the number that
+    tells a site which channel actually produces enrolled patients."""
+    camps = list_campaigns_for_user(user_id, ncts=ncts)
+    if not camps:
+        return []
+    db = get_db()
+    ids = [c["id"] for c in camps]
+    qs = ",".join("?" * len(ids))
+    counts = {}
+    for r in db.execute(
+            f"SELECT campaign_id, status, COUNT(*) n FROM leads "
+            f"WHERE campaign_id IN ({qs}) GROUP BY campaign_id, status",
+            ids).fetchall():
+        counts.setdefault(r["campaign_id"], {})[r["status"] or ""] = r["n"]
+    out = []
+    for c in camps:
+        by_status = counts.get(c["id"], {})
+        applicants = sum(by_status.values())
+        screened = sum(n for s, n in by_status.items()
+                       if s in _SCREENED_STATUSES)
+        enrolled = sum(n for s, n in by_status.items()
+                       if s in _ENROLLED_STATUSES)
+        # Spend attributed by matching recruitment_spend on (nct, campaign name);
+        # fall back to the campaign's own budget if no spend rows were logged.
+        spend_row = db.execute(
+            "SELECT COALESCE(SUM(amount_usd),0) s FROM recruitment_spend "
+            "WHERE user_id = ? AND nct = ? AND campaign = ?",
+            (user_id, c["nct"], c["name"])).fetchone()
+        spend = float(spend_row["s"] or 0) or float(c["budget_usd"] or 0)
+        out.append({
+            "id": c["id"], "name": c["name"], "channel": c["channel"],
+            "status": c["status"], "nct": c["nct"],
+            "irb_approved": int(c["irb_approved"] or 0),
+            "track_token": c["track_token"],
+            "applicants": applicants, "screened": screened,
+            "enrolled": enrolled, "spend_usd": round(spend, 2),
+            "cost_per_applicant": round(spend / applicants, 2) if applicants else None,
+            "cost_per_enrolled": round(spend / enrolled, 2) if enrolled else None,
+        })
+    return out
+
+
+# --- Placements: the places a campaign is posted, each with its own track link ---
+def create_placement(campaign_id, label="", channel="", posted_url=""):
+    db = get_db()
+    ts = now()
+    track = "pl-" + secrets.token_hex(6)
+    db.execute(
+        "INSERT INTO campaign_placements (campaign_id, label, channel, "
+        "track_token, posted_url, posted_at, created_at) VALUES (?,?,?,?,?,?,?)",
+        (campaign_id, (label or "").strip(), (channel or "").strip().lower(),
+         track, (posted_url or "").strip(),
+         ts if (posted_url or "").strip() else "", ts))
+    db.commit()
+    return db.execute(
+        "SELECT * FROM campaign_placements WHERE track_token = ?",
+        (track,)).fetchone()
+
+
+def list_placements(campaign_id):
+    return get_db().execute(
+        "SELECT * FROM campaign_placements WHERE campaign_id = ? "
+        "ORDER BY created_at DESC, id DESC", (campaign_id,)).fetchall()
+
+
+def get_placement(placement_id):
+    return get_db().execute(
+        "SELECT * FROM campaign_placements WHERE id = ?",
+        (placement_id,)).fetchone()
+
+
+def get_placement_by_token(token):
+    t = (token or "").strip()
+    if not t:
+        return None
+    return get_db().execute(
+        "SELECT * FROM campaign_placements WHERE track_token = ?", (t,)).fetchone()
+
+
+def mark_placement_posted(placement_id, posted_url=""):
+    db = get_db()
+    db.execute(
+        "UPDATE campaign_placements SET posted_url = ?, posted_at = ? WHERE id = ?",
+        ((posted_url or "").strip(), now(), placement_id))
+    db.commit()
+
+
+def bump_placement_clicks(token):
+    db = get_db()
+    db.execute(
+        "UPDATE campaign_placements SET clicks = clicks + 1 WHERE track_token = ?",
+        ((token or "").strip(),))
+    db.commit()
+
+
+def resolve_tracking_token(token):
+    """A tracking token on a posted link is either a placement token (pl-...) or a
+    campaign token (cmp-...). Resolve either to {campaign_id, placement_id, nct}
+    so a click/apply can be attributed to the right campaign (and exact place)."""
+    t = (token or "").strip()
+    if not t:
+        return None
+    pl = get_placement_by_token(t)
+    if pl:
+        camp = get_campaign(pl["campaign_id"])
+        return {"campaign_id": pl["campaign_id"], "placement_id": pl["id"],
+                "nct": camp["nct"] if camp else ""}
+    camp = get_campaign_by_token(t)
+    if camp:
+        return {"campaign_id": camp["id"], "placement_id": None,
+                "nct": camp["nct"]}
+    return None
+
+
+def attribute_lead(lead_id, campaign_id=None, placement_id=None, only_if_nct=None):
+    """Credit an applicant to a campaign/placement. If only_if_nct is given, we
+    attribute ONLY when the lead is for that study - so a tracked click that then
+    applies to an UNRELATED trial never inflates a campaign's numbers (net-
+    throughput guardrail). Doesn't overwrite an existing attribution."""
+    lead = get_lead(lead_id)
+    if not lead:
+        return False
+    if only_if_nct and _norm_nct(lead["nct"]) != _norm_nct(only_if_nct):
+        return False
+    if lead["campaign_id"]:  # already attributed - first touch wins
+        return False
+    db = get_db()
+    db.execute(
+        "UPDATE leads SET campaign_id = ?, placement_id = ?, updated_at = ? "
+        "WHERE id = ?", (campaign_id, placement_id, now(), lead_id))
+    db.commit()
+    return True
+
+
+def placement_performance(user_id, ncts=None):
+    """Per-placement funnel: for every placement under this user's campaigns, how
+    many applicants/screened/enrolled it produced, plus clicks. This is the "which
+    place actually works" view. Cost stays at the campaign level (spend isn't
+    tracked per placement)."""
+    camps = list_campaigns_for_user(user_id, ncts=ncts)
+    if not camps:
+        return []
+    by_camp = {c["id"]: c for c in camps}
+    db = get_db()
+    cids = list(by_camp.keys())
+    qs = ",".join("?" * len(cids))
+    placements = db.execute(
+        f"SELECT * FROM campaign_placements WHERE campaign_id IN ({qs}) "
+        f"ORDER BY created_at DESC", cids).fetchall()
+    if not placements:
+        return []
+    pids = [p["id"] for p in placements]
+    pqs = ",".join("?" * len(pids))
+    counts = {}
+    for r in db.execute(
+            f"SELECT placement_id, status, COUNT(*) n FROM leads "
+            f"WHERE placement_id IN ({pqs}) GROUP BY placement_id, status",
+            pids).fetchall():
+        counts.setdefault(r["placement_id"], {})[r["status"] or ""] = r["n"]
+    out = []
+    for p in placements:
+        camp = by_camp.get(p["campaign_id"], {})
+        bs = counts.get(p["id"], {})
+        out.append({
+            "id": p["id"], "campaign_id": p["campaign_id"],
+            "campaign_name": camp["name"] if camp else "",
+            "label": p["label"],
+            "channel": p["channel"] or (camp["channel"] if camp else ""),
+            "track_token": p["track_token"], "posted_url": p["posted_url"],
+            "clicks": int(p["clicks"] or 0),
+            "applicants": sum(bs.values()),
+            "screened": sum(n for s, n in bs.items() if s in _SCREENED_STATUSES),
+            "enrolled": sum(n for s, n in bs.items() if s in _ENROLLED_STATUSES),
+        })
+    return out
+
+
 def add_study_claim(user_id, nct, title="", notify_email="", verified=False):
     """Record a study-team claim on an NCT.
 
@@ -1658,6 +2015,133 @@ def create_lead(data):
     return token
 
 
+# --------------------------------------------------------------------------- #
+# Layer 2 - Part 1: multi-source ATS intake (capture)
+#
+# A site's applicants arrive from many channels (their inbox, ClinicalTrials.gov,
+# ad lead forms, referrals, walk-ins). These helpers let all of them land in ONE
+# per-trial queue: a unique inbound email address per study, a match-or-create so
+# forwarded mail dedupes onto an existing applicant, and a CSV import to load a
+# site's current spreadsheet on day one. Everything reuses the existing `leads`
+# pipeline + `messages` inbox. Owner scoping (user_id+nct) keeps PHI contained.
+# --------------------------------------------------------------------------- #
+def get_or_create_intake_address(user_id, nct, label=""):
+    """Return the study's single inbound intake address, minting one if needed."""
+    db = get_db()
+    row = db.execute(
+        "SELECT * FROM intake_addresses WHERE user_id = ? AND nct = ?",
+        (user_id, nct)).fetchone()
+    if row:
+        return row
+    addr = "in-" + secrets.token_hex(6)
+    db.execute(
+        "INSERT INTO intake_addresses (user_id, nct, address, label, active, "
+        "created_at) VALUES (?,?,?,?,1,?)",
+        (user_id, (nct or "").strip(), addr, (label or "").strip(), now()))
+    db.commit()
+    return db.execute(
+        "SELECT * FROM intake_addresses WHERE address = ?", (addr,)).fetchone()
+
+
+def resolve_intake_address(address):
+    """Map an inbound address (full email or bare local-part) to its active
+    intake row, or None. Used by the inbound-email webhook to route mail to the
+    right trial's queue - and to reject mail to unknown/disabled addresses."""
+    a = (address or "").strip().lower()
+    if "@" in a:
+        a = a.split("@", 1)[0]
+    if not a:
+        return None
+    return get_db().execute(
+        "SELECT * FROM intake_addresses WHERE address = ? AND active = 1",
+        (a,)).fetchone()
+
+
+def list_intake_addresses(user_id):
+    return get_db().execute(
+        "SELECT * FROM intake_addresses WHERE user_id = ? ORDER BY created_at DESC",
+        (user_id,)).fetchall()
+
+
+def set_intake_address_active(address, active):
+    db = get_db()
+    db.execute("UPDATE intake_addresses SET active = ? WHERE address = ?",
+               (1 if active else 0, (address or "").strip().lower()))
+    db.commit()
+
+
+def find_lead_by_nct_email(nct, email):
+    """Newest existing applicant for this study with this email, or None.
+    Dedupe key for intake so the same person emailing twice is one thread."""
+    e = (email or "").strip().lower()
+    if not e:
+        return None
+    return get_db().execute(
+        "SELECT * FROM leads WHERE nct = ? AND lower(email) = ? "
+        "ORDER BY id DESC LIMIT 1", ((nct or "").strip(), e)).fetchone()
+
+
+def set_lead_campaign(lead_id, campaign_id):
+    db = get_db()
+    db.execute("UPDATE leads SET campaign_id = ?, updated_at = ? WHERE id = ?",
+               (campaign_id, now(), lead_id))
+    db.commit()
+
+
+def match_or_create_lead(nct, email="", name="", title="", condition="",
+                         phone="", notes="", source="intake", consent=0,
+                         campaign_id=None):
+    """Find an existing applicant for (nct, email) or create one. Returns
+    (lead_id, token, created: bool). This is the single entrypoint every capture
+    channel (inbound email, CSV import, campaign landing) routes through, so
+    dedupe and attribution stay consistent."""
+    existing = find_lead_by_nct_email(nct, email) if email else None
+    if existing:
+        # Backfill attribution if we now know the campaign and didn't before.
+        if campaign_id and not existing["campaign_id"]:
+            set_lead_campaign(existing["id"], campaign_id)
+        return existing["id"], existing["token"], False
+    token = create_lead({
+        "nct": (nct or "").strip(),
+        "title": title,
+        "condition": condition,
+        "name": name,
+        "email": email,
+        "phone": phone,
+        "notes": notes,
+        "consent": 1 if consent else 0,
+        "source": source or "intake",
+    })
+    lead = get_lead_by_token(token)
+    if campaign_id:
+        set_lead_campaign(lead["id"], campaign_id)
+    return lead["id"], token, True
+
+
+def import_leads_csv(user_id, nct, rows, source="csv_import", title="",
+                     condition=""):
+    """Bulk-load a site's existing applicant list. `rows` is an iterable of dicts
+    with any of: name, email, phone, notes. Deduplicates via match_or_create_lead
+    so re-importing the same sheet is safe. Returns a small summary."""
+    created = matched = skipped = 0
+    ids = []
+    for r in rows or []:
+        email = (r.get("email") or "").strip()
+        name = (r.get("name") or "").strip()
+        if not email and not name:
+            skipped += 1
+            continue
+        lid, _tok, is_new = match_or_create_lead(
+            nct, email=email, name=name, phone=(r.get("phone") or "").strip(),
+            notes=(r.get("notes") or "").strip(), title=title,
+            condition=condition, source=source)
+        ids.append(lid)
+        created += 1 if is_new else 0
+        matched += 0 if is_new else 1
+    return {"created": created, "matched": matched, "skipped": skipped,
+            "ids": ids}
+
+
 def accept_candidate(lead_id, note=""):
     """Study team accepts a blinded candidate: mark likely eligible and reveal
     contact + record (mutual consent - the patient already opted in on apply)."""
@@ -1807,6 +2291,22 @@ def get_lead_events(lead_id):
     return get_db().execute(
         "SELECT * FROM lead_events WHERE lead_id = ? ORDER BY id ASC",
         (lead_id,)).fetchall()
+
+
+def set_lead_prescreen(lead_id, eligibility_json="", readiness_json=""):
+    """Persist an AI pre-screen result on a lead. Stores the structured
+    eligibility read (verdict + met/unknown/not_met, so the queue can show the
+    reason a verdict was reached) and the readiness estimate. Decision-support
+    only - never auto-accepts or auto-rejects; a human still decides."""
+    db = get_db()
+    if not get_lead(lead_id):
+        return False
+    db.execute(
+        "UPDATE leads SET eligibility = ?, prescreen_readiness = ?, "
+        "updated_at = ? WHERE id = ?",
+        (eligibility_json or "", readiness_json or "", now(), lead_id))
+    db.commit()
+    return True
 
 
 def update_lead_status(lead_id, status, note="", actor="you"):

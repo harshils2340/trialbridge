@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+{% import "_icons.html" as ic %}
+{% import "_ui.html" as ui %}
+{% block title %}{{ camp['name'] or 'Campaign' }} · BridgeMD{% endblock %}
+
+{% block body %}
+<div class="page-head">
+  <p class="site-hint"><a href="{{ url_for('campaign_list') }}">{{ ic.icon('arrow-left') }} All campaigns</a></p>
+  <h1>{{ camp['name'] or 'Untitled campaign' }}</h1>
+  <p>
+    {{ camp['nct'] }} ·
+    {{ ui.badge(camp['channel']|capitalize, 'brand') }}
+    {{ ui.badge(camp['status']|capitalize, 'ok' if camp['status']=='active' else ('warn' if camp['status']=='paused' else 'neutral')) }}
+    {{ ui.badge('IRB approved', 'ok') if camp['irb_approved'] else ui.badge('IRB pending', 'warn') }}
+  </p>
+</div>
+
+{# ── Performance strip ── #}
+<div class="stats">
+  <div class="stat"><div class="l">{{ ic.icon('list', 'ico stat-ico') }}Applicants</div><div class="n">{{ perf.applicants if perf else 0 }}</div></div>
+  <div class="stat"><div class="l">{{ ic.icon('activity', 'ico stat-ico') }}Screened</div><div class="n">{{ perf.screened if perf else 0 }}</div></div>
+  <div class="stat"><div class="l">{{ ic.icon('user-plus', 'ico stat-ico') }}Enrolled</div><div class="n">{{ perf.enrolled if perf else 0 }}</div></div>
+  <div class="stat accent"><div class="l">{{ ic.icon('dollar', 'ico stat-ico') }}Cost / enrolled</div><div class="n">{{ '$%.0f'|format(perf.cost_per_enrolled) if perf and perf.cost_per_enrolled else '—' }}</div></div>
+</div>
+
+{# ── Status controls ── #}
+<div class="card">
+  <div class="section-title"><h2>Status</h2></div>
+  <p class="site-hint">A campaign can only go live once its creative is IRB/REB-approved.</p>
+  <div style="display:flex;gap:var(--space-2);flex-wrap:wrap;">
+    {% for s in ['active','paused','ended','draft'] %}
+    {% if s != camp['status'] %}
+    <form method="post" action="{{ url_for('campaign_status', cid=camp['id']) }}">
+      <input type="hidden" name="status" value="{{ s }}">
+      {{ ui.btn(s|capitalize, variant='primary' if s=='active' else 'ghost', type='submit') }}
+    </form>
+    {% endif %}
+    {% endfor %}
+  </div>
+</div>
+
+{# ── Creative ── #}
+<div class="card">
+  <div class="section-title"><h2>Ad creative</h2></div>
+  <p class="site-hint">
+    {{ ic.icon('sparkle') }} AI can draft this. Keep copy neutral and truthful — no
+    benefit, efficacy, or payment claims. Editing resets IRB approval.
+  </p>
+  <form method="post" action="{{ url_for('campaign_creative', cid=camp['id']) }}" style="margin-bottom:var(--space-3);">
+    <input type="hidden" name="action" value="generate">
+    {{ ui.btn('Generate a draft with AI', variant='violet' if false else 'ghost', icon='sparkle', type='submit') }}
+  </form>
+  <form method="post" action="{{ url_for('campaign_creative', cid=camp['id']) }}">
+    <input type="hidden" name="action" value="save">
+    <div class="field">
+      <label for="cr-h">Headline</label>
+      <input id="cr-h" name="headline" value="{{ camp['headline'] }}" placeholder="Volunteers sought for an ADHD study">
+    </div>
+    <div class="field">
+      <label for="cr-b">Body</label>
+      <textarea id="cr-b" name="body" rows="4" placeholder="Plain, factual description of who the study is looking for.">{{ camp['body'] }}</textarea>
+    </div>
+    <div class="field">
+      <label for="cr-l">Landing page copy</label>
+      <textarea id="cr-l" name="landing_copy" rows="3" placeholder="2–4 short sentences shown on the study page.">{{ camp['landing_copy'] }}</textarea>
+    </div>
+    <div style="display:flex;justify-content:flex-end;">{{ ui.btn('Save creative', variant='primary', type='submit') }}</div>
+  </form>
+
+  <hr style="border:none;border-top:1px solid var(--border);margin:var(--space-4) 0;">
+  {% if camp['irb_approved'] %}
+  <p>{{ ui.badge('IRB/REB approved', 'ok', icon='check') }} This campaign can be activated.</p>
+  {% else %}
+  <form method="post" action="{{ url_for('campaign_approve', cid=camp['id']) }}">
+    <label style="display:flex;gap:var(--space-2);align-items:flex-start;">
+      <input type="checkbox" name="attest" value="1" style="margin-top:3px;">
+      <span>I confirm this ad copy is IRB/REB-approved and truthful.</span>
+    </label>
+    <div style="margin-top:var(--space-2);">{{ ui.btn('Mark IRB-approved', variant='primary', type='submit') }}</div>
+  </form>
+  {% endif %}
+</div>
+
+{# ── Placements ── #}
+<div class="card">
+  <div class="section-title"><h2>Where you're posting</h2></div>
+  <p class="site-hint">Each place gets its own tracked link. Post the blurb wherever
+    you already do — applicants trace back to the exact place, down to enrolled.</p>
+
+  <form method="post" action="{{ url_for('campaign_placement_add', cid=camp['id']) }}" class="row" style="align-items:flex-end;margin-bottom:var(--space-4);">
+    <div class="field"><label for="pl-label">Place</label>
+      <input id="pl-label" name="label" placeholder="r/ADHD, UofT board, IG…" required></div>
+    <div class="field"><label for="pl-channel">Channel</label>
+      <select id="pl-channel" name="channel">
+        <option value="">(campaign default)</option>
+        {% for ch in channels %}<option value="{{ ch }}">{{ ch|capitalize }}</option>{% endfor %}
+      </select></div>
+    <div class="field"><label for="pl-url">Posted URL (optional)</label>
+      <input id="pl-url" name="posted_url" placeholder="https://…"></div>
+    {{ ui.btn('Add', variant='primary', type='submit') }}
+  </form>
+
+  {% if not placements %}
+  {{ ui.empty('No placements yet', 'Add the first place you plan to post.', 'pin') }}
+  {% else %}
+  {% for p in placements %}
+  {% set s = shares[loop.index0] %}
+  {% set pp = pl_perf.get(p['id']) %}
+  <div class="card" style="box-shadow:none;border:1px solid var(--border);margin-bottom:var(--space-3);">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:var(--space-3);flex-wrap:wrap;">
+      <div><strong>{{ p['label'] }}</strong> {{ ui.badge((p['channel'] or camp['channel'])|capitalize, 'neutral') }}</div>
+      <div class="site-hint">
+        {{ pp.clicks if pp else 0 }} clicks · {{ pp.applicants if pp else 0 }} applicants · {{ pp.enrolled if pp else 0 }} enrolled
+      </div>
+    </div>
+    <div class="field" style="margin-top:var(--space-2);">
+      <label>Tracked link</label>
+      <input readonly value="{{ s.url }}" data-copy>
+    </div>
+    <div class="field">
+      <label>Copy-ready post</label>
+      <textarea readonly rows="3" data-copy>{{ s.copy }}</textarea>
+    </div>
+    <div style="display:flex;gap:var(--space-2);">
+      {{ ui.btn('Copy link', variant='ghost', size='sm', extra='data-copy-btn="link-%s"'|format(p['id'])) }}
+      {{ ui.btn('Copy post', variant='ghost', size='sm', extra='data-copy-btn="post-%s"'|format(p['id'])) }}
+    </div>
+  </div>
+  {% endfor %}
+  {% endif %}
+</div>
+
+<script>
+document.querySelectorAll('[data-copy-btn]').forEach(function (btn) {
+  btn.addEventListener('click', function () {
+    var card = btn.closest('.card');
+    var isPost = btn.getAttribute('data-copy-btn').indexOf('post-') === 0;
+    var el = card.querySelector(isPost ? 'textarea[data-copy]' : 'input[data-copy]');
+    if (!el) return;
+    el.select();
+    if (navigator.clipboard) navigator.clipboard.writeText(el.value);
+    else document.execCommand('copy');
+    var t = btn.textContent; btn.textContent = 'Copied'; setTimeout(function(){ btn.textContent = t; }, 1200);
+  });
+});
+</script>
+{% endblock %}

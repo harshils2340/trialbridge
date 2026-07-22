@@ -49,10 +49,12 @@ import refer as rf  # noqa: E402
 import alerts as alerts_mod  # noqa: E402
 import analytics  # noqa: E402
 import calendar_invites  # noqa: E402
+import campaigns as campaigns_mod  # noqa: E402
 import codes  # noqa: E402
 import db  # noqa: E402
 import fhir  # noqa: E402
 import ingest  # noqa: E402
+import intake as intake_mod  # noqa: E402
 import logistics  # noqa: E402
 import mailer  # noqa: E402
 import notifications as notifications_mod  # noqa: E402
@@ -655,6 +657,9 @@ def load_user():
 
 APPLICANT_COOKIE = "tb_app"
 INVITE_COOKIE = "tb_invite"
+# Recruitment-campaign attribution: set when a visitor arrives via a tracked
+# campaign/placement link (/go/<token>), read on apply to credit the source.
+CAMPAIGN_COOKIE = "tb_camp"
 
 
 def get_applicant_token():
@@ -1015,7 +1020,8 @@ def inject_globals():
     path = request.path or "/"
     if (path.startswith("/app/leads") or path.startswith("/app/dashboard")
             or path.startswith("/app/site") or path.startswith("/app/messages")
-            or path.startswith("/app/analytics")):
+            or path.startswith("/app/analytics")
+            or path.startswith("/app/campaign") or path.startswith("/app/intake")):
         pov = "study"
     elif path.startswith("/app") or path.startswith("/referral"):
         pov = "clinician"
@@ -2389,6 +2395,64 @@ def _local_condition_matches(q, limit=12):
     return out
 
 
+# NLM RxTerms drug autocomplete: drug-only (no procedures/behavioral arms like
+# CT.gov's intervention dictionary returns), so the drug typeahead stays clean.
+_RXTERMS_URL = "https://clinicaltables.nlm.nih.gov/api/rxterms/v3/search"
+_DRUG_SKIP = ("pack", "starter", "package")
+
+
+def _drug_suggest_matches(q, limit=6):
+    """Suggest drug/peptide names for the search typeahead. Curated GLP-1 seeds
+    and brand aliases come first (so "ozempic" -> Semaglutide, "reta" ->
+    Retatrutide - these cover investigational peptides RxTerms lacks), then NLM
+    RxTerms so any approved drug the user types also surfaces. Returns dicts
+    tagged kind="drug"; `value` is the name we search CT.gov by, `note` is the
+    recognizable brand the user typed (when we mapped it to a generic)."""
+    ql = q.lower().strip()
+    if not ql:
+        return []
+    out, seen = [], set()
+
+    def add(value, note=""):
+        k = (value or "").lower()
+        if value and k not in seen:
+            seen.add(k)
+            out.append({"label": value, "value": value,
+                        "note": note, "kind": "drug"})
+
+    # Curated brand/generic aliases -> canonical (keep the typed brand as a note).
+    for alias, canon in _DRUG_ALIASES.items():
+        if alias.startswith(ql) or canon.lower().startswith(ql):
+            note = alias.title() if alias != canon.lower() else ""
+            add(canon, note)
+    for d in SEED_DRUGS:
+        if ql in d.lower():
+            add(d)
+    # Backfill from NLM RxTerms (clean, drug-only, broad coverage of approved
+    # drugs). Strip the "(Injectable)/(Oral Pill)" form suffix and skip packs.
+    if len(out) < limit and len(ql) >= 2:
+        try:
+            url = (_RXTERMS_URL + "?maxList=8&terms=" + urllib.parse.quote(q))
+            req = urllib.request.Request(
+                url, headers={"User-Agent": "BridgeMD/1.0"})
+            with urllib.request.urlopen(req, timeout=6) as r:
+                data = json.load(r)
+            names = data[1] if isinstance(data, list) and len(data) > 1 else []
+            for raw in names:
+                base = str(raw).split(" (")[0].strip()
+                low = base.lower()
+                if not base or any(w in low for w in _DRUG_SKIP):
+                    continue
+                canon = _DRUG_ALIASES.get(low)     # brand -> curated generic
+                add(canon or base.title(),
+                    base.title() if canon else "")
+                if len(out) >= limit:
+                    break
+        except Exception:
+            pass
+    return out[:limit]
+
+
 @app.route("/api/condition-suggest")
 def condition_suggest():
     q = (request.args.get("q") or "").strip()
@@ -2400,7 +2464,7 @@ def condition_suggest():
     if hit and (now_ts - hit[0]) < _COND_SUGGEST_TTL:
         _COND_SUGGEST_CACHE.move_to_end(key)
         return jsonify({"items": hit[1]})
-    items = []
+    conds = []
     try:
         url = (_CT_SUGGEST_URL + "?dictionary=Condition&input="
                + urllib.parse.quote(q))
@@ -2408,12 +2472,17 @@ def condition_suggest():
         with urllib.request.urlopen(req, timeout=6) as r:
             data = json.load(r)
         if isinstance(data, list):
-            items = [_clean_suggest(str(x)) for x in data if str(x).strip()]
-            items = [x for x in items if x][:12]
+            conds = [_clean_suggest(str(x)) for x in data if str(x).strip()]
+            conds = [x for x in conds if x][:12]
     except Exception:
-        items = []
-    if not items:                                    # CT.gov down/slow -> local
-        items = _local_condition_matches(q)
+        conds = []
+    if not conds:                                    # CT.gov down/slow -> local
+        conds = _local_condition_matches(q)
+    # People search by drug name too (GLP-1 wave: ozempic, retatrutide). Surface
+    # matching drugs first, then conditions, in one dropdown.
+    drugs = _drug_suggest_matches(q)
+    items = drugs + [{"label": c, "value": c, "kind": "condition"}
+                     for c in conds]
     _COND_SUGGEST_CACHE[key] = (now_ts, items)
     _COND_SUGGEST_CACHE.move_to_end(key)
     while len(_COND_SUGGEST_CACHE) > _COND_SUGGEST_MAX:
@@ -2543,6 +2612,7 @@ def _render_landing():
                            conditions=trending_conditions(8),
                            drugs=trending_drugs(6), slugify=slugify,
                            condition_options=condition_options,
+                           drug_options=SEED_DRUGS,
                            condition_value=condition_prefill,
                            location_value=location_prefill,
                            patient_ctx=patient_ctx,
@@ -3059,6 +3129,16 @@ def interest():
     # message always shows in their thread; the email sends only when go-live is
     # on, so both surfaces stay in sync.
     new_lead = db.get_lead_by_token(token)
+    # Recruitment-campaign attribution: if the applicant arrived via a tracked
+    # campaign/placement link, credit it - but ONLY if they applied to that
+    # campaign's study, so an unrelated application never inflates a campaign
+    # (net-throughput guardrail, see enrollment-velocity rule).
+    _camp_tok = request.cookies.get(CAMPAIGN_COOKIE, "")
+    if _camp_tok and new_lead:
+        _tr = db.resolve_tracking_token(_camp_tok)
+        if _tr:
+            db.attribute_lead(new_lead["id"], _tr["campaign_id"],
+                              _tr["placement_id"], only_if_nct=_tr["nct"])
     if new_lead:
         db.add_message(
             new_lead["id"], "system",
@@ -3582,6 +3662,33 @@ def redcap_webhook():
         _mark_screening_complete(lead, actor="redcap",
                                  note="screening form completed (REDCap)")
     return app.response_class("ok", mimetype="text/plain")
+
+
+@app.route("/integrations/inbound-email", methods=["POST"])
+def inbound_email_webhook():
+    """Receive one inbound applicant email from the mail provider (SendGrid
+    Inbound Parse / Postmark / Mailgun) and route it into the matching trial's
+    ATS queue. Requires INTAKE_WEBHOOK_SECRET (X-Intake-Token header or ?secret=);
+    fails closed until a secret is set so anonymous callers can't inject leads.
+
+    Accepts either JSON or form-encoded payloads. This carries PHI: a BAA with the
+    provider is required in production (see matcher/COMPLIANCE.md)."""
+    secret = os.environ.get("INTAKE_WEBHOOK_SECRET", "")
+    if not secret:
+        abort(403)
+    provided = (request.headers.get("X-Intake-Token", "")
+                or request.args.get("secret", ""))
+    if not (provided and hmac.compare_digest(provided, secret)):
+        abort(403)
+    payload = {}
+    if request.is_json:
+        payload = request.get_json(silent=True) or {}
+    if not payload:
+        payload = {k: v for k, v in request.form.items()}
+    result = intake_mod.handle_inbound_email(payload)
+    # Always 200 on a well-formed but unroutable message so the provider doesn't
+    # retry forever; 200 with ok=false tells us it was dropped on purpose.
+    return jsonify(result), 200
 
 
 @app.route("/app/leads/<int:lead_id>/redcap/refresh", methods=["POST"])
@@ -6845,36 +6952,228 @@ def invite_patient():
                            new_token=request.args.get("new", ""))
 
 
+# --------------------------------------------------------------------------- #
+# Recruitment campaigns (the marketing side, wired to the funnel + ATS)
+# --------------------------------------------------------------------------- #
+def _trial_dict_for_nct(nct):
+    """Best-effort trial context for AI creative: prefer a site-posted study's
+    fields, else fall back to the claim's stored title. Enough for the copy
+    generator to write neutral, on-topic recruitment text."""
+    nct = (nct or "").strip()
+    posted = db.get_site_posted_study_by_nct(nct) if nct else None
+    if posted:
+        return {"title": posted["title"], "condition": posted["condition"],
+                "brief_summary": posted["brief_summary"],
+                "location": posted["location"], "nctId": nct}
+    title = ""
+    for c in db.list_study_claims(g.user["id"]):
+        if db._norm_nct(c["nct"]) == db._norm_nct(nct):
+            title = c["title"] or ""
+            break
+    return {"title": title, "condition": "", "brief_summary": "",
+            "location": "", "nctId": nct}
+
+
+def _own_campaign_or_404(cid):
+    """Fetch a campaign and 404 unless it belongs to the current account - a
+    campaign carries no PHI but still scopes to its owner."""
+    camp = db.get_campaign(cid)
+    if not camp or camp["user_id"] != g.user["id"]:
+        abort(404)
+    return camp
+
+
+@app.route("/app/campaigns")
+@login_required
+def campaign_list():
+    """All recruitment campaigns for the account, with live funnel + cost from the
+    real pipeline (applicants -> enrolled, cost-per-enrolled). KPI: found ->
+    contacted; the funnel numbers keep it honest (net throughput, not clicks)."""
+    perf = {p["id"]: p for p in db.campaign_performance(g.user["id"], ncts=None)}
+    camps = db.list_campaigns_for_user(g.user["id"])
+    return render_template("campaigns.html", camps=camps, perf=perf,
+                           claims=db.list_study_claims(g.user["id"]),
+                           channels=db.CAMPAIGN_CHANNELS)
+
+
+@app.route("/app/campaigns/new", methods=["POST"])
+@login_required
+def campaign_create():
+    nct = request.form.get("nct", "").strip()
+    name = request.form.get("name", "").strip()
+    channel = request.form.get("channel", "other").strip()
+    try:
+        budget = float(request.form.get("budget", "") or 0)
+    except ValueError:
+        budget = 0
+    if not name or not nct:
+        flash("Give the campaign a name and pick the study it recruits for.",
+              "error")
+        return redirect(url_for("campaign_list"))
+    if nct not in _site_claims():
+        flash("You can only run campaigns for studies you've claimed.", "error")
+        return redirect(url_for("campaign_list"))
+    cid = db.create_campaign(g.user["id"], nct, name, channel=channel,
+                             budget_usd=budget)
+    flash("Campaign created. Draft the creative, then get it IRB-approved before "
+          "it can go live.", "ok")
+    return redirect(url_for("campaign_detail", cid=cid))
+
+
+@app.route("/app/campaigns/<int:cid>")
+@login_required
+def campaign_detail(cid):
+    """Campaign builder + placements + performance in one screen: draft/edit
+    creative, attest IRB approval (hard gate), add the places you'll post (each
+    gets a copy-ready blurb + trackable /go link), and see per-placement results."""
+    camp = _own_campaign_or_404(cid)
+    placements = db.list_placements(cid)
+    base_url = request.url_root.rstrip("/")
+    shares = [campaigns_mod.placement_share_payload(camp, p, base_url=base_url)
+              for p in placements]
+    perf = {p["id"]: p for p in db.campaign_performance(g.user["id"])}.get(cid)
+    pl_perf = {p["id"]: p for p in db.placement_performance(g.user["id"])}
+    return render_template(
+        "campaign_detail.html", camp=camp, placements=placements,
+        shares=shares, perf=perf, pl_perf=pl_perf,
+        channels=db.CAMPAIGN_CHANNELS)
+
+
+@app.route("/app/campaigns/<int:cid>/creative", methods=["POST"])
+@login_required
+def campaign_creative(cid):
+    camp = _own_campaign_or_404(cid)
+    action = request.form.get("action", "save")
+    if action == "generate":
+        trial = _trial_dict_for_nct(camp["nct"])
+        creative = campaigns_mod.generate_creative(trial, camp["channel"])
+        db.set_campaign_creative(cid, creative["headline"], creative["body"],
+                                 creative["landing_copy"])
+        flash("AI drafted a version. Review + edit it, then attest IRB approval. "
+              "Copy must be neutral and truthful - no benefit or payment claims.",
+              "ok")
+    else:
+        db.set_campaign_creative(
+            cid, request.form.get("headline", ""), request.form.get("body", ""),
+            request.form.get("landing_copy", ""))
+        flash("Creative saved. Editing resets IRB approval - re-attest before "
+              "going live.", "ok")
+    return redirect(url_for("campaign_detail", cid=cid))
+
+
+@app.route("/app/campaigns/<int:cid>/approve", methods=["POST"])
+@login_required
+def campaign_approve(cid):
+    _own_campaign_or_404(cid)
+    if not request.form.get("attest"):
+        flash("Tick the box to attest the copy is IRB/REB-approved.", "error")
+        return redirect(url_for("campaign_detail", cid=cid))
+    db.approve_campaign(cid, approved=True)
+    flash("Marked IRB-approved. You can activate this campaign now.", "ok")
+    return redirect(url_for("campaign_detail", cid=cid))
+
+
+@app.route("/app/campaigns/<int:cid>/status", methods=["POST"])
+@login_required
+def campaign_status(cid):
+    _own_campaign_or_404(cid)
+    ok, reason = db.set_campaign_status(cid, request.form.get("status", ""))
+    flash("Campaign updated." if ok else reason, "ok" if ok else "error")
+    return redirect(url_for("campaign_detail", cid=cid))
+
+
+@app.route("/app/campaigns/<int:cid>/placements", methods=["POST"])
+@login_required
+def campaign_placement_add(cid):
+    camp = _own_campaign_or_404(cid)
+    label = request.form.get("label", "").strip()
+    if not label:
+        flash("Name the place you're posting (e.g. r/ADHD, UofT board).", "error")
+        return redirect(url_for("campaign_detail", cid=cid))
+    db.create_placement(cid, label=label,
+                        channel=request.form.get("channel", "") or camp["channel"],
+                        posted_url=request.form.get("posted_url", ""))
+    flash("Placement added. Copy its blurb + tracked link and post it.", "ok")
+    return redirect(url_for("campaign_detail", cid=cid))
+
+
+@app.route("/app/intake")
+@login_required
+def intake_page():
+    """Multi-source intake setup: each claimed study gets one inbound email
+    address (forward applicants here from any source) + a CSV importer for an
+    existing applicant list. KPI: speeds contacted -> screened by pulling every
+    source into one queue. PHI: addresses are owner-scoped (see COMPLIANCE.md)."""
+    claims = db.list_study_claims(g.user["id"])
+    rows = []
+    for c in claims:
+        addr = db.get_or_create_intake_address(g.user["id"], c["nct"],
+                                                label=c["title"] or "")
+        rows.append({"claim": c, "address": addr,
+                     "full": intake_mod.full_intake_address(addr["address"])})
+    return render_template("intake.html", rows=rows,
+                           domain=intake_mod.INTAKE_EMAIL_DOMAIN)
+
+
+@app.route("/app/intake/import", methods=["POST"])
+@login_required
+def intake_import():
+    nct = request.form.get("nct", "").strip()
+    if nct not in _site_claims():
+        flash("Pick a study you've claimed to import into.", "error")
+        return redirect(url_for("intake_page"))
+    up = request.files.get("file")
+    if not up or not up.filename:
+        flash("Choose a CSV file to import.", "error")
+        return redirect(url_for("intake_page"))
+    try:
+        text = up.read().decode("utf-8-sig", errors="replace")
+        reader = csv.DictReader(io.StringIO(text))
+        norm = []
+        for r in reader:
+            low = {(k or "").strip().lower(): (v or "").strip()
+                   for k, v in r.items()}
+            norm.append({"name": low.get("name", ""), "email": low.get("email", ""),
+                         "phone": low.get("phone", ""), "notes": low.get("notes", "")})
+        res = db.import_leads_csv(g.user["id"], nct, norm, source="csv_import")
+        flash(f"Imported: {res['created']} new, {res['matched']} matched, "
+              f"{res['skipped']} skipped.", "ok")
+    except Exception:
+        app.logger.exception("csv import failed")
+        flash("Couldn't read that CSV. Expected columns: name, email, phone, notes.",
+              "error")
+    return redirect(url_for("intake_page"))
+
+
 @app.route("/app/campaign", methods=["GET", "POST"])
 @login_required
 def ad_campaign():
-    """Build a recruitment ad for any channel with a BridgeMD prefill link, then
-    preview the post-click apply experience. The prefill link reuses the invite
-    mechanism, so an ad click lands on a trusted-messenger page and converts
-    straight into an application - and every click/apply is tracked back here.
+    """Legacy invite-link ad builder, superseded by the campaigns suite
+    (/app/campaigns) which is backed by the real campaign + placement +
+    attribution model. Kept as a redirect so old links don't 404."""
+    return redirect(url_for("campaign_list"))
 
-    KPI: this is the top of the funnel - it speeds up `found` (an ad reaches
-    matched patients) and `contacted` (the prefill link turns a click into an
-    application instead of a dead end). Compliance: recruitment ad copy must be
-    IRB/REB-approved and truthful - see .cursor/rules/compliance.mdc."""
-    if request.method == "POST":
-        f = request.form
-        nct = f.get("nct", "").strip()
-        title = f.get("title", "").strip()
-        condition = f.get("condition", "").strip()
-        if not (nct or title or condition):
-            flash("Add a trial title, NCT number, or condition for the ad to point at.",
-                  "error")
-        else:
-            tok = db.create_invite(
-                g.user["id"], g.user["name"] or "the study team",
-                nct, title, condition, f.get("note", "").strip())
-            flash("Prefill link generated - drop it into your ad, then preview the "
-                  "post-click experience.", "ok")
-            return redirect(url_for("ad_campaign", new=tok))
-    invites = db.list_invites(g.user["id"])
-    return render_template("campaign.html", invites=invites,
-                           new_token=request.args.get("new", ""))
+
+@app.route("/go/<token>")
+def campaign_landing(token):
+    """Public entrypoint for a tracked campaign/placement link. A site pastes this
+    URL into wherever they post (Reddit, a campus board, an ad); a click records
+    attribution, sets a cookie carried through to apply, and forwards to the
+    study page. This is what closes the loop: applicants trace back to the exact
+    post that produced them, all the way to enrolled."""
+    tr = db.resolve_tracking_token(token)
+    if not tr:
+        return redirect(url_for("home"))
+    if tr.get("placement_id"):
+        db.bump_placement_clicks(token)
+    _log_event("campaign_click", {"nct": tr.get("nct", "")})
+    dest = (url_for("study_page", nct=tr["nct"]) if tr.get("nct")
+            else url_for("home"))
+    resp = make_response(redirect(dest))
+    resp.set_cookie(CAMPAIGN_COOKIE, token, max_age=60 * 60 * 24 * 30,
+                    samesite="Lax", httponly=True,
+                    secure=bool(os.environ.get("BEHIND_PROXY")))
+    return resp
 
 
 @app.route("/i/<token>")

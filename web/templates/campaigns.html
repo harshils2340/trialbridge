@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% import "_icons.html" as ic %}
+{% import "_ui.html" as ui %}
+{% block title %}Campaigns · BridgeMD{% endblock %}
+
+{% block body %}
+<div class="page-head">
+  <h1>Campaigns</h1>
+  <p>Recruit for your studies, then track every post back to enrolled patients.</p>
+</div>
+
+<div style="margin-bottom:var(--space-4);">
+  {% if claims %}
+  {{ ui.btn('New campaign', variant='primary', icon='plus', extra='data-ui-open="newcamp"') }}
+  {% else %}
+  {{ ui.btn('Claim a study first', variant='ghost', icon='award', href=url_for('site_setup')) }}
+  {% endif %}
+</div>
+
+<div class="card">
+  {% if not camps %}
+  {{ ui.empty('No campaigns yet', 'Create a campaign to generate ad copy, post it where you already do, and see which place actually enrolls patients.', 'activity') }}
+  {% else %}
+  <table class="dash-table">
+    <thead><tr>
+      <th>Campaign</th><th>Study</th><th>Channel</th><th>Status</th><th>IRB</th>
+      <th>Applicants</th><th>Enrolled</th><th>Cost / enrolled</th>
+    </tr></thead>
+    <tbody>
+      {% for c in camps %}
+      {% set p = perf.get(c['id']) %}
+      <tr>
+        <td><a href="{{ url_for('campaign_detail', cid=c['id']) }}">{{ c['name'] or 'Untitled' }}</a></td>
+        <td><span class="dash-trial-title">{{ c['nct'] }}</span></td>
+        <td>{{ ui.badge(c['channel']|capitalize, 'brand') }}</td>
+        <td>{{ ui.badge(c['status']|capitalize, 'ok' if c['status']=='active' else ('warn' if c['status']=='paused' else 'neutral')) }}</td>
+        <td>{{ ui.badge('Approved', 'ok') if c['irb_approved'] else ui.badge('Pending', 'warn') }}</td>
+        <td>{{ p.applicants if p else 0 }}</td>
+        <td>{{ p.enrolled if p else 0 }}</td>
+        <td>{{ '$%.2f'|format(p.cost_per_enrolled) if p and p.cost_per_enrolled else '—' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>
+
+{% call ui.modal('newcamp', 'New campaign') %}
+<form method="post" action="{{ url_for('campaign_create') }}">
+  <div class="field">
+    <label for="c-name">Campaign name</label>
+    <input id="c-name" name="name" placeholder="ADHD adults — Reddit outreach" required>
+  </div>
+  <div class="field">
+    <label for="c-nct">Study</label>
+    <select id="c-nct" name="nct" required>
+      <option value="">Pick a claimed study…</option>
+      {% for cl in claims %}
+      <option value="{{ cl['nct'] }}">{{ cl['nct'] }} — {{ (cl['title'] or '')[:60] }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="row">
+    <div class="field">
+      <label for="c-channel">Channel</label>
+      <select id="c-channel" name="channel">
+        {% for ch in channels %}<option value="{{ ch }}">{{ ch|capitalize }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label for="c-budget">Budget (USD, optional)</label>
+      <input id="c-budget" name="budget" type="number" min="0" step="1" placeholder="0">
+    </div>
+  </div>
+  <div style="display:flex;gap:var(--space-2);justify-content:flex-end;margin-top:var(--space-3);">
+    {{ ui.btn('Cancel', variant='ghost', extra='data-ui-close') }}
+    {{ ui.btn('Create campaign', variant='primary', type='submit') }}
+  </div>
+</form>
+{% endcall %}
+{% endblock %}

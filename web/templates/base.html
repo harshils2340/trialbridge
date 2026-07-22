@@ -43,6 +43,8 @@
       {% if pov == 'study' %}
       {# Study team = the site/sponsor running the trial and reviewing applicants. #}
       <a href="{{ url_for('leads') }}" class="side-link {{ 'active' if request.endpoint in ['leads','patient_inbox'] }}">{{ ic.icon('user-plus') }}Candidate review{% if site_unread %} <span class="nav-badge nav-badge-new">{{ site_unread }}</span>{% endif %}</a>
+      <a href="{{ url_for('intake_page') }}" class="side-link {{ 'active' if request.endpoint == 'intake_page' }}">{{ ic.icon('mail') }}Intake</a>
+      <a href="{{ url_for('campaign_list') }}" class="side-link {{ 'active' if request.endpoint in ['campaign_list','campaign_detail'] }}">{{ ic.icon('dollar') }}Campaigns</a>
       <a href="{{ url_for('recruitment_dashboard') }}" class="side-link {{ 'active' if request.endpoint == 'recruitment_dashboard' }}">{{ ic.icon('activity') }}Recruitment</a>
       <a href="{{ url_for('site_setup') }}" class="side-link {{ 'active' if request.endpoint in ['site_setup','add_study_claim','remove_study_claim'] }}">{{ ic.icon('award') }}Site setup</a>
       {% else %}

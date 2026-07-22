@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% import "_icons.html" as ic %}
+{% import "_ui.html" as ui %}
+{% block title %}Intake · BridgeMD{% endblock %}
+
+{% block body %}
+<div class="page-head">
+  <h1>Intake</h1>
+  <p>Pull applicants from every source into one queue — without changing how you already collect them.</p>
+</div>
+
+<div class="card" style="background:var(--accent-soft);border:1px solid var(--border);">
+  <p style="margin:0;">{{ ic.icon('shield') }}
+    Intake carries patient info (PHI). Addresses and imported lists are scoped to
+    your team only. Don't share intake addresses publicly.</p>
+</div>
+
+{% if not rows %}
+<div class="card">
+  {{ ui.empty('Claim a study to set up intake', 'Each claimed study gets its own inbound address and importer.', 'award') }}
+  <div style="text-align:center;">{{ ui.btn('Go to site setup', variant='primary', icon='award', href=url_for('site_setup')) }}</div>
+</div>
+{% endif %}
+
+{% for r in rows %}
+<div class="card">
+  <div class="section-title"><h2>{{ r.claim['nct'] }} — {{ (r.claim['title'] or 'Study')[:70] }}</h2></div>
+
+  <div class="field">
+    <label>Inbound intake address</label>
+    <input readonly value="{{ r.full }}" data-copy-target="addr-{{ loop.index }}" id="addr-{{ loop.index }}">
+  </div>
+  <p class="site-hint">
+    Forward your recruitment inbox (or set an auto-forward) to this address. Every
+    email becomes an applicant in this study's queue, de-duplicated and pre-screened.
+    {{ ui.btn('Copy address', variant='ghost', size='sm', extra='data-copy-btn="addr-%s"'|format(loop.index)) }}
+  </p>
+
+  <hr style="border:none;border-top:1px solid var(--border);margin:var(--space-4) 0;">
+
+  <form method="post" action="{{ url_for('intake_import') }}" enctype="multipart/form-data" class="row" style="align-items:flex-end;">
+    <input type="hidden" name="nct" value="{{ r.claim['nct'] }}">
+    <div class="field">
+      <label for="file-{{ loop.index }}">Import a CSV (columns: name, email, phone, notes)</label>
+      <input id="file-{{ loop.index }}" name="file" type="file" accept=".csv,text/csv" required>
+    </div>
+    {{ ui.btn('Import', variant='primary', icon='upload', type='submit') }}
+  </form>
+</div>
+{% endfor %}
+
+<script>
+document.querySelectorAll('[data-copy-btn]').forEach(function (btn) {
+  btn.addEventListener('click', function () {
+    var id = btn.getAttribute('data-copy-btn');
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.select();
+    if (navigator.clipboard) navigator.clipboard.writeText(el.value);
+    else document.execCommand('copy');
+    var t = btn.textContent; btn.textContent = 'Copied'; setTimeout(function(){ btn.textContent = t; }, 1200);
+  });
+});
+</script>
+{% endblock %}
