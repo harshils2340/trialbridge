@@ -1,0 +1,186 @@
+{# =========================================================================
+   Inline omnibox (study-team top bar). A real search input that live-filters
+   pages, studies AND applicants in a dropdown anchored right under it - no
+   full-screen modal. Applicants are fetched once (de-identified, team-scoped)
+   from /app/search-index.json and filtered client-side, so typing feels instant
+   ("indexed") after the first keystroke. ⌘K / Ctrl-K focuses the box.
+   ========================================================================= #}
+{# ---- Static index: pages + studies + actions (built with url_for) ---- #}
+{% set items = [] %}
+{% set _ = items.append({'g':'Pages','label':'Dashboard','kw':'home overview stats','url':url_for('study_home')}) %}
+{% set _ = items.append({'g':'Pages','label':'Applicants','kw':'leads patients candidates people referrals queue','url':url_for('leads')}) %}
+{% set _ = items.append({'g':'Pages','label':'Needs reply','kw':'inbox chat conversations replies messages waiting','url':url_for('study_home', _anchor='needs-reply')}) %}
+{% set _ = items.append({'g':'Pages','label':'Studies','kw':'trials protocols intake claim','url':url_for('intake_page')}) %}
+{% set _ = items.append({'g':'Pages','label':'Campaigns','kw':'outreach email marketing ads','url':url_for('campaign_list')}) %}
+{% set _ = items.append({'g':'Pages','label':'Documents','kw':'files consent forms docs uploads approvals','url':url_for('documents_workspace')}) %}
+{% set _ = items.append({'g':'Pages','label':'Recruitment','kw':'funnel enrollment metrics conversion analytics','url':url_for('recruitment_dashboard')}) %}
+{% set _ = items.append({'g':'Pages','label':'Team','kw':'members invite roles permissions people workspace','url':url_for('team_page')}) %}
+{% set _ = items.append({'g':'Pages','label':'Settings','kw':'preferences site setup account configuration calendar redcap','url':url_for('site_setup')}) %}
+{% if is_owner %}{% set _ = items.append({'g':'Pages','label':'Visitors','kw':'analytics traffic owner','url':url_for('owner_analytics')}) %}{% endif %}
+{% for s in nav_studies %}
+  {% set _ = items.append({'g':'Studies','label':(s.nct ~ ' · ' ~ (s.title[:44] if s.title else 'Study')),'kw':(s.nct ~ ' ' ~ (s.title or '')),'url':url_for('leads', nct=s.nct)}) %}
+{% endfor %}
+{% set _ = items.append({'g':'Actions','label':'Toggle light / dark theme','kw':'dark light mode theme appearance','action':'theme'}) %}
+{% set _ = items.append({'g':'Actions','label':'Sign out','kw':'logout log out exit','url':url_for('logout')}) %}
+
+<script id="omniIndex" type="application/json">{{ items|tojson }}</script>
+<script id="omniConfig" type="application/json">{{ {'indexUrl': url_for('search_index'), 'leadsUrl': url_for('leads')}|tojson }}</script>
+<script>
+(function () {
+  var wrap = document.getElementById('omniWrap');
+  var input = document.getElementById('omniInput');
+  var panel = document.getElementById('omniResults');
+  if (!wrap || !input || !panel) return;
+
+  var INDEX = [], CFG = { indexUrl: '', leadsUrl: '' };
+  try { INDEX = JSON.parse(document.getElementById('omniIndex').textContent) || []; } catch (e) {}
+  try { CFG = JSON.parse(document.getElementById('omniConfig').textContent) || CFG; } catch (e) {}
+
+  var APPLICANTS = [];          // fetched once, then filtered client-side
+  var loaded = false, loading = false;
+  var rows = [];                // rendered actionable rows [{item, el}]
+  var active = -1;
+
+  function loadApplicants() {
+    if (loaded || loading || !CFG.indexUrl) return;
+    loading = true;
+    fetch(CFG.indexUrl, { headers: { 'Accept': 'application/json' } })
+      .then(function (r) { return r.ok ? r.json() : []; })
+      .then(function (data) {
+        APPLICANTS = Array.isArray(data) ? data : [];
+        loaded = true; loading = false;
+        if (document.activeElement === input) render(input.value.trim().toLowerCase());
+      })
+      .catch(function () { loading = false; });
+  }
+
+  function score(item, q) {
+    if (!q) return 0;
+    var label = (item.label || '').toLowerCase();
+    var kw = (item.kw || '').toLowerCase();
+    if (label.indexOf(q) === 0) return 0;
+    var words = label.split(/[\s·|/-]+/);
+    for (var i = 0; i < words.length; i++) {
+      if (words[i].indexOf(q) === 0) return 1;
+    }
+    if (label.indexOf(q) > 0) return 2;
+    if (kw.indexOf(q) >= 0) return 3;
+    return -1;
+  }
+
+  function collect(q) {
+    var pool = q ? INDEX.concat(APPLICANTS) : INDEX;   // applicants only when typing
+    var matched = [];
+    for (var i = 0; i < pool.length; i++) {
+      var sc = score(pool[i], q);
+      if (sc >= 0) matched.push({ item: pool[i], sc: sc, ord: i });
+    }
+    matched.sort(function (a, b) { return a.sc - b.sc || a.ord - b.ord; });
+    // Cap applicants so the dropdown stays tight; pages/studies always show.
+    var out = [], shownApplicants = 0;
+    for (var j = 0; j < matched.length; j++) {
+      var it = matched[j].item;
+      if (it.g === 'Applicants') {
+        if (shownApplicants >= 8) continue;
+        shownApplicants += 1;
+      }
+      out.push(it);
+    }
+    if (q && CFG.leadsUrl) {
+      out.push({ g: 'Search', label: 'Search all applicants for “' + q + '”',
+                 url: CFG.leadsUrl + '?q=' + encodeURIComponent(q) });
+    }
+    return out;
+  }
+
+  function render(q) {
+    panel.innerHTML = '';
+    rows = [];
+    var matched = collect(q);
+    if (!matched.length) {
+      var e = document.createElement('div');
+      e.className = 'appsearch-empty';
+      e.textContent = q ? 'No matches for “' + q + '”' : 'Start typing to search';
+      panel.appendChild(e);
+      open();
+      return;
+    }
+    var lastGroup = null;
+    matched.forEach(function (it) {
+      if (it.g && it.g !== lastGroup) {
+        lastGroup = it.g;
+        var h = document.createElement('div');
+        h.className = 'cmdk-group';
+        h.textContent = it.g;
+        panel.appendChild(h);
+      }
+      var row = document.createElement('button');
+      row.type = 'button';
+      row.className = 'cmdk-item';
+      row.setAttribute('role', 'option');
+      var lab = document.createElement('span');
+      lab.className = 'cmdk-item-label';
+      lab.textContent = it.label;
+      row.appendChild(lab);
+      if (it.sub) {
+        var sub = document.createElement('span');
+        sub.className = 'appsearch-sub';
+        sub.textContent = it.sub;
+        row.appendChild(sub);
+      }
+      var idx = rows.length;
+      // mousedown (not click) so it fires before the input blur closes us.
+      row.addEventListener('mousedown', function (ev) { ev.preventDefault(); activate(it); });
+      row.addEventListener('mousemove', function () { setActive(idx); });
+      panel.appendChild(row);
+      rows.push({ item: it, el: row });
+    });
+    setActive(0);
+    open();
+  }
+
+  function setActive(i) {
+    if (!rows.length) return;
+    if (i < 0) i = 0;
+    if (i >= rows.length) i = rows.length - 1;
+    if (active >= 0 && rows[active]) rows[active].el.classList.remove('is-active');
+    active = i;
+    rows[active].el.classList.add('is-active');
+    rows[active].el.scrollIntoView({ block: 'nearest' });
+  }
+
+  function activate(item) {
+    if (item.action === 'theme') {
+      var next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', next);
+      try { localStorage.setItem('theme', next); } catch (e) {}
+      close();
+      return;
+    }
+    if (item.url) { window.location.href = item.url; }
+  }
+
+  function open() { panel.hidden = false; input.setAttribute('aria-expanded', 'true'); }
+  function close() { panel.hidden = true; input.setAttribute('aria-expanded', 'false'); active = -1; }
+
+  input.addEventListener('focus', function () { loadApplicants(); render(input.value.trim().toLowerCase()); });
+  input.addEventListener('input', function () { loadApplicants(); render(input.value.trim().toLowerCase()); });
+  input.addEventListener('keydown', function (e) {
+    if (e.key === 'ArrowDown') { e.preventDefault(); if (panel.hidden) render(input.value.trim().toLowerCase()); else setActive(active + 1); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setActive(active - 1); }
+    else if (e.key === 'Enter') { if (rows[active]) { e.preventDefault(); activate(rows[active].item); } }
+    else if (e.key === 'Escape') { if (!panel.hidden) { e.preventDefault(); close(); input.blur(); } }
+  });
+
+  document.addEventListener('click', function (e) {
+    if (!wrap.contains(e.target)) close();
+  });
+  document.addEventListener('keydown', function (e) {
+    if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
+      e.preventDefault();
+      input.focus();
+      input.select();
+    }
+  });
+})();
+</script>

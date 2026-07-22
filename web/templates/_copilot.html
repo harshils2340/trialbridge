@@ -2,24 +2,31 @@
 <aside class="appdock" id="copilot" data-open="1" aria-label="Copilot assistant">
   <header class="dock-head">
     <div class="dock-title">
-      <span class="dock-dot"></span>
-      <div><b>Copilot</b><span>Answers from your studies only</span></div>
+      <span class="dock-brand">
+        <img src="{{ static_url('logo.svg') }}" width="18" height="18" alt="">
+        <span class="dock-dot" title="Online"></span>
+      </span>
+      <div><b>Bridget</b><span>Enrollment copilot · your studies only</span></div>
     </div>
-    <button type="button" class="dock-collapse" id="copilotCollapse" aria-label="Hide copilot">{{ ic.icon('chevron-right') }}</button>
+    <button type="button" class="dock-collapse" id="copilotCollapse" aria-label="Hide Bridget">{{ ic.icon('chevron-right') }}</button>
   </header>
   <div class="dock-log" id="copilotLog">
     <div class="copilot-msg bot">
-      <p>Hi - I help with your applicants, screening, and funnel. I only use your
-      own study data, and I never decide eligibility. Ask me anything, or try:</p>
+      <p>Hi, I'm <b>Bridget</b> - I help with your applicants, screening, and
+      funnel. I only use your own study data, and I never decide eligibility.
+      Ask me anything, or try:</p>
       <div class="copilot-suggest" id="copilotSuggest"></div>
     </div>
   </div>
   <form class="dock-form" id="copilotForm">
-    <input type="text" id="copilotInput" placeholder="Ask or tell me to do something&hellip;" autocomplete="off">
+    <input type="text" id="copilotInput" placeholder="Ask Bridget or tell her to do something&hellip;" autocomplete="off">
     <button type="submit" aria-label="Send">{{ ic.icon('send') }}</button>
   </form>
 </aside>
-<button type="button" class="dock-reopen" id="copilotReopen" aria-label="Show copilot">{{ ic.icon('chat') }}<span>Copilot</span></button>
+<button type="button" class="copilot-fab" id="copilotReopen" aria-label="Open Bridget, your enrollment copilot" title="Ask Bridget">
+  <img src="{{ static_url('logo.svg') }}" width="28" height="28" alt="">
+  <span class="fab-dot"></span>
+</button>
 <script>
 (function () {
   var dock = document.getElementById('copilot');

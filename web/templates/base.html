@@ -48,7 +48,6 @@
     <nav class="appnav">
       <a href="{{ url_for('study_home') }}" class="{{ 'active' if request.endpoint == 'study_home' }}">{{ ic.icon('grid') }}Dashboard</a>
       <a href="{{ url_for('leads') }}" class="{{ 'active' if request.endpoint in ['leads','applicant_detail'] }}">{{ ic.icon('user-plus') }}Applicants</a>
-      <a href="{{ url_for('patient_inbox') }}" class="{{ 'active' if request.endpoint == 'patient_inbox' }}">{{ ic.icon('chat') }}Messages{% if site_unread %} <span class="nav-badge nav-badge-new">{{ site_unread }}</span>{% endif %}</a>
       <a href="{{ url_for('intake_page') }}" class="{{ 'active' if request.endpoint in ['intake_page','intake_import'] }}">{{ ic.icon('file') }}Studies</a>
       <a href="{{ url_for('campaign_list') }}" class="{{ 'active' if request.endpoint in ['campaign_list','campaign_detail'] }}">{{ ic.icon('megaphone') }}Campaigns</a>
       <a href="{{ url_for('documents_workspace') }}" class="{{ 'active' if request.endpoint in ['documents_workspace','document_detail'] }}">{{ ic.icon('file-check') }}Documents</a>
@@ -90,14 +89,18 @@
           {% endfor %}
         </div>
       </details>
-      <button type="button" class="appsearch cmdk-trigger" data-cmdk-open
-              aria-label="Search or jump to a page (Command or Control + K)">
-        {{ ic.icon('search') }}
-        <span class="cmdk-trigger-label">Search or jump to…</span>
-        <kbd class="cmdk-trigger-kbd">⌘K</kbd>
-      </button>
+      <div class="appsearch-wrap" id="omniWrap">
+        <span class="appsearch-ico">{{ ic.icon('search') }}</span>
+        <input id="omniInput" class="appsearch-input" type="text" autocomplete="off"
+               autocapitalize="off" spellcheck="false" role="combobox"
+               aria-expanded="false" aria-controls="omniResults" aria-autocomplete="list"
+               placeholder="Search applicants, studies, pages…"
+               aria-label="Search applicants, studies and pages">
+        <kbd class="appsearch-kbd">⌘K</kbd>
+        <div class="appsearch-panel" id="omniResults" role="listbox" hidden></div>
+      </div>
       <span class="apptop-spacer"></span>
-      <a class="appbell" href="{{ url_for('patient_inbox') }}" aria-label="Messages">{{ ic.icon('bell') }}{% if site_unread %}<span class="dot">{{ site_unread }}</span>{% endif %}</a>
+      <a class="appbell" href="{{ url_for('study_home', _anchor='needs-reply') }}" aria-label="Replies waiting" title="Replies waiting">{{ ic.icon('bell') }}{% if site_unread %}<span class="dot">{{ site_unread }}</span>{% endif %}</a>
       <span class="appside-avatar" title="{{ user['name'] or 'Study team' }}">{{ _initials }}</span>
     </header>
     <main class="appbody" id="main" role="main" tabindex="-1">
@@ -141,7 +144,7 @@
 {% if pov == 'study' %}</div>{% endif %}
   {% if pov == 'study' and user %}{% include "_copilot.html" %}{% endif %}
 </div>
-{% include "_cmdk.html" %}
+{% if pov == 'study' %}{% include "_omni.html" %}{% else %}{% include "_cmdk.html" %}{% endif %}
 {% else %}
 <button type="button" class="theme-toggle theme-toggle-float" id="themeToggle" aria-label="Switch between light and dark theme" title="Toggle light / dark theme">
   {{ ic.icon('sun', 'ico icon-sun') }}{{ ic.icon('moon', 'ico icon-moon') }}

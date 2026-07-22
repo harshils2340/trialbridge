@@ -163,36 +163,35 @@
 
     <div class="app-card pad" style="margin-bottom:16px;">
       <div class="app-card-title">{{ ic.icon('calendar') }} Screening &amp; scheduling</div>
-      {% if l['revealed'] %}
-      {% if l['schedule_url'] %}
-      <div class="callout info" style="margin-bottom:8px;">
+      {% if not l['revealed'] %}
+      <div class="callout info">{{ ic.icon('lock') }} Accept this applicant to send a self-scheduling link.</div>
+      {% elif l['schedule_url'] %}
+      <div class="callout ok" style="margin-bottom:8px;">
         {{ ic.icon('check') }}
         <span>Booking link sent. <a href="{{ l['schedule_url'] }}" target="_blank" rel="noopener">Open link</a></span>
       </div>
-      {% endif %}
       {% if l['video_url'] %}
       <div class="callout info" style="margin-bottom:8px;">
         {{ ic.icon('phone') }}
         <span>Video call ready. <a href="{{ l['video_url'] }}" target="_blank" rel="noopener">Join link</a></span>
       </div>
       {% endif %}
-      <form method="post" action="{{ url_for('schedule_lead', lead_id=l['id']) }}" style="display:flex;flex-direction:column;gap:8px;">
+      <form method="post" action="{{ url_for('schedule_lead', lead_id=l['id']) }}">
         <input type="hidden" name="next" value="{{ url_for('applicant_detail', lead_id=l['id']) }}">
-        <label class="app-sub" style="font-size:12px;color:var(--faint);">Booking calendar (they self-book on yours)</label>
-        <input type="url" name="schedule_url" placeholder="https://calendly.com/your-team/screening" value="{{ l['schedule_url'] or default_schedule }}">
-        <label class="app-sub" style="font-size:12px;color:var(--faint);">Video call link (Zoom / Google Meet)</label>
-        <input type="url" name="video_url" placeholder="https://meet.google.com/abc-defg-hij" value="{{ l['video_url'] }}">
-        <label class="doc-attest" style="font-size:12px;">
-          <input type="checkbox" name="set_default" value="1" {{ 'checked' if default_schedule and not l['schedule_url'] }}>
-          <span>Save booking link as this study's default</span>
-        </label>
-        {{ ui.btn('Send to applicant', 'primary', 'sm', type='submit', icon='calendar', extra='style="justify-content:center;"') }}
+        {{ ui.btn('Resend booking link', 'ghost', 'sm', type='submit', extra='style="justify-content:center;"') }}
       </form>
-      {% if not default_schedule %}
-      <div class="verdict-fine">Tip: set your booking calendar once in <a href="{{ url_for('site_setup') }}">Settings</a> and it prefills here for everyone.</div>
-      {% endif %}
+      {% elif default_schedule %}
+      <p class="app-sub" style="font-size:13px;color:var(--muted);margin:0 0 10px;">
+        Send {{ (view.name or 'them').split(' ')[0] }} your booking calendar so they can self-book a screening visit.</p>
+      <form method="post" action="{{ url_for('schedule_lead', lead_id=l['id']) }}">
+        <input type="hidden" name="next" value="{{ url_for('applicant_detail', lead_id=l['id']) }}">
+        {{ ui.btn('Send booking link', 'primary', 'sm', type='submit', icon='calendar', extra='style="justify-content:center;"') }}
+      </form>
       {% else %}
-      <div class="callout info">{{ ic.icon('lock') }} Accept this applicant to send a self-scheduling link.</div>
+      <div class="callout warn">{{ ic.icon('info') }}
+        <span>No booking calendar set yet. Add yours once in
+        <a href="{{ url_for('site_setup') }}">Settings</a> to send self-scheduling links with one click.</span>
+      </div>
       {% endif %}
     </div>
 

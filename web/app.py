@@ -32,7 +32,7 @@ import csv
 import mimetypes
 import urllib.parse
 import urllib.request
-from collections import OrderedDict, defaultdict
+from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from flask import (Flask, abort, flash, g, jsonify, make_response, redirect,
@@ -4901,6 +4901,34 @@ def leads():
                            claims=claims, q=q, active_nct=active_nct)
 
 
+@app.route("/app/search-index.json")
+@login_required
+def search_index():
+    """Client-side index for the top-bar live search (the inline omnibox).
+    Same visibility rules as the Applicants queue: scoped to the team's claimed
+    studies, and de-identified - names/emails are only included once a lead has
+    been accepted (revealed), otherwise just the coded reference is searchable."""
+    rows = db.list_leads_for_user(g.user["id"])
+    recon = db.latest_reconciliation_for_leads([r["id"] for r in rows])
+    out = []
+    for r in rows:
+        item = _decode_lead(r, recon.get(r["id"]))
+        qi = _queue_item(item)
+        code = qi.get("code", "")
+        revealed = bool(r["revealed"])
+        name = (r["name"] or "") if revealed else ""
+        email = (r["email"] or "") if revealed else ""
+        stage = (qi.get("stage") or {}).get("label", "")
+        study = r["nct"] or ""
+        label = name or code
+        sub = " · ".join(p for p in [email, study, stage] if p)
+        kw = " ".join([label, email, r["nct"] or "", r["title"] or "",
+                       stage, code]).lower()
+        out.append({"label": label, "sub": sub, "kw": kw, "g": "Applicants",
+                    "url": url_for("applicant_detail", lead_id=r["id"])})
+    return jsonify(out)
+
+
 def _set_active_study(claims):
     """Resolve the study-switcher selection. A `nct` query param sets it (and
     'all' clears); otherwise the last choice persists in the session. Only a
@@ -4934,55 +4962,54 @@ def _first_name(name, fallback="there"):
 @app.route("/app/home")
 @login_required
 def study_home():
-    """Study-team home ("Dashboard"): the day's action list built from the real
-    pipeline - AI-drafted outreach ready to send, AI pre-screened applicants
-    awaiting a human decision, today's visits, and what's new. KPI: compresses
-    contacted -> screened -> enrolled by putting the next action one click away."""
+    """Study-team home: a prioritized daily worklist ("Today"). Every item is a
+    concrete action that moves someone through found -> contacted -> screened ->
+    enrolled -> retained, ordered by urgency: respond to people waiting, decide on
+    new applicants, nudge the ones going quiet, prep visits, clear approvals.
+    Vanity totals live on Recruitment; this page is only what you DO today."""
     claims = db.list_study_claims(g.user["id"])
     rows = db.list_leads_for_user(g.user["id"])
     recon = db.latest_reconciliation_for_leads([r["id"] for r in rows])
     items = [_decode_lead(r, recon.get(r["id"])) for r in rows]
+    now = dt.datetime.now()
+    QUIET_DAYS = 3
 
-    # ── "Ready to send": AI-drafted follow-ups for revealed candidates who are
-    # waiting on us (unread reply) or stalled at a stage without a next step. ──
-    drafts = []
+    def _parse_ts(ts):
+        try:
+            return dt.datetime.strptime(str(ts)[:16], "%Y-%m-%d %H:%M")
+        except (ValueError, TypeError):
+            return None
+
+    # ── 1. Replies waiting: a patient spoke last or hasn't been read. Their move
+    # is done; yours is to respond fast (keeps contacted -> screened moving). ──
+    reply_queue, waiting_ids = [], set()
     for it in items:
         l = it["lead"]
         if not l["revealed"] or l["status"] in db.LEAD_CLOSED:
             continue
-        first = _first_name(l["name"])
-        study = l["title"] or l["condition"] or "the study"
-        tag, tag_tone, subject, preview, reason = (None,) * 5
-        if it.get("unread"):
-            tag, tag_tone = "Reply waiting", "warn"
-            reason = f"Replied {_rel_time(l['updated_at'])} · no answer yet"
-            subject = f"Re: your interest in {study}"
-            preview = (f"Hi {first}, thanks for getting back to us. Happy to answer "
-                       "that - the next step is a short screening call so we can "
-                       "confirm a few details. Do any times this week work for you?")
-        elif l["status"] == "eligible" and not (l["schedule_url"] or "").strip():
-            tag, tag_tone = "Screening invite", "brand"
-            reason = "Marked eligible · no screening call booked"
-            subject = "Ready to schedule your screening visit"
-            preview = (f"Hi {first}, good news - based on your responses you appear to "
-                       "meet our initial criteria. The next step is a brief screening "
-                       "call with our coordinator. We have openings this week.")
-        elif l["status"] == "screening":
-            tag, tag_tone = "Document reminder", "neutral"
-            reason = "At screening · consent form not returned"
-            subject = f"Consent form reminder for {study}"
-            preview = (f"Hi {first}, a quick reminder that we're still waiting on your "
-                       "signed consent form before your screening visit. Let us know "
-                       "if you'd like us to resend it.")
-        if tag:
-            drafts.append({
-                "id": l["id"], "name": l["name"] or it["code"],
-                "initials": _initials(l["name"] or it["code"]),
-                "reason": reason, "subject": subject, "preview": preview,
-                "tag": tag, "tag_tone": tag_tone})
-    drafts = drafts[:5]
+        msgs = db.get_messages(l["id"])
+        if not msgs:
+            continue
+        last = msgs[-1]
+        unread = bool(db.lead_unread_for_site(l["id"]))
+        awaiting = last["sender"] == "patient"
+        if not (unread or awaiting):
+            continue
+        waiting_ids.add(l["id"])
+        last_at = last["created_at"] or l["updated_at"] or ""
+        reply_queue.append({
+            "id": l["id"], "name": l["name"] or it["code"],
+            "initials": _initials(l["name"] or it["code"]),
+            "preview": last["body"], "preview_mine": last["sender"] == "site",
+            "when": _inbox_time_label(last_at), "last_at": last_at,
+            "unread": unread, "awaiting": awaiting,
+            "study": l["title"] or l["condition"] or l["nct"]})
+    reply_queue.sort(key=lambda x: (x["unread"], x["awaiting"], x["last_at"]),
+                     reverse=True)
+    reply_queue = reply_queue[:8]
 
-    # ── "Pending decisions": AI pre-screened, awaiting a human accept/decline. ──
+    # ── 2. Review new applicants: AI pre-screened, awaiting accept/decline.
+    # Strongest fit first so the best candidates get contacted fastest. ──
     pending = []
     for it in items:
         l = it["lead"]
@@ -5000,46 +5027,134 @@ def study_home():
             "score": v["score"], "verdict": v["label"], "verdict_tone": v["tone"],
             "flag": flag or "Ready for your review.",
             "source": _source_view(l), "applied": _rel_time(l["created_at"])})
+    pending.sort(key=lambda p: p["score"], reverse=True)
     pending = pending[:6]
 
-    # ── Right rail: today's visits + what's new since yesterday. ──
-    today = []
-    now = dt.datetime.now()
+    # ── 3. Follow-ups ready: proactive nudges with a tailored draft. Excludes
+    # anyone already in "Replies waiting" (that's their move, not ours), so there
+    # is one clean queue: book screening, consent reminder, or re-warm a lead
+    # that has gone quiet. Silence is what kills enrollment; this breaks it. ──
+    drafts = []
+    for it in items:
+        l = it["lead"]
+        if not l["revealed"] or l["status"] in db.LEAD_CLOSED or l["id"] in waiting_ids:
+            continue
+        first = _first_name(l["name"])
+        study = l["title"] or l["condition"] or "the study"
+        tag = tone = subject = preview = reason = None
+        rank = 3
+        if l["status"] == "eligible" and not (l["schedule_url"] or "").strip():
+            tag, tone, rank = "Book screening", "brand", 0
+            reason = "Eligible · no screening call booked"
+            subject = "Ready to schedule your screening visit"
+            preview = (f"Hi {first}, good news - based on your responses you appear to "
+                       "meet our initial criteria. The next step is a brief screening "
+                       "call with our coordinator. We have openings this week - want me "
+                       "to send you a link to pick a time?")
+        elif l["status"] == "screening":
+            tag, tone, rank = "Consent reminder", "neutral", 1
+            reason = "At screening · consent not returned"
+            subject = f"Consent form reminder for {study}"
+            preview = (f"Hi {first}, a quick reminder that we're still waiting on your "
+                       "signed consent form before your screening visit. Want me to "
+                       "resend it?")
+        else:
+            last = _parse_ts(db.last_activity_at(l["id"], l["created_at"]))
+            days = (now - last).days if last else 0
+            if days >= QUIET_DAYS:
+                tag, tone, rank = f"Quiet {days}d", "warn", 2
+                reason = f"No activity in {days} days · keep it warm"
+                subject = f"Still interested in {study}?"
+                preview = (f"Hi {first}, just checking in - your spot in {study} is "
+                           "still open. Happy to answer any questions or help you find "
+                           "a time that works. Are you still interested?")
+        if tag:
+            drafts.append({
+                "id": l["id"], "name": l["name"] or it["code"],
+                "initials": _initials(l["name"] or it["code"]),
+                "reason": reason, "subject": subject, "preview": preview,
+                "tag": tag, "tag_tone": tone, "rank": rank})
+    drafts.sort(key=lambda d: d["rank"])
+    drafts = drafts[:6]
+
+    # ── Right rail 1: upcoming visits (next 14 days), soonest first. ──
+    upcoming = []
     for it in items:
         for v in db.get_visits(it["lead"]["id"]):
-            try:
-                when = dt.datetime.strptime(str(v["visit_at"])[:16], "%Y-%m-%d %H:%M")
-            except ValueError:
+            when = _parse_ts(v["visit_at"])
+            if not when or not (0 <= (when - now).total_seconds() <= 14 * 86400):
                 continue
-            if 0 <= (when - now).total_seconds() <= 14 * 86400:
-                today.append({
-                    "time": when.strftime("%b %-d, %-I:%M %p"),
-                    "name": (it["lead"]["name"] if it["lead"]["revealed"]
-                             else it["code"]),
-                    "kind": (v["kind"] or "visit").replace("_", " ").title(),
-                    "tone": "brand"})
-    today = sorted(today, key=lambda x: x["time"])[:5]
+            day = when.date()
+            if day == now.date():
+                dlabel = "Today"
+            elif day == (now + dt.timedelta(days=1)).date():
+                dlabel = "Tomorrow"
+            else:
+                dlabel = when.strftime("%a %b %-d")
+            upcoming.append({
+                "when": when, "day": dlabel, "time": when.strftime("%-I:%M %p"),
+                "name": it["lead"]["name"] if it["lead"]["revealed"] else it["code"],
+                "kind": (v["kind"] or "visit").replace("_", " ").title(),
+                "id": it["lead"]["id"]})
+    upcoming.sort(key=lambda x: x["when"])
+    upcoming = upcoming[:6]
 
-    new_items = []
-    for it in items:
-        for ev in it.get("events", []):
-            new_items.append((ev["created_at"], ev["note"] or ev["status"],
-                              _rel_time(ev["created_at"])))
-    new_items = [{"text": t, "time": rel} for (_ts, t, rel) in
-                 sorted(new_items, key=lambda x: x[0], reverse=True)[:6]]
+    # ── Right rail 2: documents waiting on a decision (PI/coordinator sign-off). ──
+    docs_pending = []
+    for d in db.list_documents(g.user["id"]):
+        if d["status"] not in ("pending", "in_review"):
+            continue
+        docs_pending.append({
+            "id": d["id"], "title": d["title"], "nct": d["nct"] or "",
+            "status_label": db.DOC_STATUS_LABELS.get(d["status"], d["status"]),
+            "pending": d["status"] == "pending"})
+    docs_pending_total = len(docs_pending)
+    docs_pending = docs_pending[:5]
+    can_approve = db.can_approve_docs(g.user["id"])
 
-    stats = {
-        "awaiting": len(pending),
-        "active": sum(1 for it in items
-                      if it["lead"]["revealed"]
-                      and it["lead"]["status"] not in db.LEAD_CLOSED),
-        "enrolled": sum(1 for it in items if it["lead"]["status"] == "enrolled"),
-        "unread": db.unread_for_site(g.user["id"]),
+    # ── Right rail 3: this week's momentum. Small and honest (not a vanity wall):
+    # is the funnel actually moving this week? ──
+    week_ago = now - dt.timedelta(days=7)
+
+    def _within_week(ts):
+        d = _parse_ts(ts)
+        return bool(d and d >= week_ago)
+
+    week = {
+        "applied": sum(1 for it in items if _within_week(it["lead"]["created_at"])),
+        "booked": sum(1 for it in items
+                      if (it["lead"]["schedule_url"] or "").strip()
+                      and _within_week(it["lead"]["updated_at"])),
+        "enrolled": sum(1 for it in items if it["lead"]["status"] == "enrolled"
+                        and _within_week(it["lead"]["updated_at"])),
     }
-    return render_template("study_home.html", drafts=drafts, pending=pending,
-                           today=today, new_items=new_items, stats=stats,
-                           claims=claims,
-                           org=(db.get_site_profile(g.user["id"]) or {}))
+
+    # ── Triage cockpit: work counts that map to sections (jump links), NOT
+    # vanity status totals. A zero is a good signal ("caught up here"). ──
+    triage = [
+        {"key": "needs-reply", "label": "Replies waiting", "n": len(reply_queue),
+         "icon": "chat", "tone": "danger"},
+        {"key": "to-review", "label": "To review", "n": len(pending),
+         "icon": "user-plus", "tone": "brand"},
+        {"key": "follow-ups", "label": "Follow-ups", "n": len(drafts),
+         "icon": "sparkle", "tone": "warn"},
+        {"key": "upcoming", "label": "Visits soon", "n": len(upcoming),
+         "icon": "calendar", "tone": "info"},
+        {"key": "approvals", "label": "To approve", "n": docs_pending_total,
+         "icon": "file-check", "tone": "violet"},
+    ]
+    todo_total = len(reply_queue) + len(pending) + len(drafts) + docs_pending_total
+
+    hour = now.hour
+    greeting = ("Good morning" if hour < 12
+                else "Good afternoon" if hour < 18 else "Good evening")
+
+    return render_template(
+        "study_home.html", claims=claims, reply_queue=reply_queue, pending=pending,
+        drafts=drafts, upcoming=upcoming, docs_pending=docs_pending,
+        docs_pending_total=docs_pending_total, can_approve=can_approve, week=week,
+        triage=triage, todo_total=todo_total, greeting=greeting,
+        org=(db.get_site_profile(g.user["id"]) or {}))
 
 
 @app.route("/app/applicant/<int:lead_id>")
@@ -5056,8 +5171,8 @@ def applicant_detail(lead_id):
     it = _decode_lead(lead, db.latest_reconciliation(lead_id))
     view = _queue_item(it)
     view["initials"] = _initials(lead["name"] or view["code"])
-    # Booking-link prefill hierarchy: this lead's link > study default >
-    # the coordinator's own account calendar.
+    # The booking calendar we'd send with one click: study default, else the
+    # coordinator's account calendar (configured once in Settings).
     default_schedule = (db.get_claim_schedule_url(g.user["id"], lead["nct"])
                         or db.get_site_calendar_url(g.user["id"]))
     return render_template("applicant_detail.html", it=it, l=lead, view=view,
@@ -5477,28 +5592,37 @@ def schedule_lead(lead_id):
         return v
 
     url = _norm_link(request.form.get("schedule_url", ""))
-    video = _norm_link(request.form.get("video_url", ""))
+    # The applicant page is action-only: it sends the booking calendar the team
+    # already configured (per-study default, else the account calendar in
+    # Settings) with one click. Booking-link *config* lives in Settings, never
+    # re-typed per applicant. An explicit URL in the form still overrides.
+    lead0 = db.get_lead(lead_id)
+    if not url and lead0:
+        nct = lead0["nct"] or ""
+        url = (db.get_claim_schedule_url(g.user["id"], nct) if nct else "") \
+            or db.get_site_calendar_url(g.user["id"])
+    if not url:
+        flash("Add your booking calendar in Settings first, then you can send it "
+              "to applicants with one click.", "error")
+        return redirect(back)
     lead = db.set_lead_schedule(lead_id, url)
     if not lead:
         flash("Couldn't find that candidate.", "error")
         return redirect(back)
-    # Optionally remember the booking link as the study's default.
-    if url and request.form.get("set_default") and lead["nct"]:
+    # Optionally remember the booking link as the study's default (API/back-compat;
+    # the applicant UI no longer sets defaults - Settings owns that).
+    if request.form.get("set_default") and lead["nct"]:
         db.set_claim_schedule_url(g.user["id"], lead["nct"], url)
-    # Video-call link: save it and drop it into the patient's thread.
-    if "video_url" in request.form and video != (lead["video_url"] or ""):
+    # Optional per-call video link (only if explicitly provided).
+    video = _norm_link(request.form.get("video_url", ""))
+    if video and video != (lead["video_url"] or ""):
         db.set_lead_video(lead_id, video)
-        if video and lead["revealed"]:
+        if lead["revealed"]:
             db.add_message(lead_id, "site",
                            f"Video call link for your screening visit: {video}")
-    if url:
-        _notify_applicant_schedule(lead)
-        flash("Booking link sent - the applicant can now self-schedule their "
-              "screening call.", "success")
-    elif video:
-        flash("Video call link saved and shared with the applicant.", "success")
-    else:
-        flash("Booking link removed.", "success")
+    _notify_applicant_schedule(lead)
+    flash("Booking link sent - the applicant can now self-schedule their "
+          "screening call.", "success")
     return redirect(back)
 
 
@@ -5910,97 +6034,13 @@ def _inbox_time_label(ts):
 @app.route("/app/messages")
 @login_required
 def patient_inbox():
-    """Trial-organized conversations: each trial is a channel with an Internal
-    (staff-only) team lane and an External lane of per-patient threads. Patient
-    threads are the wedge (talking *with participants* moves contacted ->
-    screened -> enrolled -> retained); the internal lane keeps trial-specific
-    coordination next to the people it's about."""
-    uid = g.user["id"]
-    claims = db.list_study_claims(uid)
-    title_by_nct = {c["nct"]: (c["title"] or c["nct"]) for c in claims}
-    rows = db.list_leads_for_user(uid)
-
-    patients_by_nct = defaultdict(list)
-    for r in rows:
-        if not r["revealed"] or r["status"] in db.LEAD_CLOSED:
-            continue
-        msgs = db.get_messages(r["id"])
-        last = msgs[-1] if msgs else None
-        last_at = (last["created_at"] if last else r["updated_at"]) or ""
-        tags = db.lead_tags(r)
-        patients_by_nct[r["nct"]].append({
-            "lead": r,
-            "code": candidate_code(r),
-            "last_at": last_at,
-            "last_label": _inbox_time_label(last_at),
-            "preview": (last["body"] if last else "No messages yet"),
-            # "You:" only when the coordinator sent last - not system notices.
-            "preview_mine": bool(last and last["sender"] == "site"),
-            "unread": db.lead_unread_for_site(r["id"]),
-            # The patient spoke last and we haven't replied -> our turn.
-            "awaiting_reply": bool(last and last["sender"] == "patient"),
-            "open_tasks": db.open_task_count(r["id"], "patient"),
-            "tags": tags,
-            "pinned": "pinned" in tags,
-        })
-
-    # Trial order: claimed studies first, then any NCT that has patients.
-    ncts = list(dict.fromkeys([c["nct"] for c in claims]
-                              + list(patients_by_nct.keys())))
-    trials = []
-    for nct in ncts:
-        # Triage: pinned first, then unread, then "your turn", then most recent.
-        pats = sorted(patients_by_nct.get(nct, []),
-                      key=lambda c: (c["pinned"], c["unread"] > 0,
-                                     c["awaiting_reply"], c["last_at"]),
-                      reverse=True)
-        trials.append({
-            "nct": nct,
-            "title": title_by_nct.get(nct, nct),
-            "patients": pats,
-            "patient_unread": sum(1 for p in pats if p["unread"]),
-        })
-
-    valid_ncts = {t["nct"] for t in trials}
-    sel_lead = request.args.get("lead_id", type=int)
-    sel_nct = request.args.get("nct")
-
-    # Gmail-style: only open a thread when a specific patient is chosen; the
-    # default landing is the inbox LIST for whichever trial "account" is open.
-    active = None
-    if sel_lead:
-        for t in trials:
-            match = next((p for p in t["patients"]
-                          if p["lead"]["id"] == sel_lead), None)
-            if match:
-                active = {"kind": "patient", "nct": t["nct"], "convo": match}
-                break
-
-    # Which trial inbox is open (the Gmail "account"): the opened patient's
-    # trial, else an explicit ?nct=, else the first trial.
-    if active:
-        open_nct = active["nct"]
-    elif sel_nct in valid_ncts:
-        open_nct = sel_nct
-    else:
-        open_nct = trials[0]["nct"] if trials else None
-
-    detail = None
-    if active:
-        p = active["convo"]
-        lid = p["lead"]["id"]
-        detail = {
-            "kind": "patient", "nct": active["nct"],
-            "lead": p["lead"], "code": p["code"],
-            "messages": db.get_messages(lid),
-            "files": db.list_attachments(lid),
-            "tags": p["tags"],
-        }
-        db.mark_thread_read(lid, "site")
-        p["unread"] = 0  # reflect the read in the rail
-
-    return render_template("messages.html", trials=trials, active=detail,
-                           open_nct=open_nct, labels=db.LEAD_LABELS)
+    """Legacy inbox URL. Messaging is now consolidated: 1:1 threads live on the
+    applicant detail page, and the cross-applicant "needs reply" queue lives on
+    the Dashboard. Kept as a redirect so old links/bookmarks don't 404."""
+    lead_id = request.args.get("lead_id", type=int)
+    if lead_id:
+        return redirect(url_for("applicant_detail", lead_id=lead_id))
+    return redirect(url_for("study_home", _anchor="needs-reply"))
 
 
 @app.route("/app/leads/<int:lead_id>/coverage-check", methods=["POST"])

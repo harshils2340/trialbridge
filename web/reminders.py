@@ -28,7 +28,21 @@ _on_nudge = None
 INTERVAL = int(os.environ.get("REMINDERS_INTERVAL_SECONDS", str(3600)))
 VISIT_WINDOW_H = int(os.environ.get("REMINDERS_VISIT_WINDOW_HOURS", "24"))
 QUIET_DAYS = int(os.environ.get("REMINDERS_QUIET_DAYS", "3"))
+# Stop nudging after this many unanswered check-ins so a quiet applicant never
+# gets spammed with the same line forever (that hurts trust and retention).
+MAX_NUDGES = int(os.environ.get("REMINDERS_MAX_NUDGES", "3"))
 _FMT = "%Y-%m-%d %H:%M"
+
+# Rotate the nudge copy so repeat check-ins read like a real person following
+# up, not a copy-pasted loop. Indexed by how many times we've already nudged.
+_NUDGE_MESSAGES = [
+    "Just checking in - your application is still active. Reply here with any "
+    "questions, or let the team know you're still interested.",
+    "Following up in case my last note got buried. We'd still love to have you "
+    "- is there anything holding you back or that I can clarify?",
+    "Last check-in from me for now: your spot is still open. Reply any time and "
+    "we'll pick things right back up - no pressure either way.",
+]
 
 # SINGLE SWITCH for the cron reminder/nudge EMAILS (visit reminders + the
 # "still interested?" quiet-applicant check-ins). While off, the in-app system
@@ -95,10 +109,15 @@ def check_nudges():
         nudged = _parse(lead["nudged_at"])
         if nudged is not None and nudged > cutoff:
             continue                          # already nudged recently
+        try:
+            count = int(lead["nudge_count"] or 0)
+        except (KeyError, IndexError, TypeError, ValueError):
+            count = 0
+        if count >= MAX_NUDGES:
+            continue                          # stop; don't spam the same person
         db.add_message(
             lead["id"], "system",
-            "Just checking in - your application is still active. Reply here with "
-            "any questions, or let the team know you're still interested.")
+            _NUDGE_MESSAGES[min(count, len(_NUDGE_MESSAGES) - 1)])
         db.set_nudged(lead["id"])
         if _on_nudge and _reminder_emails_enabled():
             try:

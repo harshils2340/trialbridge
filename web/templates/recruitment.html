@@ -1,75 +1,86 @@
 {% extends "base.html" %}
 {% import "_icons.html" as ic %}
 {% import "_ui.html" as ui %}
-{% block title %}Recruitment dashboard · BridgeMD{% endblock %}
+{% block title %}Recruitment · BridgeMD for sites{% endblock %}
 
 {% block body %}
-<div class="page-head">
-  <h1>Recruitment dashboard</h1>
-  <p>Claimed-study performance and spend.</p>
-  <p class="site-hint">
-    <a href="{{ url_for('recruitment_export_csv') }}">Export CSV</a> ·
-    <a href="{{ url_for('recruitment_summary_json') }}" target="_blank" rel="noopener">Summary API (JSON)</a>
-  </p>
+<div class="app-head">
+  <div>
+    <h1>Recruitment</h1>
+    <p>Where your applicants come from and how they convert - across every claimed study.</p>
+  </div>
+  <div style="display:flex;gap:8px;">
+    {{ ui.btn('Export CSV', 'ghost', href=url_for('recruitment_export_csv'), icon='download') }}
+  </div>
 </div>
 
 {% if not claims %}
-<div class="card">
-  {{ ui.empty('Claim studies to activate analytics', 'Claim at least one NCT to start tracking metrics.', 'award') }}
-  <div style="text-align:center;">{{ ui.btn('Go to site setup', variant='primary', icon='award', href=url_for('site_setup')) }}</div>
+<div class="app-card pad">
+  {{ ui.empty('Claim studies to activate analytics', 'Claim at least one NCT and applicants, sources, and conversion show up here.', 'award', action=ui.btn('Go to Settings', variant='primary', icon='award', href=url_for('site_setup'))) }}
 </div>
-{% endif %}
+{% else %}
 
-<div class="stats">
-  <div class="stat"><div class="l">{{ ic.icon('list', 'ico stat-ico') }}Applicants</div><div class="n">{{ stats.totals.total }}</div></div>
-  <div class="stat"><div class="l">{{ ic.icon('activity', 'ico stat-ico') }}Active</div><div class="n">{{ stats.totals.active }}</div></div>
-  <div class="stat"><div class="l">{{ ic.icon('user-plus', 'ico stat-ico') }}Enrolled</div><div class="n">{{ stats.totals.enrolled }}</div></div>
-  <div class="stat accent"><div class="l">{{ ic.icon('award', 'ico stat-ico') }}Conversion</div><div class="n">{{ stats.overall_conv }}%</div></div>
+<div class="app-stats">
+  <div class="app-stat"><div class="l">Applicants</div><div class="n">{{ stats.totals.total }}</div></div>
+  <div class="app-stat"><div class="l">Active</div><div class="n">{{ stats.totals.active }}</div><div class="s">in the funnel</div></div>
+  <div class="app-stat ok"><div class="l">Enrolled</div><div class="n">{{ stats.totals.enrolled }}</div></div>
+  <div class="app-stat accent"><div class="l">Conversion</div><div class="n">{{ stats.overall_conv }}%</div><div class="s">applicant → enrolled</div></div>
 </div>
 
-<div class="card dash-card">
-  <div class="section-title"><h2>By trial</h2></div>
+<div class="app-card" style="margin-bottom:18px;">
+  <div class="app-card-title" style="padding:14px 18px 0;">{{ ic.icon('file') }} <b>By study</b></div>
   {% if stats.per_trial %}
-  <table class="dash-table">
-    <thead><tr><th>Trial</th><th>Applicants</th><th>Enrolled</th><th>Conversion</th></tr></thead>
+  <table class="app-table">
+    <thead><tr><th>Study</th><th>Applicants</th><th>Enrolled</th><th>Conversion</th></tr></thead>
     <tbody>
       {% for t in stats.per_trial %}
       <tr>
-        <td>{% if t.nct %}{% if t.nct.startswith('NCT') %}<a href="https://clinicaltrials.gov/study/{{ t.nct }}" target="_blank" rel="noopener">{{ t.nct }}</a>{% else %}{{ t.nct }}{% endif %} {% endif %}
-          <span class="dash-trial-title">{{ t.title[:60] }}</span></td>
+        <td>
+          <div class="who">
+            <span class="app-av neutral">{{ ic.icon('file') }}</span>
+            <div>
+              <b>{{ (t.title or 'Study')[:60] }}</b>
+              {% if t.nct %}<span>{% if t.nct.startswith('NCT') %}<a href="https://clinicaltrials.gov/study/{{ t.nct }}" target="_blank" rel="noopener">{{ t.nct }}</a>{% else %}{{ t.nct }}{% endif %}</span>{% endif %}
+            </div>
+          </div>
+        </td>
         <td>{{ t.total }}</td>
         <td>{{ t.enrolled }}</td>
-        <td><span class="dash-conv">{{ t.conv|int }}%</span></td>
+        <td>{{ ui.badge('%d%%'|format(t.conv|int), 'ok' if t.conv|int >= 20 else 'neutral') }}</td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
   {% else %}
-  {{ ui.empty('No applicants yet', 'As people apply, this fills in per trial.', 'list') }}
+  <div class="pad">{{ ui.empty('No applicants yet', 'As people apply, this fills in per study.', 'list') }}</div>
   {% endif %}
 </div>
 
-<div class="card dash-card">
-  <div class="section-title"><h2>By acquisition channel</h2></div>
+<div class="app-card">
+  <div class="app-card-title" style="padding:14px 18px 0;">{{ ic.icon('activity') }} <b>By acquisition channel</b></div>
   {% if stats.source_breakdown %}
-  <table class="dash-table">
+  <table class="app-table">
     <thead><tr><th>Channel</th><th>Applicants</th><th>Screening</th><th>Enrolled</th><th>Enroll conv</th><th>Verified</th></tr></thead>
     <tbody>
       {% for s in stats.source_breakdown %}
       <tr>
-        <td><span class="dash-src">{{ 'Physician referrals' if (s.source or '') == 'physician' else 'Patient self-serve' }}</span></td>
+        <td><b>{{ 'Physician referrals' if (s.source or '') == 'physician' else 'Patient self-serve' }}</b></td>
         <td>{{ s.total }}</td>
         <td>{{ s.screening }}</td>
         <td>{{ s.enrolled }}</td>
-        <td><span class="dash-conv">{{ s.enroll_conv }}%</span></td>
-        <td>{{ s.verified_enrolled }} <span class="dash-src-sub">({{ s.verified_rate }}%)</span></td>
+        <td>{{ ui.badge('%d%%'|format(s.enroll_conv), 'ok' if s.enroll_conv >= 20 else 'neutral') }}</td>
+        <td>{{ s.verified_enrolled }} <span class="app-sub" style="font-size:12px;color:var(--faint);">({{ s.verified_rate }}%)</span></td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
   {% else %}
-  {{ ui.empty('No channel data yet', '', 'activity') }}
+  <div class="pad">{{ ui.empty('No channel data yet', '', 'activity') }}</div>
   {% endif %}
 </div>
 
+<p class="app-sub" style="font-size:12px;color:var(--faint);margin-top:14px;">
+  Data API: <a href="{{ url_for('recruitment_summary_json') }}" target="_blank" rel="noopener">summary JSON</a>.
+</p>
+{% endif %}
 {% endblock %}

@@ -273,6 +273,7 @@ CREATE TABLE IF NOT EXISTS leads (
     revealed        INTEGER DEFAULT 0,
     schedule_url    TEXT DEFAULT '',
     nudged_at       TEXT DEFAULT '',
+    nudge_count     INTEGER DEFAULT 0,
     referred_by     TEXT DEFAULT '',
     invite_token    TEXT DEFAULT '',
     redcap_record_id TEXT DEFAULT '',
@@ -940,6 +941,7 @@ _MIGRATIONS = {
         # Video call link (Zoom/Google Meet) for this candidate's screening visit.
         "video_url": "TEXT DEFAULT ''",
         "nudged_at": "TEXT DEFAULT ''",
+        "nudge_count": "INTEGER DEFAULT 0",
         "referred_by": "TEXT DEFAULT ''",
         "invite_token": "TEXT DEFAULT ''",
         "redcap_record_id": "TEXT DEFAULT ''",
@@ -3356,7 +3358,9 @@ def last_activity_at(lead_id, created_at):
 
 def set_nudged(lead_id):
     db = get_db()
-    db.execute("UPDATE leads SET nudged_at = ? WHERE id = ?", (now(), lead_id))
+    db.execute("UPDATE leads SET nudged_at = ?, "
+               "nudge_count = COALESCE(nudge_count, 0) + 1 WHERE id = ?",
+               (now(), lead_id))
     db.commit()
 
 

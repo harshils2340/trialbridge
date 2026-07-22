@@ -23,7 +23,6 @@
     <p>{{ queue|length }} total across {{ claims|length }} stud{{ 'y' if claims|length == 1 else 'ies' }}. Pre-screened by AI - you decide.</p>
     {% endif %}
   </div>
-  {{ ui.btn('Conversations', 'ghost', href=url_for('patient_inbox'), icon='chat') }}
 </div>
 
 <div class="app-stats">
