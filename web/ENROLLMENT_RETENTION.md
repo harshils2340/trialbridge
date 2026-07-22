@@ -99,6 +99,44 @@ Raw themes from response:
   - moving away from passive clinic flyers toward community-org partnerships
   - launch of a dedicated recruitment website increased inbound interest volume
 
+### 2026-07-21 interview signal (coordinator/PI workflow debrief)
+Raw themes from response:
+- Channels, ranked by effectiveness:
+  - **physician referral (most effective)** — doctor refers on the patient's behalf;
+    works because they already know the medical history, so screen->enroll is high.
+  - **hospital ads** — mainly yields *healthy controls*.
+  - **ClinicalTrials.gov (least effective)** — keep as free reach, don't over-invest.
+- Current intake path: doctor refers -> give the lab's email -> RedCap questionnaire
+  to confirm eligibility. (Referral -> intake -> prescreen is the money path.)
+- Tooling reality: everything runs off a **master Excel sheet** today.
+
+Feature backlog from this debrief (triaged; not yet built — prioritized notes only):
+- **Master Excel -> ATS (the wedge).** Import their master sheet AND export back so
+  they trust us as the single source of truth. KPI: efficiency/capacity + all stages.
+- **Audit-ready export (CSV + PDF).** One button to hand an auditor recruitment
+  activity, applicant paths, document reviews. KPI: efficiency + sales trust. Low risk.
+  *(Priority #1 — safe, high demo value.)*
+- **Do-not-recruit / suppression list.** Never re-contact opt-outs / flagged people;
+  checked on intake + apply. KPI: efficiency + protects screen->enroll. Compliance-positive.
+  *(Priority #2.)*
+- **Referral-path polish.** Tighten physician-referral -> intake -> prescreen since it's
+  the #1 channel. KPI: found->contacted->screened. *(Priority #3.)*
+- **Per-person call notes / call log.** Freeform internal note on a lead. KPI: efficiency. Small.
+- **Integrated scheduling.** Booking link for screening visits (we already have visits +
+  reminders + calendar invites). KPI: screened->enrolled. Build later.
+- **Patient copilot (Q&A over site data).** BUILD WITH GUARDRAILS: retrieve ONLY that
+  account's own data, never send PHI to a model that trains on it (BAA / zero-retention
+  endpoint), log every query. KPI: efficiency. Not a quick item.
+
+Compliance red flags from this debrief (hard gate — do not ship without IRB/counsel):
+- **"Add patients on behalf of consent w/ a family member" — do NOT build as stated.**
+  A coordinator may *enter a record*, but consent cannot be manufactured. Surrogate/family
+  consent is valid only for an incapacitated patient via a Legally Authorized Representative
+  under the IRB-approved process (HIPAA + Common Rule). Reframe: data entry is fine; consent
+  is still captured from the patient or a documented LAR. Needs IRB/counsel before any build.
+- **Copilot = PHI surface.** Requires BAA / zero-retention model, per-account data scoping,
+  and query audit logging before it touches patient data.
+
 ### Problem frequency map (from field signals so far)
 Use this simple scale each time: `high`, `medium`, `low`.
 
