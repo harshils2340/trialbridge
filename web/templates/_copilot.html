@@ -37,6 +37,7 @@
   var form = document.getElementById('copilotForm');
   var input = document.getElementById('copilotInput');
   var suggestWrap = document.getElementById('copilotSuggest');
+  var sendBtn = form.querySelector('button[type="submit"]');
   var STARTERS = ["Who's waiting on my decision?", "Who's stuck in screening?", "How's my enrollment funnel?"];
   var busy = false;
 
@@ -170,27 +171,89 @@
     });
   }
 
+  // Animated "..." bubble while we wait for the answer, like a chat assistant.
+  function addTyping() {
+    var wrap = document.createElement('div');
+    wrap.className = 'copilot-msg bot';
+    var dots = document.createElement('div');
+    dots.className = 'copilot-typing';
+    dots.setAttribute('aria-label', 'Bridget is thinking');
+    dots.innerHTML = '<span></span><span></span><span></span>';
+    wrap.appendChild(dots);
+    log.appendChild(wrap);
+    scroll();
+    return wrap;
+  }
+
+  // Stream the answer in word-by-word so it reads like a live response.
+  function revealText(p, text, done) {
+    text = String(text == null ? '' : text);
+    if (!text) { if (done) done(); return; }
+    var tokens = text.split(/(\s+)/);
+    var i = 0;
+    (function step() {
+      var chunk = '';
+      for (var n = 0; n < 3 && i < tokens.length; n++) { chunk += tokens[i++]; }
+      p.textContent += chunk;
+      scroll();
+      if (i < tokens.length) { setTimeout(step, 16); }
+      else if (done) { done(); }
+    })();
+  }
+
+  function setBusy(b) {
+    busy = b;
+    input.disabled = b;
+    if (sendBtn) sendBtn.disabled = b;
+    form.classList.toggle('is-busy', b);
+    if (!b) { input.focus(); }
+  }
+
   function ask(q) {
     if (busy || !q) return;
-    busy = true;
+    setBusy(true);
     addMsg('me', q);
     input.value = '';
-    var thinking = addMsg('bot', 'Thinking\u2026');
+    var typing = addTyping();
     fetch('/app/copilot/ask', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf(),
                  'X-Requested-With': 'XMLHttpRequest' },
       body: JSON.stringify({ q: q, lead_id: leadId() })
-    }).then(function (r) { return r.json(); }).then(function (d) {
-      thinking.remove();
-      if (!d || !d.ok) { addMsg('bot', (d && d.error) || 'Something went wrong.'); return; }
-      var w = addMsg('bot', d.answer || '');
-      addCitations(w, d.citations);
-      renderProposal(w, d.proposal);
+    }).then(function (r) {
+      // Read as text first so a redirect/login/404 (non-JSON) fails gracefully
+      // instead of throwing a generic "could not reach" error.
+      return r.text().then(function (t) {
+        var d = null;
+        try { d = JSON.parse(t); } catch (e) {}
+        return { status: r.status, data: d };
+      });
+    }).then(function (res) {
+      typing.remove();
+      var d = res.data;
+      if (!d) {
+        addMsg('bot', (res.status === 401 || res.status === 403)
+          ? 'Your session looks signed out. Refresh the page and try again.'
+          : 'I couldn\u2019t reach the assistant. Refresh the page and try again.');
+        return;
+      }
+      if (!d.ok) {
+        addMsg('bot', d.error === 'csrf_failed'
+          ? 'Your session expired \u2014 refresh the page and try again.'
+          : (d.error === 'auth_required'
+              ? 'Please sign in again to use Bridget.'
+              : (d.error || 'Something went wrong.')));
+        return;
+      }
+      var w = addMsg('bot', '');
+      revealText(w.querySelector('p'), d.answer || '', function () {
+        addCitations(w, d.citations);
+        renderProposal(w, d.proposal);
+      });
     }).catch(function () {
-      thinking.remove();
-      addMsg('bot', 'I could not reach the assistant just now.');
-    }).finally(function () { busy = false; });
+      typing.remove();
+      addMsg('bot', 'I couldn\u2019t reach the assistant. Check your connection and try again.');
+    }).finally(function () { setBusy(false); });
   }
 
   STARTERS.forEach(function (s) {

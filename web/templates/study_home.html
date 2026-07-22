@@ -102,33 +102,34 @@
       {% endif %}
     </div>
 
-    {# ── 3. Follow-ups ready ── #}
+    {# ── 3. Needs follow-up ── #}
     <div class="app-sec" id="follow-ups">
       <div class="app-sec-head">
-        {{ ic.icon('sparkle') }}<b>Follow-ups ready</b>
-        <span>AI drafted a nudge for people who need one. Review and send.</span>
-        {% if drafts %}{{ ui.count(drafts|length, 'danger') }}{% endif %}
+        {{ ic.icon('sparkle') }}<b>Needs follow-up</b>
+        <span>People slipping through. Open one to draft a message when you want it.</span>
+        {% if followups %}{{ ui.count(followups|length, 'warn') }}{% endif %}
       </div>
-      {% if not drafts %}
+      {% if not followups %}
       <div class="app-card pad">{{ ui.empty('All caught up', 'No one needs a nudge right now.', 'check') }}</div>
       {% else %}
       <div class="app-card">
-        {% for d in drafts %}
+        {% for f in followups %}
         <div class="app-row">
-          <span class="app-av neutral">{{ d.initials }}</span>
+          <span class="app-av neutral">{{ f.initials }}</span>
           <div class="main">
             <div class="top">
-              <b>{{ d.name }}</b>{{ ui.badge(d.tag, d.tag_tone) }}
-              <span class="reason">{{ d.reason }}</span>
+              <b>{{ f.name }}</b>{{ ui.badge(f.tag, f.tag_tone) }}
+              <span class="reason">{{ f.reason }}</span>
             </div>
-            <div class="prev">{{ d.preview }}</div>
           </div>
           <div class="acts">
-            {{ ui.btn('Edit', 'ghost', 'sm', href=url_for('applicant_detail', lead_id=d.id)) }}
-            <form method="post" action="{{ url_for('message_lead', lead_id=d.id) }}">
-              <input type="hidden" name="body" value="{{ d.preview }}">
-              {{ ui.btn('Send', 'primary', 'sm', type='submit') }}
+            {% if f.action == 'book' and has_calendar %}
+            <form method="post" action="{{ url_for('schedule_lead', lead_id=f.id) }}">
+              <input type="hidden" name="next" value="{{ url_for('study_home') }}#follow-ups">
+              {{ ui.btn('Send booking link', 'primary', 'sm', type='submit') }}
             </form>
+            {% endif %}
+            {{ ui.btn('Open', 'ghost', 'sm', href=url_for('applicant_detail', lead_id=f.id)) }}
           </div>
         </div>
         {% endfor %}

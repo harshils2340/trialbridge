@@ -5030,52 +5030,40 @@ def study_home():
     pending.sort(key=lambda p: p["score"], reverse=True)
     pending = pending[:6]
 
-    # ── 3. Follow-ups ready: proactive nudges with a tailored draft. Excludes
-    # anyone already in "Replies waiting" (that's their move, not ours), so there
-    # is one clean queue: book screening, consent reminder, or re-warm a lead
-    # that has gone quiet. Silence is what kills enrollment; this breaks it. ──
-    drafts = []
+    # ── 3. Needs follow-up: people slipping through who need a proactive touch -
+    # eligible-but-not-booked, at-screening-without-consent, or gone quiet.
+    # Excludes anyone already in "Replies waiting" (that's their move). We do NOT
+    # pre-write a message for each (that's just noise) - the row points you to the
+    # person and you draft on demand there. Eligible-not-booked gets a real
+    # one-click "send booking link" because that's an action, not a draft. ──
+    followups = []
     for it in items:
         l = it["lead"]
         if not l["revealed"] or l["status"] in db.LEAD_CLOSED or l["id"] in waiting_ids:
             continue
-        first = _first_name(l["name"])
-        study = l["title"] or l["condition"] or "the study"
-        tag = tone = subject = preview = reason = None
+        tag = tone = reason = action = None
         rank = 3
         if l["status"] == "eligible" and not (l["schedule_url"] or "").strip():
-            tag, tone, rank = "Book screening", "brand", 0
+            tag, tone, action, rank = "Book screening", "brand", "book", 0
             reason = "Eligible · no screening call booked"
-            subject = "Ready to schedule your screening visit"
-            preview = (f"Hi {first}, good news - based on your responses you appear to "
-                       "meet our initial criteria. The next step is a brief screening "
-                       "call with our coordinator. We have openings this week - want me "
-                       "to send you a link to pick a time?")
         elif l["status"] == "screening":
-            tag, tone, rank = "Consent reminder", "neutral", 1
+            tag, tone, action, rank = "Consent pending", "neutral", "open", 1
             reason = "At screening · consent not returned"
-            subject = f"Consent form reminder for {study}"
-            preview = (f"Hi {first}, a quick reminder that we're still waiting on your "
-                       "signed consent form before your screening visit. Want me to "
-                       "resend it?")
         else:
             last = _parse_ts(db.last_activity_at(l["id"], l["created_at"]))
             days = (now - last).days if last else 0
             if days >= QUIET_DAYS:
-                tag, tone, rank = f"Quiet {days}d", "warn", 2
-                reason = f"No activity in {days} days · keep it warm"
-                subject = f"Still interested in {study}?"
-                preview = (f"Hi {first}, just checking in - your spot in {study} is "
-                           "still open. Happy to answer any questions or help you find "
-                           "a time that works. Are you still interested?")
+                tag, tone, action, rank = f"Quiet {days}d", "warn", "open", 2
+                reason = f"No activity in {days} days"
         if tag:
-            drafts.append({
+            followups.append({
                 "id": l["id"], "name": l["name"] or it["code"],
                 "initials": _initials(l["name"] or it["code"]),
-                "reason": reason, "subject": subject, "preview": preview,
-                "tag": tag, "tag_tone": tone, "rank": rank})
-    drafts.sort(key=lambda d: d["rank"])
-    drafts = drafts[:6]
+                "reason": reason, "tag": tag, "tag_tone": tone,
+                "action": action, "rank": rank})
+    followups.sort(key=lambda f: f["rank"])
+    followups = followups[:8]
+    has_calendar = bool(db.get_site_calendar_url(g.user["id"]))
 
     # ── Right rail 1: upcoming visits (next 14 days), soonest first. ──
     upcoming = []
@@ -5136,14 +5124,14 @@ def study_home():
          "icon": "chat", "tone": "danger"},
         {"key": "to-review", "label": "To review", "n": len(pending),
          "icon": "user-plus", "tone": "brand"},
-        {"key": "follow-ups", "label": "Follow-ups", "n": len(drafts),
+        {"key": "follow-ups", "label": "Follow-ups", "n": len(followups),
          "icon": "sparkle", "tone": "warn"},
         {"key": "upcoming", "label": "Visits soon", "n": len(upcoming),
          "icon": "calendar", "tone": "info"},
         {"key": "approvals", "label": "To approve", "n": docs_pending_total,
          "icon": "file-check", "tone": "violet"},
     ]
-    todo_total = len(reply_queue) + len(pending) + len(drafts) + docs_pending_total
+    todo_total = len(reply_queue) + len(pending) + len(followups) + docs_pending_total
 
     hour = now.hour
     greeting = ("Good morning" if hour < 12
@@ -5151,7 +5139,8 @@ def study_home():
 
     return render_template(
         "study_home.html", claims=claims, reply_queue=reply_queue, pending=pending,
-        drafts=drafts, upcoming=upcoming, docs_pending=docs_pending,
+        followups=followups, has_calendar=has_calendar, upcoming=upcoming,
+        docs_pending=docs_pending,
         docs_pending_total=docs_pending_total, can_approve=can_approve, week=week,
         triage=triage, todo_total=todo_total, greeting=greeting,
         org=(db.get_site_profile(g.user["id"]) or {}))
