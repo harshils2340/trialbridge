@@ -822,6 +822,10 @@ _MIGRATIONS = {
         # Existing rows backfill to verified (1) so current demos keep working;
         # new self-serve claims are inserted with verified=0 (pending approval).
         "verified": "INTEGER NOT NULL DEFAULT 1",
+        # Reusable per-study booking link (Calendly/Acuity/Cal.com). Set once on
+        # the study; the applicant screen prefills it so a coordinator sends the
+        # same self-schedule link with one click. KPI: speeds screened->enrolled.
+        "schedule_url": "TEXT DEFAULT ''",
     },
     "records_profiles": {
         "sync_status": "TEXT DEFAULT ''",
@@ -1863,6 +1867,29 @@ def set_claim_verified(user_id, nct, verified=True):
                (1 if verified else 0, user_id, nct))
     db.commit()
     return True
+
+
+def set_claim_schedule_url(user_id, nct, url):
+    """Save the reusable per-study booking link so it prefills for every applicant
+    in that study. Scoped to the owner so one team can't set another's link."""
+    nct = _norm_nct(nct)
+    if not nct:
+        return False
+    db = get_db()
+    db.execute("UPDATE study_claims SET schedule_url = ? WHERE user_id = ? AND nct = ?",
+               ((url or "").strip(), user_id, nct))
+    db.commit()
+    return True
+
+
+def get_claim_schedule_url(user_id, nct):
+    nct = _norm_nct(nct)
+    if not nct:
+        return ""
+    row = get_db().execute(
+        "SELECT schedule_url FROM study_claims WHERE user_id = ? AND nct = ?",
+        (user_id, nct)).fetchone()
+    return (row["schedule_url"] if row else "") or ""
 
 
 def list_pending_claims():
@@ -3538,6 +3565,14 @@ def seed_demo_claims(user_id):
         "GROUP BY nct ORDER BY nct").fetchall()
     for r in rows[:6]:
         add_study_claim(user_id, r["nct"], r["title"] or "", verified=True)
+        # Reusable per-study booking link + attach it to already-accepted demo
+        # applicants so the scheduling flow shows as live (link already sent).
+        link = "https://calendly.com/bridgemd-demo/screening"
+        set_claim_schedule_url(user_id, r["nct"], link)
+        db.execute(
+            "UPDATE leads SET schedule_url = ? WHERE nct = ? AND schedule_url = '' "
+            "AND status IN ('eligible','screening','enrolled')", (link, r["nct"]))
+    db.commit()
 
 
 def seed_demo_campaigns(user_id):

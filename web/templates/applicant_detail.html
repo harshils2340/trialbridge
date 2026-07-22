@@ -144,6 +144,29 @@
     </div>
 
     <div class="app-card pad" style="margin-bottom:16px;">
+      <div class="app-card-title">{{ ic.icon('calendar') }} Screening &amp; scheduling</div>
+      {% if l['revealed'] %}
+      {% if l['schedule_url'] %}
+      <div class="callout info" style="margin-bottom:12px;">
+        {{ ic.icon('check') }}
+        <span>Booking link sent. <a href="{{ l['schedule_url'] }}" target="_blank" rel="noopener">Open link</a></span>
+      </div>
+      {% endif %}
+      <form method="post" action="{{ url_for('schedule_lead', lead_id=l['id']) }}" style="display:flex;flex-direction:column;gap:8px;">
+        <input type="hidden" name="next" value="{{ url_for('applicant_detail', lead_id=l['id']) }}">
+        <input type="url" name="schedule_url" placeholder="https://calendly.com/your-team/screening" value="{{ l['schedule_url'] or default_schedule }}">
+        <label class="doc-attest" style="font-size:12px;">
+          <input type="checkbox" name="set_default" value="1" {{ 'checked' if default_schedule and not l['schedule_url'] }}>
+          <span>Save as this study's default booking link</span>
+        </label>
+        {{ ui.btn('Send booking link', 'primary', 'sm', type='submit', icon='calendar', extra='style="justify-content:center;"') }}
+      </form>
+      {% else %}
+      <div class="callout info">{{ ic.icon('lock') }} Accept this applicant to send a self-scheduling link.</div>
+      {% endif %}
+    </div>
+
+    <div class="app-card pad" style="margin-bottom:16px;">
       <div class="app-card-title">Tasks</div>
       {% for t in it.tasks %}
       <div class="task {{ 'done' if t['status'] == 'done' }}">

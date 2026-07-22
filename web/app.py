@@ -4989,9 +4989,11 @@ def applicant_detail(lead_id):
     it = _decode_lead(lead, db.latest_reconciliation(lead_id))
     view = _queue_item(it)
     view["initials"] = _initials(lead["name"] or view["code"])
+    default_schedule = db.get_claim_schedule_url(g.user["id"], lead["nct"])
     return render_template("applicant_detail.html", it=it, l=lead, view=view,
                            statuses=db.LEAD_STATUSES, labels=db.LEAD_LABELS,
-                           screener_labels=SCREENER_LABELS)
+                           screener_labels=SCREENER_LABELS,
+                           default_schedule=default_schedule)
 
 
 @app.route("/app/dashboard")
@@ -5389,20 +5391,26 @@ def decline_lead(lead_id):
 def schedule_lead(lead_id):
     _ensure_site_access_for_lead(lead_id)
     """Attach a booking link (Calendly/Acuity/Cal.com/etc.) to an accepted
-    candidate so the patient can self-schedule their screening call."""
+    candidate so the patient can self-schedule their screening call. Can also
+    save the link as the study's reusable default (set_default=1)."""
+    back = _lead_action_return()
     url = request.form.get("schedule_url", "").strip()
     if url and not url.startswith(("http://", "https://")):
         url = "https://" + url
     lead = db.set_lead_schedule(lead_id, url)
     if not lead:
         flash("Couldn't find that candidate.", "error")
-    elif url:
+        return redirect(back)
+    # Optionally remember it as the study's default so every applicant prefills.
+    if url and request.form.get("set_default") and lead["nct"]:
+        db.set_claim_schedule_url(g.user["id"], lead["nct"], url)
+    if url:
         _notify_applicant_schedule(lead)
         flash("Booking link sent - the applicant can now self-schedule their "
               "screening call.", "success")
     else:
         flash("Booking link removed.", "success")
-    return redirect(url_for("leads"))
+    return redirect(back)
 
 
 def _lead_action_return():
