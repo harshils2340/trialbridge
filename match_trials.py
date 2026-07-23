@@ -61,14 +61,17 @@ VERDICT_RANK = {"likely_eligible": 0, "possible": 1, "unlikely": 2, "error": 3}
 # --------------------------------------------------------------------------- #
 # 1. FETCH
 # --------------------------------------------------------------------------- #
-def fetch_trials(condition, max_n=300, geo=None, intervention=""):
+def fetch_trials(condition, max_n=300, geo=None, intervention="", term=""):
     """Fetch recruiting trials, paginating so we don't silently miss trials.
 
     `geo`, if given, is a ClinicalTrials.gov geo filter like
     'distance(43.65,-79.38,100mi)' so the API only returns studies with a site
     within that radius. `intervention`, if given, searches by drug/intervention
     (query.intr) - e.g. "semaglutide" - which is how people search the GLP-1 /
-    peptide trend.
+    peptide trend. `term`, if given, is a full-text (query.term) search across the
+    whole study record - including the eligibility criteria - so a symptom like
+    "trouble sleeping" surfaces trials that mention it even when it isn't the
+    trial's condition label.
     """
     trials, token = [], None
     while len(trials) < max_n:
@@ -81,6 +84,8 @@ def fetch_trials(condition, max_n=300, geo=None, intervention=""):
             params["query.cond"] = condition
         if intervention:
             params["query.intr"] = intervention
+        if term:
+            params["query.term"] = term
         if geo:
             params["filter.geo"] = geo
         if token:

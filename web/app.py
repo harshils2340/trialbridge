@@ -3264,9 +3264,13 @@ def find():
         interp_note = build_patient_note("", age, sex, interp_about,
                                          pregnant, other_trial)
         try:
+            # Multi-condition interpretation + a full-text pass on the raw phrase
+            # so trials mentioning the symptom (incl. in eligibility criteria)
+            # surface too - don't overfit a vague search to one condition.
             detected2, results2 = run_search(
                 interp_note, "", "", False, coords, radius, unit,
-                interventional_only=True, assess=bool(about.strip()))
+                interventional_only=True, assess=bool(about.strip()),
+                broad_term=condition_label)
         except Exception:
             detected2, results2 = "", []
             app.logger.exception("LLM interpretation fallback failed")
@@ -7192,7 +7196,7 @@ def _match_snippet(trial, terms, kind, window=85):
 
 def run_search(note, condition, country, require_site, coords=None, radius=50,
                unit="km", interventional_only=True, intervention="", assess=True,
-               evidence_terms=None, evidence_kind=""):
+               evidence_terms=None, evidence_kind="", broad_term=""):
     """Fetch -> hard-gate -> LLM-score, ranked by relevance then distance.
     `radius`/`unit` define the geographic limit. By default only interventional
     (treatment) trials are kept - a doctor refers for therapy, not to a registry.
@@ -7205,26 +7209,75 @@ def run_search(note, condition, country, require_site, coords=None, radius=50,
     scoring it just manufactures misleading "not a fit" verdicts. When False,
     every match shows the neutral "you might qualify" read instead.
 
+    `broad_term`, if given, adds a ClinicalTrials.gov full-text (query.term) pass
+    for that phrase - used for vague/symptom searches so trials that mention the
+    symptom in their eligibility criteria surface even when it isn't the trial's
+    condition label. Results are unioned with the condition search.
+
     Returns (search_label, results)."""
     profile = mt.patient_profile(note)
-    if not condition and not intervention and mt.LLM_API_KEY:
+    # Which condition term(s) to search. A clean typed condition is used as-is.
+    # When the searcher only described a situation/symptom (no clean term), we ask
+    # the LLM for SEVERAL candidate conditions, not one: "trouble sleeping"
+    # legitimately spans insomnia, sleep apnea, restless legs, etc. Searching the
+    # union (and letting the per-trial read judge fit) avoids overfitting to a
+    # single guess.
+    cond_terms = []
+    if condition:
+        cond_terms = [condition]
+    elif not intervention and mt.LLM_API_KEY:
         try:
-            condition = mt.llm_chat(
-                "You extract the single primary medical condition to search "
-                "clinical trials for. Reply with ONLY the condition name, no "
-                "punctuation.", note[:4000]).strip().strip(".")
+            raw = mt.llm_chat(
+                "You map a patient's described situation or symptom to the "
+                "medical conditions a clinical-trial search should cover. The "
+                "description may be vague or a symptom that fits several "
+                "conditions - list ALL the distinct conditions worth searching, "
+                "most likely first, not just one. Reply with 1-4 condition names, "
+                "comma-separated, no other text.", note[:4000]).strip()
+            cond_terms = [c.strip(" .").strip()
+                          for c in raw.split(",") if c.strip(" .").strip()][:4]
         except Exception:
-            condition = ""
-    search_label = condition or intervention
-    if not search_label:
+            cond_terms = []
+    search_label = (cond_terms[0] if cond_terms else "") or intervention
+    if not search_label and not broad_term:
         return "", []
 
     geo = None
     if coords and radius:
         geo = f"distance({coords[0]},{coords[1]},{int(radius)}{unit})"
+
+    def _union_fetch():
+        """Merge condition search(es) + optional full-text pass, deduped by NCT."""
+        out, seen = [], set()
+
+        def _absorb(fetched):
+            for t in fetched:
+                nid = t.get("nctId")
+                if nid and nid in seen:
+                    continue
+                if nid:
+                    seen.add(nid)
+                out.append(t)
+
+        if intervention:
+            _absorb(mt.fetch_trials("", max_n=200, geo=geo,
+                                    intervention=intervention))
+        elif len(cond_terms) > 1:
+            per = max(60, 200 // len(cond_terms))
+            for term in cond_terms:
+                _absorb(mt.fetch_trials(term, max_n=per, geo=geo))
+                if len(out) >= 200:
+                    break
+        elif search_label:
+            _absorb(mt.fetch_trials(search_label, max_n=200, geo=geo))
+        # Full-text pass (eligibility criteria etc.) for vague/symptom searches.
+        if broad_term and len(out) < 200:
+            _absorb(mt.fetch_trials("", max_n=200 - len(out), geo=geo,
+                                    term=broad_term))
+        return out[:200]
+
     try:
-        trials = mt.fetch_trials(condition, max_n=200, geo=geo,
-                                 intervention=intervention)
+        trials = _union_fetch()
     except Exception:
         raise RuntimeError(
             "Couldn't reach ClinicalTrials.gov right now. Please try again "
@@ -7252,8 +7305,11 @@ def run_search(note, condition, country, require_site, coords=None, radius=50,
     # instead of whatever order the loose text search returned. Best-effort: if
     # the NLM lookup or a study's MeSH is missing, relevance is 0 and ordering
     # falls back to the previous behaviour - nothing is ever dropped.
+    patient_tokens = set()
     try:
-        patient_tokens = codes.condition_tokens(search_label)
+        for _term in (cond_terms or [search_label]):
+            if _term:
+                patient_tokens |= codes.condition_tokens(_term)
     except Exception:
         patient_tokens = set()
 
