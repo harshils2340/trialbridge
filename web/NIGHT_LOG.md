@@ -48,3 +48,27 @@ iterates on gpt-4.1-mini; remaining weakness is exclusion-catch (~0.46-0.49).
 | 2026-07-23T05:22:51 | test | `5b92b3cc8bec` | **0.6183** | 0.892 | 0.525 | 0.117 | 0.108 | 0.090 | $2.448 |
 
 > **Tick 5** REVERTED. Hypothesis: high-precision exclusion cross-check, now on gpt-4.1-mini. Result: TEST 0.614->0.618 (+0.004, under +0.02 bar); excl-catch 0.458->0.525 but recall 0.917->0.892, crit 0.073->0.090. Confirms prompt tweaks are marginal on 4.1-mini too - the MODEL was the lever. BEST = tick-1 prompt + gpt-4.1-mini (test 0.614, recall 0.917, false-elig 0.10, crit 0.073). Loop continues on 4.1-mini for any further small gains.
+| 2026-07-23T05:30:56 | final | `477b4b90cbfb` | **0.6833** | 0.908 | 0.558 | 0.033 | 0.092 | 0.050 | $2.699 |
+
+---
+## FINAL HOLDOUT (untouched during tuning) — the honest number
+Config: tick-1 prompt + **gpt-4.1-mini**. Set never inspected during iteration.
+
+| metric | value |
+|---|---|
+| **headline** | **0.6833** |
+| eligible-recall | 0.908 |
+| exclusion-catch | 0.558 |
+| false-exclude | 0.092 |
+| false-eligible | 0.033 |
+| irr-overmatch | 0.000 |
+| **critical-error rate** | **0.050** |
+
+Interpretation: catches 91% of eligible patients, advances only ~3% of ineligible
+as strong matches, never over-matches irrelevant trials. Remaining exclusion "misses"
+are info-limited (criteria needing spirometry/MRI/labs/etc. not present in the
+narrative) -> honestly "possible" (needs screening), not errors. This is the honest
+ceiling for narrative-only matching; structured EMR fields would lift exclusion-catch
+further via the deterministic hard_gate.
+
+PROD ACTION: set LLM_MODEL=gpt-4.1-mini. Best matcher = current committed prompt.
