@@ -22,3 +22,7 @@ __pycache__/
 # Uploaded documents (candidate-thread + team-room files) — runtime data,
 # may contain PHI. The directory is auto-created by the app on startup.
 web/uploads/
+
+# Search-quality benchmark runtime output (regenerated on each run)
+web/search_eval_log.jsonl
+web/search_eval_state.json

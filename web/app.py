@@ -15,6 +15,7 @@ Run:
 Without an LLM key the app still fetches + gates trials (deterministic age/sex
 screening) but skips the per-trial eligibility reasoning.
 """
+import difflib
 import functools
 import hashlib
 import hmac
@@ -2558,13 +2559,15 @@ _NLM_COND_URL = "https://clinicaltables.nlm.nih.gov/api/conditions/v3/search"
 
 
 def _ctgov_condition_suggest(q, limit=8):
-    """Actual trial conditions from ClinicalTrials.gov (high-signal but few)."""
+    """Actual trial conditions from ClinicalTrials.gov (high-signal but few).
+
+    Uses the retrying fetch so a transient throttle on the suggest endpoint
+    doesn't silently break spelling correction ("athsma"->"asthma"). Retries
+    cost nothing on the (normal) first-attempt success."""
     try:
         url = (_CT_SUGGEST_URL + "?dictionary=Condition&input="
                + urllib.parse.quote(q))
-        req = urllib.request.Request(url, headers={"User-Agent": "BridgeMD/1.0"})
-        with urllib.request.urlopen(req, timeout=6) as r:
-            data = json.load(r)
+        data = mt._ct_get_json(url, timeout=6, attempts=3)
         if isinstance(data, list):
             return [_clean_suggest(str(x)) for x in data if str(x).strip()][:limit]
     except Exception:
@@ -2577,9 +2580,7 @@ def _nlm_condition_suggest(q, limit=25):
     try:
         url = (_NLM_COND_URL + "?maxList=" + str(limit) + "&terms="
                + urllib.parse.quote(q))
-        req = urllib.request.Request(url, headers={"User-Agent": "BridgeMD/1.0"})
-        with urllib.request.urlopen(req, timeout=6) as r:
-            data = json.load(r)
+        data = mt._ct_get_json(url, timeout=6, attempts=3)
         names = data[3] if isinstance(data, list) and len(data) > 3 else []
         out = []
         for row in names:
@@ -2664,6 +2665,40 @@ def _lay_synonym_matches(q):
     return out
 
 
+def _is_spell_fix(q, s):
+    """True if suggestion `s` is a genuine spelling fix of query `q` (not a loose
+    partial). Compares against the whole suggestion AND its individual tokens,
+    and tolerates a plural 's', so "parkinsons"->"Parkinson Disease" and
+    "brian"->"brain" both pass while "sugar disease"->"Blood Sugar" does not."""
+    q = q.lower().strip()
+    s = s.lower().strip()
+    if not q or q == s:
+        return False
+    cands = [s] + re.split(r"[;\s]+", s)
+    variants = [q, q.rstrip("s")]
+    best = 0.0
+    for a in variants:
+        for b in cands:
+            if a and b:
+                best = max(best, difflib.SequenceMatcher(None, a, b).ratio())
+    return best >= 0.8
+
+
+def _lay_canonical(q):
+    """Exact lay-term -> (canonical term, kind) for up-front query rewrite.
+    Stricter than _lay_synonym_matches (which prefix-matches for the typeahead):
+    the whole typed phrase must equal a known alias or the canonical term, so we
+    only rewrite when we're confident ("sugar disease" -> Diabetes), never on a
+    loose partial."""
+    ql = q.lower().strip()
+    if len(ql) < 3:
+        return None
+    for aliases, canon, kind in _LAY_SYNONYMS:
+        if ql == canon.lower() or ql in [a.lower() for a in aliases]:
+            return (canon, kind)
+    return None
+
+
 # NLM RxTerms drug autocomplete: drug-only (no procedures/behavioral arms like
 # CT.gov's intervention dictionary returns), so the drug typeahead stays clean.
 _RXTERMS_URL = "https://clinicaltables.nlm.nih.gov/api/rxterms/v3/search"
@@ -2682,21 +2717,23 @@ def _drug_suggest_matches(q, limit=10):
         return []
     out, seen = [], set()
 
-    def add(value, note=""):
+    def add(value, note="", curated=False):
         k = (value or "").lower()
         if value and k not in seen:
             seen.add(k)
-            out.append({"label": value, "value": value,
-                        "note": note, "kind": "drug"})
+            out.append({"label": value, "value": value, "note": note,
+                        "kind": "drug", "curated": curated})
 
     # Curated brand/generic aliases -> canonical (keep the typed brand as a note).
+    # These are high-intent (brands/trending peptides) - flagged so the suggest
+    # merge keeps them above conditions, unlike the loose RxTerms backfill below.
     for alias, canon in _DRUG_ALIASES.items():
         if alias.startswith(ql) or canon.lower().startswith(ql):
             note = alias.title() if alias != canon.lower() else ""
-            add(canon, note)
+            add(canon, note, curated=True)
     for d in SEED_DRUGS:
         if ql in d.lower():
-            add(d)
+            add(d, curated=True)
     # Backfill from NLM RxTerms (clean, drug-only, broad coverage of approved
     # drugs). Strip the "(Injectable)/(Oral Pill)" form suffix and skip packs.
     if len(out) < limit and len(ql) >= 2:
@@ -2745,12 +2782,18 @@ def condition_suggest():
 
     def _push_cond(name, note=""):
         n = (name or "").strip()
-        lo = n.lower()
-        if n and lo not in seen:
-            seen.add(lo)
-            conds.append(n)
-            if note:
-                cond_notes[lo] = note
+        if not n:
+            return
+        # Dedup on the SEARCH value (parenthetical stripped) so near-duplicates
+        # like "Fatty Liver Disease" and "Fatty liver disease (NAFLD/NASH)" don't
+        # both show. First seen wins (CT.gov's clean labels lead).
+        val = _cond_search_value(n).lower()
+        if val in seen:
+            return
+        seen.add(val)
+        conds.append(n)
+        if note:
+            cond_notes[n.lower()] = note
 
     for x in lay:
         if x["kind"] == "condition":
@@ -2792,7 +2835,27 @@ def condition_suggest():
     cond_items = [{"label": c, "value": _cond_search_value(c), "kind": "condition",
                    "note": cond_notes.get(c.lower(), "")}
                   for c in conds if ("condition", c.lower()) not in pinned_keys]
-    items = pinned + drug_items + cond_items
+
+    # Ordering (accuracy first):
+    #   1) exact matches, either kind - so a condition abbreviation like "aml"
+    #      (Acute Myeloid Leukemia) leads, not a same-prefix drug ("Amlodipine").
+    #   2) curated drugs (brands / trending peptides) - preserve the drug UX
+    #      ("ozempic", "reta").
+    #   3) conditions - this is a condition-first trial search, so real conditions
+    #      outrank the loose RxTerms drug backfill ("pancreat" -> Pancreatic
+    #      Cancer, not Pancreatin).
+    #   4) remaining (RxTerms-backfill) drugs.
+    def _exact(it):
+        return ql in ((it.get("label") or "").lower(),
+                      (it.get("value") or "").lower())
+    exact = [c for c in cond_items if _exact(c)] + \
+            [d for d in drug_items if _exact(d)]
+    ex = {id(x) for x in exact}
+    curated_drugs = [d for d in drug_items if id(d) not in ex and d.get("curated")]
+    rest_conds = [c for c in cond_items if id(c) not in ex]
+    rest_drugs = [d for d in drug_items
+                  if id(d) not in ex and not d.get("curated")]
+    items = pinned + exact + curated_drugs + rest_conds + rest_drugs
     _COND_SUGGEST_CACHE[key] = (now_ts, items)
     _COND_SUGGEST_CACHE.move_to_end(key)
     while len(_COND_SUGGEST_CACHE) > _COND_SUGGEST_MAX:
@@ -3160,6 +3223,18 @@ def find():
             condition = ""      # searched by drug, not a guessed condition
             about = ""          # the typed term was the drug, not a description
             freeform = False
+    # Lay/slang normalization: rewrite casual wording to the canonical medical
+    # term up front so it searches broadly ("sugar disease" -> Diabetes, "water
+    # pill" -> Diuretics) instead of dead-ending on CT.gov's literal term match.
+    # Only for structured (non-freeform) single-term input.
+    if not intervention and not freeform and condition:
+        lay = _lay_canonical(condition)
+        if lay:
+            canon, kind = lay
+            if kind == "drug":
+                intervention, condition = canon, ""
+            else:
+                condition = canon
     # Free-text ("describe it in your own words") mode: the box holds a sentence,
     # not a condition term. Route it to the note and let the matcher extract the
     # condition (LLM) instead of querying CT.gov with a whole sentence.
@@ -3253,11 +3328,45 @@ def find():
         flash("Search failed unexpectedly. Please try again.", "error")
         return redirect(url_for("home", condition=condition_label, location=location))
 
-    # Niche / messy / multi-concept fallback: a plain condition search that found
-    # nothing may be a phrase CT.gov can't match ("stage 4 lung ca with brain
-    # mets", "trouble breathing at night", a rare-disease nickname). Let the LLM
-    # interpret what the person actually means and search again, so odd or niche
-    # searches still surface the best-matching trials instead of a dead end.
+    # Stage 1 - spelling / phrasing correction via ClinicalTrials.gov's own
+    # suggest (fast + accurate: "brian"->"brain", "diabetis"->"diabetes"). The
+    # actual search (query.cond) does NOT self-correct, so a single-word typo
+    # dead-ends without this. Only for short (<=2 word) queries - longer phrases
+    # are vague situations better handled by the LLM stage below.
+    if (not results and not intervention and not freeform
+            and condition_label and len(condition_label.split()) <= 2):
+        try:
+            sugg = _ctgov_condition_suggest(condition_label, limit=3)
+        except Exception:
+            sugg = []
+        # Only accept a suggestion that's a genuine spelling fix, so
+        # "brian"->"brain" and "parkinsons"->"Parkinson Disease" apply but a
+        # loose partial like "sugar disease"->"Blood Sugar" doesn't hijack the
+        # LLM stage below.
+        corrected = next((s for s in sugg
+                          if _is_spell_fix(condition_label, s)), "")
+        if corrected:
+            try:
+                det_c, res_c = run_search(
+                    build_patient_note(corrected, age, sex, about, pregnant,
+                                       other_trial),
+                    corrected, "", False, coords, radius, unit,
+                    interventional_only=True, assess=bool(about.strip()),
+                    evidence_terms=[corrected], evidence_kind="condition")
+            except Exception:
+                det_c, res_c = "", []
+            if res_c:
+                results = res_c
+                label = corrected
+                condition_label = corrected
+                condition_terms = [corrected]
+                detected = corrected
+
+    # Stage 2 - niche / messy / multi-concept fallback: a plain condition search
+    # that STILL found nothing may be a phrase CT.gov can't match ("stage 4 lung
+    # ca with brain mets", "trouble breathing at night", a rare-disease nickname).
+    # Let the LLM interpret what the person means and search again, so odd or
+    # niche searches still surface the best-matching trials instead of a dead end.
     if (not results and not intervention and not freeform
             and condition_label and mt.LLM_API_KEY):
         interp_about = condition_label + (("\n" + about) if about else "")
@@ -3311,7 +3420,12 @@ def find():
            "q_age": age, "q_sex": sex, "q_about": about, "q_radius": radius,
            "q_lat": lat_in, "q_lon": lon_in, "q_cc": cc_in}
     search_id = _cache_search(results, ctx)
-    _remember_query_sid(qkey, search_id)
+    # Only memoize non-empty result sets. A transient upstream hiccup (CT.gov
+    # throttle/timeout) can yield zero trials for a query that normally has many;
+    # caching that would keep serving "no trials" on every retry until the TTL
+    # expires. Let empty searches re-run instead.
+    if results:
+        _remember_query_sid(qkey, search_id)
     return _finish_find_redirect(search_id, nct)
 
 

@@ -33,11 +33,49 @@ import pathlib
 import re
 import sys
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 
 HERE = pathlib.Path(__file__).resolve().parent
 CT_API = "https://clinicaltrials.gov/api/v2/studies"
+
+
+def _ct_get_json(url, timeout=40, attempts=4):
+    """GET JSON from ClinicalTrials.gov with retry + backoff.
+
+    CT.gov rate-limits bursty traffic (HTTP 429) and occasionally 5xx/times out.
+    Without a retry a single blip returns an empty result set, so a real patient
+    sees "no trials" for a query that has hundreds. We back off (honoring a
+    Retry-After header when present) and retry a few times before giving up. On
+    total failure we re-raise so the caller can decide (it won't be cached as an
+    empty success).
+    """
+    last = None
+    for attempt in range(attempts):
+        req = urllib.request.Request(
+            url, headers={"User-Agent": "trial-matcher/0.1"})
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                return json.load(r)
+        except urllib.error.HTTPError as e:
+            last = e
+            if e.code not in (429, 500, 502, 503, 504):
+                raise
+            wait = attempt + 1
+            ra = e.headers.get("Retry-After") if e.headers else None
+            if ra:
+                try:
+                    wait = max(wait, int(float(ra)))
+                except (TypeError, ValueError):
+                    pass
+            wait = min(wait, 30) + 0.25 * attempt  # cap + jitter-ish
+        except Exception as e:  # URLError, timeout, JSON decode
+            last = e
+            wait = 2 ** attempt
+        if attempt < attempts - 1:
+            time.sleep(wait)
+    raise last if last else RuntimeError("CT.gov fetch failed")
 
 def _first_env(*names):
     for n in names:
@@ -91,9 +129,7 @@ def fetch_trials(condition, max_n=300, geo=None, intervention="", term=""):
         if token:
             params["pageToken"] = token
         url = f"{CT_API}?{urllib.parse.urlencode(params)}"
-        req = urllib.request.Request(url, headers={"User-Agent": "trial-matcher/0.1"})
-        with urllib.request.urlopen(req, timeout=40) as r:
-            data = json.load(r)
+        data = _ct_get_json(url, timeout=40)
         trials.extend(extract_trial(s) for s in data.get("studies", []))
         token = data.get("nextPageToken")
         if not token:
@@ -122,10 +158,8 @@ def count_trials(condition="", intervention="", geo=None):
     if geo:
         params["filter.geo"] = geo
     url = f"{CT_API}?{urllib.parse.urlencode(params)}"
-    req = urllib.request.Request(url, headers={"User-Agent": "trial-matcher/0.1"})
     try:
-        with urllib.request.urlopen(req, timeout=30) as r:
-            data = json.load(r)
+        data = _ct_get_json(url, timeout=30)
         return int(data.get("totalCount") or 0)
     except Exception:
         return 0

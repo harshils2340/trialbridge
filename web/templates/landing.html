@@ -379,11 +379,17 @@
       return { label: d, value: d, kind: 'drug', note: '' };
     });
   }
-  // Drugs first (rarer, more specific intent), then conditions; dedupe by value.
+  // Drugs first (rarer, more specific intent), then conditions; dedupe by the
+  // SEARCH value with any trailing "(ABBR)" stripped, so "Fatty Liver Disease"
+  // and "Fatty liver disease (NAFLD/NASH)" collapse to one (matches backend).
+  function dedupKey(it) {
+    return (it.value || it.label || '').toLowerCase()
+      .replace(/\s*\([^)]*\)\s*$/, '').replace(/\s+/g, ' ').trim();
+  }
   function mergeItems(lists, cap) {
     var out = [], seen = {};
     [].concat.apply([], lists).map(asItem).forEach(function (it) {
-      var k = it.kind + '|' + (it.value || '').toLowerCase();
+      var k = it.kind + '|' + dedupKey(it);
       if (it.value && !seen[k]) { seen[k] = 1; out.push(it); }
     });
     out.sort(function (a, b) {
