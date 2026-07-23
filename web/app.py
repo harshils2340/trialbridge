@@ -7360,13 +7360,22 @@ def _public_contacts(trial, site, limit=4):
         role = (c.get("role") or "").strip().replace("_", " ").title()
         if not (email or phone):
             return
-        # Identify a contact by email first (the same listing often repeats a
-        # person with the phone formatted differently, e.g. "212-817-8804" vs
-        # "212 817 8804"); fall back to name + phone digits when there's no email.
+        # Dedup by the person first: CT.gov commonly lists the same named
+        # contact twice - once with only a phone, once with the email - which
+        # would otherwise render as two cards for one person. Key a real name by
+        # the name so those merge; only fall back to email/phone when the contact
+        # is anonymous ("Study contact").
         digits = re.sub(r"\D", "", phone)
-        key = email.lower() if email else ("", name.lower(), digits)
+        if name.lower() not in ("", "study contact"):
+            key = ("name", name.lower())
+        elif email:
+            key = ("email", email.lower())
+        else:
+            key = ("phone", digits)
         if key in seen:
             existing = seen[key]  # backfill anything the first copy was missing
+            if not existing["email"] and email:
+                existing["email"] = email
             if not existing["phone"] and phone:
                 existing["phone"] = phone
             if not existing["role"] and role:
