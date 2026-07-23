@@ -28,6 +28,9 @@ web/uploads/
 web/night_spend.json
 web/eval_cache.json
 web/eval_set.json
+web/eval_test.json
 web/match_eval_log.jsonl
 web/eval_fails.json
+web/eval_fails_dev.json
+web/eval_fails_test.json
 web/eval_data/

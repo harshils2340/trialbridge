@@ -45,7 +45,7 @@ import match_trials as mt                      # noqa: E402
 import budget                                  # noqa: E402
 
 DATA_DIR = os.environ.get("MATCH_EVAL_DATA", "/tmp/bmd_eval/TrialGPT/dataset")
-EVAL_SET = HERE / "eval_set.json"
+SET_FILE = {"dev": HERE / "eval_set.json", "test": HERE / "eval_test.json"}
 CACHE = HERE / "eval_cache.json"
 LOG = HERE / "match_eval_log.jsonl"
 NIGHT_LOG = HERE / "NIGHT_LOG.md"
@@ -88,7 +88,7 @@ def _trial_dict(t):
     }
 
 
-def build_eval_set(n, seed, comp):
+def _shuffled_pools(seed):
     files = sorted(glob.glob(os.path.join(DATA_DIR, "*", "retrieved_trials.json")))
     if not files:
         sys.exit(f"No retrieved_trials.json under {DATA_DIR}. Set MATCH_EVAL_DATA.")
@@ -125,25 +125,42 @@ def build_eval_set(n, seed, comp):
     rng = random.Random(seed)
     for b in buckets.values():
         rng.shuffle(b)
-    want = {lab: int(round(n * frac)) for lab, frac in comp.items()}
-    chosen = []
-    for lab, k in want.items():
-        chosen.extend(buckets[lab][:k])
-    rng.shuffle(chosen)
     print(f"  pool sizes: eligible={len(buckets['2'])} excluded={len(buckets['1'])} "
           f"irrelevant={len(buckets['0'])}")
-    return chosen
+    return buckets
 
 
-def load_eval_set(n, seed, comp, rebuild):
-    if EVAL_SET.exists() and not rebuild:
-        cases = json.load(open(EVAL_SET))
-        print(f"  reusing frozen eval set: {len(cases)} cases ({EVAL_SET.name})")
+def build_both(seed, comp, n_dev, n_test):
+    """Build DISJOINT dev and test sets from the same seeded shuffle.
+
+    dev = first slice per label, test = the NEXT slice - so no patient/trial pair
+    ever appears in both. The loop diagnoses + selects on dev; test is the honest
+    generalization check the loop never tunes against. Deterministic in `seed`, so
+    rebuilding reproduces identical sets (cache stays valid).
+    """
+    pools = _shuffled_pools(seed)
+    dev, test = [], []
+    for lab, frac in comp.items():
+        kd = int(round(n_dev * frac))
+        kt = int(round(n_test * frac))
+        dev.extend(pools[lab][:kd])
+        test.extend(pools[lab][kd:kd + kt])
+    random.Random(seed + 1).shuffle(dev)
+    random.Random(seed + 2).shuffle(test)
+    return dev, test
+
+
+def load_split(split, seed, comp, n_dev, n_test, rebuild):
+    fp = SET_FILE[split]
+    if fp.exists() and not rebuild:
+        cases = json.load(open(fp))
+        print(f"  reusing frozen {split} set: {len(cases)} cases ({fp.name})")
         return cases
-    cases = build_eval_set(n, seed, comp)
-    json.dump(cases, open(EVAL_SET, "w"))
-    print(f"  built frozen eval set: {len(cases)} cases -> {EVAL_SET.name}")
-    return cases
+    dev, test = build_both(seed, comp, n_dev, n_test)
+    json.dump(dev, open(SET_FILE["dev"], "w"))
+    json.dump(test, open(SET_FILE["test"], "w"))
+    print(f"  built frozen sets: dev={len(dev)} test={len(test)} (disjoint)")
+    return {"dev": dev, "test": test}[split]
 
 
 # --------------------------------------------------------------------------- #
@@ -296,9 +313,9 @@ def score_report(scored):
     }
 
 
-def print_report(rep, spent, phash, partial):
+def print_report(rep, spent, phash, partial, split="dev"):
     print("\n" + "=" * 62)
-    print(f"  ELIGIBILITY EVAL  (prompt {phash})"
+    print(f"  ELIGIBILITY EVAL [{split.upper()}]  (prompt {phash})"
           + ("  [PARTIAL - budget]" if partial else ""))
     print("=" * 62)
     print(f"  scored {rep['n_scored']}  errors {rep['errors']}  "
@@ -320,13 +337,13 @@ def print_report(rep, spent, phash, partial):
     print("=" * 62 + "\n")
 
 
-def append_logs(rep, spent, phash, partial):
+def append_logs(rep, spent, phash, partial, split="dev"):
     row = {"ts": dt.datetime.now().isoformat(timespec="seconds"),
-           "prompt": phash, "partial": partial,
+           "prompt": phash, "split": split, "partial": partial,
            "spent_usd": round(spent["usd"], 4), "calls": spent["calls"], **rep}
     with open(LOG, "a") as f:
         f.write(json.dumps(row) + "\n")
-    line = (f"| {row['ts']} | `{phash}` | **{rep['headline']:.4f}** | "
+    line = (f"| {row['ts']} | {split} | `{phash}` | **{rep['headline']:.4f}** | "
             f"{rep['eligible_recall']:.3f} | {rep['exclusion_catch']:.3f} | "
             f"{rep['false_eligible']:.3f} | {rep['false_exclude']:.3f} | "
             f"{rep['critical_rate']:.3f} | ${row['spent_usd']:.3f} |"
@@ -334,21 +351,23 @@ def append_logs(rep, spent, phash, partial):
     if not NIGHT_LOG.exists():
         NIGHT_LOG.write_text(
             "# Overnight eligibility-matching log\n\n"
-            "Higher **headline** = better (balanced accuracy minus critical-error rate).\n\n"
-            "| time | prompt | headline | elig-recall | excl-catch | "
+            "Higher **headline** = better (balanced accuracy minus critical-error rate).\n"
+            "The loop diagnoses + selects on **dev**; **test** is the held-out "
+            "generalization check it never tunes against.\n\n"
+            "| time | split | prompt | headline | elig-recall | excl-catch | "
             "false-elig | false-excl | crit-rate | spent |\n"
-            "|---|---|---|---|---|---|---|---|---|\n")
+            "|---|---|---|---|---|---|---|---|---|---|\n")
     with open(NIGHT_LOG, "a") as f:
         f.write(line)
 
 
-FAILS = HERE / "eval_fails.json"
 _LABEL_NAME = {2: "ELIGIBLE", 1: "EXCLUDED", 0: "IRRELEVANT"}
 
 
-def dump_fails(scored, per_cat=12):
+def dump_fails(scored, split, per_cat=12):
     """Write misclassified cases (with rationale) so the loop can diagnose and
     form a targeted prompt/parser hypothesis instead of guessing."""
+    fails_path = HERE / f"eval_fails_{split}.json"
     cats = {"false_exclude": [], "false_eligible": [],
             "excl_leak_possible": [], "irr_overmatch": []}
     for c, m in scored:
@@ -372,32 +391,35 @@ def dump_fails(scored, per_cat=12):
                 "patient": c["patient"][:600],
                 "criteria": (c["trial"].get("criteria", ""))[:1400],
             })
-    json.dump(cats, open(FAILS, "w"), indent=2)
-    return {k: len(v) for k, v in cats.items()}
+    json.dump(cats, open(fails_path, "w"), indent=2)
+    return fails_path.name, {k: len(v) for k, v in cats.items()}
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--n", type=int, default=300)
+    ap.add_argument("--split", choices=("dev", "test"), default="dev",
+                    help="dev = loop diagnoses/selects on it; test = held-out check")
+    ap.add_argument("--n", type=int, default=300, help="dev set size")
+    ap.add_argument("--n-test", type=int, default=300, help="held-out test set size")
     ap.add_argument("--seed", type=int, default=20260723)
     ap.add_argument("--workers", type=int, default=6)
-    ap.add_argument("--rebuild", action="store_true", help="rebuild frozen eval set")
+    ap.add_argument("--rebuild", action="store_true", help="rebuild frozen sets")
     args = ap.parse_args()
 
     if not mt.LLM_API_KEY:
         sys.exit("No LLM_API_KEY in env. Source outreach/secrets.env first.")
 
     comp = {"2": 0.40, "1": 0.40, "0": 0.20}
-    print(f"Eligibility eval  model={mt.LLM_MODEL}  cap=${budget.cap_usd():.2f}  "
-          f"spent so far=${budget.spent()['usd']:.4f}")
-    cases = load_eval_set(args.n, args.seed, comp, args.rebuild)
+    print(f"Eligibility eval [{args.split}]  model={mt.LLM_MODEL}  "
+          f"cap=${budget.cap_usd():.2f}  spent so far=${budget.spent()['usd']:.4f}")
+    cases = load_split(args.split, args.seed, comp, args.n, args.n_test, args.rebuild)
     scored, partial, phash = evaluate(cases, args.workers)
     rep = score_report(scored)
     spent = budget.spent()
-    print_report(rep, spent, phash, partial)
-    append_logs(rep, spent, phash, partial)
-    fc = dump_fails(scored)
-    print(f"  wrote failure samples -> {FAILS.name} {fc}")
+    print_report(rep, spent, phash, partial, args.split)
+    append_logs(rep, spent, phash, partial, args.split)
+    name, fc = dump_fails(scored, args.split)
+    print(f"  wrote failure samples -> {name} {fc}")
 
 
 if __name__ == "__main__":

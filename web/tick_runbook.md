@@ -20,46 +20,59 @@ $PY budget.py
 If spent >= cap (NIGHT_BUDGET_USD, default $5): DO NOT edit or eval. Append a
 line to NIGHT_LOG.md ("budget reached, holding") and end the tick. Nothing else.
 
+## Split protocol (READ THIS)
+- **dev** (`eval_set.json`, `eval_fails_dev.json`): diagnose + select on it.
+- **test** (`eval_test.json`, `eval_fails_test.json`): DISJOINT held-out set. It is
+  the honest generalization number. Use it only as a GUARD (never diagnose changes
+  purely to fit test). The headline we care about reporting is the **test** headline.
+
 ## Step 1 - Read state
-- `tail -5 match_eval_log.jsonl` -> current BEST `headline` seen so far.
-- Read `eval_fails.json` -> concrete misclassified cases with rationale.
+- `tail -8 match_eval_log.jsonl` -> best `headline` per split so far (rows tagged
+  with `"split"`). Track best-dev and best-test.
+- Read `eval_fails_dev.json` AND `eval_fails_test.json` -> misclassified cases +
+  rationale. The test fails are the truest signal of what to fix.
 - Read NIGHT_LOG.md tail -> hypotheses already tried (don't repeat a failed one).
 
-## Step 2 - Diagnose the dominant failure
-Priority order of what to fix (biggest lever first):
-1. `false_exclude` (gold ELIGIBLE -> we said unlikely) - we're too strict,
-   dropping real candidates. This is the current biggest problem (~0.42).
-2. `false_eligible` (gold EXCLUDED -> we said likely_eligible) - dangerous.
-3. `excl_leak_possible` (gold EXCLUDED -> possible) - missed an exclusion.
-4. `irr_overmatch` (gold IRRELEVANT -> likely_eligible) - wrong condition passed.
-Read the rationales: is it treating UNKNOWN info as a failure? Over-weighting one
-unmet minor criterion? Misreading age/sex embedded in criteria text? Parser
-downgrading correctly-eligible verdicts?
+## Step 2 - Diagnose the dominant failure (balance-aware)
+There is NO fixed priority - read the CURRENT numbers and attack the largest
+critical error WITHOUT regressing the opposite side. The two sides are in tension:
+- `false_exclude` (gold ELIGIBLE -> unlikely): too STRICT, dropping real candidates.
+- `false_eligible` (gold EXCLUDED -> likely_eligible): too LENIENT, advancing
+  ineligible patients. `excl_leak_possible` (EXCLUDED -> possible) and
+  `irr_overmatch` (IRRELEVANT -> likely_eligible) are the same leniency failure.
+The hard skill is telling ELIGIBLE from EXCLUDED for the SAME condition: read the
+exclusion criteria in the fails - is the model ignoring a clearly-triggered
+exclusion? Not distinguishing "has condition" from "has condition BUT excluded"?
+Mis-scoring irrelevant conditions as a match? Form a hypothesis that fixes the
+dominant error without swinging the pendulum back.
 
 ## Step 3 - Make ONE targeted change
-Edit ONLY `matcher-night/match_trials.py`: the `MATCH_SYSTEM` prompt, the
-`MATCH_SCHEMA`, or the `normalize_match` parser. One coherent change per tick so
-the metric delta is attributable. No other files.
+Edit ONLY `matcher-night/match_trials.py`: `MATCH_SYSTEM`, `MATCH_SCHEMA`, or the
+`normalize_match` parser. One coherent change per tick so the delta is attributable.
+No other files.
 
-## Step 4 - Re-evaluate
+## Step 4 - Evaluate (dev first, then test only if dev is promising)
 ```
-NIGHT_BUDGET_USD=5 $PY match_eval.py --workers 6
+NIGHT_BUDGET_USD=5 $PY match_eval.py --split dev  --workers 6
 ```
-(Prompt hash changes -> full re-score, bounded by the budget cap.)
+If dev did NOT improve headline by > 0.02 over best-dev (or crit-rate worsened by
+> 0.01): REVERT now (`git checkout -- match_trials.py`), log, end tick. Save the
+test spend. Otherwise it's a candidate -> run the guard:
+```
+NIGHT_BUDGET_USD=5 $PY match_eval.py --split test --workers 6
+```
 
-## Step 5 - Green-or-revert
-Accept the change ONLY if BOTH hold vs the previous best:
-- `headline` improves by > 0.02 (run-to-run noise is ~0.01), AND
-- `critical_rate` does not get worse by more than 0.01.
+## Step 5 - Green-or-revert (test-guarded)
+Accept & commit ONLY if ALL hold:
+- dev headline improves > 0.02 over best-dev, AND dev crit-rate not worse by >0.01, AND
+- test headline does NOT regress > 0.02 vs best-test, AND test crit-rate not worse
+  by > 0.02 vs best-test.
 If accepted:
 ```
-git add -A && git commit -m "eligibility: <what changed> (headline X -> Y)"
+git add -A && git commit -m "eligibility: <what changed> (dev X->Y, test A->B)"
 ```
-If rejected:
-```
-git checkout -- match_trials.py
-```
-and record the failed hypothesis in NIGHT_LOG.md so it isn't retried.
+If test regressed while dev improved = OVERFIT -> REVERT and record it as an
+overfit hypothesis in NIGHT_LOG.md. Otherwise (dev fine, test fine) keep it.
 
 ## Step 6 - Log
 Append one line to NIGHT_LOG.md: tick time, hypothesis, result (accepted/reverted),
