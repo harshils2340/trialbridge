@@ -6,7 +6,7 @@
 <div class="card">
   <div class="auth-hero"><img class="hero-mark" src="{{ url_for('static', filename='logo.svg') }}" width="46" height="46" alt="BridgeMD"></div>
   <h1>Welcome back</h1>
-  <p class="sub">Sign in to find trials and track your referrals. Password logins require a 6-digit email code.</p>
+  <p class="sub">Sign in to manage your studies and recruiting. Password logins require a 6-digit email code.</p>
   {% if google_enabled %}
   <a class="btn btn-ghost btn-block auth-google" href="{{ url_for('user_google_start', next=request.args.get('next', '')) }}">
     {{ ic.icon('google', 'google-mark') }}

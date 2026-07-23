@@ -11,6 +11,11 @@ web/bridgemd.db-shm
 web/bridgemd.db-wal
 web/bridgemd.db-journal
 web/.secret
+# Local secrets (API keys, SMTP creds) — never commit
+secrets.env
+web/secrets.env
+.env
+web/.env
 .venv/
 __pycache__/
 

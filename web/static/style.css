@@ -978,7 +978,7 @@ body.home-screen .landing-legal-links { margin: 0; flex: 0 0 auto; font-size: 12
 .hero-chip-input input { min-width: 170px; flex: 1; padding: 8px 0; }
 .hero-suggest { position: absolute; left: 32px; right: 10px; top: calc(100% + 2px);
   background: #fff; border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow-lift);
-  max-height: 230px; overflow: auto; z-index: 15; padding: 4px; }
+  max-height: 360px; overflow: auto; z-index: 15; padding: 4px; }
 .hero-suggest-item { width: 100%; text-align: left; border: 0; background: transparent;
   padding: 8px 10px; border-radius: 8px; cursor: pointer; font-size: 13px; color: var(--ink-soft);
   display: flex; align-items: center; gap: var(--space-3); }
@@ -1387,6 +1387,8 @@ body.home-screen .landing-legal-links { margin: 0; flex: 0 0 auto; font-size: 12
   animation: fade-up .25s ease both; }
 .interest-form label { font-size: 13px; font-weight: 600; color: var(--ink-soft);
   display: flex; flex-direction: column; gap: 6px; }
+.interest-form .if-lbl { white-space: nowrap; }
+.interest-form .if-lbl .opt { color: var(--faint); font-weight: 400; }
 .interest-form input { border: 1px solid var(--border-strong); border-radius: 9px;
   padding: 10px 12px; font-size: 14px; font-family: var(--sans); outline: 0; }
 .interest-form input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }

@@ -393,7 +393,7 @@
   }
   function renderCondList(list) {
     if (!condInput || !condSuggest) return;
-    list = (list || []).slice(0, 10);
+    list = (list || []).slice(0, 20);
     if (!list.length) { hideCondSuggest(); return; }
     condSuggest.innerHTML = '';
     list.forEach(function (it) {
@@ -431,7 +431,7 @@
     var q = raw.toLowerCase();
     if (!q) { hideCondSuggest(); return; }
     // Show instant local matches (drugs + conditions) so the box never feels empty...
-    renderCondList(mergeItems([localDrugMatches(q), localCondMatches(q)], 10));
+    renderCondList(mergeItems([localDrugMatches(q), localCondMatches(q)], 20));
     // ...then pull the FULL ClinicalTrials.gov condition + drug lists (debounced)
     // so every real condition/drug is suggested, not just our seeds.
     if (q.length < 2) return;
@@ -444,7 +444,7 @@
           if (seq !== condReqSeq) return;                       // stale response
           if ((condInput.value || '').trim().toLowerCase() !== q) return;
           renderCondList(mergeItems(
-            [localDrugMatches(q), (d && d.items) || [], localCondMatches(q)], 10));
+            [localDrugMatches(q), (d && d.items) || [], localCondMatches(q)], 20));
         })
         .catch(function () { /* keep local matches on network error */ });
     }, 160);

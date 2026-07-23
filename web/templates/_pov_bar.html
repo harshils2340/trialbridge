@@ -29,9 +29,7 @@
       <select id="demoLaneSelect" name="lane" class="demo-lane-select js-demo-lane-select" aria-label="Demo lane">
         <option value="{{ url_for('home') }}" {{ 'selected' if demo_lane == 'patient' else '' }}>1) Patient self-serve</option>
         <option value="{{ url_for('leads') }}" {{ 'selected' if demo_lane == 'site' else '' }}>2) Site intake queue</option>
-        <option value="{{ url_for('dashboard', wf='passive') }}" {{ 'selected' if demo_lane == 'physician' else '' }}>3) Physician referral</option>
-        <option value="{{ url_for('dashboard', wf='proactive') }}" {{ 'selected' if demo_lane == 'ehr' else '' }}>4) EHR background matching</option>
-        <option value="{{ url_for('ad_campaign') }}" {{ 'selected' if demo_lane == 'ad' else '' }}>5) Ad campaign &rarr; apply</option>
+        <option value="{{ url_for('ad_campaign') }}" {{ 'selected' if demo_lane == 'ad' else '' }}>3) Ad campaign &rarr; apply</option>
       </select>
       <button type="submit" class="demo-lane-go" aria-label="Switch lane">{{ ic.icon('arrow-right') }}</button>
     </form>

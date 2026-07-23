@@ -386,7 +386,7 @@
   }
   function renderCond(items) {
     if (!condSuggest) return;
-    items = (items || []).slice(0, 10);
+    items = (items || []).slice(0, 20);
     if (!items.length) { hideCond(); return; }
     condSuggest.innerHTML = '';
     items.forEach(function (it) {

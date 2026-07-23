@@ -806,6 +806,26 @@ def _compute_attribution():
             "r": ref_host[:200]}
 
 
+# The old physician-referral surface (a doctor pastes a note, searches trials,
+# and refers a patient) is retired. BridgeMD is now two products: the patient
+# search and the "For clinics" study-team app. These endpoints stay defined so
+# url_for()/deep links resolve, but every request to them is redirected - so the
+# physician side isn't reachable through any path. Signed-in accounts land on
+# the study-team home; everyone else on the public patient search.
+_HIDDEN_PHYSICIAN_ENDPOINTS = frozenset({
+    "dashboard", "search", "refer", "refer_confirm",
+    "invite_patient", "invite_landing",
+    "referrals", "referrals_csv", "referral_detail", "referral_notify",
+    "referral_mark_sent", "referral_status",
+})
+
+
+@app.before_request
+def _hide_physician_surface():
+    if request.endpoint in _HIDDEN_PHYSICIAN_ENDPOINTS:
+        return redirect(url_for("study_home") if g.user else url_for("home"))
+
+
 @app.before_request
 def _web_analytics_ctx():
     g._new_vid = None
@@ -1219,7 +1239,7 @@ def _ensure_site_access_for_lead(lead_id):
 @app.route("/register", methods=["GET", "POST"])
 def register():
     if g.user:
-        return redirect(url_for("dashboard"))
+        return redirect(url_for("study_home"))
     nxt = _safe_next(request.args.get("next", ""))
     if nxt:
         session[USER_NEXT_KEY] = nxt
@@ -1261,7 +1281,7 @@ def register():
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if g.user:
-        return redirect(url_for("dashboard"))
+        return redirect(url_for("study_home"))
     nxt = _safe_next(request.args.get("next", ""))
     if nxt:
         session[USER_NEXT_KEY] = nxt
@@ -1653,7 +1673,7 @@ def _post_patient_login_redirect():
 
 def _post_user_login_redirect():
     nxt = session.pop(USER_NEXT_KEY, "")
-    return redirect(nxt if nxt.startswith("/") else url_for("dashboard"))
+    return redirect(nxt if nxt.startswith("/") else url_for("study_home"))
 
 
 @app.route("/account/signup", methods=["GET", "POST"])
@@ -2519,7 +2539,7 @@ def _clean_suggest(s):
     return " ".join(s.split())
 
 
-def _local_condition_matches(q, limit=12):
+def _local_condition_matches(q, limit=25):
     ql = q.lower()
     out, seen = [], set()
     for c in (SEARCH_CONDITION_OPTIONS + SEO_CONDITIONS):
@@ -2532,13 +2552,125 @@ def _local_condition_matches(q, limit=12):
     return out
 
 
+# NLM Clinical Tables "conditions" dictionary - a far richer source than CT.gov's
+# int/suggest (which hard-caps at ~5). Returns cleaned condition names.
+_NLM_COND_URL = "https://clinicaltables.nlm.nih.gov/api/conditions/v3/search"
+
+
+def _ctgov_condition_suggest(q, limit=8):
+    """Actual trial conditions from ClinicalTrials.gov (high-signal but few)."""
+    try:
+        url = (_CT_SUGGEST_URL + "?dictionary=Condition&input="
+               + urllib.parse.quote(q))
+        req = urllib.request.Request(url, headers={"User-Agent": "BridgeMD/1.0"})
+        with urllib.request.urlopen(req, timeout=6) as r:
+            data = json.load(r)
+        if isinstance(data, list):
+            return [_clean_suggest(str(x)) for x in data if str(x).strip()][:limit]
+    except Exception:
+        pass
+    return []
+
+
+def _nlm_condition_suggest(q, limit=25):
+    """Broad condition coverage from NLM's conditions dictionary."""
+    try:
+        url = (_NLM_COND_URL + "?maxList=" + str(limit) + "&terms="
+               + urllib.parse.quote(q))
+        req = urllib.request.Request(url, headers={"User-Agent": "BridgeMD/1.0"})
+        with urllib.request.urlopen(req, timeout=6) as r:
+            data = json.load(r)
+        names = data[3] if isinstance(data, list) and len(data) > 3 else []
+        out = []
+        for row in names:
+            name = row[0] if isinstance(row, list) and row else row
+            name = _clean_suggest(str(name)).strip()
+            if name:
+                out.append(name)
+        return out
+    except Exception:
+        return []
+
+
+def _cond_search_value(label):
+    """Drop a trailing "(ABBR)" so the CT.gov query term stays clean, e.g.
+    "Diabetes mellitus (DM)" -> "Diabetes mellitus"; keep the label for display."""
+    v = re.sub(r"\s*\([^)]*\)\s*$", "", label).strip()
+    return v or label
+
+
+# Curated lay-term / slang -> canonical mapping so casual, non-clinical searches
+# still land on the right trials (accessibility). Medical dictionaries miss these
+# because they aren't official synonyms. Each entry: (aliases, canonical, kind).
+_LAY_SYNONYMS = [
+    (["sugar disease", "high sugar", "high blood sugar", "blood sugar", "sugar"], "Diabetes", "condition"),
+    (["water pill", "water pills", "water tablet"], "Diuretics", "drug"),
+    (["blood thinner", "blood thinners"], "Anticoagulants", "drug"),
+    (["high blood pressure", "hbp"], "Hypertension", "condition"),
+    (["heart attack"], "Myocardial Infarction", "condition"),
+    (["mini stroke", "tia"], "Transient Ischemic Attack", "condition"),
+    (["hardening of the arteries"], "Atherosclerosis", "condition"),
+    (["high cholesterol", "bad cholesterol"], "Hypercholesterolemia", "condition"),
+    (["fatty liver"], "Nonalcoholic Fatty Liver Disease", "condition"),
+    (["acid reflux", "heartburn"], "Gastroesophageal Reflux Disease", "condition"),
+    (["add", "attention deficit"], "ADHD", "condition"),
+    (["manic depression"], "Bipolar Disorder", "condition"),
+    (["low thyroid", "underactive thyroid"], "Hypothyroidism", "condition"),
+    (["overactive thyroid"], "Hyperthyroidism", "condition"),
+    (["afib", "a-fib", "irregular heartbeat"], "Atrial Fibrillation", "condition"),
+    (["lou gehrig", "lou gehrigs"], "Amyotrophic Lateral Sclerosis", "condition"),
+    (["memory loss", "senility"], "Dementia", "condition"),
+    (["shingles"], "Herpes Zoster", "condition"),
+    (["flu"], "Influenza", "condition"),
+    (["whooping cough"], "Pertussis", "condition"),
+    (["chickenpox"], "Varicella", "condition"),
+    (["pink eye"], "Conjunctivitis", "condition"),
+    (["erectile", "impotence"], "Erectile Dysfunction", "condition"),
+    (["low t", "low testosterone"], "Hypogonadism", "condition"),
+    (["ringing in ears", "ringing in the ears"], "Tinnitus", "condition"),
+    (["pins and needles", "numbness"], "Peripheral Neuropathy", "condition"),
+    (["gluten"], "Celiac Disease", "condition"),
+    (["male pattern baldness", "hair loss", "balding"], "Androgenetic Alopecia", "condition"),
+    (["heavy periods"], "Menorrhagia", "condition"),
+    (["marijuana", "weed", "cannabis"], "Cannabis", "drug"),
+    (["birth control", "the pill", "contraceptive"], "Contraception", "condition"),
+    (["kidney failure"], "Kidney Failure", "condition"),
+    (["obesity", "overweight"], "Obesity", "condition"),
+    (["sleep apnea"], "Sleep Apnea", "condition"),
+    (["gout"], "Gout", "condition"),
+]
+
+
+def _lay_synonym_matches(q):
+    """Return canonical trial terms for lay/slang searches (e.g. "water pill" ->
+    Diuretics, "sugar" -> Diabetes). Matches on prefix or curated-alias substring
+    so both partial and fully-typed casual terms resolve."""
+    ql = q.lower().strip()
+    if len(ql) < 2:
+        return []
+    out, seen = [], set()
+    for aliases, canon, kind in _LAY_SYNONYMS:
+        for a in aliases:
+            if (a.startswith(ql) or ql.startswith(a) or ql == a
+                    or (len(ql) >= 3 and ql in a)):
+                key = (kind, canon.lower())
+                if key in seen:
+                    break
+                seen.add(key)
+                note = a if a != canon.lower() else ""
+                out.append({"label": canon, "value": canon, "kind": kind,
+                            "note": ("also: " + note) if note else ""})
+                break
+    return out
+
+
 # NLM RxTerms drug autocomplete: drug-only (no procedures/behavioral arms like
 # CT.gov's intervention dictionary returns), so the drug typeahead stays clean.
 _RXTERMS_URL = "https://clinicaltables.nlm.nih.gov/api/rxterms/v3/search"
 _DRUG_SKIP = ("pack", "starter", "package")
 
 
-def _drug_suggest_matches(q, limit=6):
+def _drug_suggest_matches(q, limit=10):
     """Suggest drug/peptide names for the search typeahead. Curated GLP-1 seeds
     and brand aliases come first (so "ozempic" -> Semaglutide, "reta" ->
     Retatrutide - these cover investigational peptides RxTerms lacks), then NLM
@@ -2569,7 +2701,7 @@ def _drug_suggest_matches(q, limit=6):
     # drugs). Strip the "(Injectable)/(Oral Pill)" form suffix and skip packs.
     if len(out) < limit and len(ql) >= 2:
         try:
-            url = (_RXTERMS_URL + "?maxList=8&terms=" + urllib.parse.quote(q))
+            url = (_RXTERMS_URL + "?maxList=20&terms=" + urllib.parse.quote(q))
             req = urllib.request.Request(
                 url, headers={"User-Agent": "BridgeMD/1.0"})
             with urllib.request.urlopen(req, timeout=6) as r:
@@ -2601,25 +2733,66 @@ def condition_suggest():
     if hit and (now_ts - hit[0]) < _COND_SUGGEST_TTL:
         _COND_SUGGEST_CACHE.move_to_end(key)
         return jsonify({"items": hit[1]})
-    conds = []
-    try:
-        url = (_CT_SUGGEST_URL + "?dictionary=Condition&input="
-               + urllib.parse.quote(q))
-        req = urllib.request.Request(url, headers={"User-Agent": "BridgeMD/1.0"})
-        with urllib.request.urlopen(req, timeout=6) as r:
-            data = json.load(r)
-        if isinstance(data, list):
-            conds = [_clean_suggest(str(x)) for x in data if str(x).strip()]
-            conds = [x for x in conds if x][:12]
-    except Exception:
-        conds = []
-    if not conds:                                    # CT.gov down/slow -> local
-        conds = _local_condition_matches(q)
-    # People search by drug name too (GLP-1 wave: ozempic, retatrutide). Surface
-    # matching drugs first, then conditions, in one dropdown.
-    drugs = _drug_suggest_matches(q)
-    items = drugs + [{"label": c, "value": c, "kind": "condition"}
-                     for c in conds]
+    # Conditions: merge sources for breadth, deduped case-insensitively.
+    #   0) lay/slang synonyms - casual searches ("sugar" -> Diabetes); pinned top
+    #   1) ClinicalTrials.gov - real trial conditions (high-signal, but ~5 max)
+    #   2) NLM conditions dictionary - broad coverage (the bulk of the list)
+    #   3) our curated local list - clean, patient-friendly fallback
+    ql = q.lower()
+    lay = _lay_synonym_matches(q)
+    conds, seen, cond_notes = [], set(), {}
+    lay_cond_labels = set()
+
+    def _push_cond(name, note=""):
+        n = (name or "").strip()
+        lo = n.lower()
+        if n and lo not in seen:
+            seen.add(lo)
+            conds.append(n)
+            if note:
+                cond_notes[lo] = note
+
+    for x in lay:
+        if x["kind"] == "condition":
+            lay_cond_labels.add(x["label"].lower())
+            _push_cond(x["label"], x.get("note", ""))
+    for c in _ctgov_condition_suggest(q):
+        _push_cond(c)
+    for c in _nlm_condition_suggest(q, 25):
+        _push_cond(c)
+    for c in _local_condition_matches(q, 25):
+        _push_cond(c)
+
+    def _cond_rank(n):
+        nl = n.lower()
+        if nl in lay_cond_labels:            # lay-mapped canonical -> pin to top
+            return 0
+        return 1 if nl.startswith(ql) else 2  # then prefix, then contains
+    conds.sort(key=_cond_rank)
+    conds = conds[:20]
+
+    # Pinned lay-synonym matches (drug or condition) always lead - a casual term
+    # like "the pill" or "sugar" should resolve at the very top, not get buried
+    # under drug-name typeahead noise. Then the drug typeahead, then conditions.
+    pinned, pinned_keys = [], set()
+    for x in lay:
+        val = (x["value"] if x["kind"] == "drug" else x["label"]).lower()
+        key = (x["kind"], val)
+        if key in pinned_keys:
+            continue
+        pinned_keys.add(key)
+        pinned.append({
+            "label": x["label"],
+            "value": x["value"] if x["kind"] == "drug" else _cond_search_value(x["label"]),
+            "note": x.get("note", ""),
+            "kind": x["kind"],
+        })
+    drug_items = [d for d in _drug_suggest_matches(q)
+                  if ("drug", (d.get("value") or "").lower()) not in pinned_keys]
+    cond_items = [{"label": c, "value": _cond_search_value(c), "kind": "condition",
+                   "note": cond_notes.get(c.lower(), "")}
+                  for c in conds if ("condition", c.lower()) not in pinned_keys]
+    items = pinned + drug_items + cond_items
     _COND_SUGGEST_CACHE[key] = (now_ts, items)
     _COND_SUGGEST_CACHE.move_to_end(key)
     while len(_COND_SUGGEST_CACHE) > _COND_SUGGEST_MAX:
@@ -2950,8 +3123,8 @@ def find():
     this endpoint handles the POST and renders patient-friendly results. A GET
     just bounces back to the homepage (carrying any prefill)."""
     if request.method == "GET":
-        if g.user and not g.patient_user:
-            return redirect(url_for("dashboard"))
+        # "Find a trial" is always the patient search - never bounce a signed-in
+        # account to the (now-hidden) physician referral surface.
         return _render_landing()
 
     blocked = _guard_ip_rate_limit("find")
@@ -3079,6 +3252,32 @@ def find():
         app.logger.exception("public find failed")
         flash("Search failed unexpectedly. Please try again.", "error")
         return redirect(url_for("home", condition=condition_label, location=location))
+
+    # Niche / messy / multi-concept fallback: a plain condition search that found
+    # nothing may be a phrase CT.gov can't match ("stage 4 lung ca with brain
+    # mets", "trouble breathing at night", a rare-disease nickname). Let the LLM
+    # interpret what the person actually means and search again, so odd or niche
+    # searches still surface the best-matching trials instead of a dead end.
+    if (not results and not intervention and not freeform
+            and condition_label and mt.LLM_API_KEY):
+        interp_about = condition_label + (("\n" + about) if about else "")
+        interp_note = build_patient_note("", age, sex, interp_about,
+                                         pregnant, other_trial)
+        try:
+            detected2, results2 = run_search(
+                interp_note, "", "", False, coords, radius, unit,
+                interventional_only=True, assess=bool(about.strip()))
+        except Exception:
+            detected2, results2 = "", []
+            app.logger.exception("LLM interpretation fallback failed")
+        if results2:
+            results = results2
+            detected = detected2 or detected
+            freeform = True            # treat as an interpreted (free-text) search
+            condition_terms = []       # don't log the raw phrase as a condition
+            if detected:
+                label = detected
+                condition_label = detected
 
     # Free-text search: adopt the condition the matcher extracted so results,
     # caching, and analytics have a real label instead of a raw sentence.

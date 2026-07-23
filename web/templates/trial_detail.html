@@ -284,10 +284,10 @@
         </div>
 
         <div class="if-row two">
-          <label>Your name<input name="name" type="text" value="{{ patient_user.full_name if patient_user else '' }}" required></label>
-          <label>Phone <span class="opt">(optional)</span><input name="phone" type="tel"></label>
+          <label><span class="if-lbl">Your name</span><input name="name" type="text" value="{{ patient_user.full_name if patient_user else '' }}" required></label>
+          <label><span class="if-lbl">Phone <span class="opt">(optional)</span></span><input name="phone" type="tel"></label>
         </div>
-        <label>Email<input name="email" id="ifEmail" type="email" value="{{ patient_user.email if patient_user else '' }}" required{% if not need_verify %} readonly{% endif %}></label>
+        <label><span class="if-lbl">Email</span><input name="email" id="ifEmail" type="email" value="{{ patient_user.email if patient_user else '' }}" required{% if not need_verify %} readonly{% endif %}></label>
         {% if need_verify %}
         <div class="if-verify" id="ifVerify"
              data-send-url="{{ url_for('apply_send_code') }}"
