@@ -1291,13 +1291,9 @@ body.home-screen .landing-legal-links { margin: 0; flex: 0 0 auto; font-size: 12
    finder (incl. the By condition / Describe it language toggle) so patients can
    retweak the query + location without leaving the page. */
 .pr-topsearch { margin: 0 0 18px; }
-.pr-topsearch-modes { display: inline-flex; gap: 4px; margin: 0 0 8px; padding: 3px;
-  background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-pill); }
-.pr-mode { border: none; background: none; cursor: pointer; padding: 6px 14px;
-  border-radius: var(--radius-pill); font: 600 13px/1 var(--sans); color: var(--muted);
-  transition: background .12s ease, color .12s ease; }
-.pr-mode:hover { color: var(--ink); }
-.pr-mode.is-active { background: var(--surface); color: var(--accent); box-shadow: var(--shadow-sm, 0 1px 2px rgba(2,6,23,.06)); }
+/* Reuse the homepage's mode toggle (.search-modes/.search-mode) verbatim; just
+   tighten the margin for the results context. */
+.pr-topsearch .search-modes { margin: 0 0 8px; }
 .pr-topsearch-row { display: flex; gap: 8px; align-items: stretch; flex-wrap: wrap; }
 .pr-topsearch-field { display: flex; align-items: center; gap: 8px; background: var(--surface);
   border: 1px solid var(--border); border-radius: var(--radius-pill); padding: 0 14px;
@@ -1306,7 +1302,7 @@ body.home-screen .landing-legal-links { margin: 0; flex: 0 0 auto; font-size: 12
 .pr-topsearch-field .ico { width: 17px; height: 17px; color: var(--faint); flex-shrink: 0; }
 .pr-topsearch-field input { border: none; background: none; outline: none; padding: 12px 0;
   font: 400 15px/1 var(--sans); color: var(--ink); width: 100%; }
-.pr-topsearch-cond { flex: 2 1 260px; }
+.pr-topsearch-cond { flex: 2 1 260px; position: relative; }
 .pr-topsearch-loc { flex: 1 1 180px; }
 .pr-topsearch-btn { flex-shrink: 0; white-space: nowrap; }
 @media (max-width: 560px) {
