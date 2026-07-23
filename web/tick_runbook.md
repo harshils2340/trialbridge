@@ -21,10 +21,13 @@ If spent >= cap (NIGHT_BUDGET_USD, default $5): DO NOT edit or eval. Append a
 line to NIGHT_LOG.md ("budget reached, holding") and end the tick. Nothing else.
 
 ## Split protocol (READ THIS)
-- **dev** (`eval_set.json`, `eval_fails_dev.json`): diagnose + select on it.
-- **test** (`eval_test.json`, `eval_fails_test.json`): DISJOINT held-out set. It is
-  the honest generalization number. Use it only as a GUARD (never diagnose changes
-  purely to fit test). The headline we care about reporting is the **test** headline.
+Three DISJOINT sets (no patient/trial pair shared). Objective = generalization.
+- **dev** (`eval_set.json`, `eval_fails_dev.json`): where you DIAGNOSE (read fails).
+  Also an anti-overfit GUARD: dev must not regress much when you accept a change.
+- **test** (`eval_test.json`, `eval_fails_test.json`): the OPTIMIZATION OBJECTIVE.
+  Maximize test headline. Read its fails too - they're the truest signal.
+- **final** (`eval_final.json`): NEVER run or inspect during the loop. It is only
+  for the morning to report one honest, untouched number.
 
 ## Step 1 - Read state
 - `tail -8 match_eval_log.jsonl` -> best `headline` per split so far (rows tagged
@@ -51,28 +54,27 @@ Edit ONLY `matcher-night/match_trials.py`: `MATCH_SYSTEM`, `MATCH_SCHEMA`, or th
 `normalize_match` parser. One coherent change per tick so the delta is attributable.
 No other files.
 
-## Step 4 - Evaluate (dev first, then test only if dev is promising)
+## Step 4 - Evaluate on dev AND test (never final)
 ```
 NIGHT_BUDGET_USD=5 $PY match_eval.py --split dev  --workers 6
-```
-If dev did NOT improve headline by > 0.02 over best-dev (or crit-rate worsened by
-> 0.01): REVERT now (`git checkout -- match_trials.py`), log, end tick. Save the
-test spend. Otherwise it's a candidate -> run the guard:
-```
 NIGHT_BUDGET_USD=5 $PY match_eval.py --split test --workers 6
 ```
+(Prompt hash changed -> both re-score, ~$0.14, bounded by the cap. If the cap is
+hit mid-run the eval stops clean and marks PARTIAL - then treat as no-improvement
+and revert.)
 
-## Step 5 - Green-or-revert (test-guarded)
+## Step 5 - Green-or-revert (objective = TEST, guard = dev)
 Accept & commit ONLY if ALL hold:
-- dev headline improves > 0.02 over best-dev, AND dev crit-rate not worse by >0.01, AND
-- test headline does NOT regress > 0.02 vs best-test, AND test crit-rate not worse
-  by > 0.02 vs best-test.
+- **test** headline improves > 0.02 over best-test (this is the objective), AND
+- **test** crit-rate not worse by > 0.01 vs best-test, AND
+- **dev** headline does NOT regress > 0.03 vs best-dev (anti-overfit guard).
 If accepted:
 ```
-git add -A && git commit -m "eligibility: <what changed> (dev X->Y, test A->B)"
+git add -A && git commit -m "eligibility: <what changed> (test A->B, dev C->D)"
 ```
-If test regressed while dev improved = OVERFIT -> REVERT and record it as an
-overfit hypothesis in NIGHT_LOG.md. Otherwise (dev fine, test fine) keep it.
+If test improved but dev collapsed = suspicious/overfit -> REVERT, record why.
+If test did not improve -> REVERT (`git checkout -- match_trials.py`), log the
+failed hypothesis in NIGHT_LOG.md so it isn't retried. NEVER touch `final`.
 
 ## Step 6 - Log
 Append one line to NIGHT_LOG.md: tick time, hypothesis, result (accepted/reverted),

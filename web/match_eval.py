@@ -45,7 +45,8 @@ import match_trials as mt                      # noqa: E402
 import budget                                  # noqa: E402
 
 DATA_DIR = os.environ.get("MATCH_EVAL_DATA", "/tmp/bmd_eval/TrialGPT/dataset")
-SET_FILE = {"dev": HERE / "eval_set.json", "test": HERE / "eval_test.json"}
+SET_FILE = {"dev": HERE / "eval_set.json", "test": HERE / "eval_test.json",
+            "final": HERE / "eval_final.json"}
 CACHE = HERE / "eval_cache.json"
 LOG = HERE / "match_eval_log.jsonl"
 NIGHT_LOG = HERE / "NIGHT_LOG.md"
@@ -130,37 +131,42 @@ def _shuffled_pools(seed):
     return buckets
 
 
-def build_both(seed, comp, n_dev, n_test):
-    """Build DISJOINT dev and test sets from the same seeded shuffle.
+def build_splits(seed, comp, n_dev, n_test, n_final):
+    """Build 3 DISJOINT sets from one seeded shuffle: consecutive per-label slices
+    so no patient/trial pair appears in more than one split.
 
-    dev = first slice per label, test = the NEXT slice - so no patient/trial pair
-    ever appears in both. The loop diagnoses + selects on dev; test is the honest
-    generalization check the loop never tunes against. Deterministic in `seed`, so
-    rebuilding reproduces identical sets (cache stays valid).
+    - dev:   diagnose + iterate on it.
+    - test:  optimization objective (generalization), guarded so we don't overfit.
+    - final: NEVER inspected during the loop; run once at the end for the honest
+      reported number.
+
+    Deterministic in `seed`, so rebuilding reproduces identical sets (cache valid).
     """
     pools = _shuffled_pools(seed)
-    dev, test = [], []
+    dev, test, final = [], [], []
     for lab, frac in comp.items():
-        kd = int(round(n_dev * frac))
-        kt = int(round(n_test * frac))
+        kd, kt, kf = (int(round(n * frac)) for n in (n_dev, n_test, n_final))
         dev.extend(pools[lab][:kd])
         test.extend(pools[lab][kd:kd + kt])
+        final.extend(pools[lab][kd + kt:kd + kt + kf])
     random.Random(seed + 1).shuffle(dev)
     random.Random(seed + 2).shuffle(test)
-    return dev, test
+    random.Random(seed + 3).shuffle(final)
+    return {"dev": dev, "test": test, "final": final}
 
 
-def load_split(split, seed, comp, n_dev, n_test, rebuild):
+def load_split(split, seed, comp, n_dev, n_test, n_final, rebuild):
     fp = SET_FILE[split]
     if fp.exists() and not rebuild:
         cases = json.load(open(fp))
         print(f"  reusing frozen {split} set: {len(cases)} cases ({fp.name})")
         return cases
-    dev, test = build_both(seed, comp, n_dev, n_test)
-    json.dump(dev, open(SET_FILE["dev"], "w"))
-    json.dump(test, open(SET_FILE["test"], "w"))
-    print(f"  built frozen sets: dev={len(dev)} test={len(test)} (disjoint)")
-    return {"dev": dev, "test": test}[split]
+    sets = build_splits(seed, comp, n_dev, n_test, n_final)
+    for name, cases in sets.items():
+        json.dump(cases, open(SET_FILE[name], "w"))
+    print(f"  built frozen sets: dev={len(sets['dev'])} test={len(sets['test'])} "
+          f"final={len(sets['final'])} (disjoint)")
+    return sets[split]
 
 
 # --------------------------------------------------------------------------- #
@@ -397,10 +403,11 @@ def dump_fails(scored, split, per_cat=12):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--split", choices=("dev", "test"), default="dev",
-                    help="dev = loop diagnoses/selects on it; test = held-out check")
+    ap.add_argument("--split", choices=("dev", "test", "final"), default="dev",
+                    help="dev=diagnose; test=optimize (guarded); final=morning-only")
     ap.add_argument("--n", type=int, default=300, help="dev set size")
-    ap.add_argument("--n-test", type=int, default=300, help="held-out test set size")
+    ap.add_argument("--n-test", type=int, default=300, help="test set size")
+    ap.add_argument("--n-final", type=int, default=300, help="final holdout size")
     ap.add_argument("--seed", type=int, default=20260723)
     ap.add_argument("--workers", type=int, default=6)
     ap.add_argument("--rebuild", action="store_true", help="rebuild frozen sets")
@@ -412,7 +419,8 @@ def main():
     comp = {"2": 0.40, "1": 0.40, "0": 0.20}
     print(f"Eligibility eval [{args.split}]  model={mt.LLM_MODEL}  "
           f"cap=${budget.cap_usd():.2f}  spent so far=${budget.spent()['usd']:.4f}")
-    cases = load_split(args.split, args.seed, comp, args.n, args.n_test, args.rebuild)
+    cases = load_split(args.split, args.seed, comp, args.n, args.n_test,
+                       args.n_final, args.rebuild)
     scored, partial, phash = evaluate(cases, args.workers)
     rep = score_report(scored)
     spent = budget.spent()
