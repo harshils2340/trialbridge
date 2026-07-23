@@ -55,6 +55,20 @@ LLM_BASE_URL = os.environ.get("LLM_BASE_URL", "https://api.openai.com/v1")
 LLM_MODEL = os.environ.get("LLM_MODEL", "gpt-4o-mini")
 DO_MATCH = os.environ.get("MATCH", "1") != "0"
 
+# Optional cost-metering sink. When set to a callable(usage_dict, model), each
+# LLM response's token usage is reported to it. Left None in production, so this
+# is a zero-behaviour no-op there; only the overnight eval wires it up.
+USAGE_HOOK = None
+
+
+def _emit_usage(resp):
+    cb = USAGE_HOOK
+    if cb is not None:
+        try:
+            cb((resp or {}).get("usage") or {}, LLM_MODEL)
+        except Exception:
+            pass
+
 VERDICT_RANK = {"likely_eligible": 0, "possible": 1, "unlikely": 2, "error": 3}
 
 
@@ -380,7 +394,9 @@ def llm_chat(system, user, retries=2):
                 headers={"Authorization": f"Bearer {LLM_API_KEY}",
                          "Content-Type": "application/json"})
             with urllib.request.urlopen(req, timeout=60) as r:
-                return json.load(r)["choices"][0]["message"]["content"].strip()
+                resp = json.load(r)
+            _emit_usage(resp)
+            return resp["choices"][0]["message"]["content"].strip()
         except Exception as e:
             last = e
             if attempt < retries - 1:
@@ -426,6 +442,7 @@ def llm_match(patient, trial, retries=3):
                          "Content-Type": "application/json"})
             with urllib.request.urlopen(req, timeout=90) as r:
                 resp = json.load(r)
+            _emit_usage(resp)
             return normalize_match(_extract_json(
                 resp["choices"][0]["message"]["content"]))
         except Exception as e:  # network, rate-limit, JSON - back off and retry

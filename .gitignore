@@ -22,3 +22,12 @@ __pycache__/
 # Uploaded documents (candidate-thread + team-room files) — runtime data,
 # may contain PHI. The directory is auto-created by the app on startup.
 web/uploads/
+
+# Overnight eligibility-eval runtime artifacts (branch night/eligibility only).
+# Ledger/cache/eval-set/logs are machine-local run state, not source.
+web/night_spend.json
+web/eval_cache.json
+web/eval_set.json
+web/match_eval_log.jsonl
+web/eval_fails.json
+web/eval_data/
