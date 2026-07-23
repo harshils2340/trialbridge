@@ -30,10 +30,13 @@ _FALLBACK = (1.00, 4.00)   # conservative when the model is unknown
 
 
 def cap_usd():
+    # Hard default $5 for the night (per the agreed cap). NIGHT_BUDGET_USD can
+    # only be used to LOWER it further, never to silently raise it above $5.
     try:
-        return max(0.0, float(os.environ.get("NIGHT_BUDGET_USD", "15")))
+        req = max(0.0, float(os.environ.get("NIGHT_BUDGET_USD", "5")))
     except ValueError:
-        return 15.0
+        return 5.0
+    return min(req, 5.0)
 
 
 def price_for(model):
