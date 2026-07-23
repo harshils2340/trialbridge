@@ -94,13 +94,15 @@
   }
 
   function render(q) {
+    // Nothing until the user types - no "browse all pages" list on focus.
+    if (!q) { panel.innerHTML = ''; rows = []; close(); return; }
     panel.innerHTML = '';
     rows = [];
     var matched = collect(q);
     if (!matched.length) {
       var e = document.createElement('div');
       e.className = 'appsearch-empty';
-      e.textContent = q ? 'No matches for “' + q + '”' : 'Start typing to search';
+      e.textContent = 'No matches for “' + q + '”';
       panel.appendChild(e);
       open();
       return;

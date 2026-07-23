@@ -93,5 +93,20 @@
 <svg class="{{ cls }}" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><polyline points="9 15 11 17 15 12.5"/></svg>
 {%- elif name == "shield-check" -%}
 <svg class="{{ cls }}" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 9.5"/></svg>
+{# ---- Real brand / product marks (full-color; pass cls="brand-ico") ---- #}
+{%- elif name == "google" -%}
+<svg class="{{ cls }}" viewBox="0 0 18 18" aria-hidden="true"><path fill="#EA4335" d="M9 7.36v3.47h4.98c-.22 1.12-.9 2.08-1.92 2.72l3.1 2.4c1.81-1.67 2.84-4.12 2.84-6.95 0-.67-.06-1.3-.17-1.92z"/><path fill="#4285F4" d="M9 18c2.57 0 4.72-.85 6.29-2.3l-3.1-2.4c-.86.58-1.95.93-3.19.93-2.45 0-4.52-1.65-5.26-3.88H.55v2.48A9 9 0 0 0 9 18"/><path fill="#FBBC05" d="M3.74 10.35a5.4 5.4 0 0 1 0-3.43V4.44H.55a9 9 0 0 0 0 8.39z"/><path fill="#34A853" d="M9 3.58c1.4 0 2.66.48 3.65 1.42l2.73-2.73C13.72.7 11.57 0 9 0A9 9 0 0 0 .55 4.44l3.19 2.48C4.48 5.24 6.55 3.58 9 3.58"/></svg>
+{%- elif name == "zoom" -%}
+<svg class="{{ cls }}" viewBox="0 0 24 24" aria-hidden="true"><rect x="1.5" y="5" width="21" height="14" rx="4" fill="#2D8CFF"/><path fill="#fff" d="M5 10.2c0-.66.54-1.2 1.2-1.2h5.3c.66 0 1.2.54 1.2 1.2v3.6c0 .66-.54 1.2-1.2 1.2H6.2c-.66 0-1.2-.54-1.2-1.2z"/><path fill="#fff" d="M13.6 11.05l3.2-1.98c.46-.28 1.05.05 1.05.6v4.66c0 .55-.59.88-1.05.6L13.6 12.95z"/></svg>
+{%- elif name == "google-meet" -%}
+<svg class="{{ cls }}" viewBox="0 0 24 24" aria-hidden="true"><path fill="#00832d" d="M13.5 12l4.2 3.02 1.1-2.4-1.1-3.02z"/><path fill="#0066da" d="M2.5 7.5v9A1.5 1.5 0 0 0 4 18h4l1-3-1-3-1-2.5z" opacity="0"/><path fill="#e94235" d="M8 6H4a1.5 1.5 0 0 0-1.5 1.5V9H8z"/><path fill="#2684fc" d="M2.5 9v6A1.5 1.5 0 0 0 4 16.5h1.5V9z"/><path fill="#ffba00" d="M2.5 15v1.5A1.5 1.5 0 0 0 4 18h1.5v-3z"/><path fill="#00ac47" d="M13.5 12v4.5A1.5 1.5 0 0 1 12 18H5.5V6H12a1.5 1.5 0 0 1 1.5 1.5z"/><path fill="#00832d" d="M13.5 10.05l4.35-2.55c.5-.3 1.15.06 1.15.64v7.72c0 .58-.65.94-1.15.64L13.5 13.95z"/></svg>
+{%- elif name == "google-calendar" -%}
+<svg class="{{ cls }}" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4.5" width="16" height="15.5" rx="2.5" fill="#fff" stroke="#dadce0" stroke-width="1"/><path fill="#4285f4" d="M6.5 4.5h11A2.5 2.5 0 0 1 20 7v1.2H4V7a2.5 2.5 0 0 1 2.5-2.5z"/><text x="12" y="17.3" font-size="8" font-family="Arial, sans-serif" font-weight="700" fill="#4285f4" text-anchor="middle">31</text></svg>
+{%- elif name == "calendly" -%}
+<svg class="{{ cls }}" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="#006bff"/><path fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" d="M15.4 9.1a4.6 4.6 0 1 0 .1 5.7"/></svg>
+{%- elif name == "redcap" -%}
+<svg class="{{ cls }}" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3" fill="#c00000"/><rect x="6.4" y="12" width="2.4" height="5" rx=".5" fill="#fff"/><rect x="10.8" y="9" width="2.4" height="8" rx=".5" fill="#fff"/><rect x="15.2" y="6.5" width="2.4" height="10.5" rx=".5" fill="#fff"/></svg>
+{%- elif name == "pdf" -%}
+<svg class="{{ cls }}" viewBox="0 0 24 24" aria-hidden="true"><path fill="#fff" stroke="#e2e8f0" stroke-width="1" d="M6.5 2.5h7L18 7v13a1.5 1.5 0 0 1-1.5 1.5h-10A1.5 1.5 0 0 1 5 20V4A1.5 1.5 0 0 1 6.5 2.5z"/><path fill="#e2e8f0" d="M13.5 2.5L18 7h-4.5z"/><rect x="3.5" y="12.5" width="13" height="6" rx="1.2" fill="#e2574c"/><text x="10" y="17" font-size="4.4" font-family="Arial, sans-serif" font-weight="700" fill="#fff" text-anchor="middle" letter-spacing=".3">PDF</text></svg>
 {%- endif -%}
 {%- endmacro %}

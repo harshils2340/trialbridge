@@ -9,6 +9,7 @@
   'unlikely': ('Probably not a fit', 'no'),
   'likely_ineligible': ('Probably not a fit', 'no'),
   'ineligible': ('Not a fit', 'no'),
+  'unscored': ('See if you qualify', 'unknown'),
   'error': ('Couldn’t assess', 'maybe')
 } %}
 {% set lab = labels.get(m.verdict, ('You might qualify', 'maybe')) %}
@@ -21,7 +22,7 @@
 <section class="td-layout">
   <div class="td-main">
     <div class="td-badges">
-      <span class="fit fit-{{ lab[1] }}">{{ ic.icon('check') if lab[1]=='good' else (ic.icon('x') if lab[1]=='no' else ic.icon('sparkle')) }}{{ lab[0] }}</span>
+      <span class="fit fit-{{ lab[1] }}">{{ ic.icon('check') if lab[1]=='good' else (ic.icon('x') if lab[1]=='no' else (ic.icon('help') if lab[1]=='unknown' else ic.icon('sparkle'))) }}{{ lab[0] }}</span>
       {% if r.distance is not none %}<span class="pr-dist">{{ ic.icon('pin') }}{{ '%.0f'|format(r.distance) }} {{ r.unit }} away</span>{% endif %}
       {% if t.phase %}<span class="pr-phase">{{ t.phase.replace('_',' ')|title if t.phase != 'NA' else 'N/A' }}</span>{% endif %}
       {% if r.pay and r.pay.label %}<span class="pr-pay pr-pay-{{ r.pay.tier }}">{{ ic.icon('activity') }}{{ r.pay.label }}</span>{% endif %}
@@ -230,10 +231,11 @@
         <input type="hidden" name="sex" value="{{ q_sex or (records_profile.sex if records_profile else '') }}">
         <input type="hidden" name="eligibility" value='{{ {"verdict": m.verdict, "rationale": m.rationale, "met": m.met, "unknown": m.unknown, "not_met": m.not_met}|tojson }}'>
 
+        {% set ai_pending = prescreen_ai and not prescreen %}
         {% set q_total = (prescreen|length + 2) if prescreen else 4 %}
-        <div class="if-screener" id="ifScreener"{% if prescreen_ai and not prescreen %} data-prescreen-url="{{ url_for('trial_prescreen', search_id=search_id, nct=t.nctId) }}"{% endif %}>
-          <div class="if-screener-head" id="ifScreenerHead">A few quick questions ({{ q_total }}) to pre-screen you for this study</div>
-          {% if prescreen_ai and not prescreen %}<div class="if-screener-note" id="ifScreenerNote">Tailoring questions to this study…</div>{% endif %}
+        <div class="if-screener" id="ifScreener"{% if ai_pending %} data-prescreen-url="{{ url_for('trial_prescreen', search_id=search_id, nct=t.nctId) }}"{% endif %}>
+          <div class="if-screener-head" id="ifScreenerHead">A few quick questions{% if not ai_pending %} ({{ q_total }}){% endif %} to pre-screen you for this study</div>
+          {% if ai_pending %}<div class="if-screener-note" id="ifScreenerNote">Tailoring questions to this study…</div>{% endif %}
           <div class="if-screener-body" id="ifScreenerBody">
           {% if prescreen %}
             {% for q in prescreen %}
@@ -249,6 +251,23 @@
               <select name="travel"><option value="yes">Yes</option><option value="maybe">Not sure</option><option value="no">No</option></select></label>
             <label><span>{{ prescreen|length + 2 }}. Can you give your own informed consent?</span>
               <select name="consent_capable"><option value="yes">Yes</option><option value="no">No</option></select></label>
+          {% elif ai_pending %}
+            {# Lazy-load: show a skeleton until the study-specific questions arrive
+               (JS in trial_prescreen fetch), so we never flash the generic set
+               first and then swap it out. Generic set is the JS fallback. #}
+            <div class="if-q-skel" aria-hidden="true">
+              <span></span><span></span><span></span><span></span>
+            </div>
+            <noscript>
+              <label><span>1. Can you travel to the study site for visits?</span>
+                <select name="travel"><option value="yes">Yes</option><option value="maybe">Not sure</option><option value="no">No</option></select></label>
+              <label><span>2. Are you currently in another clinical trial?</span>
+                <select name="other_trial"><option value="no">No</option><option value="yes">Yes</option></select></label>
+              <label><span>3. Are you pregnant or planning to become pregnant?</span>
+                <select name="pregnancy"><option value="no">No</option><option value="yes">Yes</option><option value="na">Not applicable</option></select></label>
+              <label><span>4. Can you give your own informed consent?</span>
+                <select name="consent_capable"><option value="yes">Yes</option><option value="no">No</option></select></label>
+            </noscript>
           {% else %}
             <label><span>1. Can you travel to the study site for visits?</span>
               <select name="travel"><option value="yes">Yes</option><option value="maybe">Not sure</option><option value="no">No</option></select></label>
@@ -273,7 +292,7 @@
              data-verify-url="{{ url_for('apply_verify_code') }}">
           <div class="if-verify-row">
             <button class="btn btn-ghost btn-sm" type="button" id="ifSendCode">{{ ic.icon('mail') }} Verify email</button>
-            <span class="if-verify-hint" id="ifVerifyHint">Takes ~30 seconds - keeps bots out.</span>
+            <span class="if-verify-hint" id="ifVerifyHint">We'll email you a 6-digit code to confirm it's really you - keeps bots out.</span>
           </div>
           <div class="if-code-row" id="ifCodeRow" hidden>
             <input type="text" id="ifCode" inputmode="numeric" autocomplete="one-time-code"
@@ -338,12 +357,31 @@
     h.type = 'hidden'; h.name = name; h.value = value || '';
     return h;
   }
+  // Generic fallback set (mirrors the server-rendered non-AI screener). Used when
+  // the study-specific questions come back empty or the fetch fails, since the
+  // skeleton means nothing usable is in the DOM yet.
+  function renderGeneric() {
+    var frag = document.createDocumentFragment();
+    frag.appendChild(question('1. Can you travel to the study site for visits?',
+      select('travel', [opt('yes', 'Yes'), opt('maybe', 'Not sure'), opt('no', 'No')])));
+    frag.appendChild(question('2. Are you currently in another clinical trial?',
+      select('other_trial', [opt('no', 'No'), opt('yes', 'Yes')])));
+    frag.appendChild(question('3. Are you pregnant or planning to become pregnant?',
+      select('pregnancy', [opt('no', 'No'), opt('yes', 'Yes'), opt('na', 'Not applicable')])));
+    frag.appendChild(question('4. Can you give your own informed consent?',
+      select('consent_capable', [opt('yes', 'Yes'), opt('no', 'No')])));
+    body.innerHTML = '';
+    body.appendChild(frag);
+    if (head) head.textContent =
+      'A few quick questions (4) to pre-screen you for this study';
+    if (note) note.remove();
+  }
 
   fetch(url, { headers: { 'X-Requested-With': 'fetch' } })
     .then(function (r) { return r.json(); })
     .then(function (d) {
       var qs = (d && d.questions) || [];
-      if (!qs.length) { if (note) note.remove(); return; }  // keep generic set
+      if (!qs.length) { renderGeneric(); return; }  // no tailored -> generic
       var frag = document.createDocumentFragment();
       qs.forEach(function (q, i) {
         var sel = select('sa_' + i, [
@@ -364,7 +402,7 @@
         + ') to pre-screen you for this study';
       if (note) note.remove();
     })
-    .catch(function () { if (note) note.remove(); });
+    .catch(function () { renderGeneric(); });
 })();
 </script>
 

@@ -53,8 +53,7 @@
       <a href="{{ url_for('documents_workspace') }}" class="{{ 'active' if request.endpoint in ['documents_workspace','document_detail'] }}">{{ ic.icon('file-check') }}Documents</a>
       <a href="{{ url_for('recruitment_dashboard') }}" class="{{ 'active' if request.endpoint == 'recruitment_dashboard' }}">{{ ic.icon('activity') }}Recruitment</a>
       <a href="{{ url_for('team_page') }}" class="{{ 'active' if request.endpoint in ['team_page','team_invite','team_set_role','team_remove'] }}">{{ ic.icon('users') }}Team</a>
-      <a href="{{ url_for('site_setup') }}" class="{{ 'active' if request.endpoint in ['site_setup','add_study_claim','remove_study_claim'] }}">{{ ic.icon('gear') }}Settings</a>
-      {% if is_owner %}<a href="{{ url_for('owner_analytics') }}" class="{{ 'active' if request.endpoint == 'owner_analytics' }}">{{ ic.icon('activity') }}Visitors</a>{% endif %}
+      <a href="{{ url_for('site_setup') }}" class="{{ 'active' if request.endpoint in ['site_setup','add_study_claim','remove_study_claim','owner_analytics'] }}">{{ ic.icon('gear') }}Settings</a>
     </nav>
     <div class="appside-foot">
       <div class="appside-user">

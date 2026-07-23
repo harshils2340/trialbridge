@@ -50,7 +50,7 @@
           <div class="who">
             <span class="app-av {{ 'brand' if d.party == 'patient' else 'neutral' }}">{{ ic.icon('file') }}</span>
             <div>
-              <b>{{ d.title }}</b>
+              <b class="doc-name">{{ ic.icon('pdf', 'brand-ico doc-pdf') }}<span>{{ d.title }}</span></b>
               <span>{{ d.category_label }}{% if d.nct %} · {{ d.nct }}{% endif %}</span>
             </div>
           </div>

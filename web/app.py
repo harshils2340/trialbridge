@@ -46,6 +46,7 @@ sys.path.insert(0, str(HERE.parent))
 import match_trials as mt  # noqa: E402
 import refer as rf  # noqa: E402
 
+import adrender  # noqa: E402
 import alerts as alerts_mod  # noqa: E402
 import analytics  # noqa: E402
 import calendar_invites  # noqa: E402
@@ -2478,17 +2479,22 @@ def _merge_terms(live, seed, limit):
 
 
 def trending_conditions(limit=8):
-    """Live trending conditions from an external source (GPT + CT.gov
-    validation, see trends.py), backfilled with seeds so it's never empty."""
+    """Trending conditions: what people ACTUALLY search on our site first (live
+    from search_stats, updates the moment someone searches), then external
+    CT.gov/LLM trends, backfilled with seeds so it's never empty."""
     try:
-        return _merge_terms(trends.get_trending("condition"), SEED_CONDITIONS, limit)
+        live = db.top_terms("condition", limit) + list(trends.get_trending("condition"))
+        return _merge_terms(live, SEED_CONDITIONS, limit)
     except Exception:
         return SEED_CONDITIONS[:limit]
 
 
 def trending_drugs(limit=6):
+    """Trending drugs: real on-site searches first (live), then external
+    CT.gov/LLM trends, backfilled with seeds so it's never empty."""
     try:
-        return _merge_terms(trends.get_trending("drug"), SEED_DRUGS, limit)
+        live = db.top_terms("drug", limit) + list(trends.get_trending("drug"))
+        return _merge_terms(live, SEED_DRUGS, limit)
     except Exception:
         return SEED_DRUGS[:limit]
 
@@ -3040,9 +3046,15 @@ def find():
         _log_event("search", {"q": label, "cached": 1})
         return _finish_find_redirect(cached_sid, nct)
     try:
+        # Only produce fit / not-a-fit verdicts when the searcher actually
+        # described their situation (free-text or the "about" details). A bare
+        # condition or drug search has nothing to judge specific eligibility
+        # criteria against, so we show a neutral "you might qualify" instead of
+        # falsely flagging everything "probably not a fit".
         detected, results = run_search(note, condition_query, "", False, coords,
                                        radius, unit, interventional_only=True,
-                                       intervention=intervention)
+                                       intervention=intervention,
+                                       assess=bool(about.strip()))
     except RuntimeError as e:
         flash(str(e), "error")
         return redirect(url_for("home", condition=condition_label, location=location))
@@ -6787,6 +6799,21 @@ def _match_quality(match):
 
 def _quality_gated_match(match):
     """Return normalized + quality-gated eligibility output for UI safety."""
+    match = match or {}
+    # Placeholder reads (e.g. an un-assessed condition search) carry no LLM
+    # judgment to police, and their verdict ("unscored") is deliberately not one
+    # of the three real bands - so skip normalization/gating, which would flatten
+    # it back to "possible" and re-introduce the misleading "you might qualify".
+    if match.get("skip_quality"):
+        out = dict(match)
+        out.setdefault("verdict", "unscored")
+        out.setdefault("score", 0)
+        for k in ("met", "not_met", "unknown"):
+            out.setdefault(k, [])
+        out["quality_score"] = 100
+        out["quality_flags"] = []
+        out["quality_ok"] = True
+        return out
     m = mt.normalize_match(match or {})
     q = _match_quality(m)
     out = dict(m)
@@ -6878,12 +6905,20 @@ def _site_posted_as_trial(study):
 # Search
 # --------------------------------------------------------------------------- #
 def run_search(note, condition, country, require_site, coords=None, radius=50,
-               unit="km", interventional_only=True, intervention=""):
+               unit="km", interventional_only=True, intervention="", assess=True):
     """Fetch -> hard-gate -> LLM-score, ranked by relevance then distance.
     `radius`/`unit` define the geographic limit. By default only interventional
     (treatment) trials are kept - a doctor refers for therapy, not to a registry.
     `intervention` searches by drug name (e.g. "semaglutide") instead of/along
-    with a condition. Returns (search_label, results)."""
+    with a condition.
+
+    `assess` controls whether we run the per-trial LLM eligibility read. Only set
+    it when the searcher actually described their situation - a bare condition
+    search has no patient facts to judge specific inclusion criteria against, so
+    scoring it just manufactures misleading "not a fit" verdicts. When False,
+    every match shows the neutral "you might qualify" read instead.
+
+    Returns (search_label, results)."""
     profile = mt.patient_profile(note)
     if not condition and not intervention and mt.LLM_API_KEY:
         try:
@@ -7023,8 +7058,23 @@ def run_search(note, condition, country, require_site, coords=None, radius=50,
                 "met": [], "not_met": [], "unknown": [],
                 "quality_score": 100, "quality_flags": [], "quality_ok": True}
 
-    llm_picks = picks[:MAX_MATCH]
-    light_picks = picks[MAX_MATCH:]
+    def _neutral_match():
+        # No patient detail was provided, so we genuinely can't judge fit either
+        # way. Say that honestly instead of implying "you might qualify".
+        return {"verdict": "unscored", "score": 0, "skip_quality": True,
+                "rationale": ("Recruiting and matches your search"
+                              + (" near you." if coords else ".")
+                              + " We haven't checked your eligibility - the study"
+                              " team confirms whether you qualify after you apply."),
+                "met": [], "not_met": [], "unknown": [],
+                "quality_score": 100, "quality_flags": [], "quality_ok": True}
+
+    # Only spend the (expensive, and here meaningless) per-trial eligibility read
+    # when we have real patient detail to assess. Otherwise everything falls to
+    # the neutral "you might qualify" read so a plain condition search never
+    # tells people they're "probably not a fit" based on info they never gave.
+    llm_picks = picks[:MAX_MATCH] if assess else []
+    light_picks = picks[MAX_MATCH:] if assess else picks
 
     results = []
     if mt.LLM_API_KEY and _llm_search_budget_ok():
@@ -7054,9 +7104,12 @@ def run_search(note, condition, country, require_site, coords=None, radius=50,
         for t, near in llm_picks:
             results.append(_build_result(t, near, _light_match()))
 
-    # The rest of the matches - shown too, ranked below via rank_key.
+    # The rest of the matches - shown too, ranked below via rank_key. When we
+    # never assessed (a bare condition search), everything is "unscored" so we
+    # don't imply a fit we can't stand behind.
     for t, near in light_picks:
-        results.append(_build_result(t, near, _light_match()))
+        results.append(_build_result(t, near,
+                                     _light_match() if assess else _neutral_match()))
 
     # Also include studies posted directly by sites (not yet on CT.gov).
     for row in db.list_site_posted_studies(status="recruiting"):
@@ -7199,7 +7252,7 @@ def _is_us_only_phone(phone):
 
 def _public_contacts(trial, site, limit=4):
     """Public trial contacts to show patients (from CT.gov or site-posted data)."""
-    out, seen = [], set()
+    out, seen = [], {}
     site_country = ((site or {}).get("country") or "").strip().lower()
     non_us_patient = bool(site_country) and site_country not in (
         "united states", "usa", "us", "u.s.", "u.s.a.")
@@ -7216,11 +7269,21 @@ def _public_contacts(trial, site, limit=4):
         role = (c.get("role") or "").strip().replace("_", " ").title()
         if not (email or phone):
             return
-        key = (name.lower(), email.lower(), phone)
+        # Identify a contact by email first (the same listing often repeats a
+        # person with the phone formatted differently, e.g. "212-817-8804" vs
+        # "212 817 8804"); fall back to name + phone digits when there's no email.
+        digits = re.sub(r"\D", "", phone)
+        key = email.lower() if email else ("", name.lower(), digits)
         if key in seen:
+            existing = seen[key]  # backfill anything the first copy was missing
+            if not existing["phone"] and phone:
+                existing["phone"] = phone
+            if not existing["role"] and role:
+                existing["role"] = role
             return
-        seen.add(key)
-        out.append({"name": name, "email": email, "phone": phone, "role": role})
+        rec = {"name": name, "email": email, "phone": phone, "role": role}
+        seen[key] = rec
+        out.append(rec)
 
     for c in (site or {}).get("contacts", []):
         if c.get("role") != "PRINCIPAL_INVESTIGATOR":
@@ -7582,9 +7645,14 @@ def campaign_detail(cid):
               for p in placements]
     perf = {p["id"]: p for p in db.campaign_performance(g.user["id"])}.get(cid)
     pl_perf = {p["id"]: p for p in db.placement_performance(g.user["id"])}
+    prof = db.get_site_profile(g.user["id"]) or {}
+    try:
+        org_name = (prof["org_name"] or "").strip()
+    except (KeyError, TypeError):
+        org_name = ""
     return render_template(
         "campaign_detail.html", camp=camp, placements=placements,
-        shares=shares, perf=perf, pl_perf=pl_perf,
+        shares=shares, perf=perf, pl_perf=pl_perf, org_name=org_name,
         channels=db.CAMPAIGN_CHANNELS)
 
 
@@ -7608,6 +7676,42 @@ def campaign_creative(cid):
         flash("Creative saved. Editing resets IRB approval - re-attest before "
               "going live.", "ok")
     return redirect(url_for("campaign_detail", cid=cid))
+
+
+@app.route("/app/campaigns/<int:cid>/ad-image.svg")
+@login_required
+def campaign_ad_image(cid):
+    """Render the campaign's ad card as an SVG (the ad maker's image + download).
+
+    Copy comes from the saved creative, but `h`/`b` query params can override it
+    so the preview updates live as the user types (before saving). `template`,
+    `accent`, and `size` pick the layout. This is the swap seam: today it's a
+    local SVG template; later it can proxy Figma's render API or an image model
+    without touching this route's callers (see adrender.py)."""
+    camp = _own_campaign_or_404(cid)
+    prof = db.get_site_profile(g.user["id"]) or {}
+    org = ""
+    try:
+        org = (prof["org_name"] or "").strip()
+    except (KeyError, TypeError):
+        org = ""
+    headline = request.args.get("h")
+    body = request.args.get("b")
+    headline = headline if headline is not None else (camp["headline"] or "")
+    body = body if body is not None else (camp["body"] or "")
+    svg = adrender.render_ad_svg(
+        headline[:200], body[:400], org=org[:60],
+        template=request.args.get("template", "clean"),
+        accent=request.args.get("accent", "ink"),
+        size=request.args.get("size", "square"))
+    resp = make_response(svg)
+    resp.headers["Content-Type"] = "image/svg+xml; charset=utf-8"
+    resp.headers["Cache-Control"] = "no-store"
+    if request.args.get("dl"):
+        safe = re.sub(r"[^A-Za-z0-9._-]+", "-", (camp["name"] or "ad")).strip("-")
+        resp.headers["Content-Disposition"] = (
+            f'attachment; filename="{safe or "ad"}-{request.args.get("size","square")}.svg"')
+    return resp
 
 
 @app.route("/app/campaigns/<int:cid>/approve", methods=["POST"])

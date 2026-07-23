@@ -39,33 +39,110 @@
   </div>
 </div>
 
-{# ── Creative ── #}
+{# ── Ad maker ── #}
 <div class="card">
   <div class="section-title"><h2>Ad creative</h2></div>
   <p class="site-hint">
-    {{ ic.icon('sparkle') }} AI can draft this. Keep copy neutral and truthful — no
-    benefit, efficacy, or payment claims. Editing resets IRB approval.
+    {{ ic.icon('sparkle') }} Write neutral, truthful copy — no benefit, efficacy, or
+    payment claims. Editing resets IRB approval. The image is built from your copy
+    (no stock photos), so it stays reviewable.
   </p>
-  <form method="post" action="{{ url_for('campaign_creative', cid=camp['id']) }}" style="margin-bottom:var(--space-3);">
-    <input type="hidden" name="action" value="generate">
-    {{ ui.btn('Generate a draft with AI', variant='violet' if false else 'ghost', icon='sparkle', type='submit') }}
-  </form>
-  <form method="post" action="{{ url_for('campaign_creative', cid=camp['id']) }}">
-    <input type="hidden" name="action" value="save">
-    <div class="field">
-      <label for="cr-h">Headline</label>
-      <input id="cr-h" name="headline" value="{{ camp['headline'] }}" placeholder="Volunteers sought for an ADHD study">
+
+  <div class="admaker">
+    {# Editor #}
+    <div class="am-editor">
+      <form method="post" action="{{ url_for('campaign_creative', cid=camp['id']) }}" class="am-ai">
+        <input type="hidden" name="action" value="generate">
+        {{ ui.btn('Draft with AI', variant='ghost', icon='sparkle', size='sm', type='submit') }}
+        <span class="site-hint">Optional starting point — you edit everything.</span>
+      </form>
+      <form method="post" action="{{ url_for('campaign_creative', cid=camp['id']) }}" id="amForm">
+        <input type="hidden" name="action" value="save">
+        <div class="field">
+          <label for="cr-h">Headline</label>
+          <input id="cr-h" name="headline" maxlength="200" value="{{ camp['headline'] }}" placeholder="Volunteers sought for an ADHD study">
+        </div>
+        <div class="field">
+          <label for="cr-b">Body</label>
+          <textarea id="cr-b" name="body" rows="4" maxlength="400" placeholder="Plain, factual description of who the study is looking for.">{{ camp['body'] }}</textarea>
+        </div>
+        <div class="field">
+          <label for="cr-l">Landing page copy</label>
+          <textarea id="cr-l" name="landing_copy" rows="3" placeholder="2–4 short sentences shown on the study page.">{{ camp['landing_copy'] }}</textarea>
+        </div>
+        <div class="am-save">{{ ui.btn('Save creative', variant='primary', type='submit') }}</div>
+      </form>
     </div>
-    <div class="field">
-      <label for="cr-b">Body</label>
-      <textarea id="cr-b" name="body" rows="4" placeholder="Plain, factual description of who the study is looking for.">{{ camp['body'] }}</textarea>
+
+    {# Live preview #}
+    <div class="am-preview" data-adurl="{{ url_for('campaign_ad_image', cid=camp['id']) }}">
+      <div class="am-controls">
+        <div class="am-seg" data-role="view">
+          <button type="button" class="am-chip active" data-view="social">Social</button>
+          <button type="button" class="am-chip" data-view="search">Search</button>
+          <button type="button" class="am-chip" data-view="poster">Poster</button>
+        </div>
+      </div>
+
+      <div class="am-frame" data-frame="social">
+        <div class="fb-card">
+          <div class="fb-head">
+            <span class="fb-av">{{ (org_name or 'S')[:1]|upper }}</span>
+            <div><div class="fb-name">{{ org_name or 'Your study team' }}</div><div class="fb-spon">Sponsored · Research</div></div>
+          </div>
+          <div class="fb-text" data-bind="body"></div>
+          <img class="fb-img" data-adimg alt="Ad image preview">
+          <div class="fb-link">
+            <div class="fb-link-t" data-bind="headline"></div>
+            <span class="fb-cta">Learn more</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="am-frame" data-frame="search" hidden>
+        <div class="g-card">
+          <div class="g-ad">Ad</div>
+          <div class="g-url">{{ (org_name or 'your-site')|lower|replace(' ','') }}.org › study</div>
+          <div class="g-title" data-bind="headline"></div>
+          <div class="g-desc" data-bind="body"></div>
+        </div>
+      </div>
+
+      <div class="am-frame" data-frame="poster" hidden>
+        <img class="am-poster" data-adimg-poster alt="Ad image preview">
+      </div>
+
+      <div class="am-styles">
+        <div class="am-row">
+          <span class="am-lbl">Style</span>
+          <div class="am-seg" data-role="template">
+            <button type="button" class="am-chip active" data-template="clean">Clean</button>
+            <button type="button" class="am-chip" data-template="bold">Bold</button>
+            <button type="button" class="am-chip" data-template="flyer">Flyer</button>
+          </div>
+        </div>
+        <div class="am-row">
+          <span class="am-lbl">Color</span>
+          <div class="am-sw" data-role="accent">
+            <button type="button" class="sw active" data-accent="ink" style="--sw:#0f172a" title="Ink"></button>
+            <button type="button" class="sw" data-accent="blue" style="--sw:#1a6eb0" title="Blue"></button>
+            <button type="button" class="sw" data-accent="green" style="--sw:#16a34a" title="Green"></button>
+            <button type="button" class="sw" data-accent="violet" style="--sw:#6d28d9" title="Violet"></button>
+            <button type="button" class="sw" data-accent="teal" style="--sw:#0e7490" title="Teal"></button>
+          </div>
+        </div>
+        <div class="am-row">
+          <span class="am-lbl">Size</span>
+          <div class="am-seg" data-role="size">
+            <button type="button" class="am-chip active" data-size="square">Square</button>
+            <button type="button" class="am-chip" data-size="story">Story</button>
+            <button type="button" class="am-chip" data-size="flyer">Flyer</button>
+          </div>
+        </div>
+        <a class="am-dl" id="amDownload" href="#" download>{{ ic.icon('download') }} Download image</a>
+      </div>
     </div>
-    <div class="field">
-      <label for="cr-l">Landing page copy</label>
-      <textarea id="cr-l" name="landing_copy" rows="3" placeholder="2–4 short sentences shown on the study page.">{{ camp['landing_copy'] }}</textarea>
-    </div>
-    <div style="display:flex;justify-content:flex-end;">{{ ui.btn('Save creative', variant='primary', type='submit') }}</div>
-  </form>
+  </div>
 
   <hr style="border:none;border-top:1px solid var(--border);margin:var(--space-4) 0;">
   {% if camp['irb_approved'] %}
@@ -131,6 +208,76 @@
 </div>
 
 <script>
+// ── Ad maker: live channel-native preview + templated image (swappable seam) ──
+(function () {
+  var root = document.querySelector('.am-preview');
+  if (!root) return;
+  var base = root.getAttribute('data-adurl');
+  var hIn = document.getElementById('cr-h');
+  var bIn = document.getElementById('cr-b');
+  var socialImg = root.querySelector('[data-adimg]');
+  var posterImg = root.querySelector('[data-adimg-poster]');
+  var dl = document.getElementById('amDownload');
+  var st = { template: 'clean', accent: 'ink', size: 'square' };
+  var H_FALLBACK = 'Volunteers sought for a research study';
+
+  function q(size) {
+    var p = new URLSearchParams();
+    p.set('h', hIn.value || '');
+    p.set('b', bIn.value || '');
+    p.set('template', st.template);
+    p.set('accent', st.accent);
+    p.set('size', size);
+    return base + '?' + p.toString();
+  }
+  function bindText() {
+    root.querySelectorAll('[data-bind="headline"]').forEach(function (e) {
+      e.textContent = hIn.value.trim() || H_FALLBACK;
+    });
+    root.querySelectorAll('[data-bind="body"]').forEach(function (e) {
+      e.textContent = bIn.value.trim();
+    });
+  }
+  var t;
+  function refreshImg() {
+    clearTimeout(t);
+    t = setTimeout(function () {
+      if (socialImg) socialImg.src = q('square');   // feed image is always square
+      if (posterImg) posterImg.src = q(st.size);
+      dl.href = q(st.size) + '&dl=1';
+    }, 300);
+  }
+  function activate(container, btn) {
+    container.querySelectorAll('button').forEach(function (b) {
+      b.classList.toggle('active', b === btn);
+    });
+  }
+  root.querySelectorAll('[data-role="view"] button').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var v = btn.getAttribute('data-view');
+      root.querySelectorAll('[data-frame]').forEach(function (f) {
+        f.hidden = f.getAttribute('data-frame') !== v;
+      });
+      activate(btn.parentNode, btn);
+    });
+  });
+  [['template', 'template'], ['accent', 'accent'], ['size', 'size']].forEach(function (pair) {
+    root.querySelectorAll('[data-role="' + pair[0] + '"] button').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        st[pair[1]] = btn.getAttribute('data-' + pair[1]);
+        activate(btn.parentNode, btn);
+        refreshImg();
+      });
+    });
+  });
+  hIn.addEventListener('input', function () { bindText(); refreshImg(); });
+  bIn.addEventListener('input', function () { bindText(); refreshImg(); });
+  bindText();
+  if (socialImg) socialImg.src = q('square');
+  if (posterImg) posterImg.src = q(st.size);
+  dl.href = q(st.size) + '&dl=1';
+})();
+
 document.querySelectorAll('[data-copy-btn]').forEach(function (btn) {
   btn.addEventListener('click', function () {
     var card = btn.closest('.card');
