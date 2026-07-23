@@ -18,3 +18,7 @@ Higher **headline** = better (balanced accuracy minus critical-error rate).
 | 2026-07-23T04:46:34 | test | `20ff92d86ae5` | **0.4317** | 0.767 | 0.583 | 0.375 | 0.233 | 0.243 | $0.609 |
 
 > **Tick 3** REVERTED. Hypothesis: high-precision exclusion cross-check (explicit stated facts only, no inference). Result: TEST 0.435->0.432 (excl-catch 0.475->0.583 but elig-recall 0.842->0.767, false-excl 0.158->0.233). Same recall<->exclusion see-saw as tick 2. CONCLUSION: single-pass holistic gpt-4o-mini has hit a discrimination ceiling on same-condition eligible-vs-excluded; prompt-lever swings just move error between sides. Next: raise the ceiling via structured chain-of-thought (reason step-by-step BEFORE verdict) instead of another lever swing.
+| 2026-07-23T04:51:46 | dev | `349727bf6dc1` | **0.4867** | 0.850 | 0.483 | 0.300 | 0.150 | 0.180 | $0.706 |
+| 2026-07-23T04:54:56 | test | `349727bf6dc1` | **0.4542** | 0.933 | 0.375 | 0.433 | 0.067 | 0.200 | $0.802 |
+
+> **Tick 4** REVERTED. Hypothesis: structured chain-of-thought (reasoning field before verdict). Result: TEST 0.435->0.454 (+0.019, under +0.02 bar) and DEV 0.538->0.487 (regressed >0.03 guard). CoT boosted recall hard (test recall 0.842->0.933, false-excl 0.067) but dropped exclusion-catch 0.475->0.375 (false-elig 0.433). Third confirmation of the recall<->exclusion see-saw => single-pass gpt-4o-mini is discrimination-bound. Next: measure whether a STRONGER model (gpt-4.1-mini, gpt-4o) breaks the ceiling, on the committed tick-1 prompt, TEST split only (no prod change; just a data point).
