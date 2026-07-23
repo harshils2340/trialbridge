@@ -97,6 +97,28 @@
   </aside>
 
   <div class="pr-main">
+    {# Inline "search something new" - prefilled with the last condition + location
+       so patients can tweak and re-run right here instead of going home. We omit
+       lat/lon on purpose so a changed location re-geocodes server-side. #}
+    <form class="pr-topsearch" method="post" action="{{ url_for('find') }}">
+      <div class="pr-topsearch-field pr-topsearch-cond">
+        {{ ic.icon('search') }}
+        <input type="text" name="condition" value="{{ q_condition or condition }}"
+               placeholder="Condition, treatment, or drug" autocomplete="off" aria-label="Condition, treatment, or drug">
+      </div>
+      <div class="pr-topsearch-field pr-topsearch-loc">
+        {{ ic.icon('pin') }}
+        <input type="text" name="location" value="{{ location }}"
+               placeholder="City or postal code" autocomplete="off" aria-label="Location">
+      </div>
+      <input type="hidden" name="radius" value="{{ q_radius }}">
+      <input type="hidden" name="age" value="{{ q_age }}">
+      <input type="hidden" name="sex" value="{{ q_sex }}">
+      <input type="hidden" name="about" value="{{ q_about }}">
+      <input type="hidden" name="cc" value="{{ q_cc }}">
+      <button type="submit" class="btn btn-primary pr-topsearch-btn">{{ ic.icon('search') }} Search</button>
+    </form>
+
     <div class="pr-head">
       <div>
         <h1>Trials for {{ condition }}</h1>
@@ -105,7 +127,6 @@
       </div>
       <div class="pr-head-actions">
         <button type="button" class="btn btn-ghost pr-filter-toggle" id="filtToggle">{{ ic.icon('activity') }} Filters</button>
-        <a class="btn btn-ghost" href="{{ url_for('find') }}">{{ ic.icon('search') }} New search</a>
       </div>
     </div>
 

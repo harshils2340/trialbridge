@@ -1287,6 +1287,23 @@ body.home-screen .landing-legal-links { margin: 0; flex: 0 0 auto; font-size: 12
   .pr-head-actions { justify-content: flex-end; }
   .if-row.two { flex-direction: column; }
 }
+/* Inline "search something new" bar at the top of results - mirrors the homepage
+   finder so patients can retweak condition/location without leaving the page. */
+.pr-topsearch { display: flex; gap: 8px; align-items: stretch; margin: 0 0 18px; flex-wrap: wrap; }
+.pr-topsearch-field { display: flex; align-items: center; gap: 8px; background: var(--surface);
+  border: 1px solid var(--border); border-radius: var(--radius-pill); padding: 0 14px;
+  transition: border-color .12s ease, box-shadow .12s ease; }
+.pr-topsearch-field:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.pr-topsearch-field .ico { width: 17px; height: 17px; color: var(--faint); flex-shrink: 0; }
+.pr-topsearch-field input { border: none; background: none; outline: none; padding: 12px 0;
+  font: 400 15px/1 var(--sans); color: var(--ink); width: 100%; }
+.pr-topsearch-cond { flex: 2 1 260px; }
+.pr-topsearch-loc { flex: 1 1 180px; }
+.pr-topsearch-btn { flex-shrink: 0; white-space: nowrap; }
+@media (max-width: 560px) {
+  .pr-topsearch-field { flex-basis: 100%; }
+  .pr-topsearch-btn { width: 100%; justify-content: center; }
+}
 .pr-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;
   margin-bottom: 24px; }
 .pr-head h1 { font-size: 28px; letter-spacing: -.03em; margin: 0 0 4px; }

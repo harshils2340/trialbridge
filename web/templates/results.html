@@ -11,7 +11,7 @@
       · patient age {{ profile['age'] or '?' }} {{ profile['sex'] or '' }}
     </p>
   </div>
-  {{ ui.btn('New search', variant='ghost', icon='plus', href=url_for('search')) }}
+  {{ ui.btn('New search', variant='ghost', icon='search', href=url_for('home')) }}
 </div>
 
 {% if located %}
@@ -24,7 +24,7 @@
 <div class="card">
   {% set empty_body %}{% if located %}Nothing within {{ radius }} {{ unit }} of {{ location }}. Try a larger radius, broaden the condition{{ ', or tick “Include registries & observational studies”' if not include_obs }}.{% else %}Try broadening the condition{{ ', or tick “Include registries & observational studies”' if not include_obs }}.{% endif %}{% endset %}
   {{ ui.empty('No matching recruiting trials' ~ (' nearby' if located else ''), empty_body, 'search') }}
-  <div style="text-align:center;margin-top:8px;">{{ ui.btn('New search', variant='ghost', href=url_for('search')) }}</div>
+  <div style="text-align:center;margin-top:8px;">{{ ui.btn('New search', variant='ghost', icon='search', href=url_for('home')) }}</div>
 </div>
 {% endif %}
 
