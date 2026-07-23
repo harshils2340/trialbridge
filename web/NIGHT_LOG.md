@@ -22,3 +22,25 @@ Higher **headline** = better (balanced accuracy minus critical-error rate).
 | 2026-07-23T04:54:56 | test | `349727bf6dc1` | **0.4542** | 0.933 | 0.375 | 0.433 | 0.067 | 0.200 | $0.802 |
 
 > **Tick 4** REVERTED. Hypothesis: structured chain-of-thought (reasoning field before verdict). Result: TEST 0.435->0.454 (+0.019, under +0.02 bar) and DEV 0.538->0.487 (regressed >0.03 guard). CoT boosted recall hard (test recall 0.842->0.933, false-excl 0.067) but dropped exclusion-catch 0.475->0.375 (false-elig 0.433). Third confirmation of the recall<->exclusion see-saw => single-pass gpt-4o-mini is discrimination-bound. Next: measure whether a STRONGER model (gpt-4.1-mini, gpt-4o) breaks the ceiling, on the committed tick-1 prompt, TEST split only (no prod change; just a data point).
+| 2026-07-23T05:00:29 | test | `477b4b90cbfb` | **0.6142** | 0.917 | 0.458 | 0.100 | 0.083 | 0.073 | $1.041 |
+| 2026-07-23T05:04:09 | test | `cb4f89847a75` | **0.5481** | 0.909 | 0.341 | 0.114 | 0.091 | 0.077 | $1.505 |
+| 2026-07-23T05:10:19 | dev | `477b4b90cbfb` | **0.5617** | 0.833 | 0.483 | 0.075 | 0.167 | 0.097 | $1.904 |
+| 2026-07-23T05:10:52 | dev | `477b4b90cbfb` | **0.5883** | 0.858 | 0.492 | 0.075 | 0.142 | 0.087 | $1.928 |
+
+---
+## KEY FINDING — model is the ceiling (gpt-4.1-mini)
+Three prompt ticks on gpt-4o-mini all hit a recall<->exclusion see-saw (headline
+stuck ~0.44). Swapping the MATCHER MODEL breaks it. Same committed tick-1 prompt,
+held-out TEST split:
+
+| model | headline | elig-recall | excl-catch | false-elig | crit-rate |
+|---|---|---|---|---|---|
+| gpt-4o-mini (old) | 0.435 | 0.842 | 0.475 | 0.400 | 0.223 |
+| **gpt-4.1-mini**  | **0.614** | 0.917 | 0.458 | **0.100** | **0.073** |
+| gpt-4o            | 0.548 | 0.909 | 0.341 | 0.114 | 0.077 |
+
+gpt-4.1-mini: high recall AND ~3x fewer critical errors, cheaper than 4o, and 4o
+is actually worse (over-cautious). Confirmed on dev too (0.588).
+
+**RECOMMENDATION for prod: set `LLM_MODEL=gpt-4.1-mini` for matching.** Loop now
+iterates on gpt-4.1-mini; remaining weakness is exclusion-catch (~0.46-0.49).

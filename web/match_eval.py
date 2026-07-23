@@ -62,6 +62,7 @@ _cache_lock = threading.Lock()
 # --------------------------------------------------------------------------- #
 def prompt_hash():
     parts = [
+        getattr(mt, "LLM_MODEL", ""),   # different model = different verdicts
         getattr(mt, "MATCH_SYSTEM", ""),
         getattr(mt, "MATCH_SCHEMA", ""),
         str(getattr(mt, "VALID_VERDICTS", "")),

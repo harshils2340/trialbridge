@@ -10,8 +10,12 @@ never introduce PHI.
 ```
 cd /Users/harshils/GraphMD/matcher-night/web
 set -a && . /Users/harshils/GraphMD/outreach/secrets.env && set +a
+export LLM_MODEL=gpt-4.1-mini   # MATCHER MODEL - measured to beat 4o-mini AND 4o
 PY=/Users/harshils/GraphMD/matcher/.venv/bin/python
 ```
+Current bests on **gpt-4.1-mini**: dev headline 0.588, test headline 0.614
+(critical-rate ~0.08). These are the numbers to beat. The cache is model-scoped,
+so keep LLM_MODEL fixed at gpt-4.1-mini or you'll re-score from scratch.
 
 ## Step 0 - Budget gate (HARD STOP)
 ```
