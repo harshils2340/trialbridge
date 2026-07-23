@@ -1288,8 +1288,17 @@ body.home-screen .landing-legal-links { margin: 0; flex: 0 0 auto; font-size: 12
   .if-row.two { flex-direction: column; }
 }
 /* Inline "search something new" bar at the top of results - mirrors the homepage
-   finder so patients can retweak condition/location without leaving the page. */
-.pr-topsearch { display: flex; gap: 8px; align-items: stretch; margin: 0 0 18px; flex-wrap: wrap; }
+   finder (incl. the By condition / Describe it language toggle) so patients can
+   retweak the query + location without leaving the page. */
+.pr-topsearch { margin: 0 0 18px; }
+.pr-topsearch-modes { display: inline-flex; gap: 4px; margin: 0 0 8px; padding: 3px;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-pill); }
+.pr-mode { border: none; background: none; cursor: pointer; padding: 6px 14px;
+  border-radius: var(--radius-pill); font: 600 13px/1 var(--sans); color: var(--muted);
+  transition: background .12s ease, color .12s ease; }
+.pr-mode:hover { color: var(--ink); }
+.pr-mode.is-active { background: var(--surface); color: var(--accent); box-shadow: var(--shadow-sm, 0 1px 2px rgba(2,6,23,.06)); }
+.pr-topsearch-row { display: flex; gap: 8px; align-items: stretch; flex-wrap: wrap; }
 .pr-topsearch-field { display: flex; align-items: center; gap: 8px; background: var(--surface);
   border: 1px solid var(--border); border-radius: var(--radius-pill); padding: 0 14px;
   transition: border-color .12s ease, box-shadow .12s ease; }
@@ -1345,6 +1354,16 @@ body.home-screen .landing-legal-links { margin: 0; flex: 0 0 auto; font-size: 12
 .pr-summary { color: var(--muted); font-size: 14px; line-height: 1.55; margin: 0 0 12px;
   display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .pr-benefit-notes { margin: -4px 0 12px; color: var(--ink-soft); font-size: 12.5px; line-height: 1.45; }
+/* "Where your search term appears" evidence snippet on a result card. */
+.pr-evidence { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
+  margin: 0 0 12px; padding: 8px 11px; background: var(--neutral-bg);
+  border: 1px solid var(--neutral-border); border-radius: var(--radius-sm);
+  font-size: 12.5px; line-height: 1.5; }
+.pr-ev-field { flex: none; font-weight: 700; font-size: 10.5px; text-transform: uppercase;
+  letter-spacing: .05em; color: var(--muted); padding-top: 1px; }
+.pr-ev-text { color: var(--ink-soft); }
+.pr-evidence mark { background: var(--amber-bg); color: var(--ink); font-weight: 700;
+  padding: 0 3px; border-radius: 4px; }
 .pr-why { background: var(--accent-soft); color: var(--ink-soft); font-size: 14px;
   padding: 12px 14px; border-radius: 10px; line-height: 1.5; margin-bottom: 12px; }
 .pr-facts { display: flex; flex-direction: column; gap: 6px; font-size: 13px;
@@ -2828,6 +2847,10 @@ h1, h2, h3 {
 .td-title { font-size: 30px; line-height: 1.2; letter-spacing: -.03em; margin: 0 0 16px; }
 .td-why { background: var(--accent-soft); color: var(--ink-soft); font-size: 15px;
   padding: 14px 16px; border-radius: 12px; line-height: 1.55; margin-bottom: 24px; }
+.td-why-neutral { background: var(--neutral-bg); border: 1px solid var(--neutral-border);
+  color: var(--ink-soft); }
+.td-why-neutral svg { width: 15px; height: 15px; color: var(--muted);
+  vertical-align: -2px; margin-right: 4px; }
 .td-section { border: 1px solid var(--border); border-radius: 14px; padding: 18px; margin: 0;
   background: var(--surface); box-shadow: 0 1px 2px rgba(17,17,20,.03); }
 .td-section h2 { font-size: 18px; letter-spacing: -.02em; margin: 0 0 12px; }

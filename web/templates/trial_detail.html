@@ -36,7 +36,9 @@
     {% set raw_why = (m.rationale or '') %}
     {% set low_why = raw_why|lower %}
     {% set weak_reason = ('lacks specific details' in low_why) or ('insufficient detail' in low_why) or ('no records connected' in low_why) %}
-    {% if weak_reason %}
+    {% if m.verdict == 'unscored' %}
+    <div class="td-why td-why-neutral">{{ ic.icon('help') }} <b>We haven't checked your fit yet.</b> This study is recruiting near you and matches your search. Answer a few quick questions below and the study team confirms whether you qualify.</div>
+    {% elif weak_reason %}
     <div class="td-why"><b>Why this could be a match for you:</b> Basic details look relevant, but we still need age, medical history, and current meds to estimate fit more accurately.</div>
     {% else %}
     <div class="td-why"><b>Why this could be a match for you:</b> {{ raw_why|patient_why }}</div>

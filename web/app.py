@@ -3046,6 +3046,21 @@ def find():
         _log_event("search", {"q": label, "cached": 1})
         return _finish_find_redirect(cached_sid, nct)
     try:
+        # For a structured drug/condition query (not free-text), show WHERE the
+        # searched term appears in each trial. We skip this for freeform searches
+        # (condition_terms is empty there) since there's no single clean term.
+        if intervention:
+            evidence_terms = [intervention]
+            typed_raw = request.form.get("condition", "").strip()
+            if typed_raw and typed_raw.lower() != intervention.lower():
+                evidence_terms.append(typed_raw)
+            evidence_kind = "drug"
+        elif condition_terms:
+            evidence_terms = list(condition_terms)
+            evidence_kind = "condition"
+        else:
+            evidence_terms, evidence_kind = None, ""
+
         # Only produce fit / not-a-fit verdicts when the searcher actually
         # described their situation (free-text or the "about" details). A bare
         # condition or drug search has nothing to judge specific eligibility
@@ -3054,7 +3069,9 @@ def find():
         detected, results = run_search(note, condition_query, "", False, coords,
                                        radius, unit, interventional_only=True,
                                        intervention=intervention,
-                                       assess=bool(about.strip()))
+                                       assess=bool(about.strip()),
+                                       evidence_terms=evidence_terms,
+                                       evidence_kind=evidence_kind)
     except RuntimeError as e:
         flash(str(e), "error")
         return redirect(url_for("home", condition=condition_label, location=location))
@@ -6904,8 +6921,79 @@ def _site_posted_as_trial(study):
 # --------------------------------------------------------------------------- #
 # Search
 # --------------------------------------------------------------------------- #
+def _match_snippet(trial, terms, kind, window=85):
+    """For a structured drug/condition search, find where the searched term
+    literally appears in a trial and return a short highlighted excerpt plus a
+    label for WHICH part of the record it came from. That label doubles as a
+    role signal: a drug in the "Study treatment" is very different from one that
+    only shows up under "Eligibility requirement" (you must already take it).
+
+    Returns {'field', 'before', 'match', 'after'} (each escaped separately by the
+    template) or None when the term isn't literally mentioned. `terms` are the
+    raw query terms; `kind` is "drug" or "condition"."""
+    terms = sorted({(t or "").strip().lower() for t in (terms or [])
+                    if t and len(str(t).strip()) >= 3}, key=len, reverse=True)
+    if not terms:
+        return None
+
+    def _first_hit(text):
+        if not text:
+            return None
+        low = text.lower()
+        best = None
+        for t in terms:
+            i = low.find(t)
+            if i != -1 and (best is None or i < best[0]):
+                best = (i, i + len(t))
+        return best
+
+    # Ordered (label, text) candidates. Drug searches lead with the treatment
+    # arms (where the drug's role lives); condition searches lead with the
+    # conditions the study is actually about.
+    iv_field = []
+    for iv in (trial.get("interventions") or []):
+        nm = (iv.get("name") or "").strip()
+        joined = ", ".join([nm] + [o for o in (iv.get("otherNames") or []) if o])
+        if joined:
+            iv_field.append(("Study treatment", joined))
+    cond_txt = "; ".join(c for c in (trial.get("conditions") or []) if c)
+    cond_field = [("Condition studied", cond_txt)] if cond_txt else []
+    title_field = [("Study title", trial.get("title") or "")]
+    crit_field = [("Eligibility requirement", trial.get("criteria") or "")]
+    summ_field = [("What it's testing", trial.get("briefSummary") or "")]
+
+    if kind == "drug":
+        cands = iv_field + crit_field + title_field + summ_field + cond_field
+    else:
+        cands = cond_field + title_field + iv_field + crit_field + summ_field
+
+    for label, text in cands:
+        hit = _first_hit(text)
+        if not hit:
+            continue
+        s, e = hit
+        start, end = max(0, s - window), min(len(text), e + window)
+        if start > 0:
+            sp = text.find(" ", start, s)
+            if sp != -1:
+                start = sp + 1
+        if end < len(text):
+            sp = text.rfind(" ", e, end)
+            if sp != -1:
+                end = sp
+        before = ("… " if start > 0 else "") + text[start:s]
+        after = text[e:end] + (" …" if end < len(text) else "")
+        # Collapse whitespace so criteria (often full of newlines) reads cleanly.
+        before = " ".join(before.split())
+        after = " ".join(after.split())
+        return {"field": label, "before": before,
+                "match": text[s:e], "after": after}
+    return None
+
+
 def run_search(note, condition, country, require_site, coords=None, radius=50,
-               unit="km", interventional_only=True, intervention="", assess=True):
+               unit="km", interventional_only=True, intervention="", assess=True,
+               evidence_terms=None, evidence_kind=""):
     """Fetch -> hard-gate -> LLM-score, ranked by relevance then distance.
     `radius`/`unit` define the geographic limit. By default only interventional
     (treatment) trials are kept - a doctor refers for therapy, not to a registry.
@@ -7035,6 +7123,8 @@ def run_search(note, condition, country, require_site, coords=None, radius=50,
                 seen.add(reg)
                 other_regions.append(reg)
 
+        evidence = (_match_snippet(t, evidence_terms, evidence_kind)
+                    if evidence_terms else None)
         return {"trial": t, "match": m, "site": site,
                 "site_str": _site_str(site),
                 "site_maps_url": _maps_url(site),
@@ -7042,6 +7132,7 @@ def run_search(note, condition, country, require_site, coords=None, radius=50,
                 "coordinator": _coordinator(t, site),
                 "public_contacts": _public_contacts(t, site),
                 "distance": dist, "unit": unit, "relevance": _rel(t),
+                "evidence": evidence,
                 "nearby": near[:8], "nearby_total": len(near),
                 "other_count": len(others), "other_regions": other_regions[:5],
                 "pay": _pay_likelihood(t),

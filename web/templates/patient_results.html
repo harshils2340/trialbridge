@@ -97,26 +97,36 @@
   </aside>
 
   <div class="pr-main">
-    {# Inline "search something new" - prefilled with the last condition + location
-       so patients can tweak and re-run right here instead of going home. We omit
-       lat/lon on purpose so a changed location re-geocodes server-side. #}
-    <form class="pr-topsearch" method="post" action="{{ url_for('find') }}">
-      <div class="pr-topsearch-field pr-topsearch-cond">
-        {{ ic.icon('search') }}
-        <input type="text" name="condition" value="{{ q_condition or condition }}"
-               placeholder="Condition, treatment, or drug" autocomplete="off" aria-label="Condition, treatment, or drug">
+    {# Inline "search something new" - starts with a blank query (we don't want the
+       last term stuck in the box) but keeps the last location + profile so patients
+       can just retype and re-run. lat/lon omitted so a changed location re-geocodes.
+       The "By condition / Describe it" toggle mirrors the homepage's plain-language
+       search mode. #}
+    <form class="pr-topsearch" id="prTopSearch" method="post" action="{{ url_for('find') }}">
+      <div class="pr-topsearch-modes" role="tablist" aria-label="How to search">
+        <button type="button" class="pr-mode is-active" data-mode="condition" role="tab" aria-selected="true">By condition</button>
+        <button type="button" class="pr-mode" data-mode="describe" role="tab" aria-selected="false">Describe it</button>
       </div>
-      <div class="pr-topsearch-field pr-topsearch-loc">
-        {{ ic.icon('pin') }}
-        <input type="text" name="location" value="{{ location }}"
-               placeholder="City or postal code" autocomplete="off" aria-label="Location">
+      <div class="pr-topsearch-row">
+        <div class="pr-topsearch-field pr-topsearch-cond">
+          {{ ic.icon('search') }}
+          <input type="text" id="prCondInput" name="condition" value=""
+                 placeholder="Condition, treatment, or drug" autocomplete="off"
+                 autocapitalize="off" spellcheck="false" aria-label="Condition, treatment, or drug" required>
+        </div>
+        <div class="pr-topsearch-field pr-topsearch-loc">
+          {{ ic.icon('pin') }}
+          <input type="text" name="location" value="{{ location }}"
+                 placeholder="City or postal code" autocomplete="off"
+                 autocapitalize="words" spellcheck="false" aria-label="Location" required>
+        </div>
+        <button type="submit" class="btn btn-primary pr-topsearch-btn">{{ ic.icon('search') }} Search</button>
       </div>
       <input type="hidden" name="radius" value="{{ q_radius }}">
       <input type="hidden" name="age" value="{{ q_age }}">
       <input type="hidden" name="sex" value="{{ q_sex }}">
-      <input type="hidden" name="about" value="{{ q_about }}">
       <input type="hidden" name="cc" value="{{ q_cc }}">
-      <button type="submit" class="btn btn-primary pr-topsearch-btn">{{ ic.icon('search') }} Search</button>
+      <input type="hidden" id="prFreeform" name="freeform" value="0">
     </form>
 
     <div class="pr-head">
@@ -176,6 +186,12 @@
       {% endif %}
       {% set blurb = card_blurb(t) %}
       {% if blurb %}<p class="pr-summary">{{ blurb }}</p>{% endif %}
+      {% if r.evidence %}
+      <p class="pr-evidence">
+        <span class="pr-ev-field">{{ r.evidence.field }}</span>
+        <span class="pr-ev-text">{{ r.evidence.before }}<mark>{{ r.evidence.match }}</mark>{{ r.evidence.after }}</span>
+      </p>
+      {% endif %}
       {% if r.support and r.support.notes %}
       <p class="pr-benefit-notes">{{ r.support.notes|join(' · ') }}</p>
       {% endif %}
@@ -325,6 +341,29 @@
   var toggle = document.getElementById('filtToggle');
   var panel = document.getElementById('prFilters');
   if (toggle && panel) toggle.addEventListener('click', function () { panel.classList.toggle('open'); });
+
+  // Inline search: "By condition" vs "Describe it" (plain-language) - mirrors the
+  // homepage. Describe mode flips freeform=1 so the server extracts the condition
+  // from a full sentence instead of querying CT.gov with the whole phrase.
+  var topModes = document.querySelectorAll('.pr-mode');
+  var condInput = document.getElementById('prCondInput');
+  var freeform = document.getElementById('prFreeform');
+  var placeholders = {
+    condition: 'Condition, treatment, or drug',
+    describe: 'Describe it, e.g. I have obesity and want new treatments'
+  };
+  topModes.forEach(function (b) {
+    b.addEventListener('click', function () {
+      var mode = b.getAttribute('data-mode');
+      topModes.forEach(function (x) {
+        var on = x === b;
+        x.classList.toggle('is-active', on);
+        x.setAttribute('aria-selected', on ? 'true' : 'false');
+      });
+      if (freeform) freeform.value = mode === 'describe' ? '1' : '0';
+      if (condInput) { condInput.placeholder = placeholders[mode]; condInput.focus(); }
+    });
+  });
 })();
 </script>
 {% endblock %}
