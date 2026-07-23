@@ -44,3 +44,7 @@ is actually worse (over-cautious). Confirmed on dev too (0.588).
 
 **RECOMMENDATION for prod: set `LLM_MODEL=gpt-4.1-mini` for matching.** Loop now
 iterates on gpt-4.1-mini; remaining weakness is exclusion-catch (~0.46-0.49).
+| 2026-07-23T05:18:04 | dev | `5b92b3cc8bec` | **0.5900** | 0.808 | 0.592 | 0.083 | 0.192 | 0.110 | $2.193 |
+| 2026-07-23T05:22:51 | test | `5b92b3cc8bec` | **0.6183** | 0.892 | 0.525 | 0.117 | 0.108 | 0.090 | $2.448 |
+
+> **Tick 5** REVERTED. Hypothesis: high-precision exclusion cross-check, now on gpt-4.1-mini. Result: TEST 0.614->0.618 (+0.004, under +0.02 bar); excl-catch 0.458->0.525 but recall 0.917->0.892, crit 0.073->0.090. Confirms prompt tweaks are marginal on 4.1-mini too - the MODEL was the lever. BEST = tick-1 prompt + gpt-4.1-mini (test 0.614, recall 0.917, false-elig 0.10, crit 0.073). Loop continues on 4.1-mini for any further small gains.
