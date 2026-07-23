@@ -72,3 +72,10 @@ ceiling for narrative-only matching; structured EMR fields would lift exclusion-
 further via the deterministic hard_gate.
 
 PROD ACTION: set LLM_MODEL=gpt-4.1-mini. Best matcher = current committed prompt.
+| 2026-07-23T05:38:18 | dev | `cee4cdbe4e71` | **0.5783** | 0.842 | 0.508 | 0.083 | 0.158 | 0.097 | $2.963 |
+| 2026-07-23T05:43:36 | test | `cee4cdbe4e71` | **0.6233** | 0.925 | 0.475 | 0.117 | 0.075 | 0.077 | $3.218 |
+
+> **Tick 6** REVERTED. Hypothesis: few-shot calibration exemplars (eligible / triggered-exclusion / missing-info->possible). Result: TEST 0.614->0.623 (+0.009, under bar); dev 0.588->0.578. 6th technique to land within noise of the ~0.61 test ceiling on gpt-4.1-mini.
+
+## CONCLUSION
+Prompt engineering exhausted (rules, reorder, exclusion cross-check, CoT, few-shot all ~0.61 test). The MODEL swap (4o-mini->4.1-mini) was the decisive lever: test headline 0.435->0.614, final-holdout 0.683, critical-rate 0.22->0.05, recall 0.84->0.91. Stopping the loop to preserve budget. Next real lever = structured EMR fields into the deterministic hard_gate (needs attended work).
