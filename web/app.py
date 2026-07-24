@@ -177,7 +177,8 @@ SITE_DEMO = os.environ.get("SITE_DEMO", "1") == "1"
 _STUDY_TEAM_DEMO_PREFIXES = (
     "/app/leads", "/app/messages", "/app/site", "/app/dashboard",
     "/app/campaign", "/app/intake", "/app/home", "/app/applicant",
-    "/app/documents", "/app/copilot", "/app/team", "/files/lead", "/files/team")
+    "/app/matching", "/app/documents", "/app/copilot", "/app/team",
+    "/files/lead", "/files/team")
 
 # Health-records / EHR sync (SMART Health IT) is hidden for now — the connector
 # is still a sandbox and not patient-ready. Flip RECORDS_UI=1 to re-enable the
@@ -495,6 +496,10 @@ def _seed_demo_surfaces(user_id=None):
         db.ensure_demo_claim_volume(user_id, minimum_rows=18)
     except Exception:
         app.logger.exception("demo claim seeding failed")
+    try:
+        db.seed_demo_patient_matches(user_id)
+    except Exception:
+        app.logger.exception("demo match seeding failed")
     try:
         db.seed_demo_campaigns(user_id)
     except Exception:
@@ -1135,7 +1140,7 @@ def inject_globals():
     if (path.startswith("/app/leads") or path.startswith("/app/dashboard")
             or path.startswith("/app/site") or path.startswith("/app/messages")
             or path.startswith("/app/analytics") or path.startswith("/app/home")
-            or path.startswith("/app/applicant")
+            or path.startswith("/app/applicant") or path.startswith("/app/matching")
             or path.startswith("/app/documents")
             or path.startswith("/app/team")
             or path.startswith("/app/campaign") or path.startswith("/app/intake")):
@@ -1151,11 +1156,16 @@ def inject_globals():
     my_role = ""
     my_role_label = ""
     can_manage_team = False
+    matches_new = 0
     if g.user:
         try:
             nav_study_ncts = sorted(db.user_claimed_ncts(g.user["id"]))
         except Exception:
             nav_study_ncts = []
+        try:
+            matches_new = db.patient_match_counts(g.user["id"]).get("new", 0)
+        except Exception:
+            matches_new = 0
         try:
             nav_studies = [{"nct": s["nct"], "title": s["title"] or s["nct"]}
                            for s in db.list_team_studies(g.user["id"])]
@@ -1187,6 +1197,7 @@ def inject_globals():
             "site_demo": _site_demo_enabled(), "nav_study_ncts": nav_study_ncts,
             "nav_studies": nav_studies, "active_nct": active_nct,
             "active_study_label": active_study_label,
+            "matches_new": matches_new,
             "is_owner": _is_owner()}
 
 
@@ -5446,7 +5457,16 @@ def study_home():
     docs_pending = docs_pending[:5]
     can_approve = db.can_approve_docs(g.user["id"])
 
-    todo_total = len(reply_queue) + len(pending) + len(followups) + docs_pending_total
+    # ── New candidate matches from the clinic's own records (the hero: fresh,
+    # pre-screened supply). Top few new ones surface here; the rest live on the
+    # Matches page. ──
+    _seed_matches_if_demo()
+    match_counts = db.patient_match_counts(g.user["id"])
+    new_matches = [_match_view(m)
+                   for m in db.list_patient_matches(g.user["id"], status="new")][:4]
+
+    todo_total = (len(reply_queue) + len(pending) + len(followups)
+                  + docs_pending_total + match_counts.get("new", 0))
 
     hour = now.hour
     greeting = ("Good morning" if hour < 12
@@ -5455,10 +5475,121 @@ def study_home():
     return render_template(
         "study_home.html", claims=claims, reply_queue=reply_queue, pending=pending,
         followups=followups, has_calendar=has_calendar, upcoming=upcoming,
-        docs_pending=docs_pending,
+        docs_pending=docs_pending, new_matches=new_matches,
+        match_counts=match_counts,
         docs_pending_total=docs_pending_total, can_approve=can_approve,
         todo_total=todo_total, greeting=greeting,
         org=(db.get_site_profile(g.user["id"]) or {}))
+
+
+# --------------------------------------------------------------------------- #
+# Internal patient -> trial matching. The clinic's own (de-identified) patients
+# surfaced as candidates for studies it runs (internal) or partner trials
+# (external). Approving an internal match adds the person to the ATS as a
+# likely-eligible applicant; approving an external one sends a secure referral
+# (in the real product, only after the patient consents). This is the upstream
+# "found + pre-screened" supply that drives enrollment velocity.
+# --------------------------------------------------------------------------- #
+def _match_initials(ref):
+    letters = "".join(c for c in (ref or "") if c.isalpha())
+    return (letters[:2].upper() or "?")
+
+
+def _match_view(m):
+    """Flatten a patient_matches dict into the fields the matching screens read."""
+    v = _verdict_view({"verdict": m.get("verdict"), "score": m.get("score"),
+                       "met": m.get("met"), "not_met": m.get("not_met"),
+                       "unknown": m.get("unknown")})
+    return {
+        "id": m["id"], "ref": m.get("patient_ref") or "?",
+        "initials": _match_initials(m.get("patient_ref")),
+        "age": m.get("age"), "sex": m.get("sex"), "summary": m.get("summary"),
+        "source_label": m.get("source_label"), "nct": m.get("nct"),
+        "trial_title": m.get("trial_title") or m.get("nct"),
+        "condition": m.get("condition"), "kind": m.get("kind"),
+        "site_name": m.get("site_name"), "site_location": m.get("site_location"),
+        "verdict": v, "met": m.get("met") or [], "unknown": m.get("unknown") or [],
+        "not_met": m.get("not_met") or [], "rationale": m.get("rationale"),
+        "status": m.get("status"), "lead_id": m.get("lead_id"),
+    }
+
+
+def _seed_matches_if_demo():
+    """Top up the demo match queue on demand so pre-existing demo DBs (seeded
+    before this feature shipped) still light up. No-op on real accounts."""
+    if _demo_mode_enabled() or _is_demo_account(g.user):
+        try:
+            db.seed_demo_patient_matches(g.user["id"])
+        except Exception:
+            app.logger.exception("demo match seeding failed")
+
+
+@app.route("/app/matching")
+@login_required
+def matching_page():
+    """Review queue: scan the patients the engine surfaced and, with one click,
+    add an internal candidate to your study or send an external referral."""
+    _seed_matches_if_demo()
+    claims = db.list_study_claims(g.user["id"])
+    matches = [_match_view(m) for m in db.list_patient_matches(g.user["id"])]
+    counts = db.patient_match_counts(g.user["id"])
+    return render_template("matching.html", claims=claims, matches=matches,
+                           counts=counts)
+
+
+@app.route("/app/matching/<int:match_id>")
+@login_required
+def match_detail(match_id):
+    m = db.get_patient_match(g.user["id"], match_id)
+    if not m:
+        abort(404)
+    return render_template("match_detail.html", m=_match_view(m))
+
+
+@app.route("/app/matching/<int:match_id>/approve", methods=["POST"])
+@login_required
+def approve_match(match_id):
+    m = db.get_patient_match(g.user["id"], match_id)
+    if not m:
+        abort(404)
+    if m["status"] != "new":
+        flash("That match was already handled.", "error")
+        return redirect(url_for("matching_page"))
+    if m["kind"] == "external":
+        db.set_patient_match_status(g.user["id"], match_id, "referred")
+        flash("Secure referral sent to " + (m["site_name"] or "the trial site")
+              + ". They confirm the screening visit with the patient.", "success")
+        return redirect(url_for("matching_page"))
+    # Internal: fold the person into our own study's applicant pipeline as a
+    # likely-eligible, already-reviewed candidate (carries the AI read forward).
+    elig = {"verdict": m.get("verdict"), "score": m.get("score"),
+            "met": m.get("met"), "unknown": m.get("unknown"),
+            "not_met": m.get("not_met"), "rationale": m.get("rationale")}
+    token = db.create_lead({
+        "nct": m["nct"], "title": m["trial_title"], "condition": m["condition"],
+        "name": m["full_name"] or m["patient_ref"], "age": m["age"],
+        "sex": m["sex"], "source": "emr", "consent": 1, "records_connected": 1,
+        "record_summary": m["summary"], "eligibility": json.dumps(elig)})
+    lead = db.get_lead_by_token(token)
+    lead_id = lead["id"] if lead else None
+    if lead_id:
+        db.accept_candidate(lead_id, "Matched from clinic records and approved")
+    db.set_patient_match_status(g.user["id"], match_id, "approved", lead_id=lead_id)
+    if lead_id:
+        flash("Added to your study as a likely-eligible applicant. Send the "
+              "booking link to schedule their screening visit.", "success")
+        return redirect(url_for("applicant_detail", lead_id=lead_id))
+    flash("Added to your study.", "success")
+    return redirect(url_for("matching_page"))
+
+
+@app.route("/app/matching/<int:match_id>/dismiss", methods=["POST"])
+@login_required
+def dismiss_match(match_id):
+    if not db.set_patient_match_status(g.user["id"], match_id, "dismissed"):
+        abort(404)
+    flash("Match dismissed \u2014 it won't show in your review queue.", "success")
+    return redirect(url_for("matching_page"))
 
 
 @app.route("/app/applicant/<int:lead_id>")

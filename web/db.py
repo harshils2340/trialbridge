@@ -783,6 +783,43 @@ CREATE TABLE IF NOT EXISTS copilot_actions (
     FOREIGN KEY (user_id) REFERENCES users(id)
 );
 CREATE INDEX IF NOT EXISTS idx_copilot_actions_token ON copilot_actions(token);
+
+-- Internal patient->trial matching. A connected clinic's own patients, surfaced
+-- as candidates for a trial by the matching engine. This is the "found +
+-- pre-screened" supply that feeds the ATS. Rows are DE-IDENTIFIED (initials +
+-- age/sex + a short problem-list snapshot) - matching runs under the site's own
+-- ethics approval, and a real name is only re-identified after physician review
+-- and (for external) patient consent. `kind` splits studies the clinic runs
+-- itself (internal -> becomes an applicant) from partner-site trials
+-- (external -> a secure referral after consent).
+CREATE TABLE IF NOT EXISTS patient_matches (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id       INTEGER NOT NULL,        -- owning clinic account (team-scoped)
+    patient_ref   TEXT DEFAULT '',         -- de-identified label, e.g. "R.M."
+    full_name     TEXT DEFAULT '',         -- re-identified on approve (demo: seeded)
+    age           TEXT DEFAULT '',
+    sex           TEXT DEFAULT '',
+    summary       TEXT DEFAULT '',         -- de-identified problem-list snapshot
+    source_label  TEXT DEFAULT '',         -- e.g. "Upcoming visit · Tue" / "Problem list"
+    nct           TEXT DEFAULT '',
+    trial_title   TEXT DEFAULT '',
+    condition     TEXT DEFAULT '',
+    kind          TEXT NOT NULL DEFAULT 'internal',  -- internal | external
+    site_name     TEXT DEFAULT '',         -- external: the partner site
+    site_location TEXT DEFAULT '',
+    verdict       TEXT DEFAULT '',         -- likely_eligible | possible
+    score         INTEGER DEFAULT 0,
+    met           TEXT DEFAULT '',         -- JSON list
+    unknown       TEXT DEFAULT '',         -- JSON list
+    not_met       TEXT DEFAULT '',         -- JSON list
+    rationale     TEXT DEFAULT '',
+    status        TEXT NOT NULL DEFAULT 'new',  -- new | approved | referred | dismissed
+    lead_id       INTEGER,                 -- set when an internal match converts to an applicant
+    created_at    TEXT NOT NULL,
+    updated_at    TEXT DEFAULT '',
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
+CREATE INDEX IF NOT EXISTS idx_patient_matches_user ON patient_matches(user_id, status);
 """
 
 # Recognized team roles + display labels. 'coordinator' is the admin role.
@@ -1859,6 +1896,110 @@ def lead_counts_for_ncts(ncts):
         f"SELECT status, COUNT(*) n FROM leads WHERE nct IN ({qs}) GROUP BY status",
         ncts).fetchall()
     return {r["status"]: r["n"] for r in rows}
+
+
+# --------------------------------------------------------------------------- #
+# Internal patient -> trial matching. A connected clinic's own patients surfaced
+# as candidates for a trial. De-identified rows; team-scoped like study claims so
+# the whole org shares one review queue. `kind`: internal (clinic runs the study
+# -> becomes an applicant on approve) vs external (partner-site trial -> a secure
+# referral after consent).
+# --------------------------------------------------------------------------- #
+PATIENT_MATCH_STATUSES = ("new", "approved", "referred", "dismissed")
+
+
+def _decode_match(row):
+    """Return a patient_matches row as a plain dict with JSON lists parsed."""
+    if row is None:
+        return None
+    d = dict(row)
+    for k in ("met", "unknown", "not_met"):
+        try:
+            d[k] = json.loads(row[k]) if row[k] else []
+        except (ValueError, TypeError):
+            d[k] = []
+    return d
+
+
+def create_patient_match(user_id, data):
+    db = get_db()
+    ts = now()
+    cur = db.execute(
+        """INSERT INTO patient_matches
+           (user_id, patient_ref, full_name, age, sex, summary, source_label,
+            nct, trial_title, condition, kind, site_name, site_location,
+            verdict, score, met, unknown, not_met, rationale, status,
+            created_at, updated_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+        (user_id, data.get("patient_ref", ""), data.get("full_name", ""),
+         str(data.get("age", "")), data.get("sex", ""), data.get("summary", ""),
+         data.get("source_label", ""), _norm_nct(data.get("nct", "")),
+         data.get("trial_title", ""), data.get("condition", ""),
+         (data.get("kind") or "internal"), data.get("site_name", ""),
+         data.get("site_location", ""), data.get("verdict", ""),
+         int(data.get("score") or 0),
+         json.dumps(data.get("met") or []), json.dumps(data.get("unknown") or []),
+         json.dumps(data.get("not_met") or []), data.get("rationale", ""),
+         (data.get("status") or "new"), ts, ts))
+    db.commit()
+    return cur.lastrowid
+
+
+def list_patient_matches(user_id, kind=None, status=None):
+    members = org_member_ids(user_id)
+    qs = ",".join("?" * len(members))
+    q = f"SELECT * FROM patient_matches WHERE user_id IN ({qs})"
+    vals = list(members)
+    if kind:
+        q += " AND kind = ?"
+        vals.append(kind)
+    if status:
+        q += " AND status = ?"
+        vals.append(status)
+    q += " ORDER BY (status = 'new') DESC, score DESC, id DESC"
+    return [_decode_match(r) for r in get_db().execute(q, vals).fetchall()]
+
+
+def get_patient_match(user_id, match_id):
+    members = org_member_ids(user_id)
+    qs = ",".join("?" * len(members))
+    row = get_db().execute(
+        f"SELECT * FROM patient_matches WHERE id = ? AND user_id IN ({qs})",
+        [match_id] + list(members)).fetchone()
+    return _decode_match(row)
+
+
+def set_patient_match_status(user_id, match_id, status, lead_id=None):
+    if status not in PATIENT_MATCH_STATUSES:
+        return False
+    if not get_patient_match(user_id, match_id):
+        return False
+    db = get_db()
+    db.execute(
+        "UPDATE patient_matches SET status = ?, "
+        "lead_id = COALESCE(?, lead_id), updated_at = ? WHERE id = ?",
+        (status, lead_id, now(), match_id))
+    db.commit()
+    return True
+
+
+def patient_match_counts(user_id):
+    members = org_member_ids(user_id)
+    qs = ",".join("?" * len(members))
+    rows = get_db().execute(
+        f"SELECT kind, status, COUNT(*) n FROM patient_matches "
+        f"WHERE user_id IN ({qs}) GROUP BY kind, status", members).fetchall()
+    out = {"new": 0, "new_internal": 0, "new_external": 0, "approved": 0,
+           "referred": 0, "dismissed": 0, "total": 0}
+    for r in rows:
+        out["total"] += r["n"]
+        if r["status"] == "new":
+            out["new"] += r["n"]
+            key = f"new_{r['kind']}"
+            out[key] = out.get(key, 0) + r["n"]
+        else:
+            out[r["status"]] = out.get(r["status"], 0) + r["n"]
+    return out
 
 
 def site_contact_for_nct(nct):
@@ -3964,6 +4105,142 @@ def seed_demo_claims(user_id):
         "WHERE video_url = '' AND status IN ('screening','enrolled') "
         "AND nct IN (SELECT nct FROM study_claims WHERE user_id = ?)", (user_id,))
     db.commit()
+
+
+def _demo_internal_match_specs():
+    """De-identified internal patients (metabolic-leaning, to fit the demo's
+    claimed studies) surfaced from the clinic's own records. Assigned round-robin
+    across whatever the account has claimed."""
+    return [
+        {"patient_ref": "R.M.", "full_name": "Rebecca M.", "age": "54", "sex": "Female",
+         "summary": "Type 2 diabetes (HbA1c 8.1%), BMI 33, on metformin. Coming in Thu for a routine follow-up.",
+         "source_label": "Upcoming visit · Thu 10:30", "verdict": "likely_eligible", "score": 91,
+         "met": ["HbA1c 8.1% is inside the 7.0-10.5% inclusion window",
+                 "BMI 33 meets the \u226527 kg/m\u00b2 requirement",
+                 "On stable metformin \u2265 3 months"],
+         "unknown": ["Confirm no GLP-1 use in the last 90 days",
+                     "eGFR on file within 6 months?"],
+         "rationale": "Diagnosis, HbA1c, and BMI all line up with the core inclusion criteria."},
+        {"patient_ref": "D.O.", "full_name": "David O.", "age": "47", "sex": "Male",
+         "summary": "Obesity (BMI 36), pre-diabetes, hypertension controlled on lisinopril. Seen last month.",
+         "source_label": "Problem list · seen 3w ago", "verdict": "likely_eligible", "score": 88,
+         "met": ["BMI 36 meets the obesity inclusion",
+                 "No diabetes diagnosis (matches non-diabetic cohort)",
+                 "Adult 18-75"],
+         "unknown": ["Prior bariatric surgery?", "Weight stable over past 3 months?"],
+         "rationale": "Strong fit on BMI and cohort; two items to confirm at screening."},
+        {"patient_ref": "S.K.", "full_name": "Sara K.", "age": "61", "sex": "Female",
+         "summary": "NAFLD noted on ultrasound, elevated ALT, BMI 31, type 2 diabetes.",
+         "source_label": "Upcoming visit · next Tue", "verdict": "possible", "score": 66,
+         "met": ["Imaging-confirmed hepatic steatosis", "BMI 31, T2D present"],
+         "unknown": ["FibroScan / biopsy to stage fibrosis (F2-F3 required)",
+                     "Recent alcohol history"],
+         "rationale": "Likely a fit but fibrosis stage must be confirmed before enrolling."},
+        {"patient_ref": "J.T.", "full_name": "James T.", "age": "58", "sex": "Male",
+         "summary": "Type 2 diabetes 9 years, HbA1c 9.2%, BMI 29, on metformin + SGLT2i.",
+         "source_label": "Problem list", "verdict": "possible", "score": 61,
+         "met": ["T2D on stable background therapy", "BMI 29"],
+         "unknown": ["HbA1c above 9.0% may exceed the upper limit \u2014 confirm cutoff",
+                     "Cardiac history for exclusion screen"],
+         "rationale": "Borderline on HbA1c ceiling; worth a screening call to confirm."},
+        {"patient_ref": "A.L.", "full_name": "Aisha L.", "age": "43", "sex": "Female",
+         "summary": "Obesity (BMI 38), PCOS, no diabetes. New patient this week.",
+         "source_label": "New this week", "verdict": "likely_eligible", "score": 84,
+         "met": ["BMI 38 well within inclusion", "Adult, non-diabetic"],
+         "unknown": ["Pregnancy test / contraception per protocol",
+                     "Thyroid function documented?"],
+         "rationale": "Clear BMI fit; standard screening items remain."},
+        {"patient_ref": "M.P.", "full_name": "Marcus P.", "age": "66", "sex": "Male",
+         "summary": "Type 2 diabetes, BMI 34, prior MI (2019), coming in for meds review.",
+         "source_label": "Upcoming visit · Fri", "verdict": "possible", "score": 54,
+         "met": ["T2D and BMI meet inclusion"],
+         "unknown": ["Prior MI \u2014 confirm it's outside the exclusion window",
+                     "Current cardiac status stable?"],
+         "rationale": "Meets metabolic criteria; cardiac history needs review against exclusions."},
+    ]
+
+
+def _demo_external_match_specs():
+    """Partner-site trials (studies the clinic does NOT run). A match here becomes
+    a secure referral after the patient consents - the clinic gives better care,
+    BridgeMD connects the network. Fake but realistic sites."""
+    return [
+        {"patient_ref": "E.C.", "full_name": "Eleanor C.", "age": "72", "sex": "Female",
+         "summary": "Mild cognitive impairment, MMSE 25, family history of Alzheimer's. Followed in clinic.",
+         "source_label": "Problem list", "nct": "NCT05310071",
+         "trial_title": "Anti-Amyloid Infusion in Early Alzheimer's Disease",
+         "condition": "Early Alzheimer's disease",
+         "site_name": "Sunnybrook Health Sciences Centre", "site_location": "Toronto, ON",
+         "verdict": "likely_eligible", "score": 86,
+         "met": ["MCI with documented memory decline", "Age within 55-80 window",
+                 "Study partner available"],
+         "unknown": ["Amyloid PET / CSF confirmation needed", "MRI to rule out microhemorrhages"],
+         "rationale": "Clinical picture fits; biomarker confirmation happens at the trial site."},
+        {"patient_ref": "T.W.", "full_name": "Tobias W.", "age": "39", "sex": "Male",
+         "summary": "Moderate-to-severe plaque psoriasis, ~12% BSA, failed two topicals.",
+         "source_label": "Upcoming visit · next week", "nct": "NCT05590297",
+         "trial_title": "Once-Daily Oral Therapy for Moderate-to-Severe Plaque Psoriasis",
+         "condition": "Plaque psoriasis",
+         "site_name": "Toronto Dermatology Research", "site_location": "Toronto, ON",
+         "verdict": "likely_eligible", "score": 82,
+         "met": ["BSA \u226510% meets severity threshold", "Failed prior topical therapy",
+                 "Adult 18-70"],
+         "unknown": ["Washout from prior systemics", "Latent TB screen on file?"],
+         "rationale": "Meets the severity bar for a systemic-therapy trial nearby."},
+        {"patient_ref": "G.R.", "full_name": "Grace R.", "age": "45", "sex": "Female",
+         "summary": "Crohn's disease, moderate activity despite azathioprine. Recent flare.",
+         "source_label": "Problem list · flare 2w ago", "nct": "NCT05625048",
+         "trial_title": "Investigational Biologic for Moderate-to-Severe Crohn's Disease",
+         "condition": "Crohn's disease",
+         "site_name": "Mount Sinai IBD Centre", "site_location": "Toronto, ON",
+         "verdict": "possible", "score": 63,
+         "met": ["Confirmed Crohn's, moderate activity", "Inadequate response to immunomodulator"],
+         "unknown": ["Recent colonoscopy for endoscopic score", "Prior biologic exposure count"],
+         "rationale": "Likely eligible but endoscopic scoring is needed to confirm."},
+    ]
+
+
+def seed_demo_patient_matches(user_id):
+    """Populate the internal-matching queue: the clinic's own de-identified
+    patients surfaced as candidates for studies it runs (internal) and partner
+    trials (external). No-op once any match exists, so real data is never mixed."""
+    if not user_id:
+        return
+    db = get_db()
+    if db.execute("SELECT COUNT(*) n FROM patient_matches WHERE user_id = ?",
+                  (user_id,)).fetchone()["n"]:
+        return
+    claims = list_study_claims(user_id)
+    studies = [(c["nct"], c["title"] or c["nct"]) for c in claims]
+    if not studies:
+        rows = db.execute("SELECT nct, MAX(title) title FROM leads "
+                          "WHERE nct != '' GROUP BY nct ORDER BY nct").fetchall()
+        studies = [(r["nct"], r["title"] or r["nct"]) for r in rows]
+    internal = _demo_internal_match_specs()
+    for i, spec in enumerate(internal):
+        if studies:
+            nct, title = studies[i % len(studies)]
+        else:
+            nct, title = "", "Your claimed study"
+        spec = dict(spec)
+        spec.update({"kind": "internal", "nct": nct, "trial_title": title,
+                     "condition": spec.get("condition", "")})
+        create_patient_match(user_id, spec)
+    for spec in _demo_external_match_specs():
+        spec = dict(spec)
+        spec["kind"] = "external"
+        create_patient_match(user_id, spec)
+    # Show the lifecycle in the filters: one already added, one referred, one passed.
+    seeded = db.execute(
+        "SELECT id, kind FROM patient_matches WHERE user_id = ? ORDER BY id",
+        (user_id,)).fetchall()
+    internal_ids = [r["id"] for r in seeded if r["kind"] == "internal"]
+    external_ids = [r["id"] for r in seeded if r["kind"] == "external"]
+    if len(internal_ids) >= 2:
+        set_patient_match_status(user_id, internal_ids[-1], "approved")
+        set_patient_match_status(user_id, internal_ids[-2], "dismissed")
+    if external_ids:
+        set_patient_match_status(user_id, external_ids[-1], "referred")
 
 
 def seed_demo_campaigns(user_id):

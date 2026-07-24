@@ -24,6 +24,45 @@
 
 <div class="app-split">
   <div>
+    {# ── 0. New candidate matches (from your records) ── #}
+    <div class="app-sec" id="matches">
+      <div class="app-sec-head">
+        {{ ic.icon('crosshair') }}<b>New candidate matches</b>
+        <span>Surfaced from your records, pre-screened. Add to a study or refer out.</span>
+        {% if match_counts and match_counts.new %}{{ ui.count(match_counts.new, 'brand') }}{% endif %}
+      </div>
+      {% if not new_matches %}
+      <div class="app-card pad">{{ ui.empty('No new matches', 'New candidates from your records appear here as they are found.', 'check') }}</div>
+      {% else %}
+      <div class="app-card">
+        {% for m in new_matches %}
+        <div class="app-row">
+          <span class="app-av neutral">{{ m.initials }}</span>
+          <div class="main">
+            <div class="top">
+              <b>{{ m.ref }}</b>
+              {% if m.kind == 'external' %}{{ ui.badge('Partner site', 'violet') }}{% else %}{{ ui.badge('Your study', 'brand') }}{% endif %}
+              {{ ui.badge(m.verdict.label, m.verdict.tone) }}
+              <span class="reason">{{ m.trial_title[:46] }}</span>
+            </div>
+            <div class="prev">{{ m.summary }}</div>
+          </div>
+          <div class="acts">
+            {{ ui.btn('Review', 'ghost', 'sm', href=url_for('match_detail', match_id=m.id)) }}
+            <form method="post" action="{{ url_for('approve_match', match_id=m.id) }}">
+              {% if m.kind == 'external' %}{{ ui.btn('Refer', 'primary', 'sm', type='submit') }}
+              {% else %}{{ ui.btn('Add', 'primary', 'sm', type='submit') }}{% endif %}
+            </form>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% if match_counts and match_counts.new > new_matches|length %}
+      <a href="{{ url_for('matching_page') }}" class="rail-more" style="display:inline-block;margin-top:8px;">Review all {{ match_counts.new }} matches →</a>
+      {% endif %}
+      {% endif %}
+    </div>
+
     {# ── 1. Replies waiting ── #}
     <div class="app-sec" id="needs-reply">
       <div class="app-sec-head">

@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% block title %}{{ m.ref }} · Match · BridgeMD for sites{% endblock %}
+{% import "_icons.html" as ic %}
+{% import "_ui.html" as ui %}
+
+{% block body %}
+<a class="app-back" href="{{ url_for('matching_page') }}">{{ ic.icon('arrow-left') }} All matches</a>
+
+<div class="app-head">
+  <div>
+    <h1>{{ m.ref }} <span class="match-dem">{{ m.age }}{{ ('· ' ~ m.sex) if m.sex else '' }}</span></h1>
+    <p>
+      {% if m.kind == 'external' %}Surfaced for a trial at a partner site. Refer after the patient consents.
+      {% else %}Surfaced from your records for a study you run. Add them to your applicants when ready.{% endif %}
+    </p>
+  </div>
+  <div class="app-head-badges">
+    {% if m.kind == 'external' %}{{ ui.badge('Partner site', 'violet', 'external') }}
+    {% else %}{{ ui.badge('Your study', 'brand', 'award') }}{% endif %}
+    {{ ui.badge(m.verdict.label, m.verdict.tone) }}
+  </div>
+</div>
+
+<div class="app-split">
+  <div>
+    <div class="app-sec">
+      <div class="app-sec-head">{{ ic.icon('user') }}<b>Patient snapshot</b><span>De-identified — from your records</span></div>
+      <div class="app-card pad">
+        <p class="match-snapshot">{{ m.summary }}</p>
+        <div class="match-facts">
+          {% if m.condition %}<div><span class="l">Condition</span><span class="v">{{ m.condition }}</span></div>{% endif %}
+          {% if m.source_label %}<div><span class="l">Source</span><span class="v">{{ m.source_label }}</span></div>{% endif %}
+          <div><span class="l">Age / sex</span><span class="v">{{ m.age }}{{ (' · ' ~ m.sex) if m.sex else '' }}</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="app-card pad verdict">
+      <div class="verdict-head">
+        <span class="l">{{ ic.icon('sparkle') }} AI pre-screen</span>
+        <span style="display:flex;gap:8px;align-items:center;">
+          {{ ui.badge(m.verdict.label, m.verdict.tone) }}
+          <span class="score-pill {{ 'hi' if m.verdict.score >= 70 else ('mid' if m.verdict.score >= 40 else 'lo') }}">{{ m.verdict.score }}/100</span>
+        </span>
+      </div>
+      <div class="verdict-grid">
+        <div>
+          <div class="col-h ok">Meets criteria</div>
+          {% for x in m.met %}
+          <div class="verdict-li ok">{{ ic.icon('check') }}<span>{{ x }}</span></div>
+          {% else %}<div class="app-sub" style="font-size:13px;color:var(--faint);">Nothing confirmed yet.</div>{% endfor %}
+        </div>
+        <div>
+          <div class="col-h info">To confirm at screening</div>
+          {% for x in m.unknown %}
+          <div class="verdict-li info">{{ ic.icon('info') }}<span>{{ x }}</span></div>
+          {% else %}<div class="app-sub" style="font-size:13px;color:var(--faint);">No open questions.</div>{% endfor %}
+        </div>
+      </div>
+      {% if m.not_met %}
+      <div style="margin-bottom:14px;">
+        <div class="col-h warn" style="margin-bottom:8px;">Possible barriers</div>
+        {% for x in m.not_met %}
+        <div class="verdict-li warn">{{ ic.icon('alert') }}<span>{{ x }}</span></div>
+        {% endfor %}
+      </div>
+      {% endif %}
+      {% if m.rationale %}<div class="verdict-note">{{ m.rationale }}</div>{% endif %}
+      <div class="verdict-fine">AI-assisted decision support. A qualified team member must review and decide.</div>
+    </div>
+  </div>
+
+  <div>
+    <div class="app-card pad" style="margin-bottom:16px;">
+      <div class="rail-h">{{ ic.icon('file') }} Matched study</div>
+      <div class="match-trial-title">{{ m.trial_title }}</div>
+      <div class="match-trial-meta">
+        {% if m.kind == 'external' %}
+          {% if m.site_name %}<div>{{ ic.icon('pin') }} {{ m.site_name }}{% if m.site_location %} · {{ m.site_location }}{% endif %}</div>{% endif %}
+        {% endif %}
+        {% if m.nct %}<div>{{ ic.icon('list') }} {{ m.nct }}</div>{% endif %}
+      </div>
+    </div>
+
+    <div class="app-card pad">
+      {% if m.status == 'new' %}
+      <div class="rail-h">{{ ic.icon('arrow-right') }} Next step</div>
+      {% if m.kind == 'external' %}
+      <p class="match-action-note">Once the patient hears about it from their own clinician and consents, send a secure referral to the trial site. They book the screening visit on their side.</p>
+      <form method="post" action="{{ url_for('approve_match', match_id=m.id) }}">
+        {{ ui.btn('Send referral to ' ~ (m.site_name or 'trial site'), 'primary', 'block', type='submit', icon='send') }}
+      </form>
+      {% else %}
+      <p class="match-action-note">Add them to this study's applicant list as a likely-eligible candidate. You can then send the booking link for their screening visit.</p>
+      <form method="post" action="{{ url_for('approve_match', match_id=m.id) }}">
+        {{ ui.btn('Add to my study', 'primary', 'block', type='submit', icon='plus') }}
+      </form>
+      {% endif %}
+      <form method="post" action="{{ url_for('dismiss_match', match_id=m.id) }}" style="margin-top:8px;">
+        {{ ui.btn('Not a fit — pass', 'ghost', 'block', type='submit') }}
+      </form>
+      {% elif m.status == 'approved' %}
+      <div class="rail-h">{{ ic.icon('check') }} Added to your study</div>
+      <p class="match-action-note">This candidate is in your applicant pipeline.</p>
+      {% if m.lead_id %}{{ ui.btn('Open applicant', 'primary', 'block', href=url_for('applicant_detail', lead_id=m.lead_id)) }}{% endif %}
+      {% elif m.status == 'referred' %}
+      <div class="rail-h">{{ ic.icon('send') }} Referral sent</div>
+      <p class="match-action-note">Sent securely to {{ m.site_name or 'the trial site' }}. They confirm the screening visit with the patient.</p>
+      {% else %}
+      <div class="rail-h">{{ ic.icon('x') }} Passed</div>
+      <p class="match-action-note">You marked this as not a fit.</p>
+      {% endif %}
+      <div class="match-compliance">{{ ic.icon('shield-check') }} Matching runs under your site's ethics approval. No identifiable data leaves BridgeMD without consent.</div>
+    </div>
+  </div>
+</div>
+{% endblock %}

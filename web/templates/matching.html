@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+{% block title %}Matches · BridgeMD for sites{% endblock %}
+{% import "_icons.html" as ic %}
+{% import "_ui.html" as ui %}
+
+{% macro kind_badge(kind) -%}
+  {% if kind == 'external' %}{{ ui.badge('Partner site', 'violet', 'external') }}
+  {% else %}{{ ui.badge('Your study', 'brand', 'award') }}{% endif %}
+{%- endmacro %}
+
+{% macro handled_badge(status) -%}
+  {% if status == 'approved' %}{{ ui.badge('Added to study', 'ok', 'check') }}
+  {% elif status == 'referred' %}{{ ui.badge('Referral sent', 'info', 'send') }}
+  {% else %}{{ ui.badge('Passed', 'neutral', 'x') }}{% endif %}
+{%- endmacro %}
+
+{% block body %}
+{% if not claims %}
+<div class="app-card pad">
+  {{ ui.empty('Connect your records to surface matches',
+     'Once your patient list is connected, BridgeMD scans it against the studies you run and partner trials, and surfaces the people who look like a fit — pre-screened and de-identified.',
+     'crosshair', action=ui.btn('Set up your site', 'primary', href=url_for('site_setup'), icon='award')) }}
+</div>
+{% else %}
+
+<div class="app-head">
+  <div>
+    <h1>Matches</h1>
+    <p>Patients from your own records, scanned against every study you run and partner trials, and pre-screened for you. Review each one — add internal candidates to your study, or refer external ones to the trial site.</p>
+  </div>
+</div>
+
+<div class="app-stats">
+  <div class="app-stat accent"><div class="l">New to review</div><div class="n">{{ counts.new }}</div></div>
+  <div class="app-stat"><div class="l">For your studies</div><div class="n">{{ counts.new_internal }}</div></div>
+  <div class="app-stat"><div class="l">For partner sites</div><div class="n">{{ counts.new_external }}</div></div>
+  <div class="app-stat ok"><div class="l">Added</div><div class="n">{{ counts.approved }}</div></div>
+  <div class="app-stat"><div class="l">Referred</div><div class="n">{{ counts.referred }}</div></div>
+</div>
+
+<div class="match-how">
+  {{ ic.icon('shield-check') }}
+  <span>De-identified for matching (initials + age/sex + problem list). A name is re-identified only after you review — and, for a partner site, only after the patient consents.</span>
+</div>
+
+<div class="app-chips" id="matchChips">
+  <button type="button" class="ui-chip is-active" data-filter="new">New</button>
+  <button type="button" class="ui-chip" data-filter="internal">Your studies</button>
+  <button type="button" class="ui-chip" data-filter="external">Partner sites</button>
+  <button type="button" class="ui-chip" data-filter="handled">Handled</button>
+  <button type="button" class="ui-chip" data-filter="all">All</button>
+</div>
+
+<div class="app-card" id="matchCard">
+  {% if not matches %}
+  <div class="pad">{{ ui.empty('No matches yet', 'New candidates appear here as the engine scans your records.', 'crosshair') }}</div>
+  {% else %}
+  <div class="match-list" id="matchList">
+    {% for m in matches %}
+    {% set sf = 'hi' if m.verdict.score >= 75 else ('mid' if m.verdict.score >= 50 else 'lo') %}
+    <div class="match-item" data-kind="{{ m.kind }}" data-new="{{ '1' if m.status == 'new' else '0' }}">
+      <span class="app-av neutral">{{ m.initials }}</span>
+      <div class="match-main">
+        <div class="match-top">
+          <b>{{ m.ref }}</b>
+          <span class="match-dem">{{ m.age }}{{ ('· ' ~ m.sex) if m.sex else '' }}</span>
+          {{ kind_badge(m.kind) }}
+          {% if m.status != 'new' %}{{ handled_badge(m.status) }}{% endif %}
+        </div>
+        <div class="match-summary">{{ m.summary }}</div>
+        <div class="match-trial">
+          {{ ic.icon('file') }}
+          <span class="mt-title">{{ m.trial_title }}</span>
+          {% if m.kind == 'external' and m.site_name %}
+          <span class="mt-site">{{ m.site_name }}{% if m.site_location %} · {{ m.site_location }}{% endif %}</span>
+          {% elif m.nct %}<span class="mt-site">{{ m.nct }}</span>{% endif %}
+        </div>
+        {% if m.met %}
+        <div class="match-why">{{ ic.icon('check') }}<span>{{ m.met[:2] | join('  ·  ') }}</span></div>
+        {% endif %}
+        {% if m.source_label %}<div class="match-src">{{ ic.icon('clock') }}{{ m.source_label }}</div>{% endif %}
+      </div>
+      <div class="match-side">
+        <div class="match-verdict">
+          {{ ui.badge(m.verdict.label, m.verdict.tone) }}
+          <div class="score-bar"><span class="track"><span class="fill {{ sf }}" style="width:{{ m.verdict.score }}%"></span></span><b>{{ m.verdict.score }}</b></div>
+        </div>
+        <div class="match-acts">
+          {% if m.status == 'new' %}
+          {{ ui.btn('Review', 'ghost', 'sm', href=url_for('match_detail', match_id=m.id)) }}
+          <form method="post" action="{{ url_for('approve_match', match_id=m.id) }}">
+            {% if m.kind == 'external' %}{{ ui.btn('Send referral', 'primary', 'sm', type='submit', icon='send') }}
+            {% else %}{{ ui.btn('Add to study', 'primary', 'sm', type='submit', icon='plus') }}{% endif %}
+          </form>
+          <form method="post" action="{{ url_for('dismiss_match', match_id=m.id) }}" title="Not a fit">
+            {{ ui.btn('Pass', 'ghost', 'sm', type='submit') }}
+          </form>
+          {% elif m.status == 'approved' and m.lead_id %}
+          {{ ui.btn('Open applicant', 'ghost', 'sm', href=url_for('applicant_detail', lead_id=m.lead_id)) }}
+          {% else %}
+          {{ ui.btn('View', 'ghost', 'sm', href=url_for('match_detail', match_id=m.id)) }}
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  <p id="matchEmpty" class="app-sub" style="display:none;padding:22px;text-align:center;color:var(--faint);">No matches in this view.</p>
+  {% endif %}
+</div>
+{% endif %}
+
+<script>
+(function () {
+  var chips = document.querySelectorAll('#matchChips .ui-chip');
+  var items = Array.prototype.slice.call(document.querySelectorAll('#matchList .match-item'));
+  var empty = document.getElementById('matchEmpty');
+  if (!chips.length || !items.length) return;
+  function apply(f) {
+    var shown = 0;
+    items.forEach(function (it) {
+      var isNew = it.getAttribute('data-new') === '1';
+      var kind = it.getAttribute('data-kind');
+      var ok = f === 'all'
+        || (f === 'new' && isNew)
+        || (f === 'handled' && !isNew)
+        || (f === 'internal' && kind === 'internal' && isNew)
+        || (f === 'external' && kind === 'external' && isNew);
+      it.style.display = ok ? '' : 'none';
+      if (ok) shown += 1;
+    });
+    if (empty) empty.style.display = shown ? 'none' : '';
+  }
+  chips.forEach(function (c) {
+    c.addEventListener('click', function () {
+      chips.forEach(function (x) { x.classList.remove('is-active'); });
+      c.classList.add('is-active');
+      apply(c.getAttribute('data-filter'));
+    });
+  });
+  apply('new');
+})();
+</script>
+{% endblock %}
