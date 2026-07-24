@@ -30,6 +30,19 @@
   </div>
 </div>
 
+<div class="app-card pad match-source">
+  <div class="ms-main">
+    <span class="ms-ico">{{ ic.icon('refresh') }}</span>
+    <div>
+      <div class="ms-title">{{ source.name }} · patient records connected</div>
+      <div class="ms-sub">
+        Scanned nightly against {{ source.studies }} stud{{ 'y' if source.studies == 1 else 'ies' }} you run + partner trials{% if source.demo %} · {{ '{:,}'.format(source.patients) }} active patients{% endif %} · {{ source.surfaced }} candidates surfaced
+      </div>
+    </div>
+  </div>
+  <div class="ms-stat"><b>{{ source.new }}</b><span>new to review</span></div>
+</div>
+
 <div class="app-stats">
   <div class="app-stat accent"><div class="l">New to review</div><div class="n">{{ counts.new }}</div></div>
   <div class="app-stat"><div class="l">For your studies</div><div class="n">{{ counts.new_internal }}</div></div>

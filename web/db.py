@@ -4157,6 +4157,32 @@ def _demo_internal_match_specs():
          "unknown": ["Prior MI \u2014 confirm it's outside the exclusion window",
                      "Current cardiac status stable?"],
          "rationale": "Meets metabolic criteria; cardiac history needs review against exclusions."},
+        {"patient_ref": "P.R.", "full_name": "Priya R.", "age": "50", "sex": "Female",
+         "summary": "Prediabetes (A1c 6.1%), obesity BMI 32, hypertension. Flagged on recent labs.",
+         "source_label": "Recent lab flag", "verdict": "likely_eligible", "score": 79,
+         "met": ["BMI 32 meets obesity inclusion", "No diabetes diagnosis"],
+         "unknown": ["Weight change over past 90 days", "Any prior weight-loss medication"],
+         "rationale": "Clean non-diabetic obesity fit; only routine screening items remain."},
+        {"patient_ref": "C.N.", "full_name": "Carlos N.", "age": "63", "sex": "Male",
+         "summary": "Type 2 diabetes 11 years, BMI 30, chronic kidney disease stage 2.",
+         "source_label": "Upcoming visit · Mon", "verdict": "possible", "score": 57,
+         "met": ["T2D on stable therapy", "BMI in range"],
+         "unknown": ["eGFR \u2014 confirm it clears the renal exclusion",
+                     "Most recent creatinine on file?"],
+         "rationale": "Metabolic criteria met; kidney function must be confirmed before enrolling."},
+        {"patient_ref": "H.B.", "full_name": "Hannah B.", "age": "41", "sex": "Female",
+         "summary": "Obesity (BMI 41), obstructive sleep apnea on CPAP, no diabetes. New patient.",
+         "source_label": "New patient this week", "verdict": "likely_eligible", "score": 83,
+         "met": ["BMI 41 well above inclusion threshold", "Adult, non-diabetic cohort"],
+         "unknown": ["Pregnancy test / contraception per protocol"],
+         "rationale": "Strong BMI fit; standard screening only."},
+        {"patient_ref": "W.G.", "full_name": "Wei G.", "age": "56", "sex": "Male",
+         "summary": "Biopsy-confirmed MASH (NASH), fibrosis stage F2, type 2 diabetes, BMI 33.",
+         "source_label": "Hepatology referral", "verdict": "likely_eligible", "score": 89,
+         "met": ["Biopsy-confirmed steatohepatitis at F2", "T2D and BMI meet inclusion",
+                 "Fibrosis stage inside F2-F3 window"],
+         "unknown": ["Recent alcohol history", "Hep B/C serology on file?"],
+         "rationale": "Rare clean fit for a MASH trial \u2014 staging already confirmed on biopsy."},
     ]
 
 
@@ -4203,21 +4229,25 @@ def _demo_external_match_specs():
 def seed_demo_patient_matches(user_id):
     """Populate the internal-matching queue: the clinic's own de-identified
     patients surfaced as candidates for studies it runs (internal) and partner
-    trials (external). No-op once any match exists, so real data is never mixed."""
+    trials (external). Idempotent per patient (keyed on patient_ref), so it tops
+    up newly-added demo patients without duplicating or wiping the DB. Only the
+    first seed sets the approved/referred/passed lifecycle examples."""
     if not user_id:
         return
     db = get_db()
-    if db.execute("SELECT COUNT(*) n FROM patient_matches WHERE user_id = ?",
-                  (user_id,)).fetchone()["n"]:
-        return
+    existing = {r["patient_ref"] for r in db.execute(
+        "SELECT patient_ref FROM patient_matches WHERE user_id = ?",
+        (user_id,)).fetchall()}
+    first_seed = not existing
     claims = list_study_claims(user_id)
     studies = [(c["nct"], c["title"] or c["nct"]) for c in claims]
     if not studies:
         rows = db.execute("SELECT nct, MAX(title) title FROM leads "
                           "WHERE nct != '' GROUP BY nct ORDER BY nct").fetchall()
         studies = [(r["nct"], r["title"] or r["nct"]) for r in rows]
-    internal = _demo_internal_match_specs()
-    for i, spec in enumerate(internal):
+    for i, spec in enumerate(_demo_internal_match_specs()):
+        if spec["patient_ref"] in existing:
+            continue
         if studies:
             nct, title = studies[i % len(studies)]
         else:
@@ -4227,20 +4257,24 @@ def seed_demo_patient_matches(user_id):
                      "condition": spec.get("condition", "")})
         create_patient_match(user_id, spec)
     for spec in _demo_external_match_specs():
+        if spec["patient_ref"] in existing:
+            continue
         spec = dict(spec)
         spec["kind"] = "external"
         create_patient_match(user_id, spec)
-    # Show the lifecycle in the filters: one already added, one referred, one passed.
-    seeded = db.execute(
-        "SELECT id, kind FROM patient_matches WHERE user_id = ? ORDER BY id",
-        (user_id,)).fetchall()
-    internal_ids = [r["id"] for r in seeded if r["kind"] == "internal"]
-    external_ids = [r["id"] for r in seeded if r["kind"] == "external"]
-    if len(internal_ids) >= 2:
-        set_patient_match_status(user_id, internal_ids[-1], "approved")
-        set_patient_match_status(user_id, internal_ids[-2], "dismissed")
-    if external_ids:
-        set_patient_match_status(user_id, external_ids[-1], "referred")
+    # On the very first seed, show the whole lifecycle in the filters: one
+    # already added to a study, one referred out, one passed on.
+    if first_seed:
+        seeded = db.execute(
+            "SELECT id, kind FROM patient_matches WHERE user_id = ? ORDER BY id",
+            (user_id,)).fetchall()
+        internal_ids = [r["id"] for r in seeded if r["kind"] == "internal"]
+        external_ids = [r["id"] for r in seeded if r["kind"] == "external"]
+        if len(internal_ids) >= 2:
+            set_patient_match_status(user_id, internal_ids[-1], "approved")
+            set_patient_match_status(user_id, internal_ids[-2], "dismissed")
+        if external_ids:
+            set_patient_match_status(user_id, external_ids[-1], "referred")
 
 
 def seed_demo_campaigns(user_id):

@@ -5524,6 +5524,30 @@ def _seed_matches_if_demo():
             app.logger.exception("demo match seeding failed")
 
 
+def _match_source(user_id, counts):
+    """The internal patient panel the matches were surfaced from. Makes the
+    "you connected your records; here's what the nightly scan found" story
+    concrete. Patient-panel size is only shown in the demo (we don't know a
+    real clinic's panel size)."""
+    demo = _demo_mode_enabled() or _is_demo_account(g.user)
+    prof = db.get_site_profile(user_id)
+    name = ""
+    if prof is not None:
+        try:
+            name = (prof["org_name"] or "").strip()
+        except (IndexError, KeyError):
+            name = ""
+    if not name:
+        name = "Riverside Family Health" if demo else "Your clinic"
+    try:
+        studies = len(db.list_study_claims(user_id))
+    except Exception:
+        studies = 0
+    return {"name": name, "demo": demo, "patients": 1284 if demo else 0,
+            "studies": studies, "surfaced": counts.get("total", 0),
+            "new": counts.get("new", 0)}
+
+
 @app.route("/app/matching")
 @login_required
 def matching_page():
@@ -5533,8 +5557,9 @@ def matching_page():
     claims = db.list_study_claims(g.user["id"])
     matches = [_match_view(m) for m in db.list_patient_matches(g.user["id"])]
     counts = db.patient_match_counts(g.user["id"])
+    source = _match_source(g.user["id"], counts)
     return render_template("matching.html", claims=claims, matches=matches,
-                           counts=counts)
+                           counts=counts, source=source)
 
 
 @app.route("/app/matching/<int:match_id>")

@@ -3940,6 +3940,23 @@ main:focus { outline: none; }
   font-size: 11px; font-weight: 700; border-radius: var(--radius-pill);
   background: var(--accent); color: var(--accent-ink); }
 .app-head-badges { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.match-source { display: flex; align-items: center; justify-content: space-between;
+  gap: 16px; margin-bottom: 18px; }
+.match-source .ms-main { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.match-source .ms-ico { width: 34px; height: 34px; border-radius: var(--radius-pill);
+  background: var(--ok-bg); color: var(--green); display: flex; align-items: center;
+  justify-content: center; flex-shrink: 0; }
+.match-source .ms-ico .ico { width: 17px; height: 17px; }
+.match-source .ms-title { font-size: 14px; font-weight: 700; color: var(--ink); }
+.match-source .ms-sub { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+.match-source .ms-stat { text-align: right; flex-shrink: 0; }
+.match-source .ms-stat b { display: block; font-size: 22px; font-weight: 800;
+  letter-spacing: -.03em; color: var(--accent); }
+.match-source .ms-stat span { font-size: 11px; color: var(--faint); }
+@media (max-width: 720px) {
+  .match-source { flex-direction: column; align-items: flex-start; }
+  .match-source .ms-stat { text-align: left; }
+}
 .match-how { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 18px;
   padding: 12px 16px; border-radius: var(--radius-sm); background: var(--accent-soft);
   border: 1px solid var(--brand-border); color: var(--ink-soft);
