@@ -5515,9 +5515,16 @@ def _match_view(m):
 
 
 def _seed_matches_if_demo():
-    """Top up the demo match queue on demand so pre-existing demo DBs (seeded
-    before this feature shipped) still light up. No-op on real accounts."""
-    if _demo_mode_enabled() or _is_demo_account(g.user):
+    """Top up the demo match queue on demand. Fires for the demo account AND for
+    any logged-in study-team account while the site is still a pre-launch demo
+    (SITE_DEMO on) - matching is a newer surface than the rest of the demo
+    seeding, so accounts seeded before it existed (they already have studies, so
+    load_user won't re-seed them) still light up. Idempotent per patient_ref, so
+    it never duplicates. SITE_DEMO MUST be OFF before onboarding real sites (see
+    COMPLIANCE.md), which also turns this off."""
+    if not g.user:
+        return
+    if _demo_mode_enabled() or _is_demo_account(g.user) or _site_demo_enabled():
         try:
             db.seed_demo_patient_matches(g.user["id"])
         except Exception:
@@ -5529,7 +5536,8 @@ def _match_source(user_id, counts):
     "you connected your records; here's what the nightly scan found" story
     concrete. Patient-panel size is only shown in the demo (we don't know a
     real clinic's panel size)."""
-    demo = _demo_mode_enabled() or _is_demo_account(g.user)
+    demo = (_demo_mode_enabled() or _is_demo_account(g.user)
+            or _site_demo_enabled())
     prof = db.get_site_profile(user_id)
     name = ""
     if prof is not None:
