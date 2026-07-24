@@ -24,13 +24,31 @@
 
 <div class="app-split">
   <div>
-    {# ── 0. New candidate matches (from your records) ── #}
-    <div class="app-sec" id="matches">
-      <div class="app-sec-head">
-        {{ ic.icon('crosshair') }}<b>New candidate matches</b>
-        <span>Surfaced from your records, pre-screened. Add to a study or refer out.</span>
-        {% if match_counts and match_counts.new %}{{ ui.count(match_counts.new, 'brand') }}{% endif %}
-      </div>
+    {# Daily cockpit: 4 count tiles act as tabs; one worklist shows at a time so
+       the page isn't a long scroll. Reference info (visits, approvals) is in the
+       right rail. #}
+    <div class="work-tabs" role="tablist">
+      <button type="button" class="worktab triage-chip t-brand{{ ' zero' if not (match_counts and match_counts.new) }}"
+              role="tab" data-panel="matches" data-count="{{ match_counts.new if match_counts else 0 }}">
+        {{ ic.icon('crosshair') }}<span class="tc-n">{{ match_counts.new if match_counts else 0 }}</span><span class="tc-l">Matches</span>
+      </button>
+      <button type="button" class="worktab triage-chip t-danger{{ ' zero' if not reply_queue }}"
+              role="tab" data-panel="replies" data-count="{{ reply_queue|length }}">
+        {{ ic.icon('chat') }}<span class="tc-n">{{ reply_queue|length }}</span><span class="tc-l">Replies</span>
+      </button>
+      <button type="button" class="worktab triage-chip t-brand{{ ' zero' if not pending }}"
+              role="tab" data-panel="applicants" data-count="{{ pending|length }}">
+        {{ ic.icon('user-plus') }}<span class="tc-n">{{ pending|length }}</span><span class="tc-l">New applicants</span>
+      </button>
+      <button type="button" class="worktab triage-chip t-warn{{ ' zero' if not followups }}"
+              role="tab" data-panel="followups" data-count="{{ followups|length }}">
+        {{ ic.icon('sparkle') }}<span class="tc-n">{{ followups|length }}</span><span class="tc-l">Follow-ups</span>
+      </button>
+    </div>
+
+    {# panel: matches #}
+    <div class="work-panel" id="matches" data-panel="matches">
+      <p class="work-sub">Surfaced from your records, pre-screened. Add to a study or refer out.</p>
       {% if not new_matches %}
       <div class="app-card pad">{{ ui.empty('No new matches', 'New candidates from your records appear here as they are found.', 'check') }}</div>
       {% else %}
@@ -63,13 +81,9 @@
       {% endif %}
     </div>
 
-    {# ── 1. Replies waiting ── #}
-    <div class="app-sec" id="needs-reply">
-      <div class="app-sec-head">
-        {{ ic.icon('chat') }}<b>Replies waiting</b>
-        <span>A patient is waiting on you. Reply fast to keep momentum.</span>
-        {% if reply_queue %}{{ ui.count(reply_queue|length, 'danger') }}{% endif %}
-      </div>
+    {# panel: replies #}
+    <div class="work-panel" id="needs-reply" data-panel="replies" hidden>
+      <p class="work-sub">A patient is waiting on you. Reply fast to keep momentum.</p>
       {% if not reply_queue %}
       <div class="app-card pad">{{ ui.empty('Inbox zero', 'No one is waiting on a reply right now.', 'check') }}</div>
       {% else %}
@@ -92,13 +106,9 @@
       {% endif %}
     </div>
 
-    {# ── 2. Review new applicants ── #}
-    <div class="app-sec" id="to-review">
-      <div class="app-sec-head">
-        {{ ic.icon('user-plus') }}<b>Review new applicants</b>
-        <span>AI pre-screened — strongest fit first. You decide.</span>
-        {% if pending %}{{ ui.count(pending|length, 'danger') }}{% endif %}
-      </div>
+    {# panel: new applicants #}
+    <div class="work-panel" id="to-review" data-panel="applicants" hidden>
+      <p class="work-sub">AI pre-screened — strongest fit first. You decide.</p>
       {% if not pending %}
       <div class="app-card pad">{{ ui.empty('Nothing awaiting review', 'New applicants appear here the moment they apply.', 'check') }}</div>
       {% else %}
@@ -130,13 +140,9 @@
       {% endif %}
     </div>
 
-    {# ── 3. Needs follow-up ── #}
-    <div class="app-sec" id="follow-ups">
-      <div class="app-sec-head">
-        {{ ic.icon('sparkle') }}<b>Needs follow-up</b>
-        <span>People slipping through. Open one to draft a message when you want it.</span>
-        {% if followups %}{{ ui.count(followups|length, 'warn') }}{% endif %}
-      </div>
+    {# panel: follow-ups #}
+    <div class="work-panel" id="follow-ups" data-panel="followups" hidden>
+      <p class="work-sub">People slipping through. Open one to draft a message when you want it.</p>
       {% if not followups %}
       <div class="app-card pad">{{ ui.empty('All caught up', 'No one needs a nudge right now.', 'check') }}</div>
       {% else %}
@@ -212,5 +218,30 @@
     </div>
   </div>
 </div>
+
+<script>
+(function () {
+  var tabs = Array.prototype.slice.call(document.querySelectorAll('.work-tabs .worktab'));
+  var panels = Array.prototype.slice.call(document.querySelectorAll('.work-panel'));
+  if (!tabs.length) return;
+  function show(name) {
+    tabs.forEach(function (t) { t.classList.toggle('is-active', t.getAttribute('data-panel') === name); });
+    panels.forEach(function (p) { p.hidden = p.getAttribute('data-panel') !== name; });
+  }
+  tabs.forEach(function (t) {
+    t.addEventListener('click', function () { show(t.getAttribute('data-panel')); });
+  });
+  // Deep links (e.g. the bell -> #needs-reply) open the right tab.
+  var byHash = { '#matches': 'matches', '#needs-reply': 'replies',
+                 '#to-review': 'applicants', '#follow-ups': 'followups' };
+  var target = byHash[location.hash];
+  if (!target) {
+    // Default to the first tab that actually has work.
+    var first = tabs.filter(function (t) { return parseInt(t.getAttribute('data-count'), 10) > 0; })[0];
+    target = (first || tabs[0]).getAttribute('data-panel');
+  }
+  show(target);
+})();
+</script>
 {% endif %}
 {% endblock %}
