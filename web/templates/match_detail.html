@@ -9,10 +9,6 @@
 <div class="app-head">
   <div>
     <h1>{{ m.ref }} <span class="match-dem">{{ m.age }}{{ ('· ' ~ m.sex) if m.sex else '' }}</span></h1>
-    <p>
-      {% if m.kind == 'external' %}Surfaced for a trial at a partner site. Refer after the patient consents.
-      {% else %}Surfaced from your records for a study you run. Add them to your applicants when ready.{% endif %}
-    </p>
   </div>
   <div class="app-head-badges">
     {% if m.kind == 'external' %}{{ ui.badge('Partner site', 'violet', 'external') }}
@@ -86,12 +82,12 @@
       {% if m.status == 'new' %}
       <div class="rail-h">{{ ic.icon('arrow-right') }} Next step</div>
       {% if m.kind == 'external' %}
-      <p class="match-action-note">Once the patient hears about it from their own clinician and consents, send a secure referral to the trial site. They book the screening visit on their side.</p>
+      <p class="match-action-note">Refer to the trial site once the patient consents.</p>
       <form method="post" action="{{ url_for('approve_match', match_id=m.id) }}">
         {{ ui.btn('Send referral to ' ~ (m.site_name or 'trial site'), 'primary', 'block', type='submit', icon='send') }}
       </form>
       {% else %}
-      <p class="match-action-note">Add them to this study's applicant list as a likely-eligible candidate. You can then send the booking link for their screening visit.</p>
+      <p class="match-action-note">Add to this study's applicants, then send their booking link.</p>
       <form method="post" action="{{ url_for('approve_match', match_id=m.id) }}">
         {{ ui.btn('Add to my study', 'primary', 'block', type='submit', icon='plus') }}
       </form>
@@ -110,7 +106,6 @@
       <div class="rail-h">{{ ic.icon('x') }} Passed</div>
       <p class="match-action-note">You marked this as not a fit.</p>
       {% endif %}
-      <div class="match-compliance">{{ ic.icon('shield-check') }} Matching runs under your site's ethics approval. No identifiable data leaves BridgeMD without consent.</div>
     </div>
   </div>
 </div>
