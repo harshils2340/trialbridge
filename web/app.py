@@ -27,6 +27,7 @@ import pathlib
 import re
 import secrets
 import sys
+import threading
 import time
 import datetime as dt
 import csv
@@ -647,6 +648,96 @@ def _mask_ip(ip):
     return "\u2022\u2022\u2022"
 
 
+# --------------------------------------------------------------------------- #
+# Coarse geo for analytics. We resolve the visitor IP to an approximate area
+# (city/region/country) so the owner can see WHERE demand is - but we NEVER
+# store or log the raw IP, only the coarse area. Lookups are cached in-memory
+# and run in a small background pool, so a request is never blocked on the geo
+# provider: the event that triggered a cache miss simply logs with no area, and
+# later events for that visitor pick it up once the cache warms.
+# --------------------------------------------------------------------------- #
+_GEO_CACHE = OrderedDict()                       # ip -> (ts, {city,region,country})
+_GEO_INFLIGHT = set()                            # ips currently being resolved
+_GEO_LOCK = threading.Lock()
+_GEO_TTL = 12 * 3600
+_GEO_MAX = 5000
+_GEO_EMPTY = {"city": "", "region": "", "country": ""}
+# Provider URL template (no API key needed by default). Override with GEOIP_URL;
+# disable entirely with GEOIP_ENABLED=0.
+_GEO_URL = os.environ.get("GEOIP_URL", "https://ipapi.co/{ip}/json/")
+_GEO_ENABLED = os.environ.get("GEOIP_ENABLED", "1") == "1"
+_GEO_POOL = ThreadPoolExecutor(max_workers=3)
+
+
+def _is_private_ip(ip):
+    """True for loopback/private/link-local addresses we shouldn't geo-locate."""
+    ip = (ip or "").strip().lower()
+    if not ip or ip in ("127.0.0.1", "::1", "localhost"):
+        return True
+    if ip.startswith(("10.", "192.168.", "169.254.", "127.", "::",
+                      "fc", "fd", "fe80")):
+        return True
+    if ip.startswith("172."):
+        try:
+            return 16 <= int(ip.split(".")[1]) <= 31
+        except (ValueError, IndexError):
+            return False
+    return False
+
+
+def _geo_resolve(ip):
+    """Blocking IP -> area lookup that populates the cache. Runs ONLY in the
+    background pool so it never delays a request. Best-effort: on any error the
+    area is left blank."""
+    geo = dict(_GEO_EMPTY)
+    try:
+        url = _GEO_URL.format(ip=urllib.parse.quote(ip))
+        req = urllib.request.Request(url, headers={"User-Agent": "BridgeMD/1.0"})
+        with urllib.request.urlopen(req, timeout=3) as r:
+            data = json.load(r)
+        if isinstance(data, dict) and not data.get("error"):
+            geo = {
+                "city": str(data.get("city") or "")[:80],
+                "region": str(data.get("region")
+                              or data.get("region_name") or "")[:80],
+                "country": str(data.get("country_name")
+                               or data.get("country") or "")[:80],
+            }
+    except Exception:
+        pass
+    with _GEO_LOCK:
+        _GEO_CACHE[ip] = (time.time(), geo)
+        _GEO_CACHE.move_to_end(ip)
+        while len(_GEO_CACHE) > _GEO_MAX:
+            _GEO_CACHE.popitem(last=False)
+        _GEO_INFLIGHT.discard(ip)
+    return geo
+
+
+def _area_from_ip(ip):
+    """Approximate area for the current visitor IP (analytics only). Never
+    stores/returns the raw IP. Cache hit -> instant; cache miss -> kicks a
+    background resolve and returns blank so the request isn't blocked."""
+    ip = (ip or "").strip()
+    if not _GEO_ENABLED or _is_private_ip(ip):
+        return _GEO_EMPTY
+    with _GEO_LOCK:
+        hit = _GEO_CACHE.get(ip)
+        if hit and (time.time() - hit[0]) < _GEO_TTL:
+            _GEO_CACHE.move_to_end(ip)
+            return hit[1]
+        already = ip in _GEO_INFLIGHT
+        if not already:
+            _GEO_INFLIGHT.add(ip)
+    if not already:
+        try:
+            _GEO_POOL.submit(_geo_resolve, ip)
+        except Exception:
+            with _GEO_LOCK:
+                _GEO_INFLIGHT.discard(ip)
+    return _GEO_EMPTY
+
+
 # Substrings that mark a request as automated (crawlers, scrapers, monitors,
 # link previewers, headless browsers, CLI HTTP clients). Matched case-insensitively
 # against the User-Agent. This is the standard, low-maintenance way to keep bots
@@ -887,11 +978,14 @@ def _log_event(name, detail=None):
         if _analytics_ignored():
             return
         attr = getattr(g, "attr", {}) or {}
+        area = _area_from_ip(_client_ip())
         db.log_web_event(
             name, visitor=getattr(g, "visitor_id", ""), path=request.path,
             source=attr.get("s", ""), medium=attr.get("m", ""),
             campaign=attr.get("c", ""), referrer=attr.get("r", ""),
-            detail=detail, ua=request.headers.get("User-Agent", ""))
+            detail=detail, ua=request.headers.get("User-Agent", ""),
+            city=area.get("city", ""), region=area.get("region", ""),
+            country=area.get("country", ""))
     except Exception:
         pass
 
@@ -5466,6 +5560,7 @@ def study_home():
     has_calendar = bool(db.get_site_calendar_url(g.user["id"]))
 
     # ── Right rail 1: upcoming visits (next 14 days), soonest first. ──
+    _seed_demo_visits_if_demo(items)
     upcoming = []
     for it in items:
         for v in db.get_visits(it["lead"]["id"]):
@@ -5542,6 +5637,51 @@ def _match_view(m):
         "not_met": m.get("not_met") or [], "rationale": m.get("rationale"),
         "status": m.get("status"), "lead_id": m.get("lead_id"),
     }
+
+
+def _seed_demo_visits_if_demo(items):
+    """Make the dashboard's Upcoming-visits rail look real in demo mode by
+    booking a few near-future screening visits on revealed candidates that
+    don't already have one. Idempotent: converges to ~3 upcoming visits and
+    then does nothing, so it won't pile up on refresh. Off once SITE_DEMO is
+    off (before onboarding real sites)."""
+    if not g.user:
+        return
+    if not (_demo_mode_enabled() or _is_demo_account(g.user) or _site_demo_enabled()):
+        return
+    now = dt.datetime.now()
+    horizon = now + dt.timedelta(days=14)
+    have, candidates = 0, []
+    for it in items:
+        l = it["lead"]
+        if not l["revealed"] or l["status"] in db.LEAD_CLOSED:
+            continue
+        has_future = False
+        for v in db.get_visits(l["id"]):
+            w = _parse_ts(v["visit_at"])
+            if w and now <= w <= horizon:
+                has_future = True
+                break
+        if has_future:
+            have += 1
+        else:
+            candidates.append(l)
+    slots = [(1, 10), (2, 14), (4, 9), (6, 11)]  # (days ahead, hour) — varied
+    i = 0
+    for l in candidates:
+        if have >= 3:
+            break
+        days, hour = slots[i % len(slots)]
+        when = (now + dt.timedelta(days=days)).replace(
+            hour=hour, minute=0, second=0, microsecond=0)
+        try:
+            db.add_visit(l["id"], when.strftime("%Y-%m-%d %H:%M"),
+                         kind="screening", location=l["site"] or "Study site",
+                         note="Bring a photo ID. Allow about 90 minutes.")
+            have += 1
+            i += 1
+        except Exception:
+            app.logger.exception("demo visit seeding failed")
 
 
 def _seed_matches_if_demo():
@@ -5714,8 +5854,13 @@ def owner_analytics():
     web = db.web_funnel_stats(days=days)
     recent = db.recent_searches(days=days, limit=40)
     series = db.web_timeseries(days=days)
+    areas = db.web_areas(days=days)
+    unmet = db.unmet_demand(days=days)
+    trials = db.top_trials(days=days)
+    devices = db.device_breakdown(days=days)
     return render_template("analytics.html", web=web, recent=recent, days=days,
-                           series=series,
+                           series=series, areas=areas, unmet=unmet,
+                           top_trials=trials, devices=devices,
                            your_ip_masked=_mask_ip(_client_ip()),
                            ip_ignored=_analytics_ignored())
 

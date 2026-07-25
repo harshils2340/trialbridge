@@ -995,6 +995,12 @@ _MIGRATIONS = {
         # User-agent kept for bot auditing only (not PHI). Bot traffic is
         # filtered before insert, so this should only ever hold real browsers.
         "ua": "TEXT DEFAULT ''",
+        # Coarse geo derived from the visitor IP at log time (analytics only).
+        # The raw IP is NEVER stored - only city/region/country, so we can see
+        # roughly WHERE demand is without holding personal data.
+        "city": "TEXT DEFAULT ''",
+        "region": "TEXT DEFAULT ''",
+        "country": "TEXT DEFAULT ''",
     },
 }
 
@@ -4869,10 +4875,12 @@ _WEB_FUNNEL_LABELS = {
 
 
 def log_web_event(name, visitor="", path="", source="", medium="",
-                  campaign="", referrer="", detail=None, ua=""):
+                  campaign="", referrer="", detail=None, ua="",
+                  city="", region="", country=""):
     """Record one on-site action. Best-effort; never raises. `detail` is a small
     dict of non-identifying facts (e.g. term, result count, nct). `ua` is the
-    browser user-agent, stored only for bot auditing."""
+    browser user-agent, stored only for bot auditing. `city`/`region`/`country`
+    are coarse geo (analytics only) - the raw IP is never stored."""
     name = (name or "").strip()
     if not name:
         return
@@ -4884,10 +4892,12 @@ def log_web_event(name, visitor="", path="", source="", medium="",
         d = get_db()
         d.execute(
             "INSERT INTO web_events (ts, visitor, name, path, source, medium, "
-            "campaign, referrer, detail, ua) VALUES (?,?,?,?,?,?,?,?,?,?)",
+            "campaign, referrer, detail, ua, city, region, country) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (now(), (visitor or "")[:64], name[:40], (path or "")[:200],
              (source or "")[:80], (medium or "")[:40], (campaign or "")[:80],
-             (referrer or "")[:200], payload[:500], (ua or "")[:200]))
+             (referrer or "")[:200], payload[:500], (ua or "")[:200],
+             (city or "")[:80], (region or "")[:80], (country or "")[:80]))
         d.commit()
     except Exception:
         pass
@@ -4987,11 +4997,135 @@ def web_funnel_stats(days=30, limit_terms=10, limit_sources=10):
             "visits": funnel[0]["unique"] if funnel else 0,
             "visit_hits": funnel[0]["count"] if funnel else 0,
             "searches": funnel[1]["count"] if len(funnel) > 1 else 0,
+            "trial_views": next(
+                (f["unique"] for f in funnel if f["key"] == "trial_view"), 0),
             "applies": funnel[-1]["unique"] if funnel else 0,
             "visit_to_apply": round(
                 (funnel[-1]["unique"] / top_u * 100.0), 1) if top_u else 0.0,
         },
     }
+
+
+def unmet_demand(days=30, limit=10):
+    """Searches that returned zero results, aggregated by term. This is the
+    highest-signal card for the operator: each is real demand with no trial to
+    send them to - a candidate to seed a study or recruit a site for."""
+    d = get_db()
+    since = _web_since(days)
+    terms = {}
+    for r in d.execute(
+        "SELECT detail FROM web_events WHERE name = 'search' AND ts >= ? "
+        "AND detail != ''", (since,)).fetchall():
+        try:
+            det = json.loads(r["detail"])
+        except (TypeError, ValueError):
+            continue
+        term = (det.get("q") or "").strip()
+        if not term:
+            continue
+        t = terms.setdefault(term.lower(), {"term": term, "searches": 0, "zero": 0})
+        t["searches"] += 1
+        if int(det.get("results") or 0) == 0:
+            t["zero"] += 1
+    out = [t for t in terms.values() if t["zero"] > 0]
+    out.sort(key=lambda x: (-x["zero"], -x["searches"]))
+    return out[:limit]
+
+
+def top_trials(days=30, limit=10):
+    """Most-viewed trials over the window, with how many went on to apply. This
+    localizes the view->apply leak: a trial with lots of views and no applies is
+    where interest is dying (bad fit, weak listing, or unclaimed/no follow-up)."""
+    d = get_db()
+    since = _web_since(days)
+    views = {}
+    for r in d.execute(
+        "SELECT detail, visitor FROM web_events WHERE name = 'trial_view' "
+        "AND ts >= ? AND detail != ''", (since,)).fetchall():
+        try:
+            det = json.loads(r["detail"])
+        except (TypeError, ValueError):
+            continue
+        nct = (det.get("nct") or "").strip()
+        if not nct:
+            continue
+        t = views.setdefault(nct, {"nct": nct, "views": 0,
+                                   "visitors": set(), "applies": 0})
+        t["views"] += 1
+        if r["visitor"]:
+            t["visitors"].add(r["visitor"])
+    for r in d.execute(
+        "SELECT detail FROM web_events WHERE name = 'apply' AND ts >= ? "
+        "AND detail != ''", (since,)).fetchall():
+        try:
+            det = json.loads(r["detail"])
+        except (TypeError, ValueError):
+            continue
+        nct = (det.get("nct") or "").strip()
+        if nct in views:
+            views[nct]["applies"] += 1
+    out = []
+    for nct, t in views.items():
+        row = d.execute(
+            "SELECT title FROM leads WHERE nct = ? AND title != '' "
+            "ORDER BY id DESC LIMIT 1", (nct,)).fetchone()
+        uv = len(t["visitors"])
+        out.append({
+            "nct": nct, "title": (row["title"] if row else ""),
+            "views": t["views"], "visitors": uv, "applies": t["applies"],
+            "view_to_apply": round(t["applies"] / uv * 100.0, 0) if uv else 0.0,
+        })
+    out.sort(key=lambda x: (-x["views"], -x["visitors"]))
+    return out[:limit]
+
+
+def device_breakdown(days=30):
+    """Rough device split (mobile/tablet/desktop) of real visitors, from the
+    user-agent. Tells the operator whether to prioritize the mobile experience."""
+    d = get_db()
+    since = _web_since(days)
+    buckets = {"Mobile": set(), "Tablet": set(), "Desktop": set()}
+    for r in d.execute(
+        "SELECT ua, visitor FROM web_events WHERE name = 'visit' AND ts >= ?",
+        (since,)).fetchall():
+        vis = r["visitor"] or ""
+        if not vis:
+            continue
+        ua = (r["ua"] or "").lower()
+        if "ipad" in ua or "tablet" in ua:
+            buckets["Tablet"].add(vis)
+        elif "mobi" in ua or "iphone" in ua or "android" in ua:
+            buckets["Mobile"].add(vis)
+        else:
+            buckets["Desktop"].add(vis)
+    total = sum(len(s) for s in buckets.values()) or 1
+    return [{"device": k, "visitors": len(v),
+             "pct": round(len(v) / total * 100.0, 0)}
+            for k, v in buckets.items() if v]
+
+
+def web_areas(days=30, limit=12):
+    """Coarse geographic breakdown of visitors over the last `days`, grouped by
+    country/region/city (derived from IP at log time; the raw IP is never
+    stored). Returns the top areas by unique visitors, plus how many visitors
+    couldn't be located (private IP, lookup miss, or geo disabled)."""
+    d = get_db()
+    since = _web_since(days)
+    rows = d.execute(
+        "SELECT country, region, city, COUNT(DISTINCT visitor) u, COUNT(*) c "
+        "FROM web_events WHERE ts >= ? "
+        "AND (city != '' OR region != '' OR country != '') "
+        "GROUP BY country, region, city ORDER BY u DESC, c DESC LIMIT ?",
+        (since, limit)).fetchall()
+    areas = []
+    for r in rows:
+        label = ", ".join(p for p in (r["city"], r["region"], r["country"]) if p)
+        areas.append({"area": label or "Unknown",
+                      "visitors": (r["u"] or 0), "hits": (r["c"] or 0)})
+    unknown = d.execute(
+        "SELECT COUNT(DISTINCT visitor) u FROM web_events WHERE ts >= ? "
+        "AND city = '' AND region = '' AND country = ''", (since,)).fetchone()
+    return {"areas": areas, "unknown_visitors": (unknown["u"] or 0)}
 
 
 def clear_web_events():

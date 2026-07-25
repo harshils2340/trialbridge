@@ -39,6 +39,7 @@
 <div class="stats">
   <div class="stat"><div class="l">{{ ic.icon('activity', 'ico stat-ico') }}Visitors</div><div class="n">{{ web.totals.visits }}</div></div>
   <div class="stat"><div class="l">{{ ic.icon('search', 'ico stat-ico') }}Searches</div><div class="n">{{ web.totals.searches }}</div></div>
+  <div class="stat"><div class="l">{{ ic.icon('file', 'ico stat-ico') }}Trial views</div><div class="n">{{ web.totals.trial_views }}</div></div>
   <div class="stat"><div class="l">{{ ic.icon('user-plus', 'ico stat-ico') }}Applied</div><div class="n">{{ web.totals.applies }}</div></div>
   <div class="stat accent"><div class="l">{{ ic.icon('award', 'ico stat-ico') }}Visit&rarr;Apply</div><div class="n">{{ web.totals.visit_to_apply }}%</div></div>
 </div>
@@ -270,6 +271,27 @@
 </div>
 
 <div class="card dash-card">
+  <div class="section-title"><h2>Unmet demand</h2></div>
+  {% if unmet %}
+  <table class="dash-table">
+    <thead><tr><th>Search</th><th>Zero-result</th><th>Total searches</th></tr></thead>
+    <tbody>
+      {% for u in unmet %}
+      <tr>
+        <td><span class="dash-trial-title">{{ u.term }}</span></td>
+        <td><span class="dash-conv">{{ u.zero }}</span></td>
+        <td>{{ u.searches }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p class="site-hint">People searched these and found <strong>nothing</strong>. Each is a candidate to seed a study for, recruit a site, or route to a trial manually.</p>
+  {% else %}
+  {{ ui.empty('No unmet demand yet', 'Searches that return zero results will collect here — your clearest signal of what to build or recruit next.', 'search') }}
+  {% endif %}
+</div>
+
+<div class="card dash-card">
   <div class="section-title"><h2>On-site funnel</h2></div>
   {% if web.totals.visit_hits %}
   <table class="dash-table">
@@ -294,6 +316,32 @@
 </div>
 
 <div class="card dash-card">
+  <div class="section-title"><h2>Most-viewed trials</h2></div>
+  {% if top_trials %}
+  <table class="dash-table">
+    <thead><tr><th>Trial</th><th>Viewers</th><th>Views</th><th>Applied</th><th>View&rarr;Apply</th></tr></thead>
+    <tbody>
+      {% for t in top_trials %}
+      <tr>
+        <td>
+          <span class="dash-trial-title">{{ t.title or t.nct }}</span>
+          {% if t.title %}<span class="dash-src-sub">{{ t.nct }}</span>{% endif %}
+        </td>
+        <td>{{ t.visitors }}</td>
+        <td>{{ t.views }}</td>
+        <td>{{ t.applies }}</td>
+        <td>{% if t.applies %}{{ t.view_to_apply|int }}%{% else %}<span class="dash-conv">0%</span>{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p class="site-hint">Where interest is landing. A trial with lots of viewers but <strong>no applies</strong> is a leak — bad fit, a weak listing, or an unclaimed trial with no follow-up.</p>
+  {% else %}
+  {{ ui.empty('No trial views yet', 'Once visitors open a trial, the most-viewed ones show here.', 'file') }}
+  {% endif %}
+</div>
+
+<div class="card dash-card">
   <div class="section-title"><h2>Where visitors come from</h2></div>
   {% if web.sources %}
   <table class="dash-table">
@@ -312,6 +360,48 @@
   <p class="site-hint">Tag links with <code>?utm_source=reddit&amp;utm_campaign=post_name</code> to see exactly which post drove each visit.</p>
   {% else %}
   {{ ui.empty('No source data yet', 'Add UTM tags to your links to attribute traffic.', 'activity') }}
+  {% endif %}
+</div>
+
+<div class="card dash-card">
+  <div class="section-title"><h2>Where visitors are</h2></div>
+  {% if areas and areas.areas %}
+  <table class="dash-table">
+    <thead><tr><th>Area</th><th>Visitors</th><th>Events</th></tr></thead>
+    <tbody>
+      {% for a in areas.areas %}
+      <tr>
+        <td><span class="dash-src">{{ a.area }}</span></td>
+        <td>{{ a.visitors }}</td>
+        <td>{{ a.hits }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p class="site-hint">Approximate area from IP (city/region/country) &mdash; the raw IP is never stored.{% if areas.unknown_visitors %} {{ areas.unknown_visitors }} visitor(s) couldn't be located.{% endif %}</p>
+  {% else %}
+  {{ ui.empty('No location data yet', 'Visitor areas will show here once real traffic comes in.', 'activity') }}
+  {% endif %}
+</div>
+
+<div class="card dash-card">
+  <div class="section-title"><h2>Devices</h2></div>
+  {% if devices %}
+  <table class="dash-table">
+    <thead><tr><th>Device</th><th>Visitors</th><th>Share</th></tr></thead>
+    <tbody>
+      {% for dv in devices %}
+      <tr>
+        <td><span class="dash-src">{{ dv.device }}</span></td>
+        <td>{{ dv.visitors }}</td>
+        <td>{{ dv.pct|int }}%</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p class="site-hint">If most visitors are on mobile, prioritize the mobile apply flow.</p>
+  {% else %}
+  {{ ui.empty('No device data yet', 'Visitor device types will show here once real traffic comes in.', 'phone') }}
   {% endif %}
 </div>
 {% endblock %}
