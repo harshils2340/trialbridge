@@ -5465,6 +5465,7 @@ def study_home():
     rows = db.list_leads_for_user(g.user["id"])
     recon = db.latest_reconciliation_for_leads([r["id"] for r in rows])
     items = [_decode_lead(r, recon.get(r["id"])) for r in rows]
+    _seed_demo_replies_if_demo(items)
     now = dt.datetime.now()
     QUIET_DAYS = 3
 
@@ -5637,6 +5638,55 @@ def _match_view(m):
         "not_met": m.get("not_met") or [], "rationale": m.get("rationale"),
         "status": m.get("status"), "lead_id": m.get("lead_id"),
     }
+
+
+def _seed_demo_replies_if_demo(items):
+    """Make the dashboard's Replies tab look real in demo mode by putting a few
+    revealed candidates into a 'patient wrote last, waiting on you' state - the
+    #1 daily action a coordinator does. Idempotent: converges to ~3 awaiting
+    replies and then does nothing (each seeded thread stays patient-last, so it
+    keeps counting and no new ones are added). Off once SITE_DEMO is off, before
+    onboarding real sites."""
+    if not g.user:
+        return
+    if not (_demo_mode_enabled() or _is_demo_account(g.user) or _site_demo_enabled()):
+        return
+    TARGET = 3
+    openers = [
+        "Hi {first}, thanks for applying - you're a strong fit. Any questions "
+        "before we book your screening visit?",
+        "Hi {first}, you've cleared our initial review. When works for a quick "
+        "screening call this week?",
+        "Hi {first}, welcome! I'm your study coordinator - happy to help with "
+        "anything before your first visit.",
+    ]
+    questions = [
+        "Thanks! Roughly how many visits are involved, and is parking available?",
+        "Sounds good - mornings work best for me. Is Thursday possible?",
+        "Appreciate it! Will taking part affect my regular care?",
+    ]
+    have, candidates = 0, []
+    for it in items:
+        l = it["lead"]
+        if not l["revealed"] or l["status"] in db.LEAD_CLOSED or l["status"] == "enrolled":
+            continue
+        msgs = db.get_messages(l["id"])
+        awaiting = bool(db.lead_unread_for_site(l["id"])) or (
+            msgs and msgs[-1]["sender"] == "patient")
+        if awaiting:
+            have += 1
+        else:
+            candidates.append((l, msgs))
+    i = 0
+    for l, msgs in candidates:
+        if have >= TARGET:
+            break
+        first = (l["name"] or "there").split()[0]
+        if not any(m["sender"] in ("site", "patient") for m in msgs):
+            db.add_message(l["id"], "site", openers[i % len(openers)].format(first=first))
+        db.add_message(l["id"], "patient", questions[i % len(questions)])
+        have += 1
+        i += 1
 
 
 def _seed_demo_visits_if_demo(items):
