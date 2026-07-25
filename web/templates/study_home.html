@@ -15,10 +15,6 @@
 <div class="app-head">
   <div>
     <h1>{{ greeting }}{% if user['name'] %}, {{ user['name'].split()[0] }}{% endif %}</h1>
-    <p>
-      {% if todo_total %}{{ todo_total }} thing{{ '' if todo_total == 1 else 's' }} need you today — work top to bottom and you're done.
-      {% else %}You're all caught up. Nothing needs you right now — enjoy it.{% endif %}
-    </p>
   </div>
 </div>
 
