@@ -28,10 +28,6 @@
        the page isn't a long scroll. Reference info (visits, approvals) is in the
        right rail. #}
     <div class="work-tabs" role="tablist">
-      <button type="button" class="worktab triage-chip t-brand{{ ' zero' if not (match_counts and match_counts.new) }}"
-              role="tab" data-panel="matches" data-count="{{ match_counts.new if match_counts else 0 }}">
-        {{ ic.icon('crosshair') }}<span class="tc-n">{{ match_counts.new if match_counts else 0 }}</span><span class="tc-l">Matches</span>
-      </button>
       <button type="button" class="worktab triage-chip t-danger{{ ' zero' if not reply_queue }}"
               role="tab" data-panel="replies" data-count="{{ reply_queue|length }}">
         {{ ic.icon('chat') }}<span class="tc-n">{{ reply_queue|length }}</span><span class="tc-l">Replies</span>
@@ -43,6 +39,10 @@
       <button type="button" class="worktab triage-chip t-warn{{ ' zero' if not followups }}"
               role="tab" data-panel="followups" data-count="{{ followups|length }}">
         {{ ic.icon('sparkle') }}<span class="tc-n">{{ followups|length }}</span><span class="tc-l">Follow-ups</span>
+      </button>
+      <button type="button" class="worktab triage-chip t-brand{{ ' zero' if not (match_counts and match_counts.new) }}"
+              role="tab" data-panel="matches" data-count="{{ match_counts.new if match_counts else 0 }}">
+        {{ ic.icon('crosshair') }}<span class="tc-n">{{ match_counts.new if match_counts else 0 }}</span><span class="tc-l">Matches</span>
       </button>
     </div>
 
@@ -191,31 +191,6 @@
         </div>
       </a>
       {% endfor %}
-      {% endif %}
-    </div>
-
-    <div class="app-card pad" id="approvals" style="margin-bottom:16px;">
-      <div class="rail-h">{{ ic.icon('file-check') }} Waiting on approval{% if docs_pending_total %} · {{ docs_pending_total }}{% endif %}</div>
-      {% if not docs_pending %}
-      <div class="app-sub" style="font-size:13px;color:var(--faint);">No documents need a decision.</div>
-      {% else %}
-      <div class="rail-docs">
-        {% for d in docs_pending %}
-        <a class="rail-doc" href="{{ url_for('document_detail', doc_id=d.id) }}">
-          <div class="rail-doc-title">{{ d.title }}</div>
-          <div class="rail-doc-meta">
-            {{ ui.badge(d.status_label, 'warn' if d.pending else 'info') }}
-            {% if d.nct %}<span class="rail-doc-nct">{{ d.nct }}</span>{% endif %}
-          </div>
-        </a>
-        {% endfor %}
-      </div>
-      {% if not can_approve %}
-      <div class="verdict-fine" style="margin-top:10px;">You can review these; a PI or coordinator signs off.</div>
-      {% endif %}
-      {% if docs_pending_total > docs_pending|length %}
-      <a href="{{ url_for('documents_workspace') }}" class="rail-more">View all {{ docs_pending_total }} →</a>
-      {% endif %}
       {% endif %}
     </div>
   </div>

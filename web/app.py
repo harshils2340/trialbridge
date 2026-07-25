@@ -5511,8 +5511,10 @@ def study_home():
     new_matches = [_match_view(m)
                    for m in db.list_patient_matches(g.user["id"], status="new")][:4]
 
-    todo_total = (len(reply_queue) + len(pending) + len(followups)
-                  + docs_pending_total + match_counts.get("new", 0))
+    # Hero count = real recruiting work the coordinator does today. Deliberately
+    # excludes regulatory-doc approvals (PI/regulatory role) and internal matches
+    # (a pre-launch/EHR feature) so the morning reads light and honest.
+    todo_total = len(reply_queue) + len(pending) + len(followups)
 
     hour = now.hour
     greeting = ("Good morning" if hour < 12
