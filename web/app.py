@@ -524,10 +524,6 @@ def _seed_demo_surfaces(user_id=None):
         _seed_demo_documents()
     except Exception:
         app.logger.exception("demo document seeding failed")
-    try:
-        db.seed_demo_trial_documents(user_id)
-    except Exception:
-        app.logger.exception("demo trial-document seeding failed")
 
 
 def _seed_demo_documents():
@@ -5491,19 +5487,6 @@ def study_home():
     upcoming.sort(key=lambda x: x["when"])
     upcoming = upcoming[:6]
 
-    # ── Right rail 2: documents waiting on a decision (PI/coordinator sign-off). ──
-    docs_pending = []
-    for d in db.list_documents(g.user["id"]):
-        if d["status"] not in ("pending", "in_review"):
-            continue
-        docs_pending.append({
-            "id": d["id"], "title": d["title"], "nct": d["nct"] or "",
-            "status_label": db.DOC_STATUS_LABELS.get(d["status"], d["status"]),
-            "pending": d["status"] == "pending"})
-    docs_pending_total = len(docs_pending)
-    docs_pending = docs_pending[:5]
-    can_approve = db.can_approve_docs(g.user["id"])
-
     # ── New candidate matches from the clinic's own records (the hero: fresh,
     # pre-screened supply). Top few new ones surface here; the rest live on the
     # Matches page. ──
@@ -5524,9 +5507,7 @@ def study_home():
     return render_template(
         "study_home.html", claims=claims, reply_queue=reply_queue, pending=pending,
         followups=followups, has_calendar=has_calendar, upcoming=upcoming,
-        docs_pending=docs_pending, new_matches=new_matches,
-        match_counts=match_counts,
-        docs_pending_total=docs_pending_total, can_approve=can_approve,
+        new_matches=new_matches, match_counts=match_counts,
         todo_total=todo_total, greeting=greeting,
         org=(db.get_site_profile(g.user["id"]) or {}))
 
@@ -8546,139 +8527,6 @@ def intake_import():
         flash("Couldn't read that CSV. Expected columns: name, email, phone, notes.",
               "error")
     return redirect(url_for("intake_page"))
-
-
-_DOC_STATUS_TONE = {"approved": "ok", "signed": "ok", "in_review": "info",
-                    "pending": "warn", "returned": "danger"}
-_DOC_PARTY_LABEL = {"patient": "Participant", "investigator": "Investigator (PI)",
-                    "coordinator": "Coordinator", "sponsor": "Sponsor"}
-
-
-def _own_document_or_404(doc_id):
-    """Fetch a document and 404 unless it belongs to the current team (any org
-    member's document, or one under a study the team has claimed)."""
-    doc = db.get_document(doc_id)
-    if not doc:
-        abort(404)
-    members = set(db.org_member_ids(g.user["id"]))
-    if doc["user_id"] in members:
-        return doc
-    if doc["nct"] and doc["nct"] in db.user_claimed_ncts(g.user["id"]):
-        return doc
-    abort(404)
-
-
-def _doc_view(doc):
-    """Shape a document row for the workspace UI."""
-    status = doc["status"]
-    party = doc["party"]
-    return {
-        "id": doc["id"],
-        "title": doc["title"],
-        "category": doc["category"],
-        "category_label": db.DOC_CATEGORY_LABELS.get(
-            doc["category"], (doc["category"] or "").title()),
-        "party": party,
-        "party_label": _DOC_PARTY_LABEL.get(party, (party or "").title()),
-        "party_name": doc["party_name"] or "",
-        "version": doc["version"] or "",
-        "status": status,
-        "status_label": db.DOC_STATUS_LABELS.get(status, (status or "").title()),
-        "status_tone": _DOC_STATUS_TONE.get(status, "neutral"),
-        "summary": doc["summary"] or "",
-        "nct": doc["nct"] or "",
-        "updated": _rel_time(doc["updated_at"]),
-        "due": doc["due_at"] or "",
-        "initials": _initials(doc["party_name"] or doc["title"]),
-        # Only pending/in-review docs need a human decision.
-        "actionable": status in ("pending", "in_review"),
-    }
-
-
-def _event_view(ev):
-    label = {"created": "Added to workspace", "sent": "Routed for review",
-             "received": "Returned by participant", "reviewed": "Marked in review",
-             "approved": "Approved", "returned": "Sent back",
-             "viewed": "Viewed", "signed": "Signed"}.get(ev["action"],
-                                                          (ev["action"] or "").title())
-    return {"label": label, "action": ev["action"], "meaning": ev["meaning"] or "",
-            "actor": ev["actor"] or "System", "role": ev["actor_role"] or "",
-            "note": ev["note"] or "", "when": ev["created_at"],
-            "rel": _rel_time(ev["created_at"])}
-
-
-@app.route("/app/documents")
-@login_required
-def documents_workspace():
-    """PI / coordinator document workspace: the trial's essential documents +
-    patient consent, routed for the investigator to REVIEW and APPROVE. This is
-    an internal approval record with an append-only audit trail - NOT a binding
-    21 CFR Part 11 e-signature (those + patient eConsent defer to a validated
-    vendor; see COMPLIANCE.md). KPI: shortens the consent/paperwork wait that
-    stalls screened -> enrolled."""
-    cat = request.args.get("cat", "").strip() or None
-    docs = [_doc_view(d) for d in db.list_documents(g.user["id"], category=cat)]
-    counts = db.document_counts(g.user["id"])
-    stats = {
-        "pending": counts.get("pending", 0),
-        "in_review": counts.get("in_review", 0),
-        "approved": counts.get("approved", 0) + counts.get("signed", 0),
-        "total": sum(counts.values()),
-    }
-    return render_template(
-        "documents.html", docs=docs, stats=stats, active_cat=cat or "all",
-        categories=db.DOC_CATEGORY_LABELS)
-
-
-@app.route("/app/documents/<int:doc_id>")
-@login_required
-def document_detail(doc_id):
-    """One document: plain-language preview, the review/approve panel, and the
-    immutable audit trail (who did what, when, and the meaning of each action)."""
-    doc = _own_document_or_404(doc_id)
-    db.add_document_event(doc_id, "viewed",
-                          actor=(g.user["email"] or "Team member"),
-                          actor_role="Study team")
-    events = [_event_view(e) for e in db.list_document_events(doc_id)]
-    return render_template("document_detail.html", doc=_doc_view(doc),
-                           raw=doc, events=events)
-
-
-@app.route("/app/documents/<int:doc_id>/decision", methods=["POST"])
-@login_required
-def document_decision(doc_id):
-    """Record a review decision + append it to the audit trail. 'approve' logs an
-    internal approval (name + timestamp + meaning), NOT a Part 11 signature."""
-    _own_document_or_404(doc_id)
-    action = request.form.get("action", "").strip()
-    note = request.form.get("note", "").strip()
-    signer = request.form.get("signer", "").strip() or (g.user["email"] or "Study team")
-    my_role = db.member_role(g.user["id"])
-    role = (request.form.get("role", "").strip()
-            or db.ORG_ROLE_LABELS.get(my_role, "Principal Investigator"))
-    # Approving/signing is a privileged action: only PI or coordinator. Research
-    # students have full visibility and can review/return, but not sign off.
-    if action == "approve" and not db.can_approve_docs(g.user["id"]):
-        flash("Only a PI or coordinator can approve documents. You can review or "
-              "send back for changes.", "error")
-        return redirect(url_for("document_detail", doc_id=doc_id))
-    if action == "approve":
-        db.set_document_status(doc_id, "approved", actor=signer, actor_role=role,
-                               meaning="Approval",
-                               note=note or "Reviewed and approved.")
-        flash("Approval recorded with a timestamped audit entry.", "ok")
-    elif action == "review":
-        db.set_document_status(doc_id, "in_review", actor=signer, actor_role=role,
-                               meaning="Review", note=note or "Marked in review.")
-        flash("Marked in review.", "ok")
-    elif action == "return":
-        db.set_document_status(doc_id, "returned", actor=signer, actor_role=role,
-                               meaning="Review",
-                               note=note or "Sent back for changes.")
-        flash("Sent back for changes.", "ok")
-    else:
-        flash("Unknown action.", "error")
-    return redirect(url_for("document_detail", doc_id=doc_id))
 
 
 @app.route("/app/team")
