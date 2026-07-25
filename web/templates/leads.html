@@ -46,11 +46,15 @@
   {% if not queue %}
   <div class="pad">{{ ui.empty('No applicants match', ('Nothing matches &ldquo;' ~ q ~ '&rdquo; right now. Try a different search or clear it.') if q else 'No applicants in this study yet.', 'search') }}</div>
   {% else %}
-  <table class="app-table" id="queueTable">
+  <table class="app-table sortable" id="queueTable">
     <thead>
       <tr>
-        <th>Applicant</th><th>Verdict</th><th>Score</th><th>Stage</th>
-        <th>Source</th><th>Last activity</th>
+        <th class="sort" data-sort="text">Applicant<span class="sort-ar"></span></th>
+        <th class="sort" data-sort="text">Verdict<span class="sort-ar"></span></th>
+        <th class="sort" data-sort="num">Score<span class="sort-ar"></span></th>
+        <th class="sort" data-sort="text">Stage<span class="sort-ar"></span></th>
+        <th class="sort" data-sort="text">Source<span class="sort-ar"></span></th>
+        <th class="sort" data-sort="time">Last activity<span class="sort-ar"></span></th>
       </tr>
     </thead>
     <tbody>
@@ -59,7 +63,9 @@
       <tr class="link" onclick="location.href='{{ url_for('applicant_detail', lead_id=q.id) }}'"
           data-verdict="{{ q.verdict.verdict }}" data-status="{{ q.status }}"
           data-unread="{{ q.unread }}"
-          data-awaiting="{{ '1' if q.status == 'prescreen' else '0' }}">
+          data-awaiting="{{ '1' if q.status == 'prescreen' else '0' }}"
+          data-score="{{ q.verdict.score }}"
+          data-activity="{{ q.last_activity_at }}">
         <td>
           <div class="who">
             <span class="app-av{{ ' neutral' if not q.revealed }}">{{ q.initials }}</span>
@@ -113,6 +119,39 @@
       chips.forEach(function (x) { x.classList.remove('is-active'); });
       c.classList.add('is-active');
       apply(c.getAttribute('data-filter'));
+    });
+  });
+})();
+
+// Click a column header to sort; click again to reverse. Sorting only reorders
+// rows, so it plays nicely with the filter chips (which just hide rows).
+(function () {
+  var table = document.getElementById('queueTable');
+  if (!table) return;
+  var tbody = table.querySelector('tbody');
+  var ths = Array.prototype.slice.call(table.querySelectorAll('thead th.sort'));
+  if (!tbody || !ths.length) return;
+  var curCol = -1, curDir = 1;
+  function cellVal(row, idx, type) {
+    if (type === 'num') return parseFloat(row.getAttribute('data-score')) || 0;
+    if (type === 'time') return row.getAttribute('data-activity') || '';
+    var cell = row.children[idx];
+    return (cell ? cell.textContent : '').trim().toLowerCase();
+  }
+  ths.forEach(function (th, idx) {
+    th.addEventListener('click', function () {
+      var type = th.getAttribute('data-sort') || 'text';
+      if (curCol === idx) { curDir = -curDir; } else { curCol = idx; curDir = 1; }
+      ths.forEach(function (h) { h.classList.remove('asc', 'desc'); });
+      th.classList.add(curDir === 1 ? 'asc' : 'desc');
+      var rows = Array.prototype.slice.call(tbody.querySelectorAll('tr'));
+      rows.sort(function (a, b) {
+        var va = cellVal(a, idx, type), vb = cellVal(b, idx, type);
+        if (va < vb) return -1 * curDir;
+        if (va > vb) return 1 * curDir;
+        return 0;
+      });
+      rows.forEach(function (r) { tbody.appendChild(r); });
     });
   });
 })();

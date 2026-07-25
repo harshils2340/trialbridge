@@ -5226,6 +5226,7 @@ def _queue_item(it):
         "title": l["title"],
         "unread": it.get("unread", 0),
         "last_activity": _rel_time(last),
+        "last_activity_at": last or "",
         "flags": it.get("flags") or [],
         "elig": it.get("elig") or {},
     }
