@@ -232,13 +232,27 @@
   <div>
     <div class="app-card pad" style="margin-bottom:16px;">
       <div class="app-card-title">Stage</div>
-      <form method="post" action="{{ url_for('update_lead', lead_id=l['id']) }}" style="display:flex;flex-direction:column;gap:8px;">
-        <select name="status">
-          {% for s in statuses %}<option value="{{ s }}" {{ 'selected' if s == l['status'] }}>{{ labels.get(s, s) }}</option>{% endfor %}
-        </select>
-        <input type="text" name="note" placeholder="Internal note (optional)">
-        {{ ui.btn('Update stage', 'ghost', 'sm', type='submit', extra='style="justify-content:center;"') }}
+      <div style="margin-bottom:6px;">{{ ui.badge(view.stage.label, view.stage.tone) }}</div>
+      <p class="app-sub" style="font-size:13px;color:var(--faint);margin:0 0 10px;">
+        Advances automatically from what you do — accepting marks them likely
+        eligible, and booking a screening visit moves them to screening.
+      </p>
+      {% if l['revealed'] and l['status'] not in ['enrolled','closed','withdrawn'] %}
+      <form method="post" action="{{ url_for('update_lead', lead_id=l['id']) }}" style="margin-bottom:8px;">
+        <input type="hidden" name="status" value="enrolled">
+        <input type="hidden" name="note" value="Marked enrolled">
+        <input type="hidden" name="next" value="{{ url_for('applicant_detail', lead_id=l['id']) }}">
+        {{ ui.btn('Mark enrolled', 'primary', 'sm', type='submit', extra='style="justify-content:center;width:100%;"') }}
       </form>
+      {% endif %}
+      {% if l['status'] not in ['closed','withdrawn'] %}
+      <form method="post" action="{{ url_for('update_lead', lead_id=l['id']) }}">
+        <input type="hidden" name="status" value="withdrawn">
+        <input type="hidden" name="note" value="Withdrawn by coordinator">
+        <input type="hidden" name="next" value="{{ url_for('applicant_detail', lead_id=l['id']) }}">
+        {{ ui.btn('Withdraw', 'ghost', 'sm', type='submit', extra='style="justify-content:center;width:100%;"') }}
+      </form>
+      {% endif %}
     </div>
 
     <div class="app-card pad" style="margin-bottom:16px;">

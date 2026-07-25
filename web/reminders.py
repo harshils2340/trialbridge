@@ -43,6 +43,9 @@ _NUDGE_MESSAGES = [
     "Last check-in from me for now: your spot is still open. Reply any time and "
     "we'll pick things right back up - no pressure either way.",
 ]
+# Used to recognise our own nudges already sitting on a thread, so the cap and
+# rotation stay correct even if the per-lead counter is stale/missing.
+_NUDGE_SET = set(_NUDGE_MESSAGES)
 
 # SINGLE SWITCH for the cron reminder/nudge EMAILS (visit reminders + the
 # "still interested?" quiet-applicant check-ins). While off, the in-app system
@@ -109,15 +112,16 @@ def check_nudges():
         nudged = _parse(lead["nudged_at"])
         if nudged is not None and nudged > cutoff:
             continue                          # already nudged recently
-        try:
-            count = int(lead["nudge_count"] or 0)
-        except (KeyError, IndexError, TypeError, ValueError):
-            count = 0
-        if count >= MAX_NUDGES:
+        # Drive the cap AND which line to send off the nudges ALREADY on the
+        # thread. This is self-healing: a stale/missing nudge_count can never let
+        # the same check-in repeat past the cap (the bug behind the wall of
+        # identical "still active" messages). nudge_count is still bumped below
+        # for recency bookkeeping.
+        prior = sum(1 for m in db.get_messages(lead["id"])
+                    if m["sender"] == "system" and m["body"] in _NUDGE_SET)
+        if prior >= MAX_NUDGES:
             continue                          # stop; don't spam the same person
-        db.add_message(
-            lead["id"], "system",
-            _NUDGE_MESSAGES[min(count, len(_NUDGE_MESSAGES) - 1)])
+        db.add_message(lead["id"], "system", _NUDGE_MESSAGES[prior])
         db.set_nudged(lead["id"])
         if _on_nudge and _reminder_emails_enabled():
             try:

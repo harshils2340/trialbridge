@@ -5649,6 +5649,13 @@ def _seed_demo_visits_if_demo(items):
         return
     if not (_demo_mode_enabled() or _is_demo_account(g.user) or _site_demo_enabled()):
         return
+
+    def _parse_ts(ts):
+        try:
+            return dt.datetime.strptime(str(ts)[:16], "%Y-%m-%d %H:%M")
+        except (ValueError, TypeError):
+            return None
+
     now = dt.datetime.now()
     horizon = now + dt.timedelta(days=14)
     have, candidates = 0, []
@@ -6854,7 +6861,7 @@ def update_lead(lead_id):
               "success")
     else:
         flash("Couldn't update that application.", "error")
-    return redirect(url_for("leads"))
+    return redirect(_lead_action_return())
 
 
 @app.route("/googlea0e509518fe5134f.html")
