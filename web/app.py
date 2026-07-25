@@ -2538,7 +2538,10 @@ def trending_drugs(limit=6):
 # something.
 _COND_SUGGEST_CACHE = OrderedDict()
 _COND_SUGGEST_TTL = 6 * 3600
-_COND_SUGGEST_MAX = 1000
+# Cap kept modest: on a 512 MB box these per-worker caches must not balloon when
+# a crawler walks thousands of SEO URLs. Env-tunable so it can be raised on a
+# bigger instance without a code change.
+_COND_SUGGEST_MAX = int(os.environ.get("COND_SUGGEST_CACHE_MAX", "400"))
 _CT_SUGGEST_URL = "https://clinicaltrials.gov/api/int/suggest"
 
 
@@ -3025,7 +3028,7 @@ _SEARCH_QUERY_TTL_SECONDS = int(os.environ.get("SEARCH_QUERY_CACHE_TTL", "900"))
 # Trial-specific pre-screen questions are generated once per NCT (LLM) and cached
 # so repeat views of the same trial don't re-pay for generation.
 _PRESCREEN_CACHE = OrderedDict()      # nct -> {"questions": list, "ts": float}
-_PRESCREEN_CACHE_MAX = 500
+_PRESCREEN_CACHE_MAX = int(os.environ.get("PRESCREEN_CACHE_MAX", "200"))
 _PRESCREEN_TTL_SECONDS = int(os.environ.get("PRESCREEN_CACHE_TTL", "86400"))
 
 
@@ -4522,7 +4525,9 @@ def connect_records(token):
 # few hours instead of calling ClinicalTrials.gov on every crawl.
 _SEO_TRIAL_CACHE = OrderedDict()
 _SEO_TRIAL_TTL = 6 * 3600      # refresh a condition's trials at most every 6h
-_SEO_TRIAL_MAX = 600           # cap distinct conditions held in memory
+# Distinct conditions held in memory. Small on a 512 MB box (each entry is a
+# list of full CT.gov trial dicts); TTL + shared DB make refetches cheap.
+_SEO_TRIAL_MAX = int(os.environ.get("SEO_TRIAL_CACHE_MAX", "200"))
 
 
 def _fetch_recruiting(condition, geo=None, limit=12):
@@ -4534,20 +4539,25 @@ def _fetch_recruiting(condition, geo=None, limit=12):
 
 
 def _seo_trials(condition, city=None, limit=12):
-    """Recruiting trials for an SEO page, cached per (condition, city). When a
-    known city is given, results are geo-filtered to trials near it so each city
-    page has unique local content; if none are local, fall back to the national
-    list so the page is never empty."""
+    """Recruiting trials for an SEO page, cached per (condition, city).
+
+    Returns (trials, is_local). When a city is given we geo-filter to trials near
+    it so each city page has UNIQUE local content. If none are local we fall back
+    to the national list but return is_local=False - the city page then noindexes
+    and labels these as the nearest studies, so we never publish near-duplicate
+    'doorway' pages (which Google penalizes across the whole programmatic surface).
+    """
     cond_key = (condition or "").strip().lower()
     if not cond_key:
-        return []
+        return [], True
     key = (cond_key, (city or "").strip().lower())
     now_ts = time.time()
     hit = _SEO_TRIAL_CACHE.get(key)
     if hit and (now_ts - hit[0]) < _SEO_TRIAL_TTL:
         _SEO_TRIAL_CACHE.move_to_end(key)
-        return hit[1][:limit]
+        return hit[1][:limit], hit[2]
     trials = []
+    is_local = True
     try:
         geo = None
         coords = SEO_CITY_COORDS.get(city) if city else None
@@ -4556,6 +4566,7 @@ def _seo_trials(condition, city=None, limit=12):
         trials = _fetch_recruiting(condition, geo=geo, limit=limit)
         if not trials and geo:                      # no local trials -> national
             trials = _fetch_recruiting(condition, geo=None, limit=limit)
+            is_local = False                        # -> city page will noindex
         # Record these trials as part of our indexable SEO surface so each gets a
         # crawlable /study/<nct> page and a sitemap entry (scoped to on-topic,
         # recruiting trials - never the whole of ClinicalTrials.gov).
@@ -4566,11 +4577,11 @@ def _seo_trials(condition, city=None, limit=12):
                 pass
     except Exception:
         app.logger.exception("seo trials fetch failed for %s", condition)
-    _SEO_TRIAL_CACHE[key] = (now_ts, trials)
+    _SEO_TRIAL_CACHE[key] = (now_ts, trials, is_local)
     _SEO_TRIAL_CACHE.move_to_end(key)
     while len(_SEO_TRIAL_CACHE) > _SEO_TRIAL_MAX:
         _SEO_TRIAL_CACHE.popitem(last=False)
-    return trials[:limit]
+    return trials[:limit], is_local
 
 
 _SEO_EU_CACHE = OrderedDict()
@@ -4626,34 +4637,67 @@ def _related_conditions(condition, n=24):
     return out[:n]
 
 
+def _condition_faqs(condition, city=None):
+    """Neutral, truthful FAQ pairs for a condition (+ optional city). Powers both
+    the on-page FAQ and the FAQPage JSON-LD (rich results + what ChatGPT/Perplexity
+    quote). Deliberately factual: no sponsor recruitment claims and no promises
+    about pay or eligibility (see compliance guardrails)."""
+    c = (condition or "clinical").strip()
+    cl = c.lower()
+    where = f" near {city}" if city else ""
+    faqs = [
+        (f"Are {cl} clinical trials{where} free to join?",
+         "Taking part is generally free to you, and many trials cover "
+         "study-related visits, tests, and the study drug at no cost. What's "
+         "covered varies by study - the study team confirms the details."),
+        (f"Do you get paid for {cl} clinical trials?",
+         "Some studies offer compensation for your time and travel; the amount "
+         "varies by study and some offer none. Any compensation is set by the "
+         "study, not by BridgeMD."),
+        (f"How do I know if I qualify for a {cl} trial?",
+         "Each study sets its own eligibility criteria - things like age, health "
+         "history, and current medications. You share a few details and the study "
+         "team reviews and confirms whether you're a fit."),
+        ("Is BridgeMD the study sponsor?",
+         "No. BridgeMD is a free tool that helps you find recruiting trials and "
+         "apply online. Trial information comes from ClinicalTrials.gov, and the "
+         "study team - not BridgeMD - decides eligibility."),
+    ]
+    return [{"q": q, "a": a} for q, a in faqs]
+
+
 @app.route("/trials/<slug>")
 def condition_page(slug):
-    condition = _COND_BY_SLUG.get(slug) or _titleize(slug)
+    # Curated conditions only. An unknown slug 404s (don't render a thin page for
+    # an arbitrary string - that's the kind of low-value content that drags the
+    # whole programmatic SEO surface down).
+    condition = _COND_BY_SLUG.get(slug)
     if not condition:
         abort(404)
     try:
         db.log_search_term(condition, "condition")
     except Exception:
         pass
+    trials, _ = _seo_trials(condition)
     return render_template(
-        "condition.html", condition=condition, city=None,
-        trials=_seo_trials(condition), cities=SEO_CITIES[:16],
-        eu_trials=_seo_ctis_trials(condition),
+        "condition.html", condition=condition, city=None, local=True,
+        trials=trials, cities=SEO_CITIES[:16],
+        eu_trials=_seo_ctis_trials(condition), faqs=_condition_faqs(condition),
         conditions=_related_conditions(condition), slugify=slugify,
         canonical_url=_abs_url("condition_page", slug=slugify(condition)))
 
 
 @app.route("/trials/<slug>/<city_slug>")
 def condition_city_page(slug, city_slug):
-    condition = _COND_BY_SLUG.get(slug) or _titleize(slug)
+    condition = _COND_BY_SLUG.get(slug)
     city = _CITY_BY_SLUG.get(city_slug)
-    # Condition can be inferred from the slug, but the city must be one we know
-    # (keeps the crawl surface to real metros, not arbitrary strings).
+    # Both must be curated: condition in our list, city a real metro we know.
     if not condition or not city:
         abort(404)
+    trials, local = _seo_trials(condition, city=city)
     return render_template(
-        "condition.html", condition=condition, city=city,
-        trials=_seo_trials(condition, city=city), cities=SEO_CITIES[:16],
+        "condition.html", condition=condition, city=city, local=local,
+        trials=trials, cities=SEO_CITIES[:16], faqs=_condition_faqs(condition, city),
         conditions=_related_conditions(condition), slugify=slugify,
         canonical_url=_abs_url("condition_city_page",
                                slug=slugify(condition), city_slug=city_slug))
@@ -4661,7 +4705,9 @@ def condition_city_page(slug, city_slug):
 
 _STUDY_CACHE = OrderedDict()
 _STUDY_TTL = 6 * 3600          # re-fetch a study from CT.gov at most every 6h
-_STUDY_MAX = 800               # cap distinct studies held in memory
+# Full CT.gov/CTIS study objects are the single biggest per-worker memory user
+# (long descriptions + eligibility text). Keep the cap low on 512 MB.
+_STUDY_MAX = int(os.environ.get("STUDY_CACHE_MAX", "250"))
 _NCT_RE = re.compile(r"^NCT\d{8}$")
 
 
@@ -6681,38 +6727,89 @@ def robots():
     return app.response_class(body, mimetype="text/plain")
 
 
-@app.route("/sitemap.xml")
-def sitemap():
-    # Static + how-it-works, then the full programmatic SEO surface: one page per
-    # condition, plus one per condition x city (real local trials on each).
-    def loc(endpoint, **kw):
-        return _abs_url(endpoint, **kw) if PUBLIC_BASE_URL \
-            else url_for(endpoint, _external=True, **kw)
-    # lastmod gives crawlers a freshness signal (important when "recruiting"
-    # status is time-sensitive). Programmatic pages recompute continuously, so
-    # they carry today's date; study pages carry when we last saw the trial.
-    today = time.strftime("%Y-%m-%d")
-    urls = [(loc("home"), today), (loc("find"), today),
-            (loc("how_it_works"), today)]
-    for c in SEO_CONDITIONS:
-        cslug = slugify(c)
-        urls.append((loc("condition_page", slug=cslug), today))
-        for city in SEO_CITIES:
-            urls.append((loc("condition_city_page", slug=cslug,
-                             city_slug=slugify(city)), today))
-    # Per-study pages, scoped to trials surfaced by our condition/city pages.
-    try:
-        for s in db.list_seo_studies(limit=5000):
-            lm = ((s["updated_at"] or today)[:10]) or today
-            urls.append((loc("study_page", nct=s["nct"]), lm))
-    except Exception:
-        app.logger.exception("sitemap study list failed")
+def _sitemap_loc(endpoint, **kw):
+    return _abs_url(endpoint, **kw) if PUBLIC_BASE_URL \
+        else url_for(endpoint, _external=True, **kw)
+
+
+def _week_lastmod():
+    """Monday of the current week (UTC). Programmatic pages refresh continuously
+    but not every single day, so a weekly stamp is an honest freshness signal
+    that doesn't shout 'changed!' on every crawl (which trains Google to ignore
+    lastmod). Study pages keep their real last-seen date instead."""
+    now = time.time()
+    monday = now - (time.gmtime(now).tm_wday * 86400)
+    return time.strftime("%Y-%m-%d", time.gmtime(monday))
+
+
+def _sitemap_xml(urls):
     items = "".join(
         f"<url><loc>{u}</loc><lastmod>{lm}</lastmod></url>" for u, lm in urls)
     xml = ('<?xml version="1.0" encoding="UTF-8"?>'
            '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
            + items + "</urlset>")
     return app.response_class(xml, mimetype="application/xml")
+
+
+@app.route("/sitemap.xml")
+def sitemap():
+    """Sitemap INDEX -> per-section child sitemaps, so Search Console reports
+    indexing coverage separately for static, condition, city, and study pages
+    (much easier to diagnose than one ~9k-URL blob)."""
+    wk = _week_lastmod()
+    children = [_sitemap_loc(e) for e in
+                ("sitemap_static", "sitemap_conditions",
+                 "sitemap_cities", "sitemap_studies")]
+    items = "".join(
+        f"<sitemap><loc>{c}</loc><lastmod>{wk}</lastmod></sitemap>"
+        for c in children)
+    xml = ('<?xml version="1.0" encoding="UTF-8"?>'
+           '<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+           + items + "</sitemapindex>")
+    return app.response_class(xml, mimetype="application/xml")
+
+
+@app.route("/sitemap-static.xml")
+def sitemap_static():
+    wk = _week_lastmod()
+    urls = [(_sitemap_loc(e), wk) for e in
+            ("home", "find", "how_it_works", "for_clinicians")]
+    return _sitemap_xml(urls)
+
+
+@app.route("/sitemap-conditions.xml")
+def sitemap_conditions():
+    wk = _week_lastmod()
+    urls = [(_sitemap_loc("condition_page", slug=slugify(c)), wk)
+            for c in SEO_CONDITIONS]
+    return _sitemap_xml(urls)
+
+
+@app.route("/sitemap-cities.xml")
+def sitemap_cities():
+    wk = _week_lastmod()
+    urls = []
+    for c in SEO_CONDITIONS:
+        cslug = slugify(c)
+        for city in SEO_CITIES:
+            urls.append((_sitemap_loc("condition_city_page", slug=cslug,
+                                      city_slug=slugify(city)), wk))
+    return _sitemap_xml(urls)
+
+
+@app.route("/sitemap-studies.xml")
+def sitemap_studies():
+    """Per-study pages, scoped to trials surfaced by our condition/city pages.
+    These keep their real last-seen date (recruiting status is time-sensitive)."""
+    today = time.strftime("%Y-%m-%d")
+    urls = []
+    try:
+        for s in db.list_seo_studies(limit=5000):
+            lm = ((s["updated_at"] or today)[:10]) or today
+            urls.append((_sitemap_loc("study_page", nct=s["nct"]), lm))
+    except Exception:
+        app.logger.exception("sitemap study list failed")
+    return _sitemap_xml(urls)
 
 
 # --------------------------------------------------------------------------- #

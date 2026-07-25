@@ -33,8 +33,11 @@
 <div style="display:grid;grid-template-columns:1fr 320px;gap:24px;align-items:start;">
   {# ── Main column ── #}
   <div>
-    {# AI pre-screen verdict #}
+    {# ── Confirm eligibility → invite to book (the whole job on one card) ── #}
+    {% set first = (view.name or 'them').split(' ')[0] %}
     <div class="app-card pad verdict">
+      {# Compact AI pre-screen: verdict + score + one-line reason. Full reasons
+         are one click away so the card stays scannable, not a wall of text. #}
       <div class="verdict-head">
         <span class="l">{{ ic.icon('sparkle') }} AI pre-screen</span>
         <span style="display:flex;gap:8px;align-items:center;">
@@ -42,45 +45,93 @@
           <span class="score-pill {{ 'hi' if view.verdict.score >= 70 else ('mid' if view.verdict.score >= 40 else 'lo') }}">{{ view.verdict.score }}/100</span>
         </span>
       </div>
-      <div class="verdict-grid">
-        <div>
-          <div class="col-h ok">Meets criteria</div>
-          {% for x in elig.get('met', []) %}
-          <div class="verdict-li ok">{{ ic.icon('check') }}<span>{{ x }}</span></div>
-          {% else %}<div class="app-sub" style="font-size:13px;color:var(--faint);">Nothing confirmed yet.</div>{% endfor %}
-        </div>
-        <div>
-          <div class="col-h info">To confirm</div>
-          {% for x in elig.get('unknown', []) %}
-          <div class="verdict-li info">{{ ic.icon('info') }}<span>{{ x }}</span></div>
-          {% else %}<div class="app-sub" style="font-size:13px;color:var(--faint);">No open questions.</div>{% endfor %}
-        </div>
-      </div>
-      {% if elig.get('not_met') %}
-      <div style="margin-bottom:14px;">
-        <div class="col-h warn" style="margin-bottom:8px;">Possible barriers</div>
-        {% for x in elig.get('not_met', []) %}
-        <div class="verdict-li warn">{{ ic.icon('alert') }}<span>{{ x }}</span></div>
-        {% endfor %}
-      </div>
-      {% endif %}
       {% if elig.get('rationale') %}
-      <div class="verdict-note">{{ elig.rationale }}</div>
+      <p style="margin:2px 0 12px;color:var(--muted);font-size:14px;line-height:1.55;">{{ elig.rationale }}</p>
+      {% endif %}
+      {% if elig.get('met') or elig.get('unknown') or elig.get('not_met') %}
+      <details class="elig-more">
+        <summary>Screening detail</summary>
+        <div class="verdict-grid" style="margin-top:12px;">
+          <div>
+            <div class="col-h ok">Meets criteria</div>
+            {% for x in elig.get('met', []) %}
+            <div class="verdict-li ok">{{ ic.icon('check') }}<span>{{ x }}</span></div>
+            {% else %}<div class="app-sub" style="font-size:13px;color:var(--faint);">Nothing confirmed yet.</div>{% endfor %}
+          </div>
+          <div>
+            <div class="col-h info">To confirm</div>
+            {% for x in elig.get('unknown', []) %}
+            <div class="verdict-li info">{{ ic.icon('info') }}<span>{{ x }}</span></div>
+            {% else %}<div class="app-sub" style="font-size:13px;color:var(--faint);">No open questions.</div>{% endfor %}
+          </div>
+        </div>
+        {% if elig.get('not_met') %}
+        <div style="margin-top:14px;">
+          <div class="col-h warn" style="margin-bottom:8px;">Possible barriers</div>
+          {% for x in elig.get('not_met', []) %}
+          <div class="verdict-li warn">{{ ic.icon('alert') }}<span>{{ x }}</span></div>
+          {% endfor %}
+        </div>
+        {% endif %}
+      </details>
       {% endif %}
 
-      {% if l['status'] == 'prescreen' and not l['decision'] %}
-      <div style="display:flex;gap:10px;">
-        <form method="post" action="{{ url_for('accept_lead', lead_id=l['id']) }}">
-          {{ ui.btn('Accept & unlock contact', 'primary', type='submit', icon='check') }}
-        </form>
-        <form method="post" action="{{ url_for('decline_lead', lead_id=l['id']) }}">
-          {{ ui.btn('Decline', 'danger', type='submit') }}
-        </form>
+      {# Reusable line: shows exactly how the booking invite reaches this
+         applicant, using the channels they actually gave (email / phone-text). #}
+      {% macro reach_line() %}
+      {% if view.email or view.phone %}
+      <div class="ns-reach">{{ ic.icon('send') }}
+        <span>Sends the link to
+          {%- if view.email and view.phone %} <b>{{ view.email }}</b> and texts <b>{{ view.phone }}</b>
+          {%- elif view.email %} <b>{{ view.email }}</b>
+          {%- else %} <b>{{ view.phone }}</b> by text{% endif %}.</span>
       </div>
-      {% elif l['decision'] == 'accepted' %}
-      <div class="callout info">{{ ic.icon('check') }} Accepted{% if l['decision_reason'] %} — {{ l['decision_reason'] }}{% endif %}. Contact is unlocked.</div>
+      {% endif %}
+      {% endmacro %}
+
+      {% if l['status'] == 'prescreen' and not l['decision'] %}
+      <div class="nextstep">
+        <div class="ns-h">Step 1 · Confirm eligibility</div>
+        <p class="ns-p">Accepting unlocks {{ first }}'s contact so you can invite them to book a screening call.</p>
+        <div style="display:flex;gap:10px;">
+          <form method="post" action="{{ url_for('accept_lead', lead_id=l['id']) }}">
+            {{ ui.btn('Confirm eligible & unlock contact', 'primary', type='submit', icon='check') }}
+          </form>
+          <form method="post" action="{{ url_for('decline_lead', lead_id=l['id']) }}">
+            {{ ui.btn('Not eligible', 'danger', type='submit') }}
+          </form>
+        </div>
+      </div>
       {% elif l['decision'] == 'declined' %}
-      <div class="callout warn">{{ ic.icon('info') }} Declined{% if l['decision_reason'] %} — {{ l['decision_reason'] }}{% endif %}.</div>
+      <div class="callout warn">{{ ic.icon('info') }} Marked not eligible{% if l['decision_reason'] %} — {{ l['decision_reason'] }}{% endif %}.</div>
+      {% else %}
+      {# Accepted → sending the booking link is the one obvious next action. #}
+      <div class="nextstep">
+        {% if l['schedule_url'] %}
+        <div class="ns-h">{{ ic.icon('check') }} Booking link sent to {{ first }}</div>
+        <p class="ns-p">They can self-book a screening call — <a href="{{ l['schedule_url'] }}" target="_blank" rel="noopener">open your booking link</a>.</p>
+        {% if l['video_url'] %}<p class="ns-p">Video call ready: <a href="{{ l['video_url'] }}" target="_blank" rel="noopener">join link</a>.</p>{% endif %}
+        {{ reach_line() }}
+        <form method="post" action="{{ url_for('schedule_lead', lead_id=l['id']) }}">
+          <input type="hidden" name="next" value="{{ url_for('applicant_detail', lead_id=l['id']) }}">
+          {{ ui.btn('Resend booking-link email', 'ghost', 'sm', type='submit', icon='send') }}
+        </form>
+        {% elif default_schedule %}
+        <div class="ns-h">Step 2 · Invite {{ first }} to book</div>
+        <p class="ns-p">Your booking calendar is set up. Send it and they self-book a screening visit — one click, no back-and-forth.</p>
+        {{ reach_line() }}
+        <form method="post" action="{{ url_for('schedule_lead', lead_id=l['id']) }}">
+          <input type="hidden" name="next" value="{{ url_for('applicant_detail', lead_id=l['id']) }}">
+          {{ ui.btn('Send booking-link email', 'primary', type='submit', icon='calendar') }}
+        </form>
+        {% else %}
+        <div class="ns-h">Step 2 · Invite {{ first }} to book</div>
+        <div class="callout warn" style="margin:0;">{{ ic.icon('info') }}
+          <span>Add your booking calendar once in
+          <a href="{{ url_for('site_setup') }}">Settings</a> — then invite applicants to self-book with one click.</span>
+        </div>
+        {% endif %}
+      </div>
       {% endif %}
       <div class="verdict-fine">AI-assisted decision support. A qualified team member must review and decide.</div>
     </div>
@@ -159,40 +210,6 @@
         <input type="text" name="note" placeholder="Internal note (optional)">
         {{ ui.btn('Update stage', 'ghost', 'sm', type='submit', extra='style="justify-content:center;"') }}
       </form>
-    </div>
-
-    <div class="app-card pad" style="margin-bottom:16px;">
-      <div class="app-card-title">{{ ic.icon('calendar') }} Screening &amp; scheduling</div>
-      {% if not l['revealed'] %}
-      <div class="callout info">{{ ic.icon('lock') }} Accept this applicant to send a self-scheduling link.</div>
-      {% elif l['schedule_url'] %}
-      <div class="callout ok" style="margin-bottom:8px;">
-        {{ ic.icon('check') }}
-        <span>Booking link sent. <a href="{{ l['schedule_url'] }}" target="_blank" rel="noopener">Open link</a></span>
-      </div>
-      {% if l['video_url'] %}
-      <div class="callout info" style="margin-bottom:8px;">
-        {{ ic.icon('phone') }}
-        <span>Video call ready. <a href="{{ l['video_url'] }}" target="_blank" rel="noopener">Join link</a></span>
-      </div>
-      {% endif %}
-      <form method="post" action="{{ url_for('schedule_lead', lead_id=l['id']) }}">
-        <input type="hidden" name="next" value="{{ url_for('applicant_detail', lead_id=l['id']) }}">
-        {{ ui.btn('Resend booking link', 'ghost', 'sm', type='submit', extra='style="justify-content:center;"') }}
-      </form>
-      {% elif default_schedule %}
-      <p class="app-sub" style="font-size:13px;color:var(--muted);margin:0 0 10px;">
-        Send {{ (view.name or 'them').split(' ')[0] }} your booking calendar so they can self-book a screening visit.</p>
-      <form method="post" action="{{ url_for('schedule_lead', lead_id=l['id']) }}">
-        <input type="hidden" name="next" value="{{ url_for('applicant_detail', lead_id=l['id']) }}">
-        {{ ui.btn('Send booking link', 'primary', 'sm', type='submit', icon='calendar', extra='style="justify-content:center;"') }}
-      </form>
-      {% else %}
-      <div class="callout warn">{{ ic.icon('info') }}
-        <span>No booking calendar set yet. Add yours once in
-        <a href="{{ url_for('site_setup') }}">Settings</a> to send self-scheduling links with one click.</span>
-      </div>
-      {% endif %}
     </div>
 
     <div class="app-card pad" style="margin-bottom:16px;">

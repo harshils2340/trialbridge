@@ -6,9 +6,15 @@
 {% block og_description %}Find recruiting {{ condition|lower }} clinical trials{% if city %} near {{ city }}{% endif %} and apply online. Real, currently-enrolling studies from ClinicalTrials.gov.{% endblock %}
 {% block og_url %}{{ canonical_url|default(request.url) }}{% endblock %}
 
+{% block canonical %}<link rel="canonical" href="{{ canonical_url|default(request.url) }}">{% endblock %}
+
 {% block head_extra %}
 {% set _canon = canonical_url|default(request.url) %}
-<link rel="canonical" href="{{ _canon }}">
+{# A city page only earns indexing when it has genuinely LOCAL trials. If it fell
+   back to the national list (not local) or has none at all, it's near-duplicate /
+   thin - noindex,follow keeps it out of the index (no doorway penalty) while
+   still passing link equity to the studies it links to. #}
+{% if city and (not local or not trials) %}<meta name="robots" content="noindex,follow">{% endif %}
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
@@ -17,7 +23,7 @@
       "@type": "BreadcrumbList",
       "itemListElement": [
         {"@type": "ListItem", "position": 1, "name": "Home", "item": {{ url_for('home', _external=True)|tojson }}},
-        {"@type": "ListItem", "position": 2, "name": {{ condition|tojson }}, "item": {{ _canon|tojson }}}{% if city %},
+        {"@type": "ListItem", "position": 2, "name": {{ condition|tojson }}, "item": {{ url_for('condition_page', slug=slugify(condition), _external=True)|tojson }}}{% if city %},
         {"@type": "ListItem", "position": 3, "name": {{ city|tojson }}, "item": {{ _canon|tojson }}}{% endif %}
       ]
     }{% if trials %},
@@ -26,7 +32,14 @@
       "name": {{ (condition ~ ' clinical trials' ~ (' in ' ~ city if city else ''))|tojson }},
       "numberOfItems": {{ trials|length }},
       "itemListElement": [
-        {% for t in trials %}{"@type": "ListItem", "position": {{ loop.index }}, "name": {{ (t.title or 'Clinical trial')|tojson }}}{% if not loop.last %},{% endif %}
+        {% for t in trials %}{"@type": "ListItem", "position": {{ loop.index }}, "name": {{ (t.title or 'Clinical trial')|tojson }}{% if t.nctId %}, "url": {{ url_for('study_page', nct=t.nctId, _external=True)|tojson }}{% endif %}}{% if not loop.last %},{% endif %}
+        {% endfor %}
+      ]
+    }{% endif %}{% if faqs %},
+    {
+      "@type": "FAQPage",
+      "mainEntity": [
+        {% for f in faqs %}{"@type": "Question", "name": {{ f.q|tojson }}, "acceptedAnswer": {"@type": "Answer", "text": {{ f.a|tojson }}}}{% if not loop.last %},{% endif %}
         {% endfor %}
       ]
     }{% endif %}
@@ -43,8 +56,11 @@
   </nav>
   <h1>{{ condition }} clinical trials{% if city %} in {{ city }}{% endif %}</h1>
   <p class="cond-lead">
-    {% if city %}
+    {% if city and local %}
       Search recruiting {{ condition|lower }} studies near {{ city }}.
+    {% elif city %}
+      No {{ condition|lower }} studies are recruiting directly in {{ city }} yet -
+      here are the nearest ones. Enter your postal code to sort by distance.
     {% else %}
       Explore recruiting {{ condition|lower }} clinical trials.
     {% endif %}
@@ -65,6 +81,26 @@
     <button type="button" id="useLoc" class="link-btn loc-use">{{ ic.icon('pin') }} Use my current location</button>
     <div id="locConfirm" class="loc-confirm" style="display:none;"></div>
   </div>
+</section>
+
+<section class="cond-intro">
+  <p>
+    BridgeMD lists {{ condition|lower }} clinical trials that are
+    <strong>currently recruiting</strong> participants,{% if city and local %}
+    with sites near {{ city }},{% endif %} pulled live from ClinicalTrials.gov.
+    Clinical trials study new or existing treatments and are run by hospitals,
+    universities, and research sites. Taking part is generally free, some studies
+    offer compensation for time and travel, and the study team confirms whether
+    you're eligible.
+    {% if city %}
+      Enter your postal code above to see the {{ condition|lower }} studies closest
+      to {{ city }} and check your eligibility in a few minutes.
+    {% else %}
+      Enter your city or postal code above to find the studies closest to you and
+      check your eligibility in a few minutes.
+    {% endif %}
+    It's free, and you can talk to your own doctor before joining.
+  </p>
 </section>
 
 <div class="loading-overlay" id="loadingOverlay" aria-hidden="true">
@@ -190,7 +226,9 @@
 
 {% if trials %}
 <section class="cond-list">
-  <h2>Recruiting {{ condition|lower }} studies{% if city %} near {{ city }}{% endif %} right now</h2>
+  <h2>{% if city and local %}Recruiting {{ condition|lower }} studies near {{ city }} right now
+      {%- elif city %}Nearest recruiting {{ condition|lower }} studies
+      {%- else %}Recruiting {{ condition|lower }} studies right now{% endif %}</h2>
   {% for t in trials %}
   <div class="cond-item-wrap">
     <form class="js-card-search" method="post" action="{{ url_for('find') }}">
@@ -243,6 +281,20 @@
     </a>
   </div>
   {% endfor %}
+</section>
+{% endif %}
+
+{% if faqs %}
+<section class="cond-faq">
+  <h2>{{ condition }} clinical trials{% if city %} in {{ city }}{% endif %}: common questions</h2>
+  <div class="faq-list">
+    {% for f in faqs %}
+    <details class="faq-item"{% if loop.first %} open{% endif %}>
+      <summary>{{ f.q }}</summary>
+      <p>{{ f.a }}</p>
+    </details>
+    {% endfor %}
+  </div>
 </section>
 {% endif %}
 

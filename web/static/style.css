@@ -1461,6 +1461,25 @@ body.home-screen .landing-legal-links { margin: 0; flex: 0 0 auto; font-size: 12
 .cond-cities { max-width: 800px; margin: 40px auto; padding: 0 24px; }
 .chip-grid { display: flex; flex-wrap: wrap; gap: 10px; }
 
+/* Condition-page intro copy + FAQ (SEO body content + FAQPage rich results) */
+.cond-intro { max-width: 800px; margin: 8px auto 0; padding: 0 24px; }
+.cond-intro p { color: var(--muted); font-size: 15px; line-height: 1.7; margin: 0;
+  max-width: 720px; }
+.cond-intro strong { color: var(--ink); font-weight: 650; }
+.cond-faq { max-width: 800px; margin: 40px auto; padding: 0 24px; }
+.cond-faq h2 { font-size: 22px; letter-spacing: -.02em; margin: 0 0 16px; }
+.faq-list { display: flex; flex-direction: column; gap: 10px; }
+.faq-item { border: 1px solid var(--border); border-radius: 12px; background: var(--surface);
+  padding: 4px 18px; }
+.faq-item > summary { cursor: pointer; list-style: none; padding: 14px 0;
+  font-size: 15.5px; font-weight: 650; color: var(--ink); display: flex;
+  justify-content: space-between; align-items: center; gap: 12px; }
+.faq-item > summary::-webkit-details-marker { display: none; }
+.faq-item > summary::after { content: "+"; color: var(--faint); font-weight: 400;
+  font-size: 20px; line-height: 1; }
+.faq-item[open] > summary::after { content: "\2013"; }
+.faq-item > p { margin: 0 0 16px; color: var(--muted); font-size: 14.5px; line-height: 1.65; }
+
 /* ---------- Per-study SEO page ---------- */
 .study { max-width: 900px; margin: 0 auto; padding: 32px 24px 8px; }
 .study-head { margin: 8px 0 24px; }
