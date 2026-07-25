@@ -52,10 +52,8 @@
       <a href="{{ url_for('leads') }}" class="{{ 'active' if request.endpoint in ['leads','applicant_detail'] }}">{{ ic.icon('user-plus') }}Applicants</a>
       <a href="{{ url_for('intake_page') }}" class="{{ 'active' if request.endpoint in ['intake_page','intake_import'] }}">{{ ic.icon('file') }}Studies</a>
       <a href="{{ url_for('campaign_list') }}" class="{{ 'active' if request.endpoint in ['campaign_list','campaign_detail'] }}">{{ ic.icon('megaphone') }}Campaigns</a>
-      <a href="{{ url_for('documents_workspace') }}" class="{{ 'active' if request.endpoint in ['documents_workspace','document_detail'] }}">{{ ic.icon('file-check') }}Documents</a>
       <a href="{{ url_for('recruitment_dashboard') }}" class="{{ 'active' if request.endpoint == 'recruitment_dashboard' }}">{{ ic.icon('activity') }}Recruitment</a>
-      <a href="{{ url_for('team_page') }}" class="{{ 'active' if request.endpoint in ['team_page','team_invite','team_set_role','team_remove'] }}">{{ ic.icon('users') }}Team</a>
-      <a href="{{ url_for('site_setup') }}" class="{{ 'active' if request.endpoint in ['site_setup','add_study_claim','remove_study_claim','owner_analytics'] }}">{{ ic.icon('gear') }}Settings</a>
+      <a href="{{ url_for('site_setup') }}" class="{{ 'active' if request.endpoint in ['site_setup','add_study_claim','remove_study_claim','owner_analytics','team_page','team_invite','team_set_role','team_remove'] }}">{{ ic.icon('gear') }}Settings</a>
     </nav>
     <div class="appside-foot">
       <div class="appside-user">

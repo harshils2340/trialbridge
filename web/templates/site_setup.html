@@ -314,6 +314,12 @@
   {% endif %}
 </div>
 
+<div class="card">
+  <div class="section-title"><h2>Team</h2></div>
+  <p class="site-hint">Invite coordinators, PIs, and research students, and manage their roles and access.</p>
+  <a href="{{ url_for('team_page') }}" class="btn btn-ghost btn-sm">{{ ic.icon('users') }} Manage team</a>
+</div>
+
 {% if is_owner %}
 {# Internal, owner-only: kept out of the main nav - it's our traffic dashboard,
    not a customer feature. #}

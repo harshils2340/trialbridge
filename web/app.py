@@ -5692,6 +5692,7 @@ def applicant_detail(lead_id):
     return render_template("applicant_detail.html", it=it, l=lead, view=view,
                            statuses=db.LEAD_STATUSES, labels=db.LEAD_LABELS,
                            screener_labels=SCREENER_LABELS,
+                           screener_flags=SCREENER_FLAGS,
                            default_schedule=default_schedule)
 
 
@@ -6067,13 +6068,29 @@ def update_study_claim_notify_email():
 def accept_lead(lead_id):
     _ensure_site_access_for_lead(lead_id)
     note = request.form.get("note", "").strip()
-    if db.accept_candidate(lead_id, note):
-        _notify_applicant_by_id(lead_id, "accepted")
-        flash("Candidate accepted - contact details unlocked so you can invite "
-              "them to a screening visit.", "success")
-    else:
+    if not db.accept_candidate(lead_id, note):
         flash("Couldn't accept that candidate.", "error")
-    return redirect(url_for("leads"))
+        return redirect(_lead_action_return())
+    # They've already completed the screening questionnaire, so accepting should
+    # move them straight to booking. Auto-attach the team's booking calendar
+    # (per-study default, else the account calendar in Settings) and email the
+    # applicant the link - one message tells them they've advanced AND how to
+    # self-book their screening visit. Falls back to a plain "accepted" note if
+    # no calendar is configured yet.
+    lead = db.get_lead(lead_id)
+    nct = (lead["nct"] or "") if lead else ""
+    url = (db.get_claim_schedule_url(g.user["id"], nct) if nct else "") \
+        or db.get_site_calendar_url(g.user["id"])
+    if lead and url:
+        lead = db.set_lead_schedule(lead_id, url) or lead
+        _notify_applicant_schedule(lead)
+        flash("Accepted - contact unlocked and a booking link was emailed so "
+              "they can self-schedule their screening visit.", "success")
+    else:
+        _notify_applicant_by_id(lead_id, "accepted")
+        flash("Accepted - contact unlocked. Add your booking calendar in "
+              "Settings to auto-send a self-booking link on accept.", "success")
+    return redirect(_lead_action_return())
 
 
 @app.route("/app/leads/<int:lead_id>/decline", methods=["POST"])
@@ -6087,7 +6104,7 @@ def decline_lead(lead_id):
               "were revealed.", "success")
     else:
         flash("Couldn't decline that candidate.", "error")
-    return redirect(url_for("leads"))
+    return redirect(_lead_action_return())
 
 
 @app.route("/app/leads/<int:lead_id>/schedule", methods=["POST"])

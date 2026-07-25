@@ -91,13 +91,20 @@
 
       {% if l['status'] == 'prescreen' and not l['decision'] %}
       <div class="nextstep">
-        <div class="ns-h">Step 1 · Confirm eligibility</div>
-        <p class="ns-p">Accepting unlocks {{ first }}'s contact so you can invite them to book a screening call.</p>
+        <div class="ns-h">Decide on {{ first }}</div>
+        {% if default_schedule %}
+        <p class="ns-p">{{ first }} already completed the screening questionnaire. Accepting unlocks their contact and <b>emails them your booking link</b> so they can self-schedule their screening visit — one click, no back-and-forth.</p>
+        {{ reach_line() }}
+        {% else %}
+        <p class="ns-p">{{ first }} already completed the screening questionnaire. Accepting unlocks their contact so you can invite them to book. <a href="{{ url_for('site_setup') }}">Add your booking calendar</a> to auto-send the link on accept.</p>
+        {% endif %}
         <div style="display:flex;gap:10px;">
           <form method="post" action="{{ url_for('accept_lead', lead_id=l['id']) }}">
-            {{ ui.btn('Confirm eligible & unlock contact', 'primary', type='submit', icon='check') }}
+            <input type="hidden" name="next" value="{{ url_for('applicant_detail', lead_id=l['id']) }}">
+            {{ ui.btn(('Accept & send booking link' if default_schedule else 'Accept & unlock contact'), 'primary', type='submit', icon='check') }}
           </form>
           <form method="post" action="{{ url_for('decline_lead', lead_id=l['id']) }}">
+            <input type="hidden" name="next" value="{{ url_for('applicant_detail', lead_id=l['id']) }}">
             {{ ui.btn('Not eligible', 'danger', type='submit') }}
           </form>
         </div>
@@ -135,6 +142,28 @@
       {% endif %}
       <div class="verdict-fine">AI-assisted decision support. A qualified team member must review and decide.</div>
     </div>
+
+    {# Screening questionnaire — the answers the applicant actually submitted #}
+    {% if it.screener %}
+    <div class="app-card pad">
+      <div class="app-card-title">{{ ic.icon('file') }} Screening questionnaire</div>
+      <p class="qa-sub">Answers {{ first }} submitted when they applied.</p>
+      <div class="qa-list">
+        {% for key, ans in it.screener.items() %}
+        {% set concern = (screener_flags.get(key) == ans) %}
+        <div class="qa-row{{ ' concern' if concern }}">
+          <span class="qa-q">{{ screener_labels.get(key, key) }}</span>
+          <span class="qa-a">{{ ans|title }}{% if concern %} {{ ic.icon('alert') }}{% endif %}</span>
+        </div>
+        {% endfor %}
+      </div>
+      {% if it.flags %}
+      <div class="callout warn" style="margin:12px 0 0;">{{ ic.icon('alert') }}
+        <span>Flag{{ '' if it.flags|length == 1 else 's' }} to review: {{ it.flags | join(', ') }}.</span>
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
 
     {# Messages #}
     <div class="app-card pad">

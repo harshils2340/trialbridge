@@ -128,9 +128,11 @@
           <div class="acts">
             {{ ui.btn('View', 'ghost', 'sm', href=url_for('applicant_detail', lead_id=p.id)) }}
             <form method="post" action="{{ url_for('decline_lead', lead_id=p.id) }}">
+              <input type="hidden" name="next" value="{{ url_for('study_home') }}#to-review">
               {{ ui.btn('Decline', 'danger', 'sm', type='submit') }}
             </form>
             <form method="post" action="{{ url_for('accept_lead', lead_id=p.id) }}">
+              <input type="hidden" name="next" value="{{ url_for('study_home') }}#to-review">
               {{ ui.btn('Accept', 'primary', 'sm', type='submit') }}
             </form>
           </div>
