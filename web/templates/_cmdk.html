@@ -12,7 +12,7 @@
   {% set _ = items.append({'g':'Navigate','label':'Dashboard','kw':'home overview stats','url':url_for('study_home'),'icon':'grid'}) %}
   {% set _ = items.append({'g':'Navigate','label':'Applicants','kw':'leads patients candidates people referrals','url':url_for('leads'),'icon':'user-plus'}) %}
   {% set _ = items.append({'g':'Navigate','label':'Needs reply','kw':'inbox chat conversations replies messages waiting','url':url_for('study_home', _anchor='needs-reply'),'icon':'chat'}) %}
-  {% set _ = items.append({'g':'Navigate','label':'Studies','kw':'trials protocols intake claim','url':url_for('intake_page'),'icon':'file'}) %}
+  {% set _ = items.append({'g':'Navigate','label':'Applicant intake','kw':'intake import csv email forwarding studies trials','url':url_for('intake_page'),'icon':'file'}) %}
   {% set _ = items.append({'g':'Navigate','label':'Campaigns','kw':'outreach email marketing','url':url_for('campaign_list'),'icon':'megaphone'}) %}
   {% set _ = items.append({'g':'Navigate','label':'Documents','kw':'files consent forms docs uploads','url':url_for('documents_workspace'),'icon':'file-check'}) %}
   {% set _ = items.append({'g':'Navigate','label':'Recruitment','kw':'funnel enrollment metrics conversion','url':url_for('recruitment_dashboard'),'icon':'activity'}) %}

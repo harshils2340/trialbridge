@@ -10,7 +10,7 @@
 {% set _ = items.append({'g':'Pages','label':'Dashboard','kw':'home overview stats','url':url_for('study_home')}) %}
 {% set _ = items.append({'g':'Pages','label':'Applicants','kw':'leads patients candidates people referrals queue','url':url_for('leads')}) %}
 {% set _ = items.append({'g':'Pages','label':'Needs reply','kw':'inbox chat conversations replies messages waiting','url':url_for('study_home', _anchor='needs-reply')}) %}
-{% set _ = items.append({'g':'Pages','label':'Studies','kw':'trials protocols intake claim','url':url_for('intake_page')}) %}
+{% set _ = items.append({'g':'Pages','label':'Applicant intake','kw':'intake import csv email forwarding studies trials','url':url_for('intake_page')}) %}
 {% set _ = items.append({'g':'Pages','label':'Campaigns','kw':'outreach email marketing ads','url':url_for('campaign_list')}) %}
 {% set _ = items.append({'g':'Pages','label':'Documents','kw':'files consent forms docs uploads approvals','url':url_for('documents_workspace')}) %}
 {% set _ = items.append({'g':'Pages','label':'Recruitment','kw':'funnel enrollment metrics conversion analytics','url':url_for('recruitment_dashboard')}) %}
