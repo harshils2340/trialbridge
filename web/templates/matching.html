@@ -26,34 +26,8 @@
 <div class="app-head">
   <div>
     <h1>Matches</h1>
-    <p>Patients from your own records, scanned against every study you run and partner trials, and pre-screened for you. Review each one — add internal candidates to your study, or refer external ones to the trial site.</p>
+    <p>From your records, pre-screened. Add internal candidates to a study, or refer external ones out.</p>
   </div>
-</div>
-
-<div class="app-card pad match-source">
-  <div class="ms-main">
-    <span class="ms-ico">{{ ic.icon('refresh') }}</span>
-    <div>
-      <div class="ms-title">{{ source.name }} · patient records connected</div>
-      <div class="ms-sub">
-        Scanned nightly against {{ source.studies }} stud{{ 'y' if source.studies == 1 else 'ies' }} you run + partner trials{% if source.demo %} · {{ '{:,}'.format(source.patients) }} active patients{% endif %} · {{ source.surfaced }} candidates surfaced
-      </div>
-    </div>
-  </div>
-  <div class="ms-stat"><b>{{ source.new }}</b><span>new to review</span></div>
-</div>
-
-<div class="app-stats">
-  <div class="app-stat accent"><div class="l">New to review</div><div class="n">{{ counts.new }}</div></div>
-  <div class="app-stat"><div class="l">For your studies</div><div class="n">{{ counts.new_internal }}</div></div>
-  <div class="app-stat"><div class="l">For partner sites</div><div class="n">{{ counts.new_external }}</div></div>
-  <div class="app-stat ok"><div class="l">Added</div><div class="n">{{ counts.approved }}</div></div>
-  <div class="app-stat"><div class="l">Referred</div><div class="n">{{ counts.referred }}</div></div>
-</div>
-
-<div class="match-how">
-  {{ ic.icon('shield-check') }}
-  <span>De-identified for matching (initials + age/sex + problem list). A name is re-identified only after you review — and, for a partner site, only after the patient consents.</span>
 </div>
 
 <div class="app-chips" id="matchChips">
