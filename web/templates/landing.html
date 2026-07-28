@@ -39,6 +39,8 @@
                 data-mode="condition" role="tab" aria-selected="true">By condition</button>
         <button type="button" class="search-mode" id="modeDescribe"
                 data-mode="describe" role="tab" aria-selected="false">Describe it</button>
+        <button type="button" class="search-mode" id="modeLocation"
+                data-mode="location" role="tab" aria-selected="false">Near me</button>
       </div>
       <div class="hero-search">
         <div class="hero-search-query">
@@ -194,23 +196,39 @@
   var heroHint = document.getElementById('heroHint');
   var HINTS = {
     condition: 'Know your condition? Search it directly. Not sure? Switch to “Describe it” and write in plain English.',
-    describe: 'Describe your situation in plain English — e.g. “I have obesity and want to try new treatments”.'
+    describe: 'Describe your situation in plain English — e.g. “I have obesity and want to try new treatments”.',
+    location: 'Just browsing? See every recruiting trial near a city — no condition needed.'
   };
+  var queryWrap = document.querySelector('.hero-search-query');
+  var currentMode = 'condition';
   function setMode(mode) {
+    currentMode = mode;
     var describe = mode === 'describe';
+    var byLocation = mode === 'location';
     if (heroFreeform) heroFreeform.value = describe ? '1' : '0';
-    if (condField) condField.hidden = describe;
-    if (descField) descField.hidden = !describe;
+    // Location-only browse: hide the condition query entirely, disable both
+    // condition inputs so neither submits, and drop their `required` so an
+    // empty-condition search is allowed.
+    if (queryWrap) queryWrap.hidden = byLocation;
+    if (condField) condField.hidden = describe || byLocation;
+    if (descField) descField.hidden = !describe || byLocation;
     var condInputEl = document.getElementById('conditionInput');
-    if (condInputEl) condInputEl.disabled = describe;
-    if (describeInput) describeInput.disabled = !describe;
+    if (condInputEl) {
+      condInputEl.disabled = describe || byLocation;
+      condInputEl.required = !describe && !byLocation;
+    }
+    if (describeInput) {
+      describeInput.disabled = !describe || byLocation;
+      describeInput.required = describe && !byLocation;
+    }
     modeButtons.forEach(function (b) {
       var on = b.getAttribute('data-mode') === mode;
       b.classList.toggle('is-active', on);
       b.setAttribute('aria-selected', on ? 'true' : 'false');
     });
     if (heroHint && HINTS[mode]) heroHint.textContent = HINTS[mode];
-    var active = describe ? describeInput : condInputEl;
+    var active = byLocation ? document.getElementById('location')
+                            : (describe ? describeInput : condInputEl);
     if (active) { try { active.focus(); } catch (e) {} }
   }
   modeButtons.forEach(function (b) {
@@ -262,6 +280,13 @@
     if (patientPrefill.age && patientPrefill.sex) intakeDone = true;
   }
   form.addEventListener('submit', function (e) {
+    // Location-only browse has no condition to pre-screen against, so skip the
+    // intake questions and run the search straight away.
+    if (currentMode === 'location') {
+      if (!form.reportValidity()) { e.preventDefault(); return; }
+      startOverlay();
+      return;
+    }
     // First press: make sure condition + location are filled, then ask the
     // quick pre-screen questions before actually running the search.
     if (!intakeDone) {

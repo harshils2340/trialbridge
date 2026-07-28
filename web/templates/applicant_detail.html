@@ -17,18 +17,59 @@
       <p style="display:flex;gap:16px;flex-wrap:wrap;">
         {% if view.email %}<span>{{ ic.icon('mail') }} {{ view.email }}</span>{% endif %}
         {% if view.phone %}<span>{{ ic.icon('phone') }} {{ view.phone }}</span>{% endif %}
-        {% if not view.revealed %}<span>{{ ic.icon('lock') }} Contact hidden until accepted</span>{% endif %}
+        {% if not view.revealed and is_owner %}
+          {% if l['email'] %}<span>{{ ic.icon('mail') }} {{ l['email'] }}</span>{% endif %}
+          {% if l['phone'] %}<span>{{ ic.icon('phone') }} {{ l['phone'] }}</span>{% endif %}
+          <span class="badge">{{ ic.icon('lock') }} operator view</span>
+        {% elif not view.revealed %}<span>{{ ic.icon('lock') }} Contact hidden until accepted</span>{% endif %}
         <span>Source: {{ view.source }}</span>
         <span>Applied {{ view.last_activity }}</span>
       </p>
     </div>
   </div>
   <div style="display:flex;gap:8px;align-items:center;">
+    {% if fwd %}{{ ui.btn('Forward to coordinator', 'primary', 'sm', icon='send', extra='data-ui-open="fwdModal"') }}{% endif %}
     {{ ui.badge(view.stage.label, view.stage.tone) }}
     {{ ui.badge(view.verdict.label, view.verdict.tone) }}
     <span class="score-pill {{ 'hi' if view.verdict.score >= 70 else ('mid' if view.verdict.score >= 40 else 'lo') }}">{{ view.verdict.score }}/100</span>
   </div>
 </div>
+
+{% if fwd %}
+{% call ui.modal('fwdModal', 'Forward to study coordinator') %}
+  {% if fwd.found %}
+  <p class="app-sub" style="margin-top:0;color:var(--muted);">Opens in your own email app. Review and edit before sending — the patient consented to the study team contacting them.</p>
+  {% else %}
+  <div class="callout warn" style="margin-bottom:12px;">{{ ic.icon('alert') }} No public coordinator email is listed for this study.{% if fwd.ctgov_url %} Open the <a href="{{ fwd.ctgov_url }}" target="_blank" rel="noopener">ClinicalTrials.gov contacts</a> and paste the address below.{% endif %}</div>
+  {% endif %}
+  <label class="field"><span>To</span><input type="email" id="fwdTo" value="{{ fwd.to }}" placeholder="coordinator@site.org"></label>
+  <label class="field"><span>Subject</span><input type="text" id="fwdSubject" value="{{ fwd.subject }}"></label>
+  <label class="field"><span>Message</span><textarea id="fwdBody" rows="14">{{ fwd.body }}</textarea></label>
+  <div class="row" style="gap:8px;justify-content:flex-end;margin-top:4px;">
+    {{ ui.btn('Copy message', 'ghost', 'sm', extra='type="button" id="fwdCopy"') }}
+    {{ ui.btn('Open in email app', 'primary', 'sm', icon='send', extra='type="button" id="fwdOpen"') }}
+  </div>
+  <script>
+  (function () {
+    function val(id) { var e = document.getElementById(id); return e ? e.value : ''; }
+    var openBtn = document.getElementById('fwdOpen');
+    var copyBtn = document.getElementById('fwdCopy');
+    if (openBtn) openBtn.addEventListener('click', function () {
+      var url = 'mailto:' + encodeURIComponent(val('fwdTo')) +
+        '?subject=' + encodeURIComponent(val('fwdSubject')) +
+        '&body=' + encodeURIComponent(val('fwdBody'));
+      window.location.href = url;
+    });
+    if (copyBtn) copyBtn.addEventListener('click', function () {
+      navigator.clipboard.writeText(val('fwdBody')).then(function () {
+        var t = copyBtn.textContent; copyBtn.textContent = 'Copied';
+        setTimeout(function () { copyBtn.textContent = t; }, 1500);
+      });
+    });
+  })();
+  </script>
+{% endcall %}
+{% endif %}
 
 <div style="display:grid;grid-template-columns:1fr 320px;gap:24px;align-items:start;">
   {# ── Main column ── #}

@@ -1101,8 +1101,12 @@ def _notify_owner_new_application(token, exclude_emails=None):
     lead = db.get_lead_by_token(token)
     if not lead:
         return False
-    link = _abs_url("leads")
-    subject, body = mailer.build_owner_new_application(lead, link)
+    # Deep-link straight to this applicant's full record (contact + screener +
+    # eligibility) so the operator can act/forward in one click, plus the
+    # cross-study inbox for the tabular view of everything.
+    link = _abs_url("applicant_detail", lead_id=lead["id"])
+    inbox = _abs_url("operator_inbox")
+    subject, body = mailer.build_owner_new_application(lead, link, inbox=inbox)
     return _notify(", ".join(recipients), subject, body)
 
 
@@ -1243,6 +1247,7 @@ def inject_globals():
     # three POVs (patient / clinician / study team) without signing in.
     path = request.path or "/"
     if (path.startswith("/app/leads") or path.startswith("/app/dashboard")
+            or path.startswith("/app/inbox")
             or path.startswith("/app/site") or path.startswith("/app/messages")
             or path.startswith("/app/analytics") or path.startswith("/app/home")
             or path.startswith("/app/applicant") or path.startswith("/app/matching")
@@ -3276,6 +3281,8 @@ def _render_cached_results(search_id):
         "unit": "km",
         "q_condition": "",
         "q_intervention": "",
+        "widened": False,
+        "location_only": False,
         "q_age": "",
         "q_sex": "",
         "q_about": "",
@@ -3300,6 +3307,41 @@ def _finish_find_redirect(search_id, nct=""):
         if r_open:
             return redirect(url_for("trial_detail", search_id=search_id, nct=nct))
     return redirect(url_for("find_results", search_id=search_id))
+
+
+def _exact_trial_for_query(q):
+    """If the query names ONE specific study - an NCT id, or a near-exact trial
+    title - return that study's NCT so we can guarantee it surfaces even when
+    it's outside the searcher's radius (single-site studies usually are).
+    Returns "" otherwise. Cheap for the common case: the NCT check is free, and
+    a network lookup only happens for long, title-like phrases."""
+    q = (q or "").strip()
+    if not q:
+        return ""
+    m = re.search(r"NCT\d{8}", q.upper())
+    if m:
+        return m.group(0)
+    # Only treat long, title-like phrases as a possible exact-title lookup, so
+    # ordinary short condition searches don't pay for an extra API call.
+    if len(q.split()) < 5:
+        return ""
+    try:
+        cand = mt.fetch_trials("", max_n=20, term=q)
+    except Exception:
+        return ""
+    ql = q.lower()
+    best, best_ratio = "", 0.0
+    for t in cand:
+        title = (t.get("title") or "").strip()
+        if not title:
+            continue
+        tl = title.lower()
+        if ql == tl or ql in tl:
+            return t.get("nctId", "")
+        ratio = difflib.SequenceMatcher(None, ql, tl).ratio()
+        if ratio > best_ratio:
+            best_ratio, best = ratio, t.get("nctId", "")
+    return best if best_ratio >= 0.85 else ""
 
 
 @app.route("/find", methods=["GET", "POST"])
@@ -3373,10 +3415,14 @@ def find():
         radius = 50
 
     label = condition_label or intervention
+    location_only = False
     if not label and not about:
-        flash("Tell us the condition, or describe what you're looking for.",
-              "error")
-        return redirect(url_for("home", location=location))
+        if location:
+            location_only = True          # browse everything recruiting nearby
+        else:
+            flash("Tell us the condition, describe what you're looking for, or "
+                  "enter a location to see all trials nearby.", "error")
+            return redirect(url_for("home", location=location))
     if not location:
         flash("Enter your city or postal code so we only show trials near you.",
               "error")
@@ -3441,7 +3487,8 @@ def find():
                                        intervention=intervention,
                                        assess=bool(about.strip()),
                                        evidence_terms=evidence_terms,
-                                       evidence_kind=evidence_kind)
+                                       evidence_kind=evidence_kind,
+                                       location_only=location_only)
     except RuntimeError as e:
         flash(str(e), "error")
         return redirect(url_for("home", condition=condition_label, location=location))
@@ -3514,6 +3561,64 @@ def find():
                 label = detected
                 condition_label = detected
 
+    # Stage 3 - a matching trial exists but fell outside the search radius (a
+    # single-site study like a university trial), or a brand-new trial the
+    # condition search missed. Rather than dead-ending on "no trials", widen the
+    # net: do a full-text (query.term) pass at a much larger radius (still
+    # distance-ranked, so a trial ~95 km away shows as such), then finally drop
+    # the location filter entirely as a last resort. Runs even without an LLM
+    # key (plain term search). `widened` lets the results page say so.
+    widened = False
+    if not results and not intervention and not location_only and condition_label:
+        attempts = []
+        if coords:
+            attempts.append((coords, max(int(radius or 0), 500)))  # widen radius
+        attempts.append((None, radius))                            # anywhere
+        for use_coords, use_radius in attempts:
+            try:
+                d3, r3 = run_search(
+                    build_patient_note("", age, sex, about, pregnant, other_trial),
+                    "", "", False, use_coords, use_radius, unit,
+                    interventional_only=True, assess=bool(about.strip()),
+                    broad_term=condition_label)
+            except Exception:
+                d3, r3 = "", []
+                app.logger.exception("title/keyword fallback failed")
+            if r3:
+                results = r3
+                detected = d3 or detected
+                freeform = True
+                condition_terms = []
+                widened = True
+                break
+
+    # Exact study reference: someone typed a full trial name or pasted an NCT id.
+    # They want THAT study - so guarantee it shows even if its only site is
+    # outside their radius (which is why a plain search can miss it). Pull it in
+    # via a no-geo lookup and pin it to the top, distance and all.
+    if (not location_only and not intervention
+            and request.form.get("freeform", "") != "1"):
+        target = _exact_trial_for_query(request.form.get("condition", ""))
+        if target and target not in {r["trial"].get("nctId") for r in results}:
+            try:
+                _, exact_res = run_search(
+                    build_patient_note("", age, sex, about, pregnant, other_trial),
+                    "", "", False, None, radius, unit, interventional_only=True,
+                    assess=bool(about.strip()),
+                    broad_term=request.form.get("condition", "").strip())
+            except Exception:
+                exact_res = []
+                app.logger.exception("exact-trial lookup failed")
+            pinned = next((r for r in exact_res
+                           if r["trial"].get("nctId") == target), None)
+            if pinned:
+                results = [pinned] + results
+                widened = True
+
+    # Location-only browse: give it a readable label for the results page + logs.
+    if location_only:
+        label = "Trials near " + location
+
     # Free-text search: adopt the condition the matcher extracted so results,
     # caching, and analytics have a real label instead of a raw sentence.
     if not label:
@@ -3538,7 +3643,8 @@ def find():
 
     ctx = {"condition": label, "location": location, "unit": unit,
            "q_condition": condition_label or (label if freeform else ""),
-           "q_intervention": intervention,
+           "q_intervention": intervention, "widened": widened,
+           "location_only": location_only,
            "q_age": age, "q_sex": sex, "q_about": about, "q_radius": radius,
            "q_lat": lat_in, "q_lon": lon_in, "q_cc": cc_in}
     search_id = _cache_search(results, ctx)
@@ -5349,6 +5455,39 @@ def _queue_item(it):
     }
 
 
+def _forward_draft(lead, it):
+    """Find the study's coordinator contact and pre-draft the handoff email the
+    operator sends. Onboarded/claimed studies use the site's notify address;
+    public CT.gov trials fall back to the registered central contact. Returns
+    None if there's no NCT to work with."""
+    nct = (lead["nct"] or "").strip()
+    if not nct:
+        return None
+    to_email = db.site_contact_for_nct(nct)
+    to_name = ""
+    ctgov_url = (f"https://clinicaltrials.gov/study/{nct}"
+                 if _NCT_RE.match(nct.upper()) else "")
+    if not to_email and _NCT_RE.match(nct.upper()):
+        trial = _get_study(nct)
+        if trial:
+            for c in _public_contacts(trial, {"contacts": []}):
+                if c.get("email"):
+                    to_email = c["email"]
+                    to_name = c.get("name") or ""
+                    break
+    sender_name = ""
+    try:
+        if g.user:
+            sender_name = (g.user["name"] or g.user["email"] or "").strip()
+    except (KeyError, IndexError, TypeError):
+        sender_name = ""
+    subject, body = mailer.build_coordinator_forward(
+        lead, it.get("elig"), it.get("screener"), it.get("flags"),
+        to_name=to_name, sender_name=sender_name)
+    return {"to": to_email, "to_name": to_name, "subject": subject,
+            "body": body, "ctgov_url": ctgov_url, "found": bool(to_email)}
+
+
 def _decode_lead(row, recon=None):
     """Attach parsed screener/eligibility + de-identified helpers to a lead row."""
     try:
@@ -5420,6 +5559,82 @@ def leads():
     return render_template("leads.html", queue=queue, review=review, active=active,
                            done=done, counts=counts, enrolled_n=enrolled_n,
                            claims=claims, q=q, active_nct=active_nct)
+
+
+def _operator_inbox_row(r):
+    """Flatten a lead row into the columns the operator needs to triage and
+    forward an application, without loading the full detail view."""
+    keys = set(r.keys())
+
+    def g_(k, default=""):
+        return (r[k] if k in keys else default)
+
+    def _json(k):
+        raw = g_(k, "")
+        if not raw:
+            return {}
+        try:
+            v = json.loads(raw)
+            return v if isinstance(v, dict) else {}
+        except (ValueError, TypeError):
+            return {}
+
+    elig = _json("eligibility")
+    screener = _json("screener")
+    readiness = _json("prescreen_readiness")
+    flags = screener.get("_flags") or []
+    contact = []
+    if g_("email"):
+        contact.append("email")
+    if g_("phone"):
+        contact.append("phone")
+    return {
+        "id": g_("id"),
+        "created_at": g_("created_at") or g_("updated_at"),
+        "name": g_("name"),
+        "email": g_("email"),
+        "phone": g_("phone"),
+        "contact": ", ".join(contact) or "none",
+        "age": g_("age"),
+        "sex": g_("sex"),
+        "condition": g_("condition"),
+        "title": g_("title"),
+        "nct": g_("nct"),
+        "location": g_("location"),
+        "status": g_("status") or "new",
+        "source": (g_("source") or "web").replace("_", " "),
+        "verdict": (elig.get("verdict") or "").lower(),
+        "flags": len(flags),
+        "readiness": readiness.get("score") or readiness.get("label") or "",
+        "records": bool(g_("records_connected", 0)),
+        "referred_by": g_("referred_by"),
+    }
+
+
+@app.route("/app/inbox")
+@owner_required
+def operator_inbox():
+    """Cross-study operator inbox: EVERY application that lands, in one tabular
+    view that updates as people apply. This is what the concierge loop runs on -
+    the study-team dashboard (/app/leads) is scoped to claimed studies, so
+    web applications to unclaimed public trials only show here. Owner-only."""
+    rows = db.list_leads()
+    q = request.args.get("q", "").strip().lower()
+    apps = [_operator_inbox_row(r) for r in rows]
+    if q:
+        def _match(a):
+            hay = " ".join(str(a.get(k, "")) for k in (
+                "name", "email", "phone", "condition", "title", "nct",
+                "location", "status")).lower()
+            return q in hay
+        apps = [a for a in apps if _match(a)]
+    stats = {
+        "total": len(apps),
+        "with_flags": sum(1 for a in apps if a["flags"]),
+        "records": sum(1 for a in apps if a["records"]),
+        "eligible": sum(1 for a in apps if a["verdict"] == "eligible"),
+    }
+    return render_template("inbox.html", apps=apps, stats=stats, q=q)
 
 
 @app.route("/app/search-index.json")
@@ -5893,7 +6108,8 @@ def applicant_detail(lead_id):
     lead = db.get_lead(lead_id)
     ncts = set(db.user_claimed_ncts(g.user["id"]))
     if not lead or (lead["nct"] and lead["nct"] not in ncts
-                    and not _is_demo_account(g.user)):
+                    and not _is_demo_account(g.user)
+                    and not _is_owner()):
         abort(404)
     it = _decode_lead(lead, db.latest_reconciliation(lead_id))
     view = _queue_item(it)
@@ -5902,11 +6118,22 @@ def applicant_detail(lead_id):
     # coordinator's account calendar (configured once in Settings).
     default_schedule = (db.get_claim_schedule_url(g.user["id"], lead["nct"])
                         or db.get_site_calendar_url(g.user["id"]))
+    # Concierge handoff: pre-draft the email to the study's coordinator so the
+    # operator can forward a consented applicant in one click (fetches the
+    # coordinator contact; cached). Owner-only - this is an internal tool, so
+    # site users never see the forward button even on their own applicants.
+    fwd = None
+    if _is_owner():
+        try:
+            fwd = _forward_draft(lead, it)
+        except Exception:
+            app.logger.exception("forward draft failed")
+            fwd = None
     return render_template("applicant_detail.html", it=it, l=lead, view=view,
                            statuses=db.LEAD_STATUSES, labels=db.LEAD_LABELS,
                            screener_labels=SCREENER_LABELS,
                            screener_flags=SCREENER_FLAGS,
-                           default_schedule=default_schedule)
+                           default_schedule=default_schedule, fwd=fwd)
 
 
 @app.route("/app/dashboard")
@@ -7862,7 +8089,8 @@ ISRCTN_ENABLED = os.environ.get("ISRCTN_ENABLED", "1") != "0"
 
 def run_search(note, condition, country, require_site, coords=None, radius=50,
                unit="km", interventional_only=True, intervention="", assess=True,
-               evidence_terms=None, evidence_kind="", broad_term=""):
+               evidence_terms=None, evidence_kind="", broad_term="",
+               location_only=False):
     """Fetch -> hard-gate -> LLM-score, ranked by relevance then distance.
     `radius`/`unit` define the geographic limit. By default only interventional
     (treatment) trials are kept - a doctor refers for therapy, not to a registry.
@@ -7891,7 +8119,7 @@ def run_search(note, condition, country, require_site, coords=None, radius=50,
     cond_terms = []
     if condition:
         cond_terms = [condition]
-    elif not intervention and mt.LLM_API_KEY:
+    elif not intervention and not location_only and mt.LLM_API_KEY:
         try:
             raw = mt.llm_chat(
                 "You map a patient's described situation or symptom to the "
@@ -7905,7 +8133,7 @@ def run_search(note, condition, country, require_site, coords=None, radius=50,
         except Exception:
             cond_terms = []
     search_label = (cond_terms[0] if cond_terms else "") or intervention
-    if not search_label and not broad_term:
+    if not search_label and not broad_term and not location_only:
         return "", []
 
     geo = None
@@ -7936,6 +8164,9 @@ def run_search(note, condition, country, require_site, coords=None, radius=50,
                     break
         elif search_label:
             _absorb(mt.fetch_trials(search_label, max_n=200, geo=geo))
+        elif location_only and geo:
+            # Location-only browse: every recruiting trial with a site in range.
+            _absorb(mt.fetch_trials("", max_n=200, geo=geo))
         # Full-text pass (eligibility criteria etc.) for vague/symptom searches.
         if broad_term and len(out) < 200:
             _absorb(mt.fetch_trials("", max_n=200 - len(out), geo=geo,

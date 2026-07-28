@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block title %}Application inbox · BridgeMD{% endblock %}
+{% import "_icons.html" as ic %}
+{% import "_ui.html" as ui %}
+
+{% macro verdict_badge(v) %}
+  {% if v == 'eligible' %}{{ ui.badge('Eligible', 'ok') }}
+  {% elif v == 'likely' or v == 'likely eligible' %}{{ ui.badge('Likely', 'info') }}
+  {% elif v == 'possible' %}{{ ui.badge('Possible', 'warn') }}
+  {% elif v in ('ineligible', 'not eligible', 'excluded') %}{{ ui.badge('Ineligible', 'danger') }}
+  {% elif v %}{{ ui.badge(v|capitalize, 'neutral') }}
+  {% else %}<span style="color:var(--faint);">—</span>{% endif %}
+{% endmacro %}
+
+{% block body %}
+<div class="app-head">
+  <div>
+    <h1>Application inbox</h1>
+    <p>Every application that lands on BridgeMD, across all studies. Updates as people apply. Click a row to see contact details, screener answers and eligibility, then forward to the study team.</p>
+  </div>
+</div>
+
+<div class="app-stats">
+  <div class="app-stat"><div class="l">Total</div><div class="n">{{ stats.total }}</div></div>
+  <div class="app-stat ok"><div class="l">Pre-screen eligible</div><div class="n">{{ stats.eligible }}</div></div>
+  <div class="app-stat accent"><div class="l">Has flags</div><div class="n">{{ stats.with_flags }}</div></div>
+  <div class="app-stat"><div class="l">Records connected</div><div class="n">{{ stats.records }}</div></div>
+</div>
+
+<form method="get" action="{{ url_for('operator_inbox') }}" class="row" style="margin:0 0 14px;max-width:420px;">
+  <input type="search" name="q" value="{{ q }}" placeholder="Search name, email, study, NCT, condition…" autocomplete="off">
+  {{ ui.btn('Search', 'ghost', 'sm', type='submit') }}
+  {% if q %}<a href="{{ url_for('operator_inbox') }}" style="align-self:center;font-size:13px;">Clear</a>{% endif %}
+</form>
+
+{% if not apps %}
+<div class="app-card pad">
+  {{ ui.empty('No applications yet' if not q else 'No matches',
+     'Applications appear here the moment someone applies.' if not q else 'Try a different search.',
+     'inbox') }}
+</div>
+{% else %}
+<div class="app-card">
+  <table class="app-table">
+    <thead>
+      <tr>
+        <th>Applicant</th>
+        <th>Study</th>
+        <th>Condition</th>
+        <th>Region</th>
+        <th>Pre-screen</th>
+        <th>Applied</th>
+        <th>Status</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for a in apps %}
+      <tr class="link" onclick="window.location='{{ url_for('applicant_detail', lead_id=a.id) }}'">
+        <td>
+          <div class="who">
+            <span class="app-av brand">{{ (a.name or a.email or '?')[:1]|upper }}</span>
+            <div>
+              <b>{{ a.name or 'Anonymous' }}</b>
+              <span>{{ a.email or a.phone or 'no contact' }}{% if a.records %} · records{% endif %}</span>
+            </div>
+          </div>
+        </td>
+        <td>
+          <b style="font-size:13px;">{{ a.title or a.nct or '—' }}</b>
+          {% if a.nct %}<br><a href="https://clinicaltrials.gov/study/{{ a.nct }}" target="_blank" rel="noopener" style="font-size:12px;" onclick="event.stopPropagation();">{{ a.nct }}</a>{% endif %}
+        </td>
+        <td>{{ a.condition or '—' }}</td>
+        <td>{{ a.location or '—' }}</td>
+        <td>
+          {{ verdict_badge(a.verdict) }}
+          {% if a.flags %} {{ ui.badge(a.flags ~ ' flag' ~ ('' if a.flags == 1 else 's'), 'warn') }}{% endif %}
+        </td>
+        <td style="font-size:12px;color:var(--muted);white-space:nowrap;">{{ a.created_at or '—' }}</td>
+        <td>{{ ui.badge(a.status|capitalize, 'neutral') }}</td>
+        <td style="text-align:right;">{{ ui.btn('Open', 'ghost', 'sm', href=url_for('applicant_detail', lead_id=a.id)) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+{% endblock %}

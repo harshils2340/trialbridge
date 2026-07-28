@@ -7,6 +7,7 @@ with zero infrastructure. Set these to enable real sending:
     SMTP_HOST, SMTP_PORT (default 587), SMTP_USER, SMTP_PASS,
     SMTP_FROM (defaults to SMTP_USER), SMTP_TLS ("1" default)
 """
+import json
 import os
 import smtplib
 import ssl
@@ -86,38 +87,155 @@ def build_candidate_message(lead, link):
     return subject, "\n".join(lines)
 
 
-def build_owner_new_application(lead, link):
+def build_owner_new_application(lead, link, inbox=""):
     """Internal heads-up to the operator that a new application came in, so they
-    can confirm the funnel is producing real applications. De-identified on
-    purpose: NO name, email, phone, or clinical notes — those live behind the
-    secure dashboard link."""
-    nct = lead["nct"] or "a study"
+    can act on it (forward to the study team) fast. De-identified on purpose:
+    NO name, email, phone, or clinical notes in the email itself — those live
+    behind the secure record link. Includes triage context so the operator can
+    prioritise before clicking through."""
+    def _lget(key, default=""):
+        try:
+            v = lead[key]
+        except (KeyError, IndexError, TypeError):
+            return default
+        return v if v not in (None, "") else default
+
+    nct = _lget("nct") or "a study"
     subject = f"New application: {nct} - BridgeMD"
-    src = (lead["source"] or "web").replace("_", " ")
+    src = (_lget("source", "web")).replace("_", " ")
     lines = [
         "A new application was just submitted on BridgeMD.",
         "",
-        f"Study: {lead['title'] or nct}",
+        f"Study: {_lget('title') or nct}",
     ]
-    if lead["nct"]:
-        lines.append(f"NCT: {lead['nct']}")
-    if lead["condition"]:
-        lines.append(f"Condition: {lead['condition']}")
-    if lead["location"]:
-        lines.append(f"Region: {lead['location']}")
+    if _lget("nct"):
+        lines.append(f"NCT: {_lget('nct')}")
+    if _lget("condition"):
+        lines.append(f"Condition: {_lget('condition')}")
+    if _lget("location"):
+        lines.append(f"Region: {_lget('location')}")
     lines.append(f"Source: {src}")
+
+    # Triage context (still de-identified): what the operator needs to decide
+    # how urgent this is, without any PII.
+    contact = []
+    if _lget("email"):
+        contact.append("email")
+    if _lget("phone"):
+        contact.append("phone")
+    lines.append(f"Contact on file: {', '.join(contact) or 'none'}")
+
+    verdict = ""
     try:
-        if lead["records_connected"]:
-            lines.append("Records: connected")
-    except (KeyError, IndexError, TypeError):
+        elig = json.loads(_lget("eligibility") or "{}")
+        if isinstance(elig, dict):
+            verdict = (elig.get("verdict") or "").strip()
+    except (ValueError, TypeError):
         pass
+    if verdict:
+        lines.append(f"Pre-screen: {verdict}")
+
+    try:
+        scr = json.loads(_lget("screener") or "{}")
+        flags = scr.get("_flags") if isinstance(scr, dict) else None
+        if flags:
+            lines.append(f"Flags: {len(flags)} to review")
+    except (ValueError, TypeError):
+        pass
+
+    if _lget("records_connected"):
+        lines.append("Records: connected")
+
     lines += [
         "",
-        "Open the dashboard to review it (contact details are behind login):",
+        "Open this applicant (contact + answers, behind login):",
         link,
+    ]
+    if inbox:
+        lines += ["", "All applications (inbox):", inbox]
+    lines += [
         "",
         "You're getting this because you're the BridgeMD operator.",
         "Sent via BridgeMD.",
+    ]
+    return subject, "\n".join(lines)
+
+
+def build_coordinator_forward(lead, elig=None, screener=None, flags=None,
+                              to_name="", sender_name=""):
+    """Draft the operator sends to a study coordinator to hand off a patient who
+    applied and consented to be contacted. The patient is inbound and has
+    consented to the study team reaching them, so their own contact details are
+    included on purpose - that is the handoff. Pre-screen is patient-reported and
+    labelled as not verified. No recruitment claims, no payment: a neutral
+    handoff the coordinator can act on."""
+    elig = elig or {}
+    flags = flags or []
+
+    def _lget(k, d=""):
+        try:
+            v = lead[k]
+        except (KeyError, IndexError, TypeError):
+            return d
+        return v if v not in (None, "") else d
+
+    nct = _lget("nct")
+    title = _lget("title") or nct or "your study"
+    subject = f"Patient interested in {nct or 'your study'}"
+    if _lget("condition"):
+        subject += f" ({_lget('condition')})"
+
+    greeting = f"Hi {to_name.strip()}," if to_name.strip() else "Hi,"
+    contact_bits = []
+    if _lget("email"):
+        contact_bits.append(_lget("email"))
+    if _lget("phone"):
+        contact_bits.append(_lget("phone"))
+
+    study_line = f"Study: {title}"
+    if nct and nct not in title:
+        study_line += f" ({nct})"
+
+    lines = [
+        greeting,
+        "",
+        ("A patient found " + (f"this study ({nct})" if nct else "your study") +
+         " on BridgeMD and asked to be contacted about taking part. They've "
+         "consented to your team reaching out using the details below."),
+        "",
+        study_line,
+        f"Patient: {_lget('name') or 'Applicant'}",
+    ]
+    if contact_bits:
+        lines.append("Contact: " + "  |  ".join(contact_bits))
+    reported = []
+    if _lget("age"):
+        reported.append(f"age {_lget('age')}")
+    if _lget("sex"):
+        reported.append(_lget("sex"))
+    if reported:
+        lines.append("Reported: " + ", ".join(reported))
+
+    verdict = (elig.get("verdict") or "").strip()
+    if verdict:
+        lines += ["", f"Pre-screen (patient-reported, not verified): {verdict}"]
+    if elig.get("met"):
+        lines.append("Appears to meet: " + "; ".join(elig["met"][:6]))
+    if elig.get("unknown"):
+        lines.append("To confirm: " + "; ".join(elig["unknown"][:6]))
+    if elig.get("not_met"):
+        lines.append("Possible barriers: " + "; ".join(elig["not_met"][:6]))
+    if flags:
+        lines.append("Flags to review: " + "; ".join(str(x) for x in flags[:6]))
+
+    lines += [
+        "",
+        ("BridgeMD doesn't access medical records - the above is what the patient "
+         "reported when they applied. If your team isn't the right contact for "
+         "recruitment, let me know who is and I'll route it there."),
+        "",
+        "Thanks,",
+        sender_name or "BridgeMD",
     ]
     return subject, "\n".join(lines)
 

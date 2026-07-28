@@ -143,7 +143,7 @@
 
     <div class="pr-head">
       <div>
-        <h1>Trials for {{ condition }}</h1>
+        <h1>{% if location_only %}Recruiting trials near {{ location }}{% else %}Trials for {{ condition }}{% endif %}</h1>
         <p class="pr-sub">{{ ic.icon('pin') }} Near {{ location }} ·
           <span id="prCount">{{ results|length }}</span> recruiting match{{ '' if results|length == 1 else 'es' }}</p>
       </div>
@@ -151,6 +151,15 @@
         <button type="button" class="btn btn-ghost pr-filter-toggle" id="filtToggle">{{ ic.icon('activity') }} Filters</button>
       </div>
     </div>
+
+    {% if widened and results %}
+    <div class="pr-notice">
+      {{ ic.icon('pin') }}
+      <span>No recruiting trials sat within your distance, so we widened the
+        search. These matches are farther away — check the distance on each, or
+        adjust <b>Distance</b> in Filters.</span>
+    </div>
+    {% endif %}
 
     {% if results %}
     <div class="pr-how">
