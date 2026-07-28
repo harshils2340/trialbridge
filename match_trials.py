@@ -36,6 +36,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import xml.etree.ElementTree as ET
 
 HERE = pathlib.Path(__file__).resolve().parent
 CT_API = "https://clinicaltrials.gov/api/v2/studies"
@@ -99,8 +100,18 @@ VERDICT_RANK = {"likely_eligible": 0, "possible": 1, "unlikely": 2, "error": 3}
 # --------------------------------------------------------------------------- #
 # 1. FETCH
 # --------------------------------------------------------------------------- #
-def fetch_trials(condition, max_n=300, geo=None, intervention="", term=""):
-    """Fetch recruiting trials, paginating so we don't silently miss trials.
+# Statuses we treat as "a patient can act on this now or very soon". Including
+# NOT_YET_RECRUITING lets people find and register interest in trials about to
+# open (real added quantity - ~30-50% more studies for many conditions) without
+# surfacing closed/completed ones. Callers that want strictly-open studies (SEO
+# pages) filter to RECRUITING afterwards.
+OPEN_STATUSES = "RECRUITING,NOT_YET_RECRUITING"
+
+
+def fetch_trials(condition, max_n=300, geo=None, intervention="", term="",
+                 statuses=OPEN_STATUSES):
+    """Fetch open trials (recruiting + not-yet-recruiting), paginating so we
+    don't silently miss trials.
 
     `geo`, if given, is a ClinicalTrials.gov geo filter like
     'distance(43.65,-79.38,100mi)' so the API only returns studies with a site
@@ -109,12 +120,13 @@ def fetch_trials(condition, max_n=300, geo=None, intervention="", term=""):
     peptide trend. `term`, if given, is a full-text (query.term) search across the
     whole study record - including the eligibility criteria - so a symptom like
     "trouble sleeping" surfaces trials that mention it even when it isn't the
-    trial's condition label.
+    trial's condition label. `statuses` is a comma-separated CT.gov
+    overallStatus filter (default recruiting + not-yet-recruiting).
     """
     trials, token = [], None
     while len(trials) < max_n:
         params = {
-            "filter.overallStatus": "RECRUITING",
+            "filter.overallStatus": statuses,
             "pageSize": "100",
             "format": "json",
         }
@@ -232,6 +244,173 @@ def fetch_study(nct):
     req = urllib.request.Request(url, headers={"User-Agent": "trial-matcher/0.1"})
     with urllib.request.urlopen(req, timeout=40) as r:
         return extract_trial(json.load(r))
+
+
+# --------------------------------------------------------------------------- #
+# 1b. FETCH - ISRCTN (UK/international registry). Second source for breadth.
+# --------------------------------------------------------------------------- #
+ISRCTN_API = "https://www.isrctn.com/api/query/format/default"
+ISRCTN_NS = "{http://www.67bricks.com/isrctn}"
+_NCT_RE = re.compile(r"NCT\d{8}")
+_PHASE_MAP = {  # ISRCTN "Phase II" -> CT.gov-style "PHASE2" so badges/filters agree
+    "PHASE I": "PHASE1", "PHASE II": "PHASE2", "PHASE III": "PHASE3",
+    "PHASE IV": "PHASE4", "PHASE I/II": "PHASE1, PHASE2",
+    "PHASE II/III": "PHASE2, PHASE3", "EARLY PHASE 1": "EARLY_PHASE1",
+}
+
+
+def _isrctn_phase(raw):
+    p = (raw or "").strip().upper().replace("PHASE-", "PHASE ")
+    return _PHASE_MAP.get(p, "")
+
+
+def _isrctn_active_status(start, end):
+    """Map ISRCTN recruitment dates to a CT.gov-style status. None if ended
+    (so we never surface a trial that's already stopped recruiting)."""
+    today = time.strftime("%Y-%m-%d")
+    s = (start or "")[:10]
+    e = (end or "")[:10]
+    if e and e < today:
+        return None                      # recruitment window closed
+    if s and s > today:
+        return "NOT_YET_RECRUITING"
+    return "RECRUITING"
+
+
+def _txt(el, path):
+    node = el.find(path)
+    return (node.text or "").strip() if node is not None and node.text else ""
+
+
+def _isrctn_to_trial(full, ns=ISRCTN_NS):
+    """Map one ISRCTN <fullTrial> element to the same dict shape as
+    extract_trial(), so the rest of the pipeline treats both sources uniformly.
+    Returns None for trials whose recruitment window has already closed."""
+    if full.find(f"{ns}trial") is None:
+        return None
+    # Search relative to <fullTrial>: some sections (sponsor, contacts) sit as
+    # siblings of <trial>, not inside it, so a trial-relative XPath misses them.
+    trial_el = full
+    raw_xml = "".join(full.itertext())          # for NCT cross-ref lookup
+    start = _txt(trial_el, f".//{ns}recruitmentStart")
+    end = _txt(trial_el, f".//{ns}recruitmentEnd")
+    status = _isrctn_active_status(start, end)
+    if status is None:
+        return None
+
+    isrctn_id = _txt(trial_el, f".//{ns}isrctn") or ""
+    reg_id = f"ISRCTN{isrctn_id}" if isrctn_id else ""
+    nct = None
+    m = _NCT_RE.search(raw_xml)                  # ISRCTN often lists the NCT
+    if m:
+        nct = m.group(0)
+
+    title = (_txt(trial_el, f".//{ns}title")
+             or _txt(trial_el, f".//{ns}scientificTitle"))
+    summary = (_txt(trial_el, f".//{ns}plainEnglishSummary")
+               or _txt(trial_el, f".//{ns}studyHypothesis"))
+    conditions = [d.text.strip() for d in
+                  trial_el.findall(f".//{ns}condition/{ns}description")
+                  if d.text and d.text.strip()]
+    inclusion = _txt(trial_el, f".//{ns}inclusion")
+    exclusion = _txt(trial_el, f".//{ns}exclusion")
+    criteria = ""
+    if inclusion:
+        criteria += "Inclusion criteria:\n" + inclusion
+    if exclusion:
+        criteria += ("\n\n" if criteria else "") + "Exclusion criteria:\n" + exclusion
+
+    gender = (_txt(trial_el, f".//{ns}gender") or "All").upper()
+    sex = {"MALE": "MALE", "FEMALE": "FEMALE"}.get(gender, "ALL")
+    lo = _txt(trial_el, f".//{ns}lowerAgeLimit")
+    hi = _txt(trial_el, f".//{ns}upperAgeLimit")
+
+    def _age(v):
+        v = (v or "").strip()
+        if not v or v.lower() in ("not specified", "no limit"):
+            return ""
+        return v if re.search(r"[a-zA-Z]", v) else f"{v} Years"
+
+    hv_raw = _txt(trial_el, f".//{ns}healthyVolunteersAllowed").lower()
+    healthy = "YES" if hv_raw in ("true", "yes", "y") else ""
+
+    countries = [c.text.strip() for c in
+                 trial_el.findall(f".//{ns}recruitmentCountries/{ns}country")
+                 if c.text and c.text.strip()]
+    locations = [{"facility": "", "city": "", "state": "", "country": c,
+                  "status": status, "contacts": [], "lat": None, "lon": None}
+                 for c in countries]
+
+    contacts = []
+    for c in trial_el.findall(f".//{ns}contact"):
+        name = " ".join(x for x in (_txt(c, f"{ns}forename"),
+                                    _txt(c, f"{ns}surname")) if x)
+        email = _txt(c, f"{ns}email")
+        phone = _txt(c, f"{ns}telephone")
+        if name or email or phone:
+            contacts.append({"name": name, "email": email, "phone": phone})
+
+    interventions = []
+    for iv in trial_el.findall(f".//{ns}intervention"):
+        nm = (_txt(iv, f"{ns}drugNames")
+              or _txt(iv, f"{ns}interventionType") or "")
+        if nm:
+            interventions.append({"type": _txt(iv, f"{ns}interventionType") or "",
+                                  "name": nm,
+                                  "description": _txt(iv, f"{ns}description"),
+                                  "otherNames": []})
+    study_type = ("INTERVENTIONAL"
+                  if (interventions
+                      or trial_el.find(f".//{ns}interventionalTrialDesign") is not None)
+                  else "OBSERVATIONAL")
+
+    return {
+        "nctId": nct or reg_id,             # uniform id (routes key on this)
+        "registryId": reg_id, "registry": "ISRCTN", "source": "isrctn",
+        "title": title, "studyType": study_type,
+        "phase": _isrctn_phase(_txt(trial_el, f".//{ns}phase")),
+        "overallStatus": status,
+        "briefSummary": summary, "detailedDescription": "",
+        "leadSponsor": _txt(trial_el, f".//{ns}sponsor/{ns}organisation"),
+        "enrollment": _txt(trial_el, f".//{ns}targetEnrolment"),
+        "startDate": (start or "")[:10], "completionDate": (end or "")[:10],
+        "conditions": conditions, "meshTerms": [], "meshAncestors": [],
+        "intrMesh": [], "interventions": interventions,
+        "criteria": criteria, "sex": sex, "minAge": _age(lo), "maxAge": _age(hi),
+        "healthyVolunteers": healthy,
+        "centralContacts": contacts, "officials": [], "locations": locations,
+    }
+
+
+def fetch_isrctn(condition="", intervention="", limit=40, timeout=15):
+    """Fetch open trials from the ISRCTN registry (UK/international) as trial
+    dicts in the same shape as extract_trial().
+
+    Best-effort and self-contained: any failure returns [] so ISRCTN never
+    breaks the primary ClinicalTrials.gov results. Records with a closed
+    recruitment window are dropped, and ones cross-referencing an NCT keep that
+    NCT as their id so they dedupe against the CT.gov result set.
+    """
+    term = (condition or intervention or "").strip()
+    if not term:
+        return []
+    q = f'condition:"{term}"' if condition else f'"{term}"'
+    url = f"{ISRCTN_API}?q={urllib.parse.quote(q)}&limit={int(limit)}"
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "trial-matcher/0.1"})
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            root = ET.parse(r).getroot()
+    except Exception:
+        return []
+    out = []
+    for full in root.findall(f"{ISRCTN_NS}fullTrial"):
+        try:
+            t = _isrctn_to_trial(full)
+        except Exception:
+            t = None
+        if t and t.get("title"):
+            out.append(t)
+    return out
 
 
 def sites_in_country(trial, country):

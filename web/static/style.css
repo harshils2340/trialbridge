@@ -1345,6 +1345,22 @@ body.home-screen .landing-legal-links { margin: 0; flex: 0 0 auto; font-size: 12
   background: #eef8f2; color: #24644a; }
 .pr-benefit .ico { width: 12px; height: 12px; }
 .pr-benefit-money { border-color: #d9d3f4; background: #f4f1ff; color: #4a3aa8; }
+/* Late-stage (Phase 3) + healthy-volunteers card tags - patient-relevant signals
+   built from data we already scrape. Tokenized (no raw hex) per UI rules. */
+.pr-late { font-size: 12px; font-weight: 600; display: inline-flex; align-items: center;
+  gap: 4px; border-radius: 999px; padding: 3px 9px; border: 1px solid var(--info-border);
+  background: var(--info-bg); color: var(--info); }
+.pr-late .ico { width: 12px; height: 12px; }
+.pr-hv { font-size: 12px; display: inline-flex; align-items: center; gap: 4px;
+  border-radius: 999px; padding: 3px 9px; border: 1px solid var(--border);
+  background: var(--green-bg); color: var(--green); }
+.pr-hv .ico { width: 12px; height: 12px; }
+.filt-check .dot-hv { background: var(--green); }
+/* "Enrolling soon" = not-yet-recruiting but approved and opening (amber, so it
+   reads as distinct from actively-recruiting green). */
+.pr-soon { font-size: 12px; display: inline-flex; align-items: center; gap: 4px;
+  color: var(--amber); }
+.pr-soon .ico { width: 12px; height: 12px; }
 .pr-card-title { font-size: 18px; line-height: 1.35; letter-spacing: -.02em; margin: 4px 0 10px; }
 .pr-official-title { margin: -6px 0 10px; color: var(--faint); font-size: 12.5px; line-height: 1.4; }
 .pr-summary { color: var(--muted); font-size: 14px; line-height: 1.55; margin: 0 0 12px;

@@ -26,8 +26,10 @@
       {% if r.distance is not none %}<span class="pr-dist">{{ ic.icon('pin') }}{{ '%.0f'|format(r.distance) }} {{ r.unit }} away</span>{% endif %}
       {% if t.phase %}<span class="pr-phase">{{ t.phase.replace('_',' ')|title if t.phase != 'NA' else 'N/A' }}</span>{% endif %}
       {% if r.pay and r.pay.label %}<span class="pr-pay pr-pay-{{ r.pay.tier }}">{{ ic.icon('activity') }}{{ r.pay.label }}</span>{% endif %}
-      <span class="pr-phase">{{ 'Site-posted' if t.source == 'site_posted' else 'ClinicalTrials.gov' }}</span>
-      <span class="pr-recruiting">{{ ic.icon('check') }} Recruiting</span>
+      <span class="pr-phase">{{ 'Site-posted' if t.source == 'site_posted' else ('ISRCTN registry' if t.source == 'isrctn' else 'ClinicalTrials.gov') }}</span>
+      {% if (t.overallStatus or 'RECRUITING')|upper == 'NOT_YET_RECRUITING' %}
+      <span class="pr-soon" title="Approved and opening soon - you can register your interest now">{{ ic.icon('activity') }} Enrolling soon</span>
+      {% else %}<span class="pr-recruiting">{{ ic.icon('check') }} Recruiting</span>{% endif %}
     </div>
 
     <h1 class="td-title">{{ t.title }}</h1>

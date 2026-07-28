@@ -7504,8 +7504,10 @@ def haversine(lat1, lon1, lat2, lon2, unit="km"):
 
 
 def _is_active_site(s):
-    """A site the patient could actually enroll at (recruiting or unlabeled)."""
-    return (s.get("status") or "").upper() in ("", "RECRUITING")
+    """A site the patient could actually enroll at now or very soon (recruiting,
+    not-yet-recruiting, or unlabeled)."""
+    return (s.get("status") or "").upper() in (
+        "", "RECRUITING", "NOT_YET_RECRUITING")
 
 
 def nearby_sites(trial, lat, lon, unit, radius):
@@ -7853,6 +7855,11 @@ def _match_snippet(trial, terms, kind, window=85):
     return None
 
 
+# Second registry (ISRCTN) toggle. On by default; set ISRCTN_ENABLED=0 to disable
+# if it ever adds latency without value for your patient base.
+ISRCTN_ENABLED = os.environ.get("ISRCTN_ENABLED", "1") != "0"
+
+
 def run_search(note, condition, country, require_site, coords=None, radius=50,
                unit="km", interventional_only=True, intervention="", assess=True,
                evidence_terms=None, evidence_kind="", broad_term=""):
@@ -7933,6 +7940,22 @@ def run_search(note, condition, country, require_site, coords=None, radius=50,
         if broad_term and len(out) < 200:
             _absorb(mt.fetch_trials("", max_n=200 - len(out), geo=geo,
                                     term=broad_term))
+        # Second registry: ISRCTN (UK/international) for breadth. Deduped by NCT
+        # against the CT.gov set above (ISRCTN records that cross-reference an NCT
+        # collapse into the richer CT.gov record). ISRCTN sites have no lat/lon,
+        # so these naturally fall out of geo-scoped ("near me") searches and only
+        # surface on country-level / no-location searches - keeping local quality
+        # high while still adding global completeness.
+        if ISRCTN_ENABLED and len(out) < 200:
+            isr_term = intervention or (cond_terms[0] if cond_terms else search_label)
+            if isr_term:
+                try:
+                    _absorb(mt.fetch_isrctn(
+                        condition="" if intervention else isr_term,
+                        intervention=intervention,
+                        limit=min(40, 200 - len(out))))
+                except Exception:
+                    app.logger.exception("ISRCTN fetch failed")
         return out[:200]
 
     try:
@@ -7942,10 +7965,11 @@ def run_search(note, condition, country, require_site, coords=None, radius=50,
             "Couldn't reach ClinicalTrials.gov right now. Please try again "
             "in a moment.")
 
-    # Only genuinely active studies: recruiting overall (belt-and-suspenders on
-    # top of the API filter), and interventional by default.
+    # Only genuinely joinable studies: recruiting or opening soon (belt-and-
+    # suspenders on top of the API filter), and interventional by default.
+    _OPEN = ("RECRUITING", "NOT_YET_RECRUITING")
     trials = [t for t in trials
-              if (t.get("overallStatus") or "RECRUITING").upper() == "RECRUITING"]
+              if (t.get("overallStatus") or "RECRUITING").upper() in _OPEN]
     if interventional_only:
         trials = [t for t in trials
                   if (t.get("studyType") or "").upper() != "OBSERVATIONAL"]
@@ -8018,8 +8042,7 @@ def run_search(note, condition, country, require_site, coords=None, radius=50,
         # Summarize the study's other recruiting sites (beyond the nearby ones)
         # so the doctor can see where else it runs without a wall of text.
         # Order by proximity to the patient so the closest options show first.
-        recruiting = [s for s in t.get("locations", [])
-                      if (s.get("status") or "").upper() in ("", "RECRUITING")]
+        recruiting = [s for s in t.get("locations", []) if _is_active_site(s)]
         near_ids = {(s.get("facility"), s.get("city")) for s in near}
         others = [s for s in recruiting
                   if (s.get("facility"), s.get("city")) not in near_ids]

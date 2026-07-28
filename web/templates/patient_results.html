@@ -71,6 +71,16 @@
     </div>
     {% endif %}
 
+    {% set hv_ns = namespace(n=0) %}
+    {% for r in results %}{% if (r.trial.healthyVolunteers|string)|lower in ['yes','true','y'] %}{% set hv_ns.n = hv_ns.n + 1 %}{% endif %}{% endfor %}
+    {% if hv_ns.n %}
+    <div class="filt-group">
+      <label class="filt-label">{{ ic.icon('user-plus') }} Healthy volunteers</label>
+      <label class="filt-check"><input type="checkbox" id="fHvOnly" class="f-hv">
+        <span class="dot dot-hv"></span>Only trials open to healthy volunteers ({{ hv_ns.n }})</label>
+    </div>
+    {% endif %}
+
     {% if fit_set|length > 1 %}
     <div class="filt-group">
       <label class="filt-label">{{ ic.icon('sparkle') }} Match quality</label>
@@ -167,17 +177,24 @@
     {% set lab = labels.get(m.verdict, ('You might qualify','maybe')) %}
     <article class="pr-card" data-fit="{{ lab[1] }}" data-phase="{{ t.phase or 'NA' }}"
              data-dist="{{ '%.1f'|format(r.distance) if r.distance is not none else 999999 }}"
-             data-pay="{{ r.pay.score if r.pay else 0 }}" data-order="{{ loop.index0 }}">
+             data-pay="{{ r.pay.score if r.pay else 0 }}"
+             data-hv="{{ 1 if (t.healthyVolunteers|string)|lower in ['yes','true','y'] else 0 }}"
+             data-order="{{ loop.index0 }}">
       <div class="pr-card-top">
         <span class="fit fit-{{ lab[1] }}">{{ ic.icon('check') if lab[1]=='good' else (ic.icon('x') if lab[1]=='no' else (ic.icon('help') if lab[1]=='unknown' else ic.icon('sparkle'))) }}{{ lab[0] }}</span>
         {% if r.distance is not none %}<span class="pr-dist">{{ ic.icon('pin') }}{{ '%.0f'|format(r.distance) }} {{ r.unit }} away</span>{% endif %}
-        {% if t.phase %}<span class="pr-phase">{{ t.phase.replace('_',' ')|title if t.phase != 'NA' else 'N/A' }}</span>{% endif %}
+        {% if t.phase %}{% set _ph = (t.phase|upper).replace(' ','').replace('_','') %}
+        {% if 'PHASE3' in _ph %}<span class="pr-late" title="Late-stage study - larger and further along in testing">{{ ic.icon('award') }}Late-stage (Phase 3)</span>
+        {% else %}<span class="pr-phase">{{ t.phase.replace('_',' ')|title if t.phase != 'NA' else 'N/A' }}</span>{% endif %}{% endif %}
         {% if r.pay and r.pay.label %}<span class="pr-pay pr-pay-{{ r.pay.tier }}">{{ ic.icon('dollar') }}{{ r.pay.label }}</span>{% endif %}
         {% if r.support and r.support.travel %}<span class="pr-benefit">{{ ic.icon('pin') }}Travel support</span>{% endif %}
         {% if r.support and r.support.coverage %}<span class="pr-benefit">{{ ic.icon('check') }}Cost coverage</span>{% endif %}
         {% if r.support and r.support.stipend %}<span class="pr-benefit pr-benefit-money">{{ ic.icon('dollar') }}Stipend/compensation</span>{% endif %}
-        <span class="pr-phase">{{ 'Posted by study site' if t.source == 'site_posted' else 'Public listing' }}</span>
-        <span class="pr-recruiting">{{ ic.icon('check') }} Recruiting</span>
+        {% if (t.healthyVolunteers|string)|lower in ['yes','true','y'] %}<span class="pr-hv" title="This study is open to healthy volunteers">{{ ic.icon('user-plus') }}Healthy volunteers welcome</span>{% endif %}
+        <span class="pr-phase">{{ 'Posted by study site' if t.source == 'site_posted' else ('ISRCTN registry' if t.source == 'isrctn' else 'Public listing') }}</span>
+        {% if (t.overallStatus or 'RECRUITING')|upper == 'NOT_YET_RECRUITING' %}
+        <span class="pr-soon" title="This study is approved and opening soon - you can register your interest now">{{ ic.icon('activity') }} Enrolling soon</span>
+        {% else %}<span class="pr-recruiting">{{ ic.icon('check') }} Recruiting</span>{% endif %}
       </div>
       {% set friendly_title = patient_card_title(t) %}
       <h2 class="pr-card-title">
@@ -257,6 +274,7 @@
     var hasFit = document.querySelector('.f-fit');
     var hasPhase = document.querySelector('.f-phase');
     var payOnly = document.getElementById('fPayOnly');
+    var hvOnly = document.getElementById('fHvOnly');
     var radius = fRadius ? (parseInt(fRadius.value, 10) || 0) : 0;
     var shown = 0;
     cards.forEach(function (c) {
@@ -264,6 +282,7 @@
       if (hasFit && fits.indexOf(c.getAttribute('data-fit')) === -1) ok = false;
       if (hasPhase && phases.indexOf(c.getAttribute('data-phase')) === -1) ok = false;
       if (payOnly && payOnly.checked && parseFloat(c.getAttribute('data-pay')) <= 0) ok = false;
+      if (hvOnly && hvOnly.checked && parseFloat(c.getAttribute('data-hv')) <= 0) ok = false;
       if (radius > 0 && parseFloat(c.getAttribute('data-dist')) > radius) ok = false;
       c.style.display = ok ? '' : 'none';
       if (ok) shown++;
@@ -290,7 +309,7 @@
       cards.forEach(function (c) { list.appendChild(c); }); // original (best-match) order
     }
   }
-  document.querySelectorAll('.f-fit, .f-phase, .f-pay').forEach(function (c) {
+  document.querySelectorAll('.f-fit, .f-phase, .f-pay, .f-hv').forEach(function (c) {
     c.addEventListener('change', apply);
   });
   if (sortSel) sortSel.addEventListener('change', sortCards);
@@ -301,6 +320,8 @@
     document.querySelectorAll('.f-phase').forEach(function (c) { c.checked = true; });
     var payOnly = document.getElementById('fPayOnly');
     if (payOnly) payOnly.checked = false;
+    var hvOnly = document.getElementById('fHvOnly');
+    if (hvOnly) hvOnly.checked = false;
     if (sortSel) sortSel.value = 'best';
     sortCards(); apply();
   }
