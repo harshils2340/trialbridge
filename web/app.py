@@ -5611,14 +5611,36 @@ def _operator_inbox_row(r):
     }
 
 
+def _is_demo_lead(r):
+    """Seeded/demo applicants (so the dashboard isn't empty in walkthroughs)
+    must never pollute the operator's real inbox. All seeders tag source='demo'
+    and use placeholder email domains / applicant tokens - belt-and-suspenders
+    so a real applicant is never hidden and a demo row never slips through."""
+    keys = set(r.keys())
+
+    def g_(k):
+        return (r[k] if k in keys else "") or ""
+
+    if str(g_("source")).strip().lower() == "demo":
+        return True
+    email = str(g_("email")).strip().lower()
+    if email.endswith("@example.com") or email.endswith("@bridgemd.local"):
+        return True
+    tok = str(g_("applicant_token")).strip().lower()
+    if tok.startswith("seeded-") or tok.startswith("demo"):
+        return True
+    return False
+
+
 @app.route("/app/inbox")
 @owner_required
 def operator_inbox():
-    """Cross-study operator inbox: EVERY application that lands, in one tabular
-    view that updates as people apply. This is what the concierge loop runs on -
-    the study-team dashboard (/app/leads) is scoped to claimed studies, so
-    web applications to unclaimed public trials only show here. Owner-only."""
-    rows = db.list_leads()
+    """Cross-study operator inbox: EVERY real application that lands, in one
+    tabular view that updates as people apply. This is what the concierge loop
+    runs on - the study-team dashboard (/app/leads) is scoped to claimed
+    studies, so web applications to unclaimed public trials only show here.
+    Owner-only, and seeded demo leads are filtered out."""
+    rows = [r for r in db.list_leads() if not _is_demo_lead(r)]
     q = request.args.get("q", "").strip().lower()
     apps = [_operator_inbox_row(r) for r in rows]
     if q:
