@@ -520,6 +520,15 @@ CREATE TABLE IF NOT EXISTS seo_city_page (
 );
 CREATE INDEX IF NOT EXISTS idx_seo_city_local ON seo_city_page(is_local);
 
+-- Tiny key/value store for small bits of persistent app state (e.g. the SEO
+-- warm cursor, so a stateless external scheduler can self-advance through the
+-- condition x city grid one slice per ping instead of needing to run a loop).
+CREATE TABLE IF NOT EXISTS app_kv (
+    k           TEXT PRIMARY KEY,
+    v           TEXT NOT NULL,
+    updated_at  TEXT NOT NULL
+);
+
 -- Plain-English trial summaries (see web/summarize.py). Cached per study so we
 -- only rewrite each description once.
 CREATE TABLE IF NOT EXISTS trial_summaries (
@@ -5620,6 +5629,23 @@ def list_local_seo_city_pages():
     return get_db().execute(
         "SELECT slug, city_slug, updated_at FROM seo_city_page "
         "WHERE is_local = 1 AND trials > 0 ORDER BY updated_at DESC").fetchall()
+
+
+def get_kv(key, default=None):
+    """Read a small persistent app-state value (see app_kv). Returns default if
+    unset."""
+    row = get_db().execute("SELECT v FROM app_kv WHERE k = ?", (key,)).fetchone()
+    return row["v"] if row else default
+
+
+def set_kv(key, val):
+    """Write a small persistent app-state value (idempotent upsert)."""
+    db = get_db()
+    db.execute(
+        "INSERT INTO app_kv (k, v, updated_at) VALUES (?, ?, ?) "
+        "ON CONFLICT(k) DO UPDATE SET v=excluded.v, updated_at=excluded.updated_at",
+        (str(key), str(val), now()))
+    db.commit()
 
 
 def list_notifiable_alerts():

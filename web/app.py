@@ -7485,10 +7485,22 @@ def seo_warm():
         limit = max(1, min(int(request.args.get("limit", 100)), 500))
     except (TypeError, ValueError):
         limit = 100
-    try:
-        offset = max(0, int(request.args.get("offset", 0)))
-    except (TypeError, ValueError):
-        offset = 0
+    # Self-advancing mode (?cursor=1): the endpoint remembers where it left off in
+    # a persisted cursor and processes the NEXT slice each call, wrapping to 0 when
+    # the whole grid is done. This lets a stateless external scheduler (cron-job.org
+    # etc.) walk the entire condition x city grid by pinging ONE url on a schedule -
+    # no loop / offset bookkeeping needed on the caller side.
+    use_cursor = request.args.get("cursor", "").strip().lower() in ("1", "true", "yes")
+    if use_cursor:
+        try:
+            offset = max(0, int(db.get_kv("seo_warm_cursor", 0) or 0)) % max(1, total)
+        except (TypeError, ValueError):
+            offset = 0
+    else:
+        try:
+            offset = max(0, int(request.args.get("offset", 0)))
+        except (TypeError, ValueError):
+            offset = 0
     processed = local = 0
     for c, city in pairs[offset:offset + limit]:
         try:
@@ -7498,11 +7510,19 @@ def seo_warm():
         except Exception:
             app.logger.exception("seo warm failed for %s / %s", c, city)
         processed += 1
-    next_offset = offset + processed
-    done = next_offset >= total
+    next_raw = offset + processed
+    done = next_raw >= total
+    if use_cursor:
+        # Wrap back to the start when we reach the end so the grid keeps refreshing.
+        try:
+            db.set_kv("seo_warm_cursor", 0 if done else next_raw)
+        except Exception:
+            app.logger.exception("seo warm cursor save failed")
     return jsonify({
         "processed": processed, "local_in_batch": local,
-        "offset": offset, "next_offset": None if done else next_offset,
+        "offset": offset, "next_offset": None if done else next_raw,
+        "cursor": (0 if done else next_raw) if use_cursor else None,
+        "wrapped": bool(use_cursor and done),
         "total": total, "done": done})
 
 

@@ -811,7 +811,12 @@ body.demo-home .hero-search { max-width: 680px; margin-top: 14px; }
 
 /* Hero */
 .hero { max-width: 1080px; margin: 0 auto; padding: 64px 24px 28px; text-align: center;
-  position: relative; }
+  position: relative; box-sizing: border-box;
+  /* Fill the first screen so the sections below (how-it-works, FAQ, trials
+     near you) only appear once you scroll - the page reads as a single clean
+     hero on load. Uses svh so mobile browser chrome doesn't cause a peek. */
+  min-height: calc(100vh - 64px);
+  min-height: calc(100svh - 64px); }
 /* Subtle academic halo behind the hero for depth (restrained, not flashy). */
 .hero::before { content: ""; position: absolute; inset: 0 0 auto; height: 340px; z-index: -1;
   background: radial-gradient(58% 100% at 50% 0, var(--accent-soft), transparent 72%);
