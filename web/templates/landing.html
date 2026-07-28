@@ -159,6 +159,95 @@
   </div>
 </section>
 
+<div class="landing-extra">
+
+  {# Trials near you: hydrated client-side ONLY once we know the visitor's
+     coords (saved patient location or "use my location"), so the homepage never
+     fires a CT.gov call per visit. Neutral registry facts only. #}
+  <section class="near-wrap" id="nearWrap" hidden aria-label="Trials near you">
+    <div class="near-head">
+      <h2 class="lx-h2">{{ ic.icon('pin') }} Trials recruiting near you</h2>
+      <span class="near-sub" id="nearSub">Actively enrolling now</span>
+    </div>
+    <div class="near-grid" id="nearGrid"></div>
+    <p class="near-foot" id="nearFoot" hidden>
+      <button type="button" class="link-btn" id="nearSearchLink">See all trials near you →</button>
+    </p>
+  </section>
+
+  {# How it works: kills the "what even is this / what happens after I apply"
+     uncertainty that stalls patients before they apply. #}
+  <section class="lx-section" aria-label="How it works">
+    <h2 class="lx-h2 lx-center">How it works</h2>
+    <div class="hiw-grid">
+      <div class="hiw-step">
+        <span class="hiw-num">1</span>
+        <h3>Search or describe</h3>
+        <p>Enter your condition, or just describe your situation in plain English. No medical jargon needed.</p>
+      </div>
+      <div class="hiw-step">
+        <span class="hiw-num">2</span>
+        <h3>We match &amp; pre-check</h3>
+        <p>We scan recruiting studies near you and flag the ones you likely fit, so you skip the ones you don't.</p>
+      </div>
+      <div class="hiw-step">
+        <span class="hiw-num">3</span>
+        <h3>Apply in minutes</h3>
+        <p>Send your interest and the study team reaches out. Free, private, and no doctor's referral needed.</p>
+      </div>
+    </div>
+  </section>
+
+  {# Objection-busting FAQ: answers the real fears people post on Reddit before
+     applying (scam? paid? safe? what happens next?). Truthful, neutral framing
+     only - no sponsor recruitment claims, no inflated pay promises. #}
+  <section class="lx-section" aria-label="Common questions">
+    <h2 class="lx-h2 lx-center">Questions people ask before applying</h2>
+    <div class="faq-list">
+      <details class="faq-item">
+        <summary>Is BridgeMD really free?</summary>
+        <p>Yes - searching and applying are 100% free for patients. We're a matching tool, not the study sponsor, and we never charge you.</p>
+      </details>
+      <details class="faq-item">
+        <summary>Will I get paid?</summary>
+        <p>Many trials reimburse your time and travel, and some pay a stipend. The amount is set by each study, not by us - we show what the study lists. Never treat compensation as the only reason to join.</p>
+      </details>
+      <details class="faq-item">
+        <summary>Is it safe? Am I just a guinea pig?</summary>
+        <p>Every trial follows a protocol reviewed by an independent ethics board (IRB/REB). The study team walks you through the risks and what to expect <em>before</em> you agree to anything, and taking part is always voluntary - you can leave at any time.</p>
+      </details>
+      <details class="faq-item">
+        <summary>What happens after I apply?</summary>
+        <p>Your interest goes to that study's coordinator. They contact you to confirm details and check whether you're eligible. Applying is not enrolling - you're never obligated to continue.</p>
+      </details>
+      <details class="faq-item">
+        <summary>Do I need a doctor's referral or insurance?</summary>
+        <p>No referral is needed to apply. Trials don't bill your insurance for study procedures, and the study team will tell you exactly what's covered.</p>
+      </details>
+      <details class="faq-item">
+        <summary>Will I get a placebo instead of real treatment?</summary>
+        <p>Not all trials use a placebo. When one does, the study team explains it upfront - and participants are usually still monitored closely and continue receiving standard care.</p>
+      </details>
+      <details class="faq-item">
+        <summary>Is my information private? Will I get spammed?</summary>
+        <p>You control what you share. We don't sell your data - we only pass what you submit to the specific study team you choose to apply to.</p>
+      </details>
+    </div>
+    <div class="lx-cta">
+      <button type="button" class="btn btn-primary btn-lg" id="faqCta">Find trials near you {{ ic.icon('arrow-right') }}</button>
+    </div>
+  </section>
+
+  <section class="trust-strip" aria-label="Why you can trust BridgeMD">
+    <span class="trust-pill">{{ ic.icon('check') }} Free for patients</span>
+    <span class="trust-pill">{{ ic.icon('check') }} No account to search</span>
+    <span class="trust-pill">{{ ic.icon('check') }} Data from ClinicalTrials.gov</span>
+    <span class="trust-pill">{{ ic.icon('check') }} You control your info</span>
+    <span class="trust-pill">{{ ic.icon('check') }} Leave any trial anytime</span>
+  </section>
+
+</div>
+
 <footer class="landing-legal">
   <p class="landing-legal-disc">BridgeMD is an information and trial-matching tool - not medical advice,
     and not the study sponsor. Trial details come from ClinicalTrials.gov; the study team decides eligibility.</p>
@@ -524,10 +613,74 @@
     condInput.addEventListener('blur', function () { setTimeout(hideCondSuggest, 120); });
   }
 
+  // "Trials near you" card: only fetch once we actually know coords (saved
+  // patient location or an explicit "use my location" / place pick), so the
+  // homepage never triggers a CT.gov call for anonymous first paint.
+  var nearWrap = document.getElementById('nearWrap');
+  var nearGrid = document.getElementById('nearGrid');
+  var nearFoot = document.getElementById('nearFoot');
+  var nearLoaded = '';
+  function esc(s) {
+    return (s == null ? '' : String(s)).replace(/[&<>"']/g, function (c) {
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+    });
+  }
+  function loadNearby(lat, lon, cc) {
+    if (!nearWrap || !nearGrid || !lat || !lon) return;
+    var k = lat + ',' + lon;
+    if (k === nearLoaded) return;      // already showing this location
+    nearLoaded = k;
+    fetch('{{ url_for("nearby_preview") }}?lat=' + encodeURIComponent(lat) +
+          '&lon=' + encodeURIComponent(lon) + '&cc=' + encodeURIComponent(cc || ''))
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d || !d.ok || !d.trials || !d.trials.length) { nearWrap.hidden = true; return; }
+        var unit = d.unit || 'km';
+        nearGrid.innerHTML = '';
+        d.trials.forEach(function (t) {
+          var a = document.createElement('a');
+          a.className = 'near-card';
+          a.href = '/study/' + encodeURIComponent(t.nct);
+          var meta = [];
+          if (t.city) meta.push(esc(t.city) + (t.distance != null ? ' · ' + t.distance + ' ' + unit + ' away' : ''));
+          if (t.phase) meta.push(esc(t.phase));
+          a.innerHTML =
+            '<span class="near-tag">Recruiting</span>' +
+            '<span class="near-title">' + esc(t.title) + '</span>' +
+            (t.condition ? '<span class="near-cond">' + esc(t.condition) + '</span>' : '') +
+            '<span class="near-meta">' + meta.join('&nbsp;&nbsp;·&nbsp;&nbsp;') + '</span>' +
+            '<span class="near-go">View trial ' +
+            '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>';
+          nearGrid.appendChild(a);
+        });
+        nearWrap.hidden = false;
+        if (nearFoot) nearFoot.hidden = false;
+      })
+      .catch(function () { nearWrap.hidden = true; });
+  }
+  var nearSearchLink = document.getElementById('nearSearchLink');
+  if (nearSearchLink) nearSearchLink.addEventListener('click', function () {
+    setMode('location');
+    var f = document.getElementById('heroForm');
+    if (f) f.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  });
+  var faqCta = document.getElementById('faqCta');
+  if (faqCta) faqCta.addEventListener('click', function () {
+    var f = document.getElementById('heroForm');
+    if (f) f.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    var ci = document.getElementById('conditionInput');
+    if (ci) { try { ci.focus(); } catch (e) {} }
+  });
+
   var useLoc = document.getElementById('useLoc');
   var loc = document.getElementById('location');
   var locLat = document.getElementById('locLat'), locLon = document.getElementById('locLon'),
       locCc = document.getElementById('locCc'), confirmEl = document.getElementById('locConfirm');
+  // Signed-in patients (or query-prefilled) already have coords -> show the
+  // "trials near you" card on first paint.
+  if (locLat && locLon && locLat.value && locLon.value) {
+    loadNearby(locLat.value, locLon.value, locCc ? locCc.value : '');
+  }
   var suggestTimer = null;
   var lastSuggestQuery = '';
   var locCache = {};
@@ -575,6 +728,7 @@
       if (locLat) locLat.value = item.lat;
       if (locLon) locLon.value = item.lon;
       hideLocSuggest();
+      loadNearby(item.lat, item.lon, item.cc);
     } else if (item.place_id) {
       // Google path: resolve coords once, on selection, using the session token.
       if (locLat) locLat.value = '';
@@ -587,6 +741,7 @@
             if (locLat) locLat.value = d.lat || '';
             if (locLon) locLon.value = d.lon || '';
             if (locCc && d.cc) locCc.value = d.cc;
+            loadNearby(d.lat, d.lon, d.cc);
           }
         })
         .catch(function () { /* fall back to server-side geocode on submit */ })
@@ -670,6 +825,7 @@
             confirmEl.className = 'loc-confirm ok'; confirmEl.textContent = '📍 Using your current location.'; }
           confirmEl.style.display = 'block'; useLoc.disabled = false; useLoc.innerHTML = orig;
           hideLocSuggest();
+          loadNearby(la, lo, locCc.value);
         }).catch(function () {
           if (loc && !loc.value.trim()) loc.value = 'Current location';
           confirmEl.className = 'loc-confirm ok';
@@ -677,6 +833,7 @@
           confirmEl.style.display = 'block';
           useLoc.disabled = false; useLoc.innerHTML = orig;
           hideLocSuggest();
+          loadNearby(la, lo, locCc.value);
         });
     }, function () {
       confirmEl.style.display = 'block'; confirmEl.className = 'loc-confirm err';

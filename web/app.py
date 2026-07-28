@@ -817,6 +817,21 @@ def patient_login_required(view):
 
 
 @app.before_request
+def _canonical_host_redirect():
+    # Consolidate to one canonical hostname: 301 the app./www. subdomains to the
+    # apex so search engines index (and cache the favicon for) a single host.
+    # Only GET/HEAD are redirected - never bounce a POST (that would drop the
+    # form body). Local dev (127.0.0.1) and the onrender.com host are untouched.
+    if request.method not in ("GET", "HEAD"):
+        return None
+    host = (request.host or "").split(":")[0].lower()
+    if host in _REDIRECT_HOSTS:
+        qs = ("?" + request.query_string.decode()) if request.query_string else ""
+        return redirect("https://" + CANONICAL_HOST + request.path + qs, code=301)
+    return None
+
+
+@app.before_request
 def load_user():
     uid = session.get(USER_SESSION_KEY)
     g.user = db.get_user(uid) if uid else None
@@ -1017,7 +1032,19 @@ SITE_NOTIFY_EMAIL = os.environ.get("SITE_NOTIFY_EMAIL", "").strip()
 # get it directly. Override with OWNER_NOTIFY_EMAIL.
 OWNER_NOTIFY_EMAIL = os.environ.get(
     "OWNER_NOTIFY_EMAIL", f"hello@bridgemd.health, {OWNER_EMAIL}").strip()
+# One canonical hostname for SEO + favicon consolidation. Requests to the
+# `app.` / `www.` subdomains 301-redirect here (see _canonical_host_redirect),
+# and absolute links (emails, SEO canonicals) are pinned to it below - so Google
+# stops splitting index/favicon cache across multiple hosts.
+CANONICAL_HOST = os.environ.get("CANONICAL_HOST", "bridgemd.health").strip().lower()
+_REDIRECT_HOSTS = {"app." + CANONICAL_HOST, "www." + CANONICAL_HOST}
+
 PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL", "").strip().rstrip("/")
+# Keep absolute links on the canonical apex even if the env var still points at
+# the app./www. subdomain.
+for _rh in _REDIRECT_HOSTS:
+    if _rh in PUBLIC_BASE_URL:
+        PUBLIC_BASE_URL = PUBLIC_BASE_URL.replace(_rh, CANONICAL_HOST)
 _NOTIFIER = notifications_mod.Notifier(
     live=NOTIFY_LIVE,
     send_email_fn=mailer.send_email if mailer.smtp_configured() else None,
@@ -3026,6 +3053,77 @@ def track_visit():
     return ("", 204)
 
 
+# Homepage "trials near you" preview. The landing page is the most-hit surface,
+# so we NEVER fetch CT.gov per visit: results are cached per ~metro grid cell
+# (rounded lat/lon) for several hours, so every visitor from one city shares a
+# single upstream call. Neutral registry facts only (no pay hooks, no PHI).
+_NEARBY_CACHE = OrderedDict()
+_NEARBY_CACHE_MAX = 300
+_NEARBY_TTL_SECONDS = int(os.environ.get("NEARBY_PREVIEW_TTL", "21600"))  # 6h
+
+
+def _nearby_preview(lat, lon, unit, radius, limit=4):
+    """A few recruiting trials near (lat, lon), biggest actively-recruiting first
+    (largest enrollment = most open slots), nearest as the tiebreak. Cached per
+    metro grid cell so repeat visitors from one city share one CT.gov fetch."""
+    key = (round(lat, 1), round(lon, 1), unit, radius)
+    now = time.time()
+    hit = _NEARBY_CACHE.get(key)
+    if hit and now - hit["ts"] < _NEARBY_TTL_SECONDS:
+        _NEARBY_CACHE.move_to_end(key)
+        return hit["trials"]
+    geo = f"distance({lat},{lon},{radius}{unit})"
+    raw = mt.fetch_trials("", max_n=60, geo=geo, statuses="RECRUITING")
+    out = []
+    for t in raw:
+        near = nearby_sites(t, lat, lon, unit, radius)
+        if not near or not t.get("nctId"):
+            continue
+        try:
+            enroll = int(t.get("enrollment") or 0)
+        except (TypeError, ValueError):
+            enroll = 0
+        site = near[0]
+        out.append({
+            "nct": t.get("nctId", ""),
+            "title": (t.get("title") or "").strip(),
+            "condition": (t.get("conditions") or [""])[0] or "",
+            "phase": t.get("phase") or "",
+            "city": site.get("city") or "",
+            "distance": int(round(site["distance"])),
+            "enrollment": enroll,
+        })
+    out.sort(key=lambda r: (-r["enrollment"], r["distance"]))
+    out = out[:limit]
+    _NEARBY_CACHE[key] = {"ts": now, "trials": out}
+    _NEARBY_CACHE.move_to_end(key)
+    while len(_NEARBY_CACHE) > _NEARBY_CACHE_MAX:
+        _NEARBY_CACHE.popitem(last=False)
+    return out
+
+
+@app.route("/api/nearby-preview")
+def nearby_preview():
+    """JSON feed for the homepage 'trials near you' card. GET-only, neutral
+    ClinicalTrials.gov facts, heavily cached so the landing page never triggers a
+    live CT.gov call per visit. Returns {ok, unit, trials:[...]}. Fails soft."""
+    try:
+        lat = float(request.args.get("lat", ""))
+        lon = float(request.args.get("lon", ""))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False})
+    if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+        return jsonify({"ok": False})
+    unit = units_for(request.args.get("cc", ""))
+    radius = 100 if unit == "km" else 60
+    try:
+        trials = _nearby_preview(lat, lon, unit, radius)
+    except Exception:
+        app.logger.exception("nearby preview failed")
+        return jsonify({"ok": False})
+    return jsonify({"ok": True, "unit": unit, "trials": trials})
+
+
 # Homepage credibility stats. Baked from a ClinicalTrials.gov scrape (run
 # tools/refresh_home_stats.py to recompute) instead of hitting the API on every
 # page load. Floors are rounded DOWN so the "+" stays truthful.
@@ -4807,6 +4905,42 @@ def _seo_trials(condition, city=None, limit=12):
     return trials[:limit], is_local
 
 
+_SEO_COUNT_CACHE = OrderedDict()
+_SEO_COUNT_TTL = 12 * 3600     # real recruiting total, refreshed at most every 12h
+_SEO_COUNT_MAX = 600
+
+
+def _seo_trial_count(condition, city=None):
+    """Real number of currently-recruiting trials for a condition (+ optional
+    city), via CT.gov's cheap countTotal. Cached per (condition, city) so crawled
+    SEO pages never trigger a live count per hit. Powers the "N trials near X"
+    title/snippet that drives click-through. Returns 0 on any error."""
+    cond_key = (condition or "").strip().lower()
+    if not cond_key:
+        return 0
+    key = (cond_key, (city or "").strip().lower())
+    now_ts = time.time()
+    hit = _SEO_COUNT_CACHE.get(key)
+    if hit and (now_ts - hit[0]) < _SEO_COUNT_TTL:
+        _SEO_COUNT_CACHE.move_to_end(key)
+        return hit[1]
+    n = 0
+    try:
+        geo = None
+        coords = SEO_CITY_COORDS.get(city) if city else None
+        if coords:
+            geo = f"distance({coords[0]},{coords[1]},100mi)"
+        n = mt.count_trials(condition, geo=geo)
+    except Exception:
+        app.logger.exception("seo count failed for %s / %s", condition, city)
+        n = 0
+    _SEO_COUNT_CACHE[key] = (now_ts, n)
+    _SEO_COUNT_CACHE.move_to_end(key)
+    while len(_SEO_COUNT_CACHE) > _SEO_COUNT_MAX:
+        _SEO_COUNT_CACHE.popitem(last=False)
+    return n
+
+
 _SEO_EU_CACHE = OrderedDict()
 
 
@@ -4904,7 +5038,7 @@ def condition_page(slug):
     trials, _ = _seo_trials(condition)
     return render_template(
         "condition.html", condition=condition, city=None, local=True,
-        trials=trials, cities=SEO_CITIES[:16],
+        trials=trials, trial_count=_seo_trial_count(condition), cities=SEO_CITIES[:16],
         eu_trials=_seo_ctis_trials(condition), faqs=_condition_faqs(condition),
         conditions=_related_conditions(condition), slugify=slugify,
         canonical_url=_abs_url("condition_page", slug=slugify(condition)))
@@ -4918,9 +5052,11 @@ def condition_city_page(slug, city_slug):
     if not condition or not city:
         abort(404)
     trials, local = _seo_trials(condition, city=city)
+    trial_count = _seo_trial_count(condition, city=city) if local else 0
     return render_template(
         "condition.html", condition=condition, city=city, local=local,
-        trials=trials, cities=SEO_CITIES[:16], faqs=_condition_faqs(condition, city),
+        trials=trials, trial_count=trial_count,
+        cities=SEO_CITIES[:16], faqs=_condition_faqs(condition, city),
         conditions=_related_conditions(condition), slugify=slugify,
         canonical_url=_abs_url("condition_city_page",
                                slug=slugify(condition), city_slug=city_slug))
@@ -7215,6 +7351,25 @@ def robots():
     body = ("User-agent: *\nAllow: /\nSitemap: "
             + url_for("sitemap", _external=True) + "\n")
     return app.response_class(body, mimetype="text/plain")
+
+
+@app.route("/favicon.ico")
+def favicon_ico():
+    # Crawlers (Google included) and browsers probe the ROOT /favicon.ico by
+    # convention, not only the <link rel="icon"> tags in the head. We only had
+    # the icons under /static, so the root path 404'd - which makes search
+    # engines keep showing a stale/cached icon. Serve it here so the current
+    # favicon is reliably discovered.
+    return send_file(os.path.join(app.static_folder, "favicon.ico"),
+                     mimetype="image/vnd.microsoft.icon")
+
+
+@app.route("/apple-touch-icon.png")
+@app.route("/apple-touch-icon-precomposed.png")
+def apple_touch_icon_root():
+    # iOS / link-preview crawlers probe these root paths too.
+    return send_file(os.path.join(app.static_folder, "apple-touch-icon.png"),
+                     mimetype="image/png")
 
 
 def _sitemap_loc(endpoint, **kw):

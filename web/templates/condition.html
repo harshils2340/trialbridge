@@ -1,9 +1,9 @@
 {% extends "public_base.html" %}
-{% block title %}{{ condition }} clinical trials{% if city %} in {{ city }}{% endif %} · BridgeMD{% endblock %}
-{% block description %}Find recruiting {{ condition|lower }} clinical trials{% if city %} near {{ city }}{% endif %} and apply online. Real, currently-enrolling studies from ClinicalTrials.gov.{% endblock %}
+{% block title %}{% if trial_count and trial_count >= 5 %}{{ trial_count }} {{ condition }} clinical trials{% if city %} near {{ city }}{% else %} recruiting now{% endif %}{% else %}{{ condition }} clinical trials{% if city %} in {{ city }}{% endif %}{% endif %} · BridgeMD{% endblock %}
+{% block description %}{% if trial_count and trial_count >= 5 %}{{ trial_count }} recruiting {{ condition|lower }} clinical trials{% if city %} near {{ city }}{% endif %} enrolling now. {% else %}Find recruiting {{ condition|lower }} clinical trials{% if city %} near {{ city }}{% endif %} and apply online. {% endif %}Some studies compensate you for time and travel; amounts vary and some offer none. Free to search and apply - trials from ClinicalTrials.gov.{% endblock %}
 
-{% block og_title %}{{ condition }} clinical trials{% if city %} in {{ city }}{% endif %} - recruiting now{% endblock %}
-{% block og_description %}Find recruiting {{ condition|lower }} clinical trials{% if city %} near {{ city }}{% endif %} and apply online. Real, currently-enrolling studies from ClinicalTrials.gov.{% endblock %}
+{% block og_title %}{% if trial_count and trial_count >= 5 %}{{ trial_count }} {{ condition }} clinical trials{% if city %} near {{ city }}{% endif %} - recruiting now{% else %}{{ condition }} clinical trials{% if city %} in {{ city }}{% endif %} - recruiting now{% endif %}{% endblock %}
+{% block og_description %}{% if trial_count and trial_count >= 5 %}{{ trial_count }} recruiting {{ condition|lower }} clinical trials{% if city %} near {{ city }}{% endif %} enrolling now. {% else %}Find recruiting {{ condition|lower }} clinical trials{% if city %} near {{ city }}{% endif %} and apply online. {% endif %}Some studies compensate you for time and travel; amounts vary and some offer none. Free to search and apply - trials from ClinicalTrials.gov.{% endblock %}
 {% block og_url %}{{ canonical_url|default(request.url) }}{% endblock %}
 
 {% block canonical %}<link rel="canonical" href="{{ canonical_url|default(request.url) }}">{% endblock %}
@@ -54,7 +54,7 @@
     <a href="{{ url_for('condition_page', slug=slugify(condition)) }}">{{ condition }}</a>
     {% if city %} › <span>{{ city }}</span>{% endif %}
   </nav>
-  <h1>{{ condition }} clinical trials{% if city %} in {{ city }}{% endif %}</h1>
+  <h1>{% if trial_count and trial_count >= 5 %}{{ trial_count }} {% endif %}{{ condition }} clinical trials{% if city %} in {{ city }}{% endif %}</h1>
   <p class="cond-lead">
     {% if city and local %}
       Search recruiting {{ condition|lower }} studies near {{ city }}.
