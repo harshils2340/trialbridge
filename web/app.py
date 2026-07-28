@@ -5613,9 +5613,10 @@ def _operator_inbox_row(r):
 
 def _is_demo_lead(r):
     """Seeded/demo applicants (so the dashboard isn't empty in walkthroughs)
-    must never pollute the operator's real inbox. All seeders tag source='demo'
-    and use placeholder email domains / applicant tokens - belt-and-suspenders
-    so a real applicant is never hidden and a demo row never slips through."""
+    must never pollute the operator's real inbox. Every seeder tags the lead
+    source='demo', which is the reliable marker. The placeholder email domains
+    are a safety net. Deliberately NOT matching on the applicant token: real
+    tokens are random, so a prefix check there could hide a genuine applicant."""
     keys = set(r.keys())
 
     def g_(k):
@@ -5625,9 +5626,6 @@ def _is_demo_lead(r):
         return True
     email = str(g_("email")).strip().lower()
     if email.endswith("@example.com") or email.endswith("@bridgemd.local"):
-        return True
-    tok = str(g_("applicant_token")).strip().lower()
-    if tok.startswith("seeded-") or tok.startswith("demo"):
         return True
     return False
 
