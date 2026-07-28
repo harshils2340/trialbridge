@@ -67,8 +67,14 @@
           </div>
         </td>
         <td>
-          <b style="font-size:13px;">{{ a.title or a.nct or '—' }}</b>
-          {% if a.nct %}<br><a href="https://clinicaltrials.gov/study/{{ a.nct }}" target="_blank" rel="noopener" style="font-size:12px;" onclick="event.stopPropagation();">{{ a.nct }}</a>{% endif %}
+          {% if a.nct %}
+          <a href="{{ url_for('study_page', nct=a.nct) }}" target="_blank" rel="noopener" style="font-size:13px;font-weight:600;" onclick="event.stopPropagation();">{{ a.title or a.nct }}</a>
+          <br>
+          <span style="font-size:12px;color:var(--muted);">{{ a.nct }}</span>
+          · <a href="https://clinicaltrials.gov/study/{{ a.nct }}" target="_blank" rel="noopener" style="font-size:12px;color:var(--muted);" onclick="event.stopPropagation();">CT.gov</a>
+          {% else %}
+          <b style="font-size:13px;">{{ a.title or '—' }}</b>
+          {% endif %}
         </td>
         <td>{{ a.condition or '—' }}</td>
         <td>{{ a.location or '—' }}</td>

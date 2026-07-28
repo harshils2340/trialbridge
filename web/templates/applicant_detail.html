@@ -71,6 +71,22 @@
 {% endcall %}
 {% endif %}
 
+{% if l['title'] or l['nct'] %}
+<div class="app-card pad" style="margin-bottom:16px;display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;">
+  <div style="min-width:0;">
+    <div class="app-card-title" style="margin:0 0 2px;">Applied to</div>
+    <div style="font-weight:600;">{{ l['title'] or l['nct'] }}</div>
+    {% if l['nct'] %}<div class="app-sub" style="font-size:12px;color:var(--muted);">{{ l['nct'] }}</div>{% endif %}
+  </div>
+  {% if l['nct'] %}
+  <div style="display:flex;gap:8px;flex-shrink:0;">
+    {{ ui.btn('View trial page', 'ghost', 'sm', icon='arrow-right', href=url_for('study_page', nct=l['nct']), extra='target="_blank" rel="noopener"') }}
+    {{ ui.btn('CT.gov', 'ghost', 'sm', href='https://clinicaltrials.gov/study/' ~ l['nct'], extra='target="_blank" rel="noopener"') }}
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+
 <div style="display:grid;grid-template-columns:1fr 320px;gap:24px;align-items:start;">
   {# ── Main column ── #}
   <div>
