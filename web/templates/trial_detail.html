@@ -81,12 +81,35 @@
       <div class="tp-personal tp-personal-ok">{{ ic.icon('check') }}
         <span>You already appear to meet the basics for this study. The team confirms the rest at screening.</span></div>
       {% endif %}
-      {% if plain_terms.phase or plain_terms.design or plain_terms.time %}
+      {% if plain_terms.phase or plain_terms.time %}
       <ul class="tp-facts">
         {% if plain_terms.phase %}<li>{{ ic.icon('activity') }} {{ plain_terms.phase }}</li>{% endif %}
         {% if plain_terms.time %}<li>{{ ic.icon('activity') }} Time commitment: {{ plain_terms.time }}</li>{% endif %}
-        {% if plain_terms.design %}<li>{{ ic.icon('sparkle') }} {{ plain_terms.design }}</li>{% endif %}
       </ul>
+      {% endif %}
+
+      {# Simple, honest "what to expect": the general stages every interventional
+         trial follows, in plain words. No invented durations - real time shows
+         only when the study states it (plain_terms.time above). #}
+      <div class="tp-expect">
+        <h3>What taking part usually looks like</h3>
+        <ol class="tp-steps">
+          <li><b>Screening</b><span>A first visit or call where the team checks whether the study is a fit for you.</span></li>
+          <li><b>Treatment</b><span>If you join, you go to study visits{% if plain_terms.time %} over {{ plain_terms.time }}{% endif %} while the team keeps an eye on how you're doing.</span></li>
+          <li><b>Follow-up</b><span>A check-in after treatment to see how you're doing.</span></li>
+        </ol>
+        <p class="tp-note">The exact schedule is different for every study - the team walks you through it before you agree to anything.</p>
+      </div>
+
+      {# Plain-language placebo / randomization callout. Only rendered when the
+         study text actually indicates it (plain_terms.design is '' otherwise), so
+         we never imply a placebo that isn't there. #}
+      {% if plain_terms.design %}
+      {% set is_placebo = 'placebo' in plain_terms.design|lower %}
+      <div class="tp-placebo">
+        <h3>{{ ic.icon('help') }} {% if is_placebo %}Might I get a placebo?{% else %}How you're assigned{% endif %}</h3>
+        <p>{{ plain_terms.design }}{% if is_placebo %} A placebo looks like the real treatment but contains no active medicine. It's used so the study can fairly tell whether the drug actually works.{% endif %}</p>
+      </div>
       {% endif %}
       <div class="tp-grid">
         {% if plain_terms.who or plain_terms.who_basics %}
@@ -124,20 +147,16 @@
       {% endif %}
     </div>
 
-    {% if r.public_contacts %}
+    {% if t.leadSponsor or r.site_str %}
     <div class="td-section">
-      <h2>Public study contacts</h2>
-      <p class="td-source" style="margin-top:0;">These contacts come from public trial listings. You can reach out directly, or apply through BridgeMD to track updates in one place.</p>
-      <div class="td-contact-list">
-        {% for c in r.public_contacts %}
-        <div class="td-contact">
-          <p class="td-contact-name"><b>{{ c.name }}</b>{% if c.role %} <span>{{ c.role }}</span>{% endif %}</p>
-          <p class="td-contact-lines">
-            {% if c.email %}<a href="mailto:{{ c.email }}">{{ c.email }}</a>{% endif %}
-            {% if c.phone %}<a href="tel:{{ c.phone|replace(' ','')|replace('-','') }}">{{ c.phone }}</a>{% endif %}
-          </p>
+      <h2>Who's running this study</h2>
+      <div class="td-runby">
+        <div class="td-runby-ic">{{ ic.icon('award') }}</div>
+        <div class="td-runby-body">
+          {% if t.leadSponsor %}<p class="td-runby-name"><b>{{ t.leadSponsor }}</b> <span>Sponsor</span></p>{% endif %}
+          {% if r.site_str %}<p class="td-runby-site">{{ ic.icon('pin') }} Conducted at {{ r.site_str }}</p>{% endif %}
+          <p class="td-source" style="margin:6px 0 0;">Apply through BridgeMD and the study team reaches out directly if you're a fit - no need to track down phone numbers or emails yourself.</p>
         </div>
-        {% endfor %}
       </div>
     </div>
     {% endif %}

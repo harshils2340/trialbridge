@@ -2918,6 +2918,24 @@ h1, h2, h3 {
 .tp-full-b { margin-top: 12px; font-size: 13px; }
 .tp-full-b b { display: block; margin-bottom: 4px; color: var(--ink); }
 .tp-full-b ul { margin: 0; padding-left: 18px; color: var(--ink-soft); line-height: 1.55; }
+/* Plain "what to expect" stages + placebo callout (layperson education) */
+.tp-expect { margin: 4px 0 14px; }
+.tp-expect h3, .tp-placebo h3 { display: flex; align-items: center; gap: 7px;
+  font-size: 14px; margin: 0 0 10px; letter-spacing: -.01em; color: var(--ink); }
+.tp-placebo h3 svg, .tp-placebo h3 .ico { width: 16px; height: 16px; color: var(--accent); }
+.tp-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column;
+  gap: 10px; counter-reset: step; }
+.tp-steps li { position: relative; padding-left: 34px; }
+.tp-steps li::before { counter-increment: step; content: counter(step);
+  position: absolute; left: 0; top: 0; width: 22px; height: 22px; border-radius: 999px;
+  display: grid; place-items: center; font-size: 12px; font-weight: 700;
+  background: var(--surface-2); color: var(--accent); border: 1px solid var(--border-strong); }
+.tp-steps li b { display: block; font-size: 13.5px; color: var(--ink); }
+.tp-steps li span { display: block; font-size: 13px; color: var(--ink-soft); line-height: 1.5; }
+.tp-note { margin: 10px 0 0; font-size: 12.5px; color: var(--muted); }
+.tp-placebo { margin: 4px 0 14px; padding: 12px 14px; border: 1px solid var(--border);
+  border-radius: 12px; background: var(--surface-2); }
+.tp-placebo p { margin: 0; font-size: 13.5px; color: var(--ink-soft); line-height: 1.6; }
 @media (max-width: 640px) { .tp-grid { grid-template-columns: 1fr; } }
 
 .td-site, .td-other { color: var(--ink-soft); font-size: 14px; line-height: 1.5;
@@ -2940,6 +2958,21 @@ h1, h2, h3 {
 .td-contact-lines { margin: 0; display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
 .td-contact-lines a { color: var(--accent); text-decoration: none; }
 .td-contact-lines a:hover { text-decoration: underline; }
+/* "Who's running this study" card - replaces raw public contacts so patients
+   apply through BridgeMD instead of cold-emailing the site (keeps the lead + the
+   pre-screen). */
+.td-runby { display: flex; gap: 12px; align-items: flex-start; border: 1px solid var(--border);
+  background: var(--surface-2); border-radius: 14px; padding: 14px 16px; }
+.td-runby-ic { flex: none; width: 36px; height: 36px; border-radius: 10px; display: grid;
+  place-items: center; background: var(--accent-bg, var(--surface-2)); color: var(--accent); }
+.td-runby-ic svg { width: 18px; height: 18px; }
+.td-runby-body { min-width: 0; }
+.td-runby-name { margin: 0; color: var(--ink); font-size: 15px; }
+.td-runby-name span { font-size: 11px; color: var(--muted); font-weight: 600;
+  text-transform: uppercase; letter-spacing: .04em; margin-left: 6px; }
+.td-runby-site { margin: 4px 0 0; color: var(--muted); font-size: 13.5px;
+  display: flex; align-items: center; gap: 5px; }
+.td-runby-site svg { width: 14px; height: 14px; flex: none; }
 .td-facts { display: flex; flex-direction: column; gap: 8px; font-size: 14px;
   color: var(--muted); margin-top: 6px; border: 1px solid var(--border); border-radius: 14px;
   padding: 14px 16px; background: var(--surface); }
