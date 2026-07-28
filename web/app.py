@@ -5611,23 +5611,31 @@ def _operator_inbox_row(r):
     }
 
 
-def _is_demo_lead(r):
-    """Seeded/demo applicants (so the dashboard isn't empty in walkthroughs)
-    must never pollute the operator's real inbox. Every seeder tags the lead
-    source='demo', which is the reliable marker. The placeholder email domains
-    are a safety net. Deliberately NOT matching on the applicant token: real
-    tokens are random, so a prefix check there could hide a genuine applicant."""
+# Sources that represent a real, patient-initiated application the operator can
+# act on: the patient applied through the site (web) or arrived via a physician
+# invite link (referral). Everything else - seeded demo data (source='demo'),
+# clinic-side EMR matches (source='emr', a separate demo-only flow with no
+# contact to forward), and manual imports (intake/csv) - is excluded from the
+# concierge inbox.
+_INBOUND_SOURCES = {"web", "referral"}
+
+
+def _is_inbound_application(r):
+    """True only for real inbound applications. Allowlisting the inbound sources
+    is more robust and future-proof than blocklisting each demo seeder: seeded
+    demo leads, EMR internal matches, and imports all fall outside the allowlist
+    automatically. Placeholder email domains are a final safety net."""
     keys = set(r.keys())
 
     def g_(k):
         return (r[k] if k in keys else "") or ""
 
-    if str(g_("source")).strip().lower() == "demo":
-        return True
+    if str(g_("source")).strip().lower() not in _INBOUND_SOURCES:
+        return False
     email = str(g_("email")).strip().lower()
     if email.endswith("@example.com") or email.endswith("@bridgemd.local"):
-        return True
-    return False
+        return False
+    return True
 
 
 @app.route("/app/inbox")
@@ -5637,8 +5645,8 @@ def operator_inbox():
     tabular view that updates as people apply. This is what the concierge loop
     runs on - the study-team dashboard (/app/leads) is scoped to claimed
     studies, so web applications to unclaimed public trials only show here.
-    Owner-only, and seeded demo leads are filtered out."""
-    rows = [r for r in db.list_leads() if not _is_demo_lead(r)]
+    Owner-only, and only real patient-initiated applications are shown."""
+    rows = [r for r in db.list_leads() if _is_inbound_application(r)]
     q = request.args.get("q", "").strip().lower()
     apps = [_operator_inbox_row(r) for r in rows]
     if q:
