@@ -475,6 +475,10 @@ def _ensure_demo_patient():
     except Exception:
         app.logger.exception("demo patient rename failed")
     db.seed_demo_patient_apps(p["applicant_token"] if p else "")
+    try:
+        db.cleanup_demo_threads()
+    except Exception:
+        app.logger.exception("demo thread cleanup failed")
     return p
 
 
@@ -525,6 +529,10 @@ def _seed_demo_surfaces(user_id=None):
         _seed_demo_documents()
     except Exception:
         app.logger.exception("demo document seeding failed")
+    try:
+        db.cleanup_demo_threads()
+    except Exception:
+        app.logger.exception("demo thread cleanup failed")
 
 
 def _seed_demo_documents():
@@ -1196,6 +1204,13 @@ def _nudge_applicant(lead):
 
 
 # Proactively remind about visits and re-engage quiet applicants (retention).
+# In demo/local builds the message threads are curated seed data; letting the
+# live background sweep run against a persistent demo DB just stacks repeated
+# nudges/visit-reminders onto the same threads over calendar time (the wall of
+# identical "still active" check-ins). Default it OFF in demo - still runnable
+# on demand via /reminders/run, or force it with REMINDERS_BACKGROUND=1.
+if NO_LOGIN and "REMINDERS_BACKGROUND" not in os.environ:
+    os.environ["REMINDERS_BACKGROUND"] = "0"
 reminders_mod.configure(app, on_visit=_remind_visit, on_nudge=_nudge_applicant)
 
 
@@ -3011,12 +3026,15 @@ def track_visit():
 # page load. Floors are rounded DOWN so the "+" stays truthful.
 #   Refreshed 2026-07-20 against https://clinicaltrials.gov/api/v2/studies:
 #     overallStatus=RECRUITING ............................. 65,213  -> 65,000+
-#     RECRUITING + (compensation wording OR healthy volunteers)  2,680  ->  2,500+
-#       (paid-study proxy; CT.gov rarely indexes pay wording, so this is a
-#        conservative floor of trials that may compensate participants.)
+#     RECRUITING + (Phase 1 OR compensation wording OR healthy volunteers)
+#       -> thousands of studies that pay or reimburse participants. This is a
+#       CONSERVATIVE floor: CT.gov barely indexes pay wording and most trials
+#       reimburse time/travel, so the true number is much higher. We show
+#       "Thousands" instead of a small exact count, which otherwise sits next to
+#       65,000 and misleads people into thinking almost no trials compensate.
 HOME_STATS = {
     "recruiting": "65,000+",
-    "paid": "2,500+",
+    "paid": "Thousands",
 }
 
 
@@ -4671,6 +4689,15 @@ def _seo_trials(condition, city=None, limit=12):
     _SEO_TRIAL_CACHE.move_to_end(key)
     while len(_SEO_TRIAL_CACHE) > _SEO_TRIAL_MAX:
         _SEO_TRIAL_CACHE.popitem(last=False)
+    # Persist whether this city page is indexable (has local trials) so the
+    # sitemap can list only these - not the full condition x city grid, most of
+    # which self-noindexes and just burns crawl budget.
+    if city:
+        try:
+            db.record_seo_city_page(slugify(condition), slugify(city),
+                                    is_local and bool(trials), len(trials))
+        except Exception:
+            app.logger.exception("seo city page record failed")
     return trials[:limit], is_local
 
 
@@ -5681,6 +5708,11 @@ def _seed_demo_replies_if_demo(items):
     for l, msgs in candidates:
         if have >= TARGET:
             break
+        # Never stack a second patient reply on a thread that already has one -
+        # a later system message (e.g. a visit reminder) can push the patient's
+        # turn off the end and make it look "awaiting us" again on refresh.
+        if any(m["sender"] == "patient" for m in msgs):
+            continue
         first = (l["name"] or "there").split()[0]
         if not any(m["sender"] in ("site", "patient") for m in msgs):
             db.add_message(l["id"], "site", openers[i % len(openers)].format(first=first))
@@ -6990,13 +7022,20 @@ def sitemap_conditions():
 
 @app.route("/sitemap-cities.xml")
 def sitemap_cities():
+    """Only condition/city pages with CONFIRMED local recruiting trials. A page
+    with no local trials self-noindexes, so listing the full condition x city
+    grid just feeds Google thousands of 'discovered - currently not indexed'
+    URLs and drags down the whole surface. Populated as pages render + by the
+    /seo/warm cron (below); empty until then, which is the correct default."""
     wk = _week_lastmod()
     urls = []
-    for c in SEO_CONDITIONS:
-        cslug = slugify(c)
-        for city in SEO_CITIES:
-            urls.append((_sitemap_loc("condition_city_page", slug=cslug,
-                                      city_slug=slugify(city)), wk))
+    try:
+        for r in db.list_local_seo_city_pages():
+            lm = (r["updated_at"] or "")[:10] or wk
+            urls.append((_sitemap_loc("condition_city_page", slug=r["slug"],
+                                      city_slug=r["city_slug"]), lm))
+    except Exception:
+        app.logger.exception("sitemap city list failed")
     return _sitemap_xml(urls)
 
 
@@ -7013,6 +7052,48 @@ def sitemap_studies():
     except Exception:
         app.logger.exception("sitemap study list failed")
     return _sitemap_xml(urls)
+
+
+@app.route("/seo/warm")
+def seo_warm():
+    """Warm the condition/city SEO surface in batches so sitemap-cities.xml can
+    list only pages with real local trials. Each pair hits CT.gov once (cached),
+    so process a slice per call and let a cron page through with ?offset=.
+    Keyed by ALERTS_CRON_KEY when set, else no-login/testing only.
+
+    Params: ?limit=100 (pairs per call), ?offset=0. Returns next_offset until
+    done so a caller can loop: /seo/warm?key=..&offset=0, then next_offset, ..."""
+    key = os.environ.get("ALERTS_CRON_KEY", "").strip()
+    if key:
+        if request.args.get("key", "") != key:
+            abort(403)
+    elif not NO_LOGIN:
+        abort(403)
+    pairs = [(c, city) for c in SEO_CONDITIONS for city in SEO_CITIES]
+    total = len(pairs)
+    try:
+        limit = max(1, min(int(request.args.get("limit", 100)), 500))
+    except (TypeError, ValueError):
+        limit = 100
+    try:
+        offset = max(0, int(request.args.get("offset", 0)))
+    except (TypeError, ValueError):
+        offset = 0
+    processed = local = 0
+    for c, city in pairs[offset:offset + limit]:
+        try:
+            trials, is_local = _seo_trials(c, city=city)
+            if is_local and trials:
+                local += 1
+        except Exception:
+            app.logger.exception("seo warm failed for %s / %s", c, city)
+        processed += 1
+    next_offset = offset + processed
+    done = next_offset >= total
+    return jsonify({
+        "processed": processed, "local_in_batch": local,
+        "offset": offset, "next_offset": None if done else next_offset,
+        "total": total, "done": done})
 
 
 # --------------------------------------------------------------------------- #

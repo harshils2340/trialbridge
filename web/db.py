@@ -505,6 +505,21 @@ CREATE TABLE IF NOT EXISTS seo_study_index (
 CREATE INDEX IF NOT EXISTS idx_seo_study_updated ON seo_study_index(updated_at);
 CREATE INDEX IF NOT EXISTS idx_web_events_name ON web_events(name);
 
+-- Which condition/city landing pages actually have LOCAL recruiting trials.
+-- Only these are worth listing in sitemap-cities.xml: a page with no local
+-- trials self-noindexes, so listing it just burns crawl budget and trains
+-- Google to ignore the whole programmatic surface (the "discovered - currently
+-- not indexed" wall). Refreshed as pages are rendered / by the /seo/warm cron.
+CREATE TABLE IF NOT EXISTS seo_city_page (
+    slug        TEXT NOT NULL,
+    city_slug   TEXT NOT NULL,
+    is_local    INTEGER NOT NULL DEFAULT 0,
+    trials      INTEGER NOT NULL DEFAULT 0,
+    updated_at  TEXT NOT NULL,
+    PRIMARY KEY (slug, city_slug)
+);
+CREATE INDEX IF NOT EXISTS idx_seo_city_local ON seo_city_page(is_local);
+
 -- Plain-English trial summaries (see web/summarize.py). Cached per study so we
 -- only rewrite each description once.
 CREATE TABLE IF NOT EXISTS trial_summaries (
@@ -4788,6 +4803,40 @@ def seed_demo_patient_apps(applicant_token):
     db.commit()
 
 
+def cleanup_demo_threads():
+    """Demo hygiene: keep seeded message threads reading like a real inbox.
+
+    A persistent demo DB accumulates cruft over calendar time: the background
+    reminder sweep stacks repeated quiet-applicant nudges (a wall of identical
+    "still active" check-ins) and re-seeders can re-append the same patient
+    reply. This strips that machine-generated repetition so the demo shows how
+    the product is actually used. Only touches system-generated repeats and
+    exact duplicates - never a genuine back-and-forth. Safe to call repeatedly.
+    """
+    db = get_db()
+    # 1) Drop the automated quiet-applicant nudges. The curated seed already
+    #    shows the engagement loop; the live sweep just repeats copy.
+    db.execute(
+        "DELETE FROM messages WHERE sender = 'system' AND ("
+        "body LIKE '%application is still active%' OR "
+        "body LIKE '%last note got buried%' OR "
+        "body LIKE '%your spot is still open%')")
+    # 2) Collapse exact-duplicate messages within a thread (same sender+body),
+    #    keeping the earliest - removes re-seeded patient replies / repeats.
+    db.execute(
+        "DELETE FROM messages WHERE id NOT IN ("
+        "SELECT MIN(id) FROM messages GROUP BY lead_id, sender, body)")
+    # 3) Keep only the most recent visit reminder per thread. Their dates differ
+    #    so they aren't exact dupes, but a stack of them reads like spam.
+    db.execute(
+        "DELETE FROM messages WHERE sender = 'system' "
+        "AND body LIKE 'Reminder: your%visit is on%' "
+        "AND id NOT IN ("
+        "SELECT MAX(id) FROM messages WHERE sender = 'system' "
+        "AND body LIKE 'Reminder: your%visit is on%' GROUP BY lead_id)")
+    db.commit()
+
+
 def seed_demo_referrals(clinician_id):
     """Seed clinician-facing referral history for demo mode (idempotent)."""
     if not clinician_id:
@@ -5546,6 +5595,31 @@ def list_seo_studies(limit=5000):
     return get_db().execute(
         "SELECT nct, title, condition, updated_at FROM seo_study_index "
         "ORDER BY updated_at DESC, nct LIMIT ?", (limit,)).fetchall()
+
+
+def record_seo_city_page(slug, city_slug, is_local, trials):
+    """Remember whether a condition/city page has LOCAL recruiting trials, so the
+    sitemap can list only the indexable ones (idempotent per slug pair)."""
+    slug = (slug or "").strip()
+    city_slug = (city_slug or "").strip()
+    if not slug or not city_slug:
+        return
+    db = get_db()
+    db.execute(
+        "INSERT INTO seo_city_page (slug, city_slug, is_local, trials, updated_at) "
+        "VALUES (?, ?, ?, ?, ?) "
+        "ON CONFLICT(slug, city_slug) DO UPDATE SET is_local=excluded.is_local, "
+        "trials=excluded.trials, updated_at=excluded.updated_at",
+        (slug, city_slug, 1 if is_local else 0, int(trials or 0), now()))
+    db.commit()
+
+
+def list_local_seo_city_pages():
+    """Condition/city (slug, city_slug) pairs with confirmed local trials - the
+    only city pages worth putting in the sitemap."""
+    return get_db().execute(
+        "SELECT slug, city_slug, updated_at FROM seo_city_page "
+        "WHERE is_local = 1 AND trials > 0 ORDER BY updated_at DESC").fetchall()
 
 
 def list_notifiable_alerts():

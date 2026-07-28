@@ -6,7 +6,7 @@ services:
   - type: web
     name: bridgemd
     runtime: python
-    plan: free
+    plan: starter            # paid instance required for a persistent disk (below)
     rootDir: web
     healthCheckPath: /healthz
     buildCommand: pip install -r requirements.txt
@@ -75,14 +75,47 @@ services:
         sync: false
       - key: LOGISTICS_API_KEY
         sync: false
-      # For a real pilot, persist the SQLite DB so applications survive redeploys.
-      # Render disks need a paid instance (change `plan: free` -> `plan: starter`),
-      # then uncomment the DB_PATH env below and the `disk:` block. On the free
-      # plan the DB lives on the ephemeral filesystem and resets on each deploy
-      # (fine for a demo, not for collecting real applicants).
-      # - key: DB_PATH
-      #   value: /var/data/bridgemd.db
-    # disk:
-    #   name: bridgemd-data
-    #   mountPath: /var/data
-    #   sizeGB: 1
+      - key: SEO_WARM_LIMIT
+        value: "80"              # pairs per /seo/warm call (kept under --timeout)
+      # Persist the SQLite DB on a Render disk so real applicants + the SEO warm
+      # flags survive redeploys (the free plan's filesystem is ephemeral and
+      # resets on every deploy). Requires the paid `plan: starter` set above.
+      - key: DB_PATH
+        value: /var/data/bridgemd.db
+    disk:
+      name: bridgemd-data
+      mountPath: /var/data
+      sizeGB: 1
+
+# --------------------------------------------------------------------------- #
+# Weekly SEO warm: refresh which condition/city pages have LOCAL recruiting
+# trials so sitemap-cities.xml lists only indexable pages (not the full ~4,200
+# grid, most of which self-noindexes -> the "discovered - currently not indexed"
+# wall in Search Console). Same pattern as alerts/reminders: the app's
+# background loops are OFF and an external scheduler hits an endpoint.
+#
+# FREE PLAN (recommended): don't add a Render cron service (cron requires a paid
+# plan). Instead point any free scheduler (cron-job.org, GitHub Actions) at the
+# web service once a week. It just needs to page through /seo/warm, e.g. run
+# web/seo_warm.py with PUBLIC_BASE_URL + ALERTS_CRON_KEY set, or a shell loop:
+#   off=0; while [ "$off" != "null" ]; do \
+#     r=$(curl -s "$PUBLIC_BASE_URL/seo/warm?key=$ALERTS_CRON_KEY&limit=80&offset=$off"); \
+#     echo "$r"; off=$(echo "$r" | python -c 'import sys,json;print(json.load(sys.stdin)["next_offset"])'); \
+#   done
+#
+# PAID PLAN: uncomment this Render cron service to run the same warm weekly.
+# - type: cron
+#   name: bridgemd-seo-warm
+#   runtime: python
+#   plan: starter
+#   rootDir: web
+#   schedule: "0 8 * * 1"          # Mondays 08:00 UTC
+#   buildCommand: pip install -r requirements.txt
+#   startCommand: python seo_warm.py
+#   envVars:
+#     - key: PUBLIC_BASE_URL
+#       sync: false                # e.g. https://app.bridgemd.health
+#     - key: ALERTS_CRON_KEY
+#       sync: false                # same key the web service uses
+#     - key: SEO_WARM_LIMIT
+#       value: "80"

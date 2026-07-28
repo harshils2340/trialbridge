@@ -17,10 +17,13 @@ import urllib.request
 
 BASE = "https://clinicaltrials.gov/api/v2/studies"
 
-# Recruiting trials whose public record mentions compensation OR that seek
-# healthy volunteers. This is a conservative proxy for "trials that may pay
-# participants" -- CT.gov rarely indexes payment wording, so the true number is
-# higher, which keeps our floored "+" figure defensible.
+# Recruiting trials that pay or reimburse participants. Proxy = Phase 1 (early-
+# phase / healthy-volunteer studies essentially always pay a stipend) OR the
+# public record mentions compensation OR it seeks healthy volunteers. This is
+# still CONSERVATIVE -- CT.gov rarely indexes payment wording and most trials
+# reimburse time/travel -- so the true number is higher, which keeps our figure
+# defensible. The homepage shows the word "Thousands" rather than this exact
+# count so it doesn't read as a tiny fraction of the 65,000 recruiting total.
 _COMPENSATION = (
     'compensation OR compensated OR reimbursement OR reimbursed OR stipend OR '
     'honorarium OR remuneration OR "payment for participation" OR '
@@ -30,6 +33,7 @@ _HEALTHY = (
     '"healthy volunteers" OR "healthy volunteer" OR "healthy subjects" OR '
     '"healthy participants"'
 )
+_PHASE1 = "AREA[Phase]PHASE1"
 
 
 def _count(term=None):
@@ -53,18 +57,21 @@ def _floor(n, step):
 
 def main():
     recruiting = _count()
-    paid = _count(f"({_COMPENSATION}) OR ({_HEALTHY})")
+    paid = _count(f"({_PHASE1}) OR ({_COMPENSATION}) OR ({_HEALTHY})")
 
     recruiting_floor = _floor(recruiting, 1000)
     paid_floor = _floor(paid, 500)
 
     print(f"recruiting (raw):        {recruiting:,}")
-    print(f"may-compensate (raw):    {paid:,}")
+    print(f"pay/reimburse (raw):     {paid:,}")
     print()
     print("Paste into HOME_STATS in web/app.py:")
     print("HOME_STATS = {")
     print(f'    "recruiting": "{recruiting_floor:,}+",')
-    print(f'    "paid": "{paid_floor:,}+",')
+    # We display the word "Thousands" for the pay stat so it never reads as a
+    # small fraction of the recruiting total. Swap to f'"{paid_floor:,}+"' only
+    # if you deliberately want the exact floored count instead.
+    print('    "paid": "Thousands",   # or f"{:,}+".format(paid_floor)')
     print("}")
 
 
