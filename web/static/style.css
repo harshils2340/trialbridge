@@ -2907,6 +2907,12 @@ h1, h2, h3 {
 @media (max-width: 640px) {
   .td-summary-struct > div { grid-template-columns: 1fr; gap: 3px; }
 }
+/* Public study page: the side-label grid indents the body text and misaligns it
+   with the section heading + drug box above. Stack label-over-value so every
+   block lines up flush-left and reads like an article, not a form. */
+.study .td-summary-struct { gap: 18px; }
+.study .td-summary-struct > div { grid-template-columns: 1fr; gap: 4px; }
+.study .td-summary-struct dt { padding-top: 0; color: var(--muted); }
 /* "In plain terms" panel */
 .tp-personal { display: flex; align-items: flex-start; gap: 9px; margin: 0 0 14px;
   padding: 11px 13px; border-radius: 11px; font-size: 13.5px; line-height: 1.5; }
