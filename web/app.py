@@ -5700,6 +5700,22 @@ def leads():
                            claims=claims, q=q, active_nct=active_nct)
 
 
+def _is_recent_apply(created_at, hours=48):
+    """True if an application timestamp is within the last `hours`. Tolerant of
+    the few timestamp shapes the DB may hold; returns False if it can't parse."""
+    s = (created_at or "").strip()
+    if not s:
+        return False
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M",
+                "%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M", "%Y-%m-%d"):
+        try:
+            t = dt.datetime.strptime(s[:len(fmt) + 2].strip(), fmt)
+        except ValueError:
+            continue
+        return (dt.datetime.utcnow() - t) <= dt.timedelta(hours=hours)
+    return False
+
+
 def _operator_inbox_row(r):
     """Flatten a lead row into the columns the operator needs to triage and
     forward an application, without loading the full detail view."""
@@ -5786,22 +5802,20 @@ def operator_inbox():
     studies, so web applications to unclaimed public trials only show here.
     Owner-only, and only real patient-initiated applications are shown."""
     rows = [r for r in db.list_leads() if _is_inbound_application(r)]
-    q = request.args.get("q", "").strip().lower()
     apps = [_operator_inbox_row(r) for r in rows]
-    if q:
-        def _match(a):
-            hay = " ".join(str(a.get(k, "")) for k in (
-                "name", "email", "phone", "condition", "title", "nct",
-                "location", "status")).lower()
-            return q in hay
-        apps = [a for a in apps if _match(a)]
+    # Most recent applications first, so fresh leads surface at the top.
+    apps.sort(key=lambda a: a.get("created_at") or "", reverse=True)
+    # Flag applications from the last 48h so brand-new applicants are easy to spot
+    # (badge + one-click "New" filter in the inbox).
+    for a in apps:
+        a["is_new"] = _is_recent_apply(a.get("created_at"))
     stats = {
         "total": len(apps),
         "with_flags": sum(1 for a in apps if a["flags"]),
         "records": sum(1 for a in apps if a["records"]),
         "eligible": sum(1 for a in apps if a["verdict"] == "eligible"),
     }
-    return render_template("inbox.html", apps=apps, stats=stats, q=q)
+    return render_template("inbox.html", apps=apps, stats=stats)
 
 
 @app.route("/app/search-index.json")
