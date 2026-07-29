@@ -3995,17 +3995,22 @@ main:focus { outline: none; }
 
 /* Table ----------------------------------------------------------- */
 .app-table { width: 100%; border-collapse: collapse; }
-.app-table th { padding: 11px 16px; text-align: left; font-size: 12px;
+.app-table th { padding: 8px 16px; text-align: left; font-size: 12px;
   font-weight: 600; color: var(--muted); white-space: nowrap;
   border-bottom: 1px solid var(--border); }
-.app-table td { padding: 12px 16px; border-bottom: 1px solid var(--border);
+/* Compact rows so more applicants fit on screen and new ones are easy to scan. */
+.app-table td { padding: 7px 16px; border-bottom: 1px solid var(--border);
   font-size: 13px; color: var(--ink-soft); vertical-align: middle; }
 .app-table tr:last-child td { border-bottom: none; }
 .app-table tbody tr.link { cursor: pointer; transition: background .1s; }
 .app-table tbody tr.link:hover { background: var(--bg); }
-.app-table .who { display: flex; align-items: center; gap: 10px; }
-.app-table .who b { font-weight: 600; font-size: 14px; color: var(--ink); display: block; }
+.app-table .who { display: flex; align-items: center; gap: 9px; }
+.app-table .who b { font-weight: 600; font-size: 13.5px; color: var(--ink); display: block;
+  line-height: 1.25; }
 .app-table .who span { font-size: 12px; color: var(--muted); }
+/* Smaller avatar + tighter score bar inside the (dense) applicants table only. */
+.app-table .app-av { width: 28px; height: 28px; font-size: 11px; }
+.app-table .score-bar { min-width: 92px; gap: 7px; }
 .app-table tr.win { background: var(--ok-bg); }
 
 /* Draft / decision list rows -------------------------------------- */

@@ -5691,6 +5691,9 @@ def leads():
             active.append(item)
         else:
             done.append(item)
+    # Most-recent-first by default, so brand-new applications sit at the top and
+    # are easy to spot. Column-header clicks can still re-sort client-side.
+    queue.sort(key=lambda x: x.get("last_activity_at") or "", reverse=True)
     enrolled_n = sum(1 for q in queue if q["status"] == "enrolled")
     return render_template("leads.html", queue=queue, review=review, active=active,
                            done=done, counts=counts, enrolled_n=enrolled_n,
