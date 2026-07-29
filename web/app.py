@@ -3557,7 +3557,12 @@ def find():
     qkey = _cache_query_key(candidate_ctx)
     cached_sid = _lookup_query_sid(qkey)
     if cached_sid:
-        _log_event("search", {"q": label, "cached": 1})
+        # Log the true result count on a cache hit too. Without this the event
+        # carries no "results" field, so the recent-searches feed and funnel
+        # stats coerce it to 0 - making a cached search that actually returned
+        # dozens of trials look like a zero-result search.
+        cached_n = len((_load_search(cached_sid) or {}).get("results") or [])
+        _log_event("search", {"q": label, "results": cached_n, "cached": 1})
         return _finish_find_redirect(cached_sid, nct)
     try:
         # For a structured drug/condition query (not free-text), show WHERE the
@@ -5021,6 +5026,44 @@ def _condition_faqs(condition, city=None):
          "study team - not BridgeMD - decides eligibility."),
     ]
     return [{"q": q, "a": a} for q, a in faqs]
+
+
+# High-demand conditions featured on the /trials hub (each must resolve to a
+# real condition page). Ordered roughly by consumer search demand.
+TRIALS_HUB_POPULAR = [
+    "Type 2 diabetes", "Weight loss", "Obesity", "Prediabetes",
+    "Fatty liver disease (NAFLD/NASH)", "High cholesterol",
+    "Chronic kidney disease", "Depression", "Anxiety", "Migraine",
+    "Rheumatoid arthritis", "COPD", "Asthma", "Psoriasis",
+    "Breast cancer", "Alzheimer's disease",
+]
+# High-intent condition+city landing pages people actually search for. Only
+# rendered if both the condition and city are part of the curated SEO surface.
+TRIALS_HUB_CITY_PICKS = [
+    ("Type 2 diabetes", "New York, NY"), ("Weight loss", "Chicago, IL"),
+    ("Type 2 diabetes", "Los Angeles, CA"), ("Weight loss", "Houston, TX"),
+    ("Fatty liver disease (NAFLD/NASH)", "New York, NY"),
+    ("High cholesterol", "Chicago, IL"), ("Obesity", "Miami, FL"),
+    ("Prediabetes", "Toronto, ON"), ("Chronic kidney disease", "Phoenix, AZ"),
+    ("Depression", "Boston, MA"), ("Asthma", "Atlanta, GA"),
+    ("Migraine", "Seattle, WA"),
+]
+
+
+@app.route("/trials")
+def trials_index():
+    """Browseable hub that links every condition page. Gives crawlers one
+    indexable entry point into the whole programmatic surface (crawl discovery +
+    internal PageRank to the leaf pages) and targets broad 'browse clinical
+    trials by condition' intent. Real navigational content, not a thin doorway."""
+    popular = [c for c in TRIALS_HUB_POPULAR if slugify(c) in _COND_BY_SLUG]
+    city_picks = [(c, city) for (c, city) in TRIALS_HUB_CITY_PICKS
+                  if slugify(c) in _COND_BY_SLUG and slugify(city) in _CITY_BY_SLUG]
+    return render_template(
+        "trials_index.html",
+        conditions=sorted(SEO_CONDITIONS, key=str.lower),
+        popular=popular, city_picks=city_picks, slugify=slugify,
+        canonical_url=_abs_url("trials_index"))
 
 
 @app.route("/trials/<slug>")
@@ -7435,7 +7478,7 @@ def sitemap():
 def sitemap_static():
     wk = _week_lastmod()
     urls = [(_sitemap_loc(e), wk) for e in
-            ("home", "find", "how_it_works", "for_clinicians")]
+            ("home", "find", "trials_index", "how_it_works", "for_clinicians")]
     return _sitemap_xml(urls)
 
 

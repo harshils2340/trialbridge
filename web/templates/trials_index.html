@@ -1,0 +1,88 @@
+{% extends "public_base.html" %}
+{% block title %}Browse clinical trials by condition · BridgeMD{% endblock %}
+{% block description %}Browse recruiting clinical trials by condition and city, and apply online. Free to search - trial data from ClinicalTrials.gov. Some studies compensate for time and travel; amounts vary and some offer none.{% endblock %}
+
+{% block og_title %}Browse clinical trials by condition - recruiting now{% endblock %}
+{% block og_description %}Find recruiting clinical trials by condition and city. Free to search and apply, from ClinicalTrials.gov.{% endblock %}
+{% block og_url %}{{ canonical_url|default(request.url) }}{% endblock %}
+{% block canonical %}<link rel="canonical" href="{{ canonical_url|default(request.url) }}">{% endblock %}
+
+{% block head_extra %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+        {"@type": "ListItem", "position": 1, "name": "Home", "item": {{ url_for('home', _external=True)|tojson }}},
+        {"@type": "ListItem", "position": 2, "name": "Clinical trials by condition", "item": {{ (canonical_url|default(request.url))|tojson }}}
+      ]
+    },
+    {
+      "@type": "CollectionPage",
+      "name": "Clinical trials by condition",
+      "url": {{ (canonical_url|default(request.url))|tojson }},
+      "isPartOf": {"@id": "{{ url_for('home', _external=True) }}#website"}
+    }
+  ]
+}
+</script>
+{% endblock %}
+
+{% block body %}
+<section class="cond-hero">
+  <nav class="crumbs"><a href="{{ url_for('home') }}">Home</a> › <span>Clinical trials by condition</span></nav>
+  <h1>Browse clinical trials by condition</h1>
+  <p class="cond-lead">Find recruiting clinical trials near you. Pick a condition to see studies
+    enrolling now, pulled live from ClinicalTrials.gov - free to search and apply.</p>
+  <form class="cond-search" method="post" action="{{ url_for('find') }}">
+    <div class="hero-field">{{ ic.icon('search') }}
+      <input name="condition" type="text" placeholder="Condition, or describe your situation" required aria-label="Condition"></div>
+    <div class="hero-field">{{ ic.icon('pin') }}
+      <input name="location" type="text" placeholder="Your city or postal code" required aria-label="Location"></div>
+    <input type="hidden" name="radius" value="50">
+    <button class="btn btn-primary btn-lg" type="submit">Find trials near me{{ ic.icon('arrow-right') }}</button>
+  </form>
+</section>
+
+<section class="cond-intro">
+  <p>BridgeMD lists clinical trials that are <strong>currently recruiting</strong> participants
+    across {{ conditions|length }} conditions, pulled live from ClinicalTrials.gov. Choose a
+    condition below to see the studies enrolling now near you and check your eligibility in a
+    few minutes. Taking part is generally free, some studies offer compensation for time and
+    travel, and the study team confirms whether you're eligible. It's free, and you can talk
+    to your own doctor before joining.</p>
+</section>
+
+{% if popular %}
+<section class="cond-cities">
+  <h2>Popular conditions</h2>
+  <div class="chip-grid">
+    {% for c in popular %}
+    <a class="chip chip-trend" href="{{ url_for('condition_page', slug=slugify(c)) }}">{{ c }}</a>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+{% if city_picks %}
+<section class="cond-cities">
+  <h2>Popular searches by city</h2>
+  <div class="chip-grid">
+    {% for c, city in city_picks %}
+    <a class="chip" href="{{ url_for('condition_city_page', slug=slugify(c), city_slug=slugify(city)) }}">{{ c }} in {{ city.split(',')[0] }}</a>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+<section class="cond-cities">
+  <h2>All conditions</h2>
+  <div class="chip-grid">
+    {% for c in conditions %}
+    <a class="chip" href="{{ url_for('condition_page', slug=slugify(c)) }}">{{ c }}</a>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}
