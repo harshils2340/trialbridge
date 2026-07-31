@@ -150,15 +150,22 @@
       {% if (pay and pay.label) or (support and (support.travel or support.coverage or support.stipend)) %}
       <section class="study-block">
         <h2>Compensation & support</h2>
-        {% if support and (support.travel or support.coverage or support.stipend) %}
+        {% set _hassupport = support and (support.travel or support.coverage or support.stipend) %}
+        {% if _hassupport %}
         <p class="td-pay-note">
-          {% if support.travel %}Travel support may be available.{% endif %}
-          {% if support.coverage %} Some study costs may be covered.{% endif %}
-          {% if support.stipend %} A stipend or compensation may be offered.{% endif %}
+          {% if support.travel %}Travel help or reimbursement may be available.{% endif %}
+          {% if support.coverage %} Some study-related costs may be covered.{% endif %}
+          {% if support.stipend %} A stipend or payment for your time may be offered.{% endif %}
         </p>
         {% endif %}
-        {% if pay and pay.label %}<p class="td-pay-note">{{ pay.label }}.</p>{% endif %}
-        <p class="td-source">ClinicalTrials.gov doesn't provide a reliable structured field for payment or travel support - confirm details with the study team.</p>
+        {% if pay and pay.tier == 'high' %}
+        <p class="td-pay-note">This study may offer higher-than-typical compensation.</p>
+        {% elif pay and pay.tier == 'likely' %}
+        <p class="td-pay-note">Compensation is likely for taking part in this study.</p>
+        {% elif pay and pay.label and not _hassupport %}
+        <p class="td-pay-note">This study's listing mentions compensation or reimbursement.</p>
+        {% endif %}
+        <p class="td-source">No amount is published here - ClinicalTrials.gov has no reliable field for payment or travel support. Ask the study team what's actually covered (payment for your time, travel, parking, or other study costs), and never join a trial for the compensation alone.</p>
       </section>
       {% endif %}
 

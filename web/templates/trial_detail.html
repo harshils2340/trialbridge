@@ -166,18 +166,22 @@
     {% if (r.pay and r.pay.label) or (r.support and (r.support.travel or r.support.coverage or r.support.stipend)) %}
     <div class="td-section">
       <h2>Participant support</h2>
-      {% if r.support and (r.support.travel or r.support.coverage or r.support.stipend) %}
+      {% set _hassupport = r.support and (r.support.travel or r.support.coverage or r.support.stipend) %}
+      {% if _hassupport %}
       <p class="td-pay-note">
-        {% if r.support.travel %}Travel support may be available.{% endif %}
-        {% if r.support.coverage %} Some study costs may be covered.{% endif %}
-        {% if r.support.stipend %} Stipend/compensation may be offered.{% endif %}
+        {% if r.support.travel %}Travel help or reimbursement may be available.{% endif %}
+        {% if r.support.coverage %} Some study-related costs may be covered.{% endif %}
+        {% if r.support.stipend %} A stipend or payment for your time may be offered.{% endif %}
       </p>
-      {% if r.support.notes %}<p class="td-source">{{ r.support.notes|join(' · ') }}.</p>{% endif %}
       {% endif %}
-      {% if r.pay and r.pay.label %}
-      <p class="td-pay-note">{{ r.pay.label }}{% if r.pay.notes %} · {{ r.pay.notes|join(' · ') }}{% endif %}.</p>
+      {% if r.pay and r.pay.tier == 'high' %}
+      <p class="td-pay-note">This study may offer higher-than-typical compensation.</p>
+      {% elif r.pay and r.pay.tier == 'likely' %}
+      <p class="td-pay-note">Compensation is likely for taking part in this study.</p>
+      {% elif r.pay and r.pay.label and not _hassupport %}
+      <p class="td-pay-note">This study's listing mentions compensation or reimbursement.</p>
       {% endif %}
-      <p class="td-source">ClinicalTrials.gov does not provide a reliable structured field for travel/cost support or payment. Confirm details directly with the study site.</p>
+      <p class="td-source">No amount is published here - ClinicalTrials.gov has no reliable field for payment or travel support. Ask the study team what's actually covered (payment for your time, travel, parking, or other study costs), and never join a trial for the compensation alone.</p>
     </div>
     {% endif %}
 
