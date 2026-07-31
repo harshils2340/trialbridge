@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Internal · BridgeMD{% endblock %}
+{% import "_icons.html" as ic %}
+{% import "_ui.html" as ui %}
+
+{% block body %}
+<div class="app-head">
+  <div>
+    <h1>Internal</h1>
+    <p>Owner-only. Everything that lands on BridgeMD in one place: who applied, and
+       how visitors search, move through the funnel, and convert over time.</p>
+  </div>
+</div>
+
+<div class="app-stats">
+  <div class="app-stat"><div class="l">Total applications</div><div class="n">{{ stats.total }}</div></div>
+  <div class="app-stat accent"><div class="l">New (48h)</div><div class="n">{{ stats.new }}</div></div>
+  <div class="app-stat"><div class="l">Has flags</div><div class="n">{{ stats.with_flags }}</div></div>
+  <div class="app-stat"><div class="l">Records connected</div><div class="n">{{ stats.records }}</div></div>
+</div>
+
+<div class="internal-cards">
+  <a class="app-card internal-card" href="{{ url_for('operator_inbox') }}">
+    <span class="internal-card-ico">{{ ic.icon('inbox') }}</span>
+    <h2>Application inbox</h2>
+    <p>Every person who applied, across all studies - contact details, screener
+       answers, eligibility, and flags. Forward to the study team.</p>
+    <span class="internal-card-go">Open inbox {{ ic.icon('arrow-right') }}</span>
+  </a>
+  <a class="app-card internal-card" href="{{ url_for('owner_analytics') }}">
+    <span class="internal-card-ico">{{ ic.icon('activity') }}</span>
+    <h2>Analytics</h2>
+    <p>Visitors, searches, locations, and the landing → search → view → apply
+       funnel - tracked over time.</p>
+    <span class="internal-card-go">Open analytics {{ ic.icon('arrow-right') }}</span>
+  </a>
+</div>
+{% endblock %}

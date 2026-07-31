@@ -626,6 +626,13 @@ def login_required(view):
 # Private owner-only analytics. Only this account sees the visitor dashboard;
 # every other signed-in staff user gets a 404 (so its existence isn't leaked).
 OWNER_EMAIL = os.environ.get("OWNER_EMAIL", "harshils2340@gmail.com").strip().lower()
+# All accounts with owner-only admin access (internal inbox + analytics). The
+# primary OWNER_EMAIL plus any founding operators, extendable via the
+# OWNER_EMAILS env (comma-separated) without a code change.
+OWNER_EMAILS = frozenset(
+    {OWNER_EMAIL, "dhruv0704@gmail.com"}
+    | {e.strip().lower() for e in os.environ.get("OWNER_EMAILS", "").split(",")
+       if e.strip()})
 
 # Analytics: don't count your own traffic. Set ANALYTICS_IGNORE_IPS to a
 # comma-separated list of IPs to drop from the visitor funnel (e.g. your home /
@@ -790,7 +797,7 @@ def _analytics_ignored():
 
 def _is_owner():
     try:
-        return bool(g.user and (g.user["email"] or "").strip().lower() == OWNER_EMAIL)
+        return bool(g.user and (g.user["email"] or "").strip().lower() in OWNER_EMAILS)
     except (KeyError, TypeError):
         return False
 
@@ -5847,6 +5854,24 @@ def _is_inbound_application(r):
     if email.endswith("@example.com") or email.endswith("@bridgemd.local"):
         return False
     return True
+
+
+@app.route("/internal")
+@owner_required
+def internal_hub():
+    """Owner-only internal hub, reachable directly at /internal. One entry point
+    to the operator inbox (everyone who applied) and visitor analytics (searches,
+    locations, funnel, applications over time). Access is limited to OWNER_EMAILS;
+    any other signed-in user gets a 404 (see owner_required)."""
+    rows = [r for r in db.list_leads() if _is_inbound_application(r)]
+    apps = [_operator_inbox_row(r) for r in rows]
+    stats = {
+        "total": len(apps),
+        "new": sum(1 for a in apps if _is_recent_apply(a.get("created_at"))),
+        "with_flags": sum(1 for a in apps if a["flags"]),
+        "records": sum(1 for a in apps if a["records"]),
+    }
+    return render_template("internal.html", stats=stats)
 
 
 @app.route("/app/inbox")

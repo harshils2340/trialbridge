@@ -3759,6 +3759,31 @@ main:focus { outline: none; }
 .appnav a .ico { width: 17px; height: 17px; opacity: .9; }
 .appnav a:hover { background: var(--surface-2); color: var(--ink); text-decoration: none; }
 .appnav a.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+/* Owner-only "Internal" admin group (inbox + analytics), visually set apart. */
+.appnav-group { display: flex; flex-direction: column; gap: 2px;
+  margin-top: var(--space-3); padding-top: var(--space-3);
+  border-top: 1px solid var(--border); }
+.appnav-group-label { padding: 4px 12px 2px; font-size: 11px; font-weight: 800;
+  letter-spacing: .08em; text-transform: uppercase; color: var(--faint); }
+.appnav-group a { font-weight: 700; }
+
+/* /internal hub cards */
+.internal-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--space-5); margin-top: var(--space-5); }
+.internal-card { display: flex; flex-direction: column; gap: var(--space-2);
+  padding: var(--space-6); color: var(--ink);
+  transition: box-shadow .15s ease, transform .15s ease, border-color .15s ease; }
+.internal-card:hover { box-shadow: var(--shadow-lift); transform: translateY(-2px);
+  border-color: var(--border-strong); text-decoration: none; }
+.internal-card-ico { display: inline-flex; align-items: center; justify-content: center;
+  width: 40px; height: 40px; border-radius: var(--radius); background: var(--accent-soft);
+  color: var(--accent); margin-bottom: var(--space-2); }
+.internal-card-ico .ico { width: 20px; height: 20px; }
+.internal-card h2 { margin: 0; font-size: 18px; font-weight: 700; color: var(--ink); }
+.internal-card p { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.5; }
+.internal-card-go { margin-top: auto; padding-top: var(--space-2); font-size: 14px;
+  font-weight: 600; color: var(--accent); display: inline-flex; align-items: center; gap: 6px; }
+.internal-card-go .ico { width: 16px; height: 16px; }
 .appside-foot { padding: 12px; border-top: 1px solid var(--border);
   display: flex; flex-direction: column; gap: 4px; }
 .appside-user { display: flex; gap: 10px; align-items: center; padding: 6px 8px; }
