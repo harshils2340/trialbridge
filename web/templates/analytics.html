@@ -252,12 +252,16 @@
   <div class="section-title"><h2>What people are searching</h2></div>
   {% if recent %}
   <table class="dash-table">
-    <thead><tr><th>When</th><th>Search</th><th>Results</th><th>Source</th></tr></thead>
+    <thead><tr><th>When</th><th>Search</th><th>Where</th><th>Results</th><th>Source</th></tr></thead>
     <tbody>
       {% for r in recent %}
       <tr>
         <td><span class="dash-src-sub">{{ r.ts }}</span></td>
         <td><span class="dash-trial-title">{{ r.term }}</span></td>
+        <td>
+          {% if r.place %}<span class="dash-src">{{ r.place }}</span>{% if r.place_kind == 'geo' %} <span class="dash-src-sub">(approx)</span>{% endif %}
+          {% else %}<span class="dash-src-sub">—</span>{% endif %}
+        </td>
         <td>{% if r.results %}{{ r.results }}{% else %}<span class="dash-conv">0</span>{% endif %}</td>
         <td><span class="dash-src">{{ r.source }}</span></td>
       </tr>

@@ -172,6 +172,13 @@
     if (locLat.value) { locLat.value = locLon.value = locCc.value = ''; confirmEl.style.display = 'none'; }
   });
 
+  // Arrived here because a search was tried without a location (server bounced us
+  // back instead of dumping to the homepage). Put the cursor in the location box
+  // so they can type or hit "use my current location" right away.
+  if (loc && /[?&]needloc=1\b/.test(location.search)) {
+    askLoc('Add your city or postal code (or use your current location) to see trials near you.');
+  }
+
   // Main search: if no location yet, grab it instantly, then search. No dead ends.
   form.addEventListener('submit', function (e) {
     var hasLoc = (locLat.value && locLon.value) || loc.value.trim();

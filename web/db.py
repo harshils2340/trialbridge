@@ -5231,7 +5231,7 @@ def recent_searches(days=30, limit=40):
     since = _web_since(days)
     out = []
     for r in d.execute(
-        "SELECT ts, detail, "
+        "SELECT ts, detail, city, region, country, "
         "CASE WHEN source != '' THEN source WHEN referrer != '' THEN referrer "
         "ELSE 'direct' END AS src "
         "FROM web_events WHERE name = 'search' AND ts >= ? "
@@ -5243,11 +5243,18 @@ def recent_searches(days=30, limit=40):
         term = (det.get("q") or "").strip()
         if not term:
             continue
+        # "place" = where the search was aimed. Prefer the location the searcher
+        # typed (their intent), and fall back to the coarse IP-derived geo (where
+        # they physically are) so the feed is rarely blank. No raw IP/PHI.
+        typed = (det.get("loc") or "").strip()
+        geo = ", ".join(p for p in (r["city"], r["region"] or r["country"]) if p)
         out.append({
             "ts": r["ts"],
             "term": term,
             "results": int(det.get("results") or 0),
             "source": r["src"],
+            "place": typed or geo,
+            "place_kind": "typed" if typed else ("geo" if geo else ""),
         })
     return out
 

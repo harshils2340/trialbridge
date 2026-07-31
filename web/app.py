@@ -3522,6 +3522,15 @@ def find():
                   "enter a location to see all trials nearby.", "error")
             return redirect(url_for("home", location=location))
     if not location:
+        # Bounce back to the page they came from, not the homepage: if this was a
+        # known condition page, return there with ?needloc=1 so the location box +
+        # "use my current location" are focused right in front of them (the page's
+        # own JS shows the prompt). Fall back to home - with a flash - for freeform
+        # conditions that have no dedicated page.
+        cond_slug = slugify(condition_label) if condition_label else ""
+        if cond_slug and cond_slug in _COND_BY_SLUG:
+            return redirect(url_for("condition_page", slug=cond_slug,
+                                    needloc=1))
         flash("Enter your city or postal code so we only show trials near you.",
               "error")
         return redirect(url_for("home", condition=condition_label))
@@ -3562,7 +3571,8 @@ def find():
         # stats coerce it to 0 - making a cached search that actually returned
         # dozens of trials look like a zero-result search.
         cached_n = len((_load_search(cached_sid) or {}).get("results") or [])
-        _log_event("search", {"q": label, "results": cached_n, "cached": 1})
+        _log_event("search", {"q": label, "results": cached_n, "cached": 1,
+                              "loc": (location or "").strip()})
         return _finish_find_redirect(cached_sid, nct)
     try:
         # For a structured drug/condition query (not free-text), show WHERE the
@@ -3742,7 +3752,8 @@ def find():
         app.logger.exception("search stat logging failed")
 
     _log_event("search", {"q": label, "results": len(results),
-                          "intervention": 1 if intervention else 0})
+                          "intervention": 1 if intervention else 0,
+                          "loc": (location or "").strip()})
 
     ctx = {"condition": label, "location": location, "unit": unit,
            "q_condition": condition_label or (label if freeform else ""),

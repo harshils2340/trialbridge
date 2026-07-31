@@ -712,12 +712,26 @@ def _normalize_prescreen(data, max_q):
     return out
 
 
-def prescreen_questions(trial, max_q=6, retries=2):
+# Pre-screen generation latency is dominated by the number of questions produced
+# (output tokens) and, secondarily, by how much criteria text we make the model
+# read (prefill). Both are tuned down from their original 6 questions / 6000 chars
+# to cut cold-generation time ~30%+ and shorten the patient form. Env-overridable
+# so we can retune without a deploy.
+PRESCREEN_MAX_Q = int(os.environ.get("PRESCREEN_MAX_Q", "4"))
+PRESCREEN_CRITERIA_CHARS = int(os.environ.get("PRESCREEN_CRITERIA_CHARS", "3500"))
+# Compact JSON for ~4 short questions is well under this; the cap only guards the
+# latency tail against a runaway generation.
+PRESCREEN_MAX_TOKENS = int(os.environ.get("PRESCREEN_MAX_TOKENS", "350"))
+
+
+def prescreen_questions(trial, max_q=None, retries=2):
     """Generate up to `max_q` patient-answerable yes/no pre-screen questions from
     a trial's eligibility criteria. Returns [] when no LLM key or no criteria, so
     callers can fall back to the generic screener."""
     if not LLM_API_KEY:
         return []
+    if max_q is None:
+        max_q = PRESCREEN_MAX_Q
     criteria = (trial.get("criteria") or "").strip()
     if not criteria:
         return []
@@ -725,7 +739,7 @@ def prescreen_questions(trial, max_q=6, retries=2):
         f"TRIAL: {trial.get('title', '')} ({trial.get('nctId', '')})\n"
         f"Sex: {trial.get('sex', '')}  Age: {trial.get('minAge', '')}-"
         f"{trial.get('maxAge', '')}\n\n"
-        f"ELIGIBILITY CRITERIA:\n{criteria[:6000]}\n\n"
+        f"ELIGIBILITY CRITERIA:\n{criteria[:PRESCREEN_CRITERIA_CHARS]}\n\n"
         f"Produce at most {max_q} questions.\n"
         f"Return JSON exactly in this shape:\n{PRESCREEN_SCHEMA}"
     )
@@ -737,6 +751,7 @@ def prescreen_questions(trial, max_q=6, retries=2):
         ],
         "response_format": {"type": "json_object"},
         "temperature": 0,
+        "max_tokens": PRESCREEN_MAX_TOKENS,
     }).encode()
     last = None
     for attempt in range(retries):
