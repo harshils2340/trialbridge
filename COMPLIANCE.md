@@ -219,6 +219,21 @@ fee-splitting.**
   identifiable info is shared with a site. (Already implemented — do not regress.)
 - [ ] **Advertising content** — if we ever let sponsors post custom recruitment copy,
   add an IRB/REB-approval attestation gate before display.
+- [ ] **Auto-generated trial titles/descriptions (SEO surface)** — condition/study
+  pages generate patient-facing titles and meta descriptions from ClinicalTrials.gov
+  data at scale (indexed by Google). Two exposures found + mitigated in code:
+  - `summarize.patient_card_title` previously emitted "New treatment option for X" /
+    "Compares treatment options for X" — implied an investigational drug is an
+    approved treatment. Reworded to neutral "Clinical trial for X" / "Trial
+    comparing treatments for X" (still SEO-keyworded, no efficacy claim).
+  - `summarize.card_blurb` and the study page's on-page summary republished the raw
+    sponsor-written brief summary, which can assert benefit/superiority/safety
+    ("offers superior clinical benefit"). Added `summarize.scrub_claims()` — a
+    sentence-level scrubber that drops efficacy/safety/superiority ASSERTIONS while
+    keeping neutral study-aim language. **Imperfect (pattern-based) — counsel should
+    review the approach and the claim patterns; consider an allowlist / LLM-hedged
+    description if higher assurance is needed.** No unapproved efficacy claim may be
+    republished as our own copy (FTC / §5).
 - [ ] **PHI handling** — keep de-identification mandatory; add BAAs/DPAs before any
   production PHI processing or EHR integration goes live.
 - [ ] **REDCap patient intake/screening forms** — patients can complete a site's

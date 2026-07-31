@@ -5225,7 +5225,9 @@ def study_page(nct):
     indexable = recruiting and db.is_seo_study(study_id)
     condition = (trial.get("conditions") or [""])[0] or ""
     blurb = summarize.card_blurb(trial)
-    summary_text = summarize.tidy(trial.get("briefSummary") or "")
+    # Scrub sponsor efficacy/safety claims from the raw brief summary before we
+    # show it on the page (indexed) - never republish an unproven claim as our own.
+    summary_text = summarize.scrub_claims(summarize.tidy(trial.get("briefSummary") or ""))
     facts = _study_facts(trial)
     faqs = _study_faqs(trial, facts, condition, recruiting, pay, support,
                        plain_terms.get("time", ""))

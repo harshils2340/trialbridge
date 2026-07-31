@@ -83,14 +83,18 @@ def patient_card_title(trial, limit=96):
     cond = _first_condition(trial)
     low = raw.lower()
     if cond:
+        # Neutral, truthful framing only: these are recruiting *trials*, not
+        # approved treatments. Never imply the investigational drug is a "treatment
+        # option" or that it works - that's an unapproved efficacy claim (FTC /
+        # compliance.mdc). Keep the condition keyword for SEO.
         if any(k in low for k in ("comparing", "compare", "versus", " vs ", "switching")):
-            base = f"Compares treatment options for {cond}"
+            base = f"Trial comparing treatments for {cond}"
         elif "prevention" in low:
-            base = f"Prevention study for {cond}"
+            base = f"Prevention trial for {cond}"
         elif "safety" in low or "efficacy" in low or "effectiveness" in low:
-            base = f"Tests treatment safety and results for {cond}"
+            base = f"Trial studying safety and effects for {cond}"
         else:
-            base = f"New treatment option for {cond}"
+            base = f"Clinical trial for {cond}"
         return base if len(base) <= limit else base[:limit].rsplit(" ", 1)[0] + "..."
 
     t = _plainify(raw)
@@ -117,9 +121,36 @@ def _sentences(text):
     return [s.strip() for s in re.split(r"(?<=[.!?])\s+", text) if s.strip()]
 
 
+# Promotional / efficacy / safety / superiority claims. ClinicalTrials.gov brief
+# summaries are sponsor-written and sometimes ASSERT benefit ("offers superior
+# clinical benefit", "is safe and effective"). We must never republish those as
+# our own copy - unapproved efficacy claims about investigational drugs violate
+# FTC truthful-ad rules (see .cursor/rules/compliance.mdc). This targets
+# assertions, NOT neutral study aims like "to evaluate the efficacy and safety of
+# X", which are preserved. Imperfect by nature - a safety net, not a guarantee.
+_CLAIM_PATTERNS = re.compile(
+    r"\b(?:superior|better than|more effective|most effective|highly effective|"
+    r"best[- ]in[- ]class|outperform\w*|proven|breakthrough|cures?|cured|"
+    r"safe and effective|well[- ]tolerated|is (?:safe|effective))\b"
+    r"|(?:offers?|provides?|delivers?|demonstrat\w+)\s+[\w\s]{0,30}?"
+    r"(?:benefit|efficacy|superiority|improvement)"
+    r"|shown to\s+(?:be|improve|reduce|increase|lower|provide|help|benefit)",
+    re.IGNORECASE)
+
+
+def scrub_claims(text):
+    """Drop sentences that assert efficacy/safety/superiority so we never
+    republish a sponsor's unproven claim as our own patient-facing copy. Neutral
+    study-aim language ("to evaluate the efficacy and safety of X") is kept."""
+    if not text:
+        return text
+    kept = [s for s in _sentences(text) if not _CLAIM_PATTERNS.search(s)]
+    return " ".join(kept).strip()
+
+
 def card_blurb(trial, limit=170):
     """Short, clean teaser for a result card (about two lines). No LLM."""
-    txt = _plainify((trial or {}).get("briefSummary") or "")
+    txt = scrub_claims(_plainify((trial or {}).get("briefSummary") or ""))
     if not txt:
         return ""
     if len(txt) <= limit:
