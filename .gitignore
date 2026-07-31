@@ -5,7 +5,13 @@ referrals.csv
 referral_events.csv
 referrals/
 
-# Web app: local DB (contains patient notes + accounts), secret, venv
+# Web app: local DB (contains patient notes + accounts), secret, venv.
+# Catch every SQLite file/sidecar in any directory so a stray DB (e.g. created
+# by running a script from the wrong cwd) can never be committed - may hold PHI.
+*.db
+*.db-shm
+*.db-wal
+*.db-journal
 web/bridgemd.db
 web/bridgemd.db-shm
 web/bridgemd.db-wal
