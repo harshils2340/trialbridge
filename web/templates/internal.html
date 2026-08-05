@@ -27,6 +27,20 @@
        answers, eligibility, and flags. Forward to the study team.</p>
     <span class="internal-card-go">Open inbox {{ ic.icon('arrow-right') }}</span>
   </a>
+  <a class="app-card internal-card" href="{{ url_for('internal_registry') }}">
+    <span class="internal-card-ico">{{ ic.icon('users') }}</span>
+    <h2>Matching pool</h2>
+    <p>Consented participants who opted in to future-trial matching - the reusable
+       supply. Search by condition or location to source candidates for a study.</p>
+    <span class="internal-card-go">Open pool {{ ic.icon('arrow-right') }}</span>
+  </a>
+  <a class="app-card internal-card" href="{{ url_for('internal_recruitment') }}">
+    <span class="internal-card-ico">{{ ic.icon('activity') }}</span>
+    <h2>Recruitment tracker</h2>
+    <p>Applications by source and demographic balance vs target - so skewed or
+       under-filled age/sex buckets are obvious before they stall enrollment.</p>
+    <span class="internal-card-go">Open tracker {{ ic.icon('arrow-right') }}</span>
+  </a>
   <a class="app-card internal-card" href="{{ url_for('owner_analytics') }}">
     <span class="internal-card-ico">{{ ic.icon('activity') }}</span>
     <h2>Analytics</h2>

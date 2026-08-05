@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% block title %}Matching pool · BridgeMD{% endblock %}
+{% import "_icons.html" as ic %}
+{% import "_ui.html" as ui %}
+
+{% block body %}
+<div class="app-head">
+  <div>
+    <h1>Matching pool</h1>
+    <p>People who gave explicit, separate consent to be matched to future studies.
+       This is the consented registry - everyone here opted in and can withdraw at
+       any time. Search by condition or location to find candidates for a study.</p>
+  </div>
+</div>
+
+<div class="app-stats">
+  <div class="app-stat"><div class="l">Consented members</div><div class="n">{{ stats.members }}</div></div>
+  <div class="app-stat accent"><div class="l">Conditions covered</div><div class="n">{{ stats.conditions }}</div></div>
+  <div class="app-stat"><div class="l">Records connected</div><div class="n">{{ stats.with_records }}</div></div>
+</div>
+
+{% if not pool %}
+<div class="app-card pad">
+  {{ ui.empty('No consented members yet',
+     'People appear here once they opt in to future-trial matching when they apply.',
+     'user-plus') }}
+</div>
+{% else %}
+<div class="list-toolbar">
+  <div class="search-field">
+    {{ ic.icon('search') }}
+    <input id="poolSearch" type="search" placeholder="Search condition, location, name, email…" autocomplete="off">
+  </div>
+  <div class="spacer"></div>
+  <span id="poolCount" class="tag" aria-live="polite"></span>
+</div>
+
+<div class="app-card">
+  <table class="app-table" id="poolTable">
+    <thead>
+      <tr>
+        <th>Person</th>
+        <th>Location</th>
+        <th>Age / Sex</th>
+        <th>Conditions</th>
+        <th>Consented</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for m in pool %}
+      <tr data-text="{{ ((m.name ~ ' ' ~ m.email ~ ' ' ~ m.location ~ ' ' ~ (m.conditions|join(' ')))|lower) }}">
+        <td>
+          <div class="who">
+            <span class="app-av">{{ (m.name or m.email or '?')[:1]|upper }}</span>
+            <div>
+              <b>{{ m.name }}{% if m.records %} <span class="new-badge">Records</span>{% endif %}</b>
+              <span>{{ m.email or m.phone or 'no contact' }}{% if m.applications > 1 %} · {{ m.applications }} applications{% endif %}</span>
+            </div>
+          </div>
+        </td>
+        <td>{{ m.location or '—' }}</td>
+        <td>{{ m.age or '—' }}{% if m.sex %} · {{ m.sex|capitalize }}{% endif %}</td>
+        <td>
+          {% for c in m.conditions %}{{ ui.badge(c, 'brand') }} {% endfor %}
+          {% if not m.conditions %}<span style="color:var(--faint);">—</span>{% endif %}
+        </td>
+        <td style="font-size:12px;color:var(--muted);white-space:nowrap;">{{ m.consent_at or '—' }}</td>
+        <td style="text-align:right;">
+          <form method="post" action="{{ url_for('internal_registry_opt_out') }}"
+                onsubmit="return confirm('Remove this person from the matching pool? This honours a withdrawal request and cannot be undone.');" style="margin:0;">
+            <input type="hidden" name="applicant_token" value="{{ m.applicant_token }}">
+            <input type="hidden" name="email" value="{{ m.email }}">
+            {{ ui.btn('Remove', 'ghost', 'sm', type='submit') }}
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <div id="poolEmpty" style="display:none;">{{ ui.empty('No matches', 'Try a different condition or location.', 'search') }}</div>
+</div>
+
+<script>
+(function () {
+  var q = document.getElementById('poolSearch');
+  var rows = Array.prototype.slice.call(document.querySelectorAll('#poolTable tbody tr'));
+  var empty = document.getElementById('poolEmpty'), count = document.getElementById('poolCount');
+  function apply() {
+    var term = (q.value || '').toLowerCase().trim(), shown = 0;
+    rows.forEach(function (r) {
+      var ok = !term || r.dataset.text.indexOf(term) >= 0;
+      r.style.display = ok ? '' : 'none'; if (ok) shown++;
+    });
+    empty.style.display = shown ? 'none' : 'block';
+    count.textContent = shown + (shown === 1 ? ' person' : ' people');
+  }
+  q.addEventListener('input', apply); apply();
+})();
+</script>
+{% endif %}
+{% endblock %}

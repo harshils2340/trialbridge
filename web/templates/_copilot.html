@@ -302,8 +302,11 @@
 
   var saved = null;
   try { saved = localStorage.getItem('bm_copilot_open'); } catch (e) {}
-  // Default open on wide screens; collapsed on small ones unless the user opened it.
-  var wide = window.matchMedia('(min-width: 1100px)').matches;
+  // Default open only when the screen is wide enough to fit the dock inline
+  // beside the page's right rail; otherwise start collapsed so nothing is
+  // clipped (the user can still open it as a drawer via the FAB). Respect a
+  // saved choice once the user has toggled it.
+  var wide = window.matchMedia('(min-width: 1440px)').matches;
   setOpen(saved === null ? wide : saved === '1');
 })();
 </script>

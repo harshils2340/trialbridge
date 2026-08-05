@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Today · BridgeMD for sites{% endblock %}
+{% block title %}{% if workspace %}{{ workspace.title }} · Workspace{% else %}Today{% endif %} · BridgeMD for sites{% endblock %}
 {% import "_icons.html" as ic %}
 {% import "_ui.html" as ui %}
 
@@ -12,160 +12,160 @@
 </div>
 {% else %}
 
-<div class="app-head">
+{# ── Header: trial-workspace state when a study is selected, else the daily greeting ── #}
+{% if workspace %}
+<div class="ws-head">
+  <div class="ws-head-top">
+    <div>
+      <span class="ws-eyebrow">{{ ic.icon('crosshair') }} Trial workspace</span>
+      <h1>{{ workspace.title }}</h1>
+      <p class="ws-nct">{{ workspace.nct }} · <a href="{{ url_for('study_home', nct='all') }}">View all studies</a></p>
+    </div>
+    <div class="ws-stats">
+      <div class="ws-stat"><div class="n">{{ workspace.applicants }}</div><div class="l">Applicants</div></div>
+      <div class="ws-stat"><div class="n">{{ workspace.screened }}</div><div class="l">Screened</div></div>
+      <div class="ws-stat"><div class="n">{{ workspace.enrolled }}</div><div class="l">Enrolled</div></div>
+      <div class="ws-stat"><div class="n">{{ workspace.active_campaigns }}</div><div class="l">Live campaigns</div></div>
+    </div>
+  </div>
+  {% if workspace.target %}
+  <div class="ws-progress">
+    <div class="ws-progress-top"><span>Enrollment target</span><span><b>{{ workspace.enrolled }}</b> / {{ workspace.target }}</span></div>
+    <div class="quota-track"><div class="quota-fill" style="width:{{ workspace.progress }}%"></div></div>
+  </div>
+  {% else %}
+  <p class="ws-nudge">No enrollment target set yet — <a href="{{ url_for('recruitment_dashboard') }}">set one on Recruitment</a> to track progress here.</p>
+  {% endif %}
+</div>
+{% else %}
+<div class="home-hero">
   <div>
     <h1>{{ greeting }}{% if user['name'] %}, {{ user['name'].split()[0] }}{% endif %}</h1>
+    <p class="home-hero-sub">
+      {% if todo_total %}You have <b>{{ todo_total }}</b> {{ 'thing' if todo_total == 1 else 'things' }} to do today.
+      {% else %}You're all caught up — nice work.{% endif %}
+      {% if nav_studies|length > 1 %}<span class="home-hero-hint">Pick a study up top to open its workspace.</span>{% endif %}
+    </p>
   </div>
+</div>
+{% endif %}
+
+{# ── Control panel: a clean deep link into each full area ── #}
+<div class="ctrl-panel">
+  <a class="ctrl-card" href="{{ url_for('leads') }}">
+    <span class="ctrl-ico">{{ ic.icon('user-plus') }}</span>
+    <span class="ctrl-l">Applicants</span>
+    <span class="ctrl-go">{{ ic.icon('arrow-right') }}</span>
+  </a>
+  <a class="ctrl-card" href="{{ url_for('matching_page') }}">
+    <span class="ctrl-ico">{{ ic.icon('crosshair') }}</span>
+    <span class="ctrl-l">Matches</span>
+    <span class="ctrl-go">{{ ic.icon('arrow-right') }}</span>
+  </a>
+  <a class="ctrl-card" href="{{ url_for('campaign_list') }}">
+    <span class="ctrl-ico">{{ ic.icon('megaphone') }}</span>
+    <span class="ctrl-l">Campaigns</span>
+    <span class="ctrl-go">{{ ic.icon('arrow-right') }}</span>
+  </a>
+  <a class="ctrl-card" href="{{ url_for('recruitment_dashboard') }}">
+    <span class="ctrl-ico">{{ ic.icon('activity') }}</span>
+    <span class="ctrl-l">Recruitment</span>
+    <span class="ctrl-go">{{ ic.icon('arrow-right') }}</span>
+  </a>
+  <a class="ctrl-card" href="{{ url_for('team_page') }}">
+    <span class="ctrl-ico">{{ ic.icon('users') }}</span>
+    <span class="ctrl-l">Team</span>
+    <span class="ctrl-go">{{ ic.icon('arrow-right') }}</span>
+  </a>
 </div>
 
 <div class="app-split">
   <div>
-    {# Daily cockpit: 4 count tiles act as tabs; one worklist shows at a time so
-       the page isn't a long scroll. Reference info (visits, approvals) is in the
-       right rail. #}
-    <div class="work-tabs" role="tablist">
-      <button type="button" class="worktab triage-chip t-danger{{ ' zero' if not reply_queue }}"
-              role="tab" data-panel="replies" data-count="{{ reply_queue|length }}">
-        {{ ic.icon('chat') }}<span class="tc-n">{{ reply_queue|length }}</span><span class="tc-l">Replies</span>
-      </button>
-      <button type="button" class="worktab triage-chip t-brand{{ ' zero' if not pending }}"
-              role="tab" data-panel="applicants" data-count="{{ pending|length }}">
-        {{ ic.icon('user-plus') }}<span class="tc-n">{{ pending|length }}</span><span class="tc-l">New applicants</span>
-      </button>
-      <button type="button" class="worktab triage-chip t-warn{{ ' zero' if not followups }}"
-              role="tab" data-panel="followups" data-count="{{ followups|length }}">
-        {{ ic.icon('sparkle') }}<span class="tc-n">{{ followups|length }}</span><span class="tc-l">Follow-ups</span>
-      </button>
-      <button type="button" class="worktab triage-chip t-brand{{ ' zero' if not (match_counts and match_counts.new) }}"
-              role="tab" data-panel="matches" data-count="{{ match_counts.new if match_counts else 0 }}">
-        {{ ic.icon('crosshair') }}<span class="tc-n">{{ match_counts.new if match_counts else 0 }}</span><span class="tc-l">Matches</span>
-      </button>
-    </div>
-
-    {# panel: matches #}
-    <div class="work-panel" id="matches" data-panel="matches">
-      <p class="work-sub">Surfaced from your records, pre-screened. Add to a study or refer out.</p>
-      {% if not new_matches %}
-      <div class="app-card pad">{{ ui.empty('No new matches', 'New candidates from your records appear here as they are found.', 'check') }}</div>
-      {% else %}
-      <div class="app-card">
-        {% for m in new_matches %}
-        <div class="app-row">
-          <span class="app-av neutral">{{ m.initials }}</span>
-          <div class="main">
-            <div class="top">
-              <b>{{ m.ref }}</b>
-              {% if m.kind == 'external' %}{{ ui.badge('Partner site', 'violet') }}{% else %}{{ ui.badge('Your study', 'brand') }}{% endif %}
-              {{ ui.badge(m.verdict.label, m.verdict.tone) }}
-              <span class="reason">{{ m.trial_title[:46] }}</span>
-            </div>
-            <div class="prev">{{ m.summary }}</div>
-          </div>
-          <div class="acts">
-            {{ ui.btn('Review', 'ghost', 'sm', href=url_for('match_detail', match_id=m.id)) }}
-            <form method="post" action="{{ url_for('approve_match', match_id=m.id) }}">
-              {% if m.kind == 'external' %}{{ ui.btn('Refer', 'primary', 'sm', type='submit') }}
-              {% else %}{{ ui.btn('Add', 'primary', 'sm', type='submit') }}{% endif %}
-            </form>
-          </div>
+    {# ── Unified inbox: one triage stream; chips filter it in place ── #}
+    <div class="app-card inbox-card">
+      <div class="inbox-head">
+        <div class="inbox-filters" role="tablist">
+          <button type="button" class="ichip is-active" data-filter="all">All <span class="c">{{ inbox|length }}</span></button>
+          <button type="button" class="ichip" data-filter="reply">Replies <span class="c">{{ reply_queue|length }}</span></button>
+          <button type="button" class="ichip" data-filter="new">New <span class="c">{{ pending|length }}</span></button>
+          <button type="button" class="ichip" data-filter="followup">Follow-ups <span class="c">{{ followups|length }}</span></button>
         </div>
-        {% endfor %}
+        <a href="{{ url_for('leads') }}" class="inbox-alllink">Open Applicants {{ ic.icon('arrow-right') }}</a>
       </div>
-      {% if match_counts and match_counts.new > new_matches|length %}
-      <a href="{{ url_for('matching_page') }}" class="rail-more" style="display:inline-block;margin-top:8px;">Review all {{ match_counts.new }} matches →</a>
-      {% endif %}
-      {% endif %}
-    </div>
 
-    {# panel: replies #}
-    <div class="work-panel" id="needs-reply" data-panel="replies" hidden>
-      <p class="work-sub">A patient is waiting on you. Reply fast to keep momentum.</p>
-      {% if not reply_queue %}
-      <div class="app-card pad">{{ ui.empty('Inbox zero', 'No one is waiting on a reply right now.', 'check') }}</div>
+      {% if not inbox %}
+      <div class="pad">{{ ui.empty('Inbox zero', 'Nothing needs you right now. New replies, applicants and follow-ups land here.', 'check') }}</div>
       {% else %}
-      <div class="app-card">
-        {% for c in reply_queue %}
-        <a class="app-row app-row-link" href="{{ url_for('applicant_detail', lead_id=c.id) }}">
-          <span class="app-av neutral">{{ c.initials }}</span>
+      <div class="inbox-list">
+        {% for it in inbox %}
+
+        {% if it.type == 'reply' %}
+        <div class="app-row inbox-row" data-type="reply">
+          <span class="inbox-bar"></span>
+          <span class="app-av neutral">{{ it.initials }}</span>
+          <a class="main inbox-main" href="{{ url_for('applicant_detail', lead_id=it.id) }}">
+            <div class="top">
+              <b>{{ it.name }}</b>
+              <span class="inbox-kind">{% if it.unread %}New reply{% elif it.awaiting %}Awaiting reply{% endif %}</span>
+              <span class="reason">{{ it.study }}</span>
+            </div>
+            <div class="prev">{% if it.preview_mine %}<span class="app-you">You:</span> {% endif %}{{ it.preview }}</div>
+          </a>
+          <span class="app-when">{{ it.when }}</span>
+        </div>
+
+        {% elif it.type == 'new' %}
+        <div class="app-row inbox-row" data-type="new">
+          <span class="inbox-bar"></span>
+          <span class="app-av">{{ it.initials }}</span>
           <div class="main">
             <div class="top">
-              <b>{{ c.name }}</b>
-              {% if c.unread %}{{ ui.badge('New reply', 'danger') }}{% elif c.awaiting %}{{ ui.badge('Awaiting reply', 'warn') }}{% endif %}
-              <span class="reason">{{ c.study }}</span>
+              <a class="inbox-name" href="{{ url_for('applicant_detail', lead_id=it.id) }}"><b>{{ it.name }}</b></a>
+              <span class="inbox-kind">New applicant</span>
+              <span class="score-pill">{{ it.score }}</span>
+              <span class="reason">{{ it.verdict }} · {{ it.source }} · {{ it.applied }}</span>
             </div>
-            <div class="prev">{% if c.preview_mine %}<span class="app-you">You:</span> {% endif %}{{ c.preview }}</div>
-          </div>
-          <span class="app-when">{{ c.when }}</span>
-        </a>
-        {% endfor %}
-      </div>
-      {% endif %}
-    </div>
-
-    {# panel: new applicants #}
-    <div class="work-panel" id="to-review" data-panel="applicants" hidden>
-      <p class="work-sub">AI pre-screened — strongest fit first. You decide.</p>
-      {% if not pending %}
-      <div class="app-card pad">{{ ui.empty('Nothing awaiting review', 'New applicants appear here the moment they apply.', 'check') }}</div>
-      {% else %}
-      <div class="app-card">
-        {% for p in pending %}
-        {% set sp = 'hi' if p.score >= 70 else ('mid' if p.score >= 40 else 'lo') %}
-        <div class="app-row">
-          <span class="app-av">{{ p.initials }}</span>
-          <div class="main">
-            <div class="top">
-              <b>{{ p.name }}</b>{{ ui.badge(p.verdict, p.verdict_tone) }}
-              <span class="score-pill {{ sp }}">{{ p.score }}/100</span>
-              <span class="reason">{{ p.source }} · {{ p.applied }}</span>
-            </div>
-            <div class="prev" style="-webkit-line-clamp:2;">{{ p.flag }}</div>
+            <div class="prev" style="-webkit-line-clamp:2;">{{ it.flag }}</div>
           </div>
           <div class="acts">
-            {{ ui.btn('View', 'ghost', 'sm', href=url_for('applicant_detail', lead_id=p.id)) }}
-            <form method="post" action="{{ url_for('decline_lead', lead_id=p.id) }}">
-              <input type="hidden" name="next" value="{{ url_for('study_home') }}#to-review">
-              {{ ui.btn('Decline', 'danger', 'sm', type='submit') }}
+            {{ ui.btn('View', 'ghost', 'sm', href=url_for('applicant_detail', lead_id=it.id)) }}
+            <form method="post" action="{{ url_for('decline_lead', lead_id=it.id) }}">
+              <input type="hidden" name="next" value="{{ url_for('study_home') }}">
+              {{ ui.btn('Decline', 'ghost', 'sm', type='submit') }}
             </form>
-            <form method="post" action="{{ url_for('accept_lead', lead_id=p.id) }}">
-              <input type="hidden" name="next" value="{{ url_for('study_home') }}#to-review">
+            <form method="post" action="{{ url_for('accept_lead', lead_id=it.id) }}">
+              <input type="hidden" name="next" value="{{ url_for('study_home') }}">
               {{ ui.btn('Accept', 'primary', 'sm', type='submit') }}
             </form>
           </div>
         </div>
-        {% endfor %}
-      </div>
-      {% endif %}
-    </div>
 
-    {# panel: follow-ups #}
-    <div class="work-panel" id="follow-ups" data-panel="followups" hidden>
-      <p class="work-sub">People slipping through. Open one to draft a message when you want it.</p>
-      {% if not followups %}
-      <div class="app-card pad">{{ ui.empty('All caught up', 'No one needs a nudge right now.', 'check') }}</div>
-      {% else %}
-      <div class="app-card">
-        {% for f in followups %}
-        <div class="app-row">
-          <span class="app-av neutral">{{ f.initials }}</span>
-          <div class="main">
+        {% else %}
+        <div class="app-row inbox-row" data-type="followup">
+          <span class="inbox-bar"></span>
+          <span class="app-av neutral">{{ it.initials }}</span>
+          <a class="main inbox-main" href="{{ url_for('applicant_detail', lead_id=it.id) }}">
             <div class="top">
-              <b>{{ f.name }}</b>{{ ui.badge(f.tag, f.tag_tone) }}
-              <span class="reason">{{ f.reason }}</span>
+              <b>{{ it.name }}</b>
+              <span class="inbox-kind">{{ it.tag }}</span>
+              <span class="reason">{{ it.reason }}</span>
             </div>
-          </div>
+          </a>
           <div class="acts">
-            {% if f.action == 'book' and has_calendar %}
-            <form method="post" action="{{ url_for('schedule_lead', lead_id=f.id) }}">
-              <input type="hidden" name="next" value="{{ url_for('study_home') }}#follow-ups">
+            {% if it.action == 'book' and has_calendar %}
+            <form method="post" action="{{ url_for('schedule_lead', lead_id=it.id) }}">
+              <input type="hidden" name="next" value="{{ url_for('study_home') }}">
               {{ ui.btn('Send booking link', 'primary', 'sm', type='submit') }}
             </form>
             {% endif %}
-            {{ ui.btn('Open', 'ghost', 'sm', href=url_for('applicant_detail', lead_id=f.id)) }}
+            {{ ui.btn('Open', 'ghost', 'sm', href=url_for('applicant_detail', lead_id=it.id)) }}
           </div>
         </div>
+        {% endif %}
+
         {% endfor %}
       </div>
+      <div class="inbox-empty-filter" hidden>{{ ui.empty('Nothing here', 'No items in this filter.', 'check') }}</div>
       {% endif %}
     </div>
   </div>
@@ -189,31 +189,81 @@
       {% endfor %}
       {% endif %}
     </div>
+
+    {% if workspace %}
+    {# Trial-scoped: campaigns for this study, then the team on it #}
+    <div class="app-card pad" style="margin-bottom:16px;">
+      <div class="rail-h">{{ ic.icon('megaphone') }} Campaigns</div>
+      {% if not workspace.campaigns %}
+      <div class="app-sub" style="font-size:13px;color:var(--faint);">No campaigns for this trial yet.</div>
+      {% else %}
+      {% for c in workspace.campaigns %}
+      <a class="rail-item rail-link" href="{{ url_for('campaign_detail', cid=c.id) }}">
+        <div>
+          <div class="t">{{ c.name or 'Untitled' }} {{ ui.badge(c.status|capitalize, 'ok' if c.status=='active' else ('warn' if c.status=='paused' else 'neutral')) }}</div>
+          <div class="s">{{ c.applicants }} applicants · {{ c.enrolled }} enrolled{% if c.cost_per_enrolled %} · ${{ c.cost_per_enrolled|round|int }}/enrolled{% endif %}</div>
+        </div>
+      </a>
+      {% endfor %}
+      {% endif %}
+      <a href="{{ url_for('campaign_list') }}" class="rail-more">Manage campaigns →</a>
+    </div>
+
+    <div class="app-card pad">
+      <div class="rail-h">{{ ic.icon('users') }} Team &amp; seats <span class="rail-count">{{ workspace.team_total }}</span></div>
+      {% for m in workspace.team[:6] %}
+      <div class="rail-item rail-member">
+        <span class="app-av neutral mem-av">{{ m.initials }}</span>
+        <div><div class="t">{{ m.name }}</div><div class="s">{{ m.role_label }}</div></div>
+      </div>
+      {% endfor %}
+      {% if can_manage_team %}<a href="{{ url_for('team_page') }}" class="rail-more">Manage team &amp; invites →</a>{% endif %}
+    </div>
+    {% else %}
+    {# Global: record matches summary, then shortcuts #}
+    <div class="app-card pad" style="margin-bottom:16px;">
+      <div class="rail-h">{{ ic.icon('crosshair') }} Record matches{% if match_counts and match_counts.new %} <span class="rail-count">{{ match_counts.new }}</span>{% endif %}</div>
+      {% if not new_matches %}
+      <div class="app-sub" style="font-size:13px;color:var(--faint);">No new candidates from your records.</div>
+      {% else %}
+      {% for m in new_matches %}
+      <a class="rail-item rail-link" href="{{ url_for('match_detail', match_id=m.id) }}">
+        <div>
+          <div class="t">{{ m.ref }} {{ ui.badge(m.verdict.label, m.verdict.tone) }}</div>
+          <div class="s">{{ m.trial_title[:42] }}</div>
+        </div>
+      </a>
+      {% endfor %}
+      {% endif %}
+      <a href="{{ url_for('matching_page') }}" class="rail-more">{% if match_counts and match_counts.new %}Review {{ match_counts.new }} matches →{% else %}Open Matches →{% endif %}</a>
+    </div>
+    {% endif %}
   </div>
 </div>
 
 <script>
 (function () {
-  var tabs = Array.prototype.slice.call(document.querySelectorAll('.work-tabs .worktab'));
-  var panels = Array.prototype.slice.call(document.querySelectorAll('.work-panel'));
-  if (!tabs.length) return;
-  function show(name) {
-    tabs.forEach(function (t) { t.classList.toggle('is-active', t.getAttribute('data-panel') === name); });
-    panels.forEach(function (p) { p.hidden = p.getAttribute('data-panel') !== name; });
+  var chips = Array.prototype.slice.call(document.querySelectorAll('.inbox-filters .ichip'));
+  var rows = Array.prototype.slice.call(document.querySelectorAll('.inbox-row'));
+  var emptyMsg = document.querySelector('.inbox-empty-filter');
+  if (!chips.length) return;
+  function apply(f) {
+    var shown = 0;
+    chips.forEach(function (c) { c.classList.toggle('is-active', c.getAttribute('data-filter') === f); });
+    rows.forEach(function (r) {
+      var on = (f === 'all' || r.getAttribute('data-type') === f);
+      r.style.display = on ? '' : 'none';
+      if (on) shown++;
+    });
+    if (emptyMsg) emptyMsg.hidden = shown > 0;
   }
-  tabs.forEach(function (t) {
-    t.addEventListener('click', function () { show(t.getAttribute('data-panel')); });
+  chips.forEach(function (ch) {
+    ch.addEventListener('click', function () { apply(ch.getAttribute('data-filter')); });
   });
-  // Deep links (e.g. the bell -> #needs-reply) open the right tab.
-  var byHash = { '#matches': 'matches', '#needs-reply': 'replies',
-                 '#to-review': 'applicants', '#follow-ups': 'followups' };
-  var target = byHash[location.hash];
-  if (!target) {
-    // Default to the first tab that actually has work.
-    var first = tabs.filter(function (t) { return parseInt(t.getAttribute('data-count'), 10) > 0; })[0];
-    target = (first || tabs[0]).getAttribute('data-panel');
-  }
-  show(target);
+  // Deep links (e.g. the notification bell -> #needs-reply) preselect a filter.
+  var byHash = { '#needs-reply': 'reply', '#to-review': 'new', '#follow-ups': 'followup' };
+  var f = byHash[location.hash];
+  if (f) apply(f);
 })();
 </script>
 {% endif %}

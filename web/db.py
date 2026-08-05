@@ -276,6 +276,9 @@ CREATE TABLE IF NOT EXISTS leads (
     nudge_count     INTEGER DEFAULT 0,
     referred_by     TEXT DEFAULT '',
     invite_token    TEXT DEFAULT '',
+    registry_opt_in INTEGER DEFAULT 0,
+    registry_consent_at TEXT DEFAULT '',
+    registry_consent_version TEXT DEFAULT '',
     redcap_record_id TEXT DEFAULT '',
     redcap_survey_status TEXT DEFAULT '',
     created_at      TEXT NOT NULL,
@@ -1005,6 +1008,13 @@ _MIGRATIONS = {
         "nudge_count": "INTEGER DEFAULT 0",
         "referred_by": "TEXT DEFAULT ''",
         "invite_token": "TEXT DEFAULT ''",
+        # Consented cross-study matching pool ("registry"). Opt-in is SEPARATE
+        # from the per-trial contact consent above: the applicant explicitly
+        # agrees to be matched to and contacted about FUTURE studies. Timestamp +
+        # version are stored so consent is auditable and revocable.
+        "registry_opt_in": "INTEGER DEFAULT 0",
+        "registry_consent_at": "TEXT DEFAULT ''",
+        "registry_consent_version": "TEXT DEFAULT ''",
         "redcap_record_id": "TEXT DEFAULT ''",
         "redcap_survey_status": "TEXT DEFAULT ''",
         "conv_tags": "TEXT DEFAULT ''",
@@ -2580,14 +2590,16 @@ def create_lead(data):
     token = gen_token()
     site_token = gen_token()
     ts = now()
+    opt_in = 1 if data.get("registry_opt_in") else 0
     cur = db.execute(
         """INSERT INTO leads
            (token, site_token, site_token_expires_at, site_token_revoked,
             applicant_token, nct, title, condition, location, site, name,
             email, phone, age, sex, notes, consent, source, status, screener,
             eligibility, prescreen_readiness, records_connected, record_summary,
-            referred_by, invite_token, created_at, updated_at)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            referred_by, invite_token, registry_opt_in, registry_consent_at,
+            registry_consent_version, created_at, updated_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         (token, site_token, _site_token_expiry(), 0,
          data.get("applicant_token", ""), data.get("nct", ""),
          data.get("title", ""), data.get("condition", ""),
@@ -2599,7 +2611,9 @@ def create_lead(data):
          data.get("prescreen_readiness", ""),
          1 if data.get("records_connected") else 0,
          data.get("record_summary", ""), data.get("referred_by", ""),
-         data.get("invite_token", ""), ts, ts))
+         data.get("invite_token", ""), opt_in,
+         (ts if opt_in else ""), (data.get("registry_consent_version", "") if opt_in else ""),
+         ts, ts))
     lead_id = cur.lastrowid
     db.execute(
         "INSERT INTO lead_events (lead_id, status, note, actor, created_at) "
@@ -2611,6 +2625,35 @@ def create_lead(data):
         (lead_id, "prescreen", "ready for study-team review", "you", ts))
     db.commit()
     return token
+
+
+def list_registry_leads():
+    """All applications whose applicant opted into the consented matching pool
+    (registry_opt_in = 1), newest first. Callers dedupe by person to build the
+    pool view. Consent here is the SEPARATE future-matching opt-in, not the
+    per-trial contact consent."""
+    return get_db().execute(
+        "SELECT * FROM leads WHERE registry_opt_in = 1 ORDER BY created_at DESC"
+    ).fetchall()
+
+
+def set_registry_opt_out(applicant_token=None, email=None):
+    """Revoke the consented-pool opt-in for a person (by applicant token or
+    email). Honours the right to withdraw; leaves the underlying application
+    untouched. Returns the number of rows updated."""
+    db = get_db()
+    if applicant_token:
+        cur = db.execute(
+            "UPDATE leads SET registry_opt_in = 0, updated_at = ? "
+            "WHERE applicant_token = ?", (now(), applicant_token))
+    elif email:
+        cur = db.execute(
+            "UPDATE leads SET registry_opt_in = 0, updated_at = ? "
+            "WHERE lower(email) = lower(?)", (now(), email))
+    else:
+        return 0
+    db.commit()
+    return cur.rowcount
 
 
 # --------------------------------------------------------------------------- #

@@ -625,6 +625,11 @@ def login_required(view):
 
 # Private owner-only analytics. Only this account sees the visitor dashboard;
 # every other signed-in staff user gets a 404 (so its existence isn't leaked).
+# Consent version for the opt-in "match me to future trials" registry. Bump this
+# whenever the consent wording materially changes, so each stored consent record
+# is tied to the exact text the person agreed to (auditable + revocable).
+REGISTRY_CONSENT_VERSION = "2026-08-04.2"
+
 OWNER_EMAIL = os.environ.get("OWNER_EMAIL", "harshils2340@gmail.com").strip().lower()
 # All accounts with owner-only admin access (internal inbox + analytics). The
 # primary OWNER_EMAIL plus any founding operators, extendable via the
@@ -3939,6 +3944,10 @@ def interest():
         "prescreen_readiness": readiness,
         "records_connected": records_connected, "record_summary": record_summary,
         "referred_by": referred_by, "invite_token": invite_token,
+        # Separate, optional opt-in to the consented cross-study matching pool.
+        # Unchecked by default; never required to apply (freely-given consent).
+        "registry_opt_in": 1 if f.get("registry_opt_in") else 0,
+        "registry_consent_version": REGISTRY_CONSENT_VERSION,
     })
     # Go-live hook: tell the site a new blinded candidate is waiting. No-op while
     # NOTIFY_LIVE is off, so nothing is emailed during testing.
@@ -5874,6 +5883,219 @@ def internal_hub():
     return render_template("internal.html", stats=stats)
 
 
+@app.route("/internal/registry")
+@owner_required
+def internal_registry():
+    """Owner-only view of the consented matching pool: people who opted in to be
+    matched to FUTURE studies. Deduped to one row per person, with the conditions
+    they've shown interest in. This is the moat asset - and it only ever holds
+    people who gave explicit, separate, revocable consent (registry_opt_in)."""
+    rows = db.list_registry_leads()
+    members = {}
+    for r in rows:
+        key = ((r["applicant_token"] or r["email"] or r["token"]) or "").lower()
+        cond = (r["condition"] or "").strip()
+        m = members.get(key)
+        if not m:
+            members[key] = {
+                "name": r["name"] or "Anonymous",
+                "email": r["email"] or "",
+                "phone": r["phone"] or "",
+                "location": r["location"] or "",
+                "age": r["age"] or "",
+                "sex": r["sex"] or "",
+                "records": bool(r["records_connected"]),
+                "consent_at": (r["registry_consent_at"] or r["created_at"] or "")[:16],
+                "applicant_token": r["applicant_token"] or "",
+                "conditions": {cond} if cond else set(),
+                "applications": 1,
+            }
+        else:
+            if cond:
+                m["conditions"].add(cond)
+            m["applications"] += 1
+            if r["records_connected"]:
+                m["records"] = True
+    pool = []
+    for m in members.values():
+        m["conditions"] = sorted(m["conditions"])
+        pool.append(m)
+    pool.sort(key=lambda x: x["consent_at"] or "", reverse=True)
+    stats = {
+        "members": len(pool),
+        "conditions": len({c for m in pool for c in m["conditions"]}),
+        "with_records": sum(1 for m in pool if m["records"]),
+    }
+    return render_template("registry.html", pool=pool, stats=stats)
+
+
+@app.route("/internal/registry/opt-out", methods=["POST"])
+@owner_required
+def internal_registry_opt_out():
+    """Honour a withdrawal request: remove a person from the consented pool.
+    Leaves their underlying application intact; only clears the future-matching
+    opt-in (right to withdraw)."""
+    tok = (request.form.get("applicant_token") or "").strip()
+    email = (request.form.get("email") or "").strip()
+    n = db.set_registry_opt_out(applicant_token=tok or None, email=email or None)
+    flash(f"Removed {n} record(s) from the matching pool." if n
+          else "Nothing to remove.", "success" if n else "error")
+    return redirect(url_for("internal_registry"))
+
+
+# --- Recruitment tracker: source mix + demographic quota balance ------------- #
+# Coordinators are graded on hitting an enrollment target with a BALANCED sample
+# (e.g. not all applicants in 18-40 and none in 40-64). This view makes target vs
+# progress per age band, sex, and source visible so under-filled buckets are
+# obvious. KPI: Tier-1 (found/contacted per stratum) + Tier-2 (coordinator sees
+# missing buckets fast, redirects effort into the stage/segment that's behind).
+
+_SOURCE_LABELS = {
+    "web": "Website", "referral": "Physician referral", "emr": "Records match",
+    "intake": "Inbox / forwarded", "import": "CSV import", "ads": "Ad campaign",
+    "ctgov": "ClinicalTrials.gov", "campaign": "Campaign",
+}
+
+
+def _recruit_targets_key(nct):
+    return f"recruit_targets:{nct or '__all__'}"
+
+
+def _parse_boundaries(raw, default=(18, 30, 45, 65)):
+    """Parse a comma list of age boundaries into a sorted, deduped int list.
+    Boundaries define the bands (18,30,45,65 -> 18-29, 30-44, 45-64, 65+)."""
+    try:
+        b = sorted({int(x) for x in str(raw).replace(" ", "").split(",") if x != ""})
+    except (ValueError, TypeError):
+        b = []
+    return b if len(b) >= 2 else list(default)
+
+
+def _age_bands(boundaries):
+    """(label, lo, hi) bands from boundaries; final band is open-ended (hi=None)."""
+    bands = []
+    for i in range(len(boundaries) - 1):
+        bands.append((f"{boundaries[i]}\u2013{boundaries[i + 1] - 1}",
+                      boundaries[i], boundaries[i + 1] - 1))
+    bands.append((f"{boundaries[-1]}+", boundaries[-1], None))
+    return bands
+
+
+@app.route("/internal/recruitment")
+@owner_required
+def internal_recruitment():
+    """Owner-only recruitment tracker: applications by source and demographic
+    balance (age bands + sex) against a target, so skewed/under-filled buckets
+    are obvious at a glance."""
+    all_leads = db.list_leads()
+    studies = sorted({(l["nct"], (l["title"] or l["nct"]))
+                      for l in all_leads if l["nct"]}, key=lambda x: (x[1] or "").lower())
+    nct = (request.args.get("nct") or "").strip()
+    leads = [l for l in all_leads if l["nct"] == nct] if nct else all_leads
+
+    try:
+        cfg = json.loads(db.get_kv(_recruit_targets_key(nct), "") or "{}")
+    except (ValueError, TypeError):
+        cfg = {}
+    boundaries = _parse_boundaries(cfg.get("boundaries", "18,30,45,65"))
+    total_target = int(cfg.get("total_target") or 0)
+    bands = _age_bands(boundaries)
+    n_bands = len(bands)
+
+    age_counts = [0] * n_bands
+    age_unknown = 0
+    for l in leads:
+        try:
+            a = int(str(l["age"]).strip())
+        except (ValueError, TypeError):
+            age_unknown += 1
+            continue
+        idx = next((i for i, (_, lo, hi) in enumerate(bands)
+                    if a >= lo and (hi is None or a <= hi)), None)
+        if idx is None:
+            age_unknown += 1
+        else:
+            age_counts[idx] += 1
+
+    total_known = sum(age_counts)
+    per_band_target = (total_target // n_bands) if total_target else 0
+    even_share = (total_known / n_bands) if n_bands else 0
+    age_rows = []
+    for (label, _lo, _hi), c in zip(bands, age_counts):
+        if per_band_target:
+            pct = int(round(100 * c / per_band_target))
+            status = ("over" if c >= per_band_target
+                      else "behind" if c < 0.6 * per_band_target else "on")
+            bar = min(pct, 100)
+        else:
+            pct = int(round(100 * c / total_known)) if total_known else 0
+            status = ("behind" if even_share and c < 0.6 * even_share
+                      else "over" if even_share and c > 1.4 * even_share else "on")
+            bar = pct
+        age_rows.append({"label": label, "count": c, "target": per_band_target,
+                         "pct": pct, "bar": bar, "status": status})
+
+    skew = None
+    if total_known and n_bands > 1:
+        top = max(age_rows, key=lambda r: r["count"])
+        share = round(100 * top["count"] / total_known)
+        if share >= 50:
+            skew = {"label": top["label"], "share": share}
+
+    sex = {"female": 0, "male": 0, "other": 0}
+    for l in leads:
+        s = (l["sex"] or "").strip().lower()
+        if s in ("female", "f"):
+            sex["female"] += 1
+        elif s in ("male", "m"):
+            sex["male"] += 1
+        elif s:
+            sex["other"] += 1
+    sex_total = sum(sex.values())
+    sex_rows = [{"label": k.capitalize(), "count": v,
+                 "bar": int(round(100 * v / sex_total)) if sex_total else 0}
+                for k, v in sex.items() if v or k in ("female", "male")]
+
+    src, campaign_tracked = {}, 0
+    for l in leads:
+        key = ((l["source"] or "web").strip().lower()) or "web"
+        src[key] = src.get(key, 0) + 1
+        if l["campaign_id"]:
+            campaign_tracked += 1
+    src_max = max(src.values()) if src else 0
+    source_rows = sorted(
+        [{"label": _SOURCE_LABELS.get(k, k.title()), "count": v,
+          "bar": int(round(100 * v / src_max)) if src_max else 0}
+         for k, v in src.items()], key=lambda r: r["count"], reverse=True)
+
+    stats = {"total": len(leads), "known_age": total_known,
+             "sources": len(src), "campaign_tracked": campaign_tracked,
+             "target": total_target}
+    return render_template(
+        "internal_recruitment.html", studies=studies, nct=nct, stats=stats,
+        age_rows=age_rows, age_unknown=age_unknown, skew=skew,
+        sex_rows=sex_rows, source_rows=source_rows,
+        boundaries=",".join(str(b) for b in boundaries),
+        total_target=total_target)
+
+
+@app.route("/internal/recruitment/targets", methods=["POST"])
+@owner_required
+def internal_recruitment_targets():
+    """Save the enrollment target + age boundaries for a study (or all studies)."""
+    nct = (request.form.get("nct") or "").strip()
+    boundaries = _parse_boundaries(request.form.get("boundaries", "18,30,45,65"))
+    try:
+        total_target = max(0, int(request.form.get("total_target") or 0))
+    except (ValueError, TypeError):
+        total_target = 0
+    db.set_kv(_recruit_targets_key(nct), json.dumps({
+        "boundaries": ",".join(str(b) for b in boundaries),
+        "total_target": total_target}))
+    flash("Recruitment targets saved.", "success")
+    return redirect(url_for("internal_recruitment", nct=nct or None))
+
+
 @app.route("/app/inbox")
 @owner_required
 def operator_inbox():
@@ -5966,6 +6188,23 @@ def study_home():
     new applicants, nudge the ones going quiet, prep visits, clear approvals.
     Vanity totals live on Recruitment; this page is only what you DO today."""
     claims = db.list_study_claims(g.user["id"])
+    # Trial-workspace mode: when a specific study is selected in the top switcher,
+    # Home becomes THAT trial's workspace and every queue is scoped to it. A
+    # ?nct= param (from the switcher) sets the choice; anything invalid clears it.
+    team_studies = db.list_team_studies(g.user["id"])
+    valid_ncts = {s["nct"] for s in team_studies}
+    _p = request.args.get("nct")
+    if _p is not None:
+        if _p in valid_ncts:
+            session["active_nct"] = _p
+        else:
+            session.pop("active_nct", None)
+    active_nct = session.get("active_nct", "")
+    if active_nct not in valid_ncts:
+        active_nct = ""
+    active_study_label = next((s["title"] or s["nct"]
+                               for s in team_studies if s["nct"] == active_nct),
+                              "") if active_nct else ""
     rows = db.list_leads_for_user(g.user["id"])
     recon = db.latest_reconciliation_for_leads([r["id"] for r in rows])
     items = [_decode_lead(r, recon.get(r["id"])) for r in rows]
@@ -5985,6 +6224,8 @@ def study_home():
     for it in items:
         l = it["lead"]
         if not l["revealed"] or l["status"] in db.LEAD_CLOSED:
+            continue
+        if active_nct and l["nct"] != active_nct:
             continue
         msgs = db.get_messages(l["id"])
         if not msgs:
@@ -6014,6 +6255,8 @@ def study_home():
         l = it["lead"]
         if not (l["status"] == "prescreen" and not l["decision"]):
             continue
+        if active_nct and l["nct"] != active_nct:
+            continue
         v = _verdict_view(it.get("elig"))
         elig = it.get("elig") or {}
         flag = (elig.get("rationale") or "")
@@ -6039,6 +6282,8 @@ def study_home():
     for it in items:
         l = it["lead"]
         if not l["revealed"] or l["status"] in db.LEAD_CLOSED or l["id"] in waiting_ids:
+            continue
+        if active_nct and l["nct"] != active_nct:
             continue
         tag = tone = reason = action = None
         rank = 3
@@ -6068,6 +6313,8 @@ def study_home():
     _seed_demo_visits_if_demo(items)
     upcoming = []
     for it in items:
+        if active_nct and it["lead"]["nct"] != active_nct:
+            continue
         for v in db.get_visits(it["lead"]["id"]):
             when = _parse_ts(v["visit_at"])
             if not when or not (0 <= (when - now).total_seconds() <= 14 * 86400):
@@ -6095,6 +6342,58 @@ def study_home():
     new_matches = [_match_view(m)
                    for m in db.list_patient_matches(g.user["id"], status="new")][:4]
 
+    # ── Unified inbox: one triage stream (Gmail-style) the coordinator works top
+    # to bottom. Each item is tagged with a type so the filter chips can narrow
+    # the same list without reordering it. Order = replies, then new applicants,
+    # then follow-ups (each already sorted by urgency within its group). ──
+    inbox = []
+    for c in reply_queue:
+        c["type"] = "reply"
+        inbox.append(c)
+    for p in pending:
+        p["type"] = "new"
+        inbox.append(p)
+    for f in followups:
+        f["type"] = "followup"
+        inbox.append(f)
+
+    # ── Shared facts used by both the control panel (metric cards) and the
+    # trial-workspace state. ──
+    ENROLLED_ST = {"enrolled", "randomized", "active", "retained"}
+    SCREENED_ST = {"screening", "screened", "eligible"} | ENROLLED_ST
+
+    def _target_for(nct):
+        try:
+            cfg = json.loads(db.get_kv(_recruit_targets_key(nct), "") or "{}")
+            return int(cfg.get("total_target") or 0)
+        except (ValueError, TypeError):
+            return 0
+
+    team_members = db.list_org_members(g.user["id"])
+    team_view = [{"name": m["name"] or m["email"], "role": m["role"],
+                  "role_label": db.ORG_ROLE_LABELS.get(m["role"], m["role"]),
+                  "initials": _initials(m["name"] or m["email"] or "?")}
+                 for m in team_members]
+
+    # ── Trial-workspace state: only when a specific study is active. Shows where
+    # THIS trial stands (enrolled vs target), its campaigns (target/progress), and
+    # who's on the team - the "which workspace am I in" context. ──
+    workspace = None
+    if active_nct:
+        tl = [it["lead"] for it in items if it["lead"]["nct"] == active_nct]
+        enrolled_n = sum(1 for l in tl if (l["status"] or "") in ENROLLED_ST)
+        screened_n = sum(1 for l in tl if (l["status"] or "") in SCREENED_ST)
+        target_n = _target_for(active_nct)
+        camps = db.campaign_performance(g.user["id"], ncts=[active_nct])
+        workspace = {
+            "nct": active_nct, "title": active_study_label,
+            "applicants": len(tl), "screened": screened_n, "enrolled": enrolled_n,
+            "target": target_n,
+            "progress": min(100, int(round(100 * enrolled_n / target_n))) if target_n else 0,
+            "campaigns": camps[:5], "campaigns_total": len(camps),
+            "active_campaigns": sum(1 for c in camps if c["status"] == "active"),
+            "team": team_view, "team_total": len(team_view)}
+
     # Hero count = real recruiting work the coordinator does today. Deliberately
     # excludes regulatory-doc approvals (PI/regulatory role) and internal matches
     # (a pre-launch/EHR feature) so the morning reads light and honest.
@@ -6106,9 +6405,11 @@ def study_home():
 
     return render_template(
         "study_home.html", claims=claims, reply_queue=reply_queue, pending=pending,
-        followups=followups, has_calendar=has_calendar, upcoming=upcoming,
-        new_matches=new_matches, match_counts=match_counts,
+        followups=followups, inbox=inbox, has_calendar=has_calendar,
+        upcoming=upcoming, new_matches=new_matches, match_counts=match_counts,
         todo_total=todo_total, greeting=greeting,
+        workspace=workspace, active_nct=active_nct,
+        active_study_label=active_study_label,
         org=(db.get_site_profile(g.user["id"]) or {}))
 
 

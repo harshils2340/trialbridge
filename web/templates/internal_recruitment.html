@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% block title %}Recruitment tracker · BridgeMD{% endblock %}
+{% import "_icons.html" as ic %}
+{% import "_ui.html" as ui %}
+
+{% set tmode = stats.target > 0 %}
+
+{% block body %}
+<div class="app-head">
+  <div>
+    <h1>Recruitment tracker</h1>
+    <p>Applications by source, and demographic balance against your target. Spot
+       skewed or under-filled buckets before they become an enrollment problem.</p>
+  </div>
+  <form method="get" action="{{ url_for('internal_recruitment') }}" class="rt-studypick">
+    <select name="nct" onchange="this.form.submit()">
+      <option value="">All studies</option>
+      {% for id, title in studies %}
+      <option value="{{ id }}"{% if id == nct %} selected{% endif %}>{{ title|truncate(52) }}</option>
+      {% endfor %}
+    </select>
+  </form>
+</div>
+
+<div class="app-stats">
+  <div class="app-stat"><div class="l">Applications</div><div class="n">{{ stats.total }}</div></div>
+  <div class="app-stat{% if tmode %} accent{% endif %}"><div class="l">Target</div><div class="n">{{ stats.target or '—' }}</div></div>
+  <div class="app-stat"><div class="l">Sources</div><div class="n">{{ stats.sources }}</div></div>
+  <div class="app-stat"><div class="l">Campaign-tracked</div><div class="n">{{ stats.campaign_tracked }}</div></div>
+</div>
+
+{% if skew %}
+<div class="rt-callout">{{ ic.icon('activity') }}
+  <span><b>Skew:</b> {{ skew.share }}% of applicants are in the {{ skew.label }} band. Push other bands to balance the sample.</span>
+</div>
+{% endif %}
+
+<div class="rt-grid">
+  <div class="app-card pad">
+    <div class="rt-cardhead">
+      <h2>Age balance</h2>
+      <span class="rt-sub">{{ 'target per band' if tmode else 'share of applicants' }}</span>
+    </div>
+    {% if not age_rows or stats.known_age == 0 %}
+      {{ ui.empty('No age data yet', 'Applications with an age will show their band here.', 'users') }}
+    {% else %}
+    {% for r in age_rows %}
+    <div class="quota-row">
+      <span class="quota-label">{{ r.label }}</span>
+      <span class="quota-track"><span class="quota-fill {{ r.status }}" style="width: {{ r.bar }}%;"></span></span>
+      <span class="quota-meta">{% if tmode %}{{ r.count }} / {{ r.target }}{% else %}{{ r.count }} · {{ r.pct }}%{% endif %}</span>
+      <span class="quota-badge">
+        {% if tmode %}
+          {% if r.status == 'over' %}{{ ui.badge('Met', 'ok') }}
+          {% elif r.status == 'behind' %}{{ ui.badge('Behind', 'danger') }}
+          {% else %}{{ ui.badge('In progress', 'warn') }}{% endif %}
+        {% else %}
+          {% if r.status == 'behind' %}{{ ui.badge('Low', 'warn') }}
+          {% elif r.status == 'over' %}{{ ui.badge('High', 'info') }}
+          {% else %}{{ ui.badge('Balanced', 'ok') }}{% endif %}
+        {% endif %}
+      </span>
+    </div>
+    {% endfor %}
+    {% if age_unknown %}<p class="rt-note">{{ age_unknown }} application(s) with no/unparseable age (not counted above).</p>{% endif %}
+    {% endif %}
+  </div>
+
+  <div class="app-card pad">
+    <div class="rt-cardhead"><h2>Sex mix</h2></div>
+    {% if not sex_rows %}
+      {{ ui.empty('No data yet', '', 'users') }}
+    {% else %}
+    {% for r in sex_rows %}
+    <div class="quota-row">
+      <span class="quota-label">{{ r.label }}</span>
+      <span class="quota-track"><span class="quota-fill on" style="width: {{ r.bar }}%;"></span></span>
+      <span class="quota-meta">{{ r.count }} · {{ r.bar }}%</span>
+    </div>
+    {% endfor %}
+    {% endif %}
+  </div>
+</div>
+
+<div class="app-card pad">
+  <div class="rt-cardhead"><h2>Source mix</h2><span class="rt-sub">where applicants come from</span></div>
+  {% if not source_rows %}
+    {{ ui.empty('No applications yet', 'Applications from every channel land here.', 'inbox') }}
+  {% else %}
+  {% for r in source_rows %}
+  <div class="quota-row">
+    <span class="quota-label">{{ r.label }}</span>
+    <span class="quota-track"><span class="quota-fill on" style="width: {{ r.bar }}%;"></span></span>
+    <span class="quota-meta">{{ r.count }}</span>
+  </div>
+  {% endfor %}
+  {% endif %}
+</div>
+
+<div class="app-card pad">
+  <div class="rt-cardhead"><h2>Targets</h2><span class="rt-sub">{{ 'this study' if nct else 'all studies' }}</span></div>
+  <form method="post" action="{{ url_for('internal_recruitment_targets') }}" class="rt-targets">
+    <input type="hidden" name="nct" value="{{ nct }}">
+    <label class="field">
+      <span>Enrollment target (total)</span>
+      <input type="number" name="total_target" min="0" step="1" value="{{ total_target or '' }}" placeholder="e.g. 60">
+    </label>
+    <label class="field">
+      <span>Age band boundaries</span>
+      <input type="text" name="boundaries" value="{{ boundaries }}" placeholder="18,30,45,65">
+    </label>
+    <div class="rt-targets-help">Target splits evenly across bands. Boundaries <code>18,30,45,65</code> → 18–29, 30–44, 45–64, 65+.</div>
+    {{ ui.btn('Save targets', 'primary', type='submit') }}
+  </form>
+</div>
+{% endblock %}

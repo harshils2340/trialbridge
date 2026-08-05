@@ -333,6 +333,10 @@
           <input type="checkbox" name="consent" required>
           <span>I agree to share a blinded summary for review and contact details after acceptance.</span>
         </label>
+        <label class="if-consent if-optin">
+          <input type="checkbox" name="registry_opt_in">
+          <span><b>Add me to BridgeMD's participant list.</b> Keep my details so BridgeMD and its study teams can match me to future studies I may qualify for and contact me (by email or phone) about them. This is optional, it won't affect this application, and I can remove myself at any time.</span>
+        </label>
         <button class="btn btn-primary btn-block" type="submit" id="ifSubmit"{% if need_verify %} disabled{% endif %}>{{ ic.icon('arrow-right') }} Submit application</button>
         {% if need_verify %}<p class="if-verify-gate" id="ifVerifyGate">Verify your email above to enable submit.</p>{% endif %}
       </form>

@@ -41,7 +41,7 @@
 {% if pov == 'study' %}
 {# ── Study-team app: "BridgeMD for sites" shell (sidebar + top bar) ── #}
 <div class="appshell">
-  <aside class="appside">
+  <aside class="appside" id="appSidebar">
     <a class="appside-brand" href="{{ url_for('study_home') }}">
       <span class="appside-logo"><img src="{{ static_url('logo.svg') }}" width="18" height="18" alt=""></span>
       <span class="bt"><b>BridgeMD</b><small>for sites</small></span>
@@ -58,6 +58,8 @@
         <span class="appnav-group-label">Internal</span>
         <a href="{{ url_for('internal_hub') }}" class="{{ 'active' if request.endpoint == 'internal_hub' }}">{{ ic.icon('grid') }}Overview</a>
         <a href="{{ url_for('operator_inbox') }}" class="{{ 'active' if request.endpoint == 'operator_inbox' }}">{{ ic.icon('inbox') }}Inbox</a>
+        <a href="{{ url_for('internal_registry') }}" class="{{ 'active' if request.endpoint in ['internal_registry','internal_registry_opt_out'] }}">{{ ic.icon('users') }}Matching pool</a>
+        <a href="{{ url_for('internal_recruitment') }}" class="{{ 'active' if request.endpoint in ['internal_recruitment','internal_recruitment_targets'] }}">{{ ic.icon('activity') }}Recruitment</a>
         <a href="{{ url_for('owner_analytics') }}" class="{{ 'active' if request.endpoint == 'owner_analytics' }}">{{ ic.icon('activity') }}Analytics</a>
       </div>
       {% endif %}
@@ -71,8 +73,29 @@
       <button type="button" class="theme-toggle side-theme-toggle mini" id="themeToggle" aria-label="Switch between light and dark theme" title="Toggle light / dark theme">
         {{ ic.icon('sun', 'ico icon-sun') }}{{ ic.icon('moon', 'ico icon-moon') }} <span>Theme</span>
       </button>
+      <button type="button" class="appside-toggle mini" id="sideToggle" aria-label="Collapse sidebar" title="Collapse sidebar">
+        {{ ic.icon('chevron-right') }} <span>Collapse</span>
+      </button>
     </div>
   </aside>
+  <script>
+  (function () {
+    var side = document.getElementById('appSidebar');
+    var btn = document.getElementById('sideToggle');
+    if (!side) return;
+    var saved = null; try { saved = localStorage.getItem('bm_side_collapsed'); } catch (e) {}
+    function set(c) {
+      side.classList.toggle('is-collapsed', c);
+      try { localStorage.setItem('bm_side_collapsed', c ? '1' : '0'); } catch (e) {}
+      if (btn) btn.title = c ? 'Expand sidebar' : 'Collapse sidebar';
+    }
+    // Default collapsed so the main page is the control surface; remember choice.
+    set(saved === null ? true : saved === '1');
+    if (btn) btn.addEventListener('click', function () {
+      set(!side.classList.contains('is-collapsed'));
+    });
+  })();
+  </script>
   <div class="appmain">
     <header class="apptop">
       <details class="appswitch-wrap" id="studySwitch">
@@ -81,14 +104,14 @@
           {{ ic.icon('chevron-down') }}
         </summary>
         <div class="appswitch-menu" role="menu">
-          <a href="{{ url_for('leads', nct='all') }}" class="{{ 'active' if not active_nct }}" role="menuitem">
+          <a href="{{ url_for('study_home', nct='all') }}" class="{{ 'active' if not active_nct }}" role="menuitem">
             <span class="ss-main">All studies</span>
             <span class="ss-sub">Everything the team manages</span>
           </a>
           {% for s in nav_studies %}
-          <a href="{{ url_for('leads', nct=s.nct) }}" class="{{ 'active' if active_nct == s.nct }}" role="menuitem">
-            <span class="ss-main">{{ s.nct }}</span>
-            <span class="ss-sub">{{ s.title[:52] }}</span>
+          <a href="{{ url_for('study_home', nct=s.nct) }}" class="{{ 'active' if active_nct == s.nct }}" role="menuitem">
+            <span class="ss-main">{{ s.title[:40] or s.nct }}</span>
+            <span class="ss-sub">{{ s.nct }} · open workspace</span>
           </a>
           {% else %}
           <span class="appswitch-empty">No studies claimed yet</span>
@@ -106,8 +129,44 @@
         <div class="appsearch-panel" id="omniResults" role="listbox" hidden></div>
       </div>
       <span class="apptop-spacer"></span>
-      <a class="appbell" href="{{ url_for('study_home', _anchor='needs-reply') }}" aria-label="Replies waiting" title="Replies waiting">{{ ic.icon('bell') }}{% if site_unread %}<span class="dot">{{ site_unread }}</span>{% endif %}</a>
-      <span class="appside-avatar" title="{{ user['name'] or 'Study team' }}">{{ _initials }}</span>
+
+      {% set notif_total = (site_unread or 0) + (matches_new or 0) %}
+      <details class="appmenu" id="notifMenu">
+        <summary class="appbell" aria-label="Notifications" title="Notifications">
+          {{ ic.icon('bell') }}{% if notif_total %}<span class="dot">{{ notif_total }}</span>{% endif %}
+        </summary>
+        <div class="appmenu-panel" role="menu">
+          <div class="appmenu-h">Notifications</div>
+          {% if site_unread %}
+          <a class="appmenu-item" href="{{ url_for('study_home', _anchor='needs-reply') }}" role="menuitem">
+            <span class="appmenu-ico t-danger">{{ ic.icon('chat') }}</span>
+            <span><b>{{ site_unread }} repl{{ 'y' if site_unread == 1 else 'ies' }} waiting</b><small>Patients waiting on your reply</small></span>
+          </a>
+          {% endif %}
+          {% if matches_new %}
+          <a class="appmenu-item" href="{{ url_for('matching_page') }}" role="menuitem">
+            <span class="appmenu-ico t-brand">{{ ic.icon('crosshair') }}</span>
+            <span><b>{{ matches_new }} new record match{{ '' if matches_new == 1 else 'es' }}</b><small>Fresh candidates from your records</small></span>
+          </a>
+          {% endif %}
+          {% if not notif_total %}
+          <div class="appmenu-empty">You're all caught up.</div>
+          {% endif %}
+          <a class="appmenu-foot" href="{{ url_for('study_home') }}" role="menuitem">Go to dashboard →</a>
+        </div>
+      </details>
+
+      <details class="appmenu" id="userMenu">
+        <summary class="appside-avatar as-summary" title="{{ user['name'] or 'Study team' }}">{{ _initials }}</summary>
+        <div class="appmenu-panel" role="menu">
+          <div class="appmenu-user">
+            <span class="appside-avatar">{{ _initials }}</span>
+            <span><b>{{ user['name'] or 'Study team' }}</b><small>{{ user['email'] or member_role_label or 'Trial site coordinator' }}</small></span>
+          </div>
+          <a class="appmenu-item simple" href="{{ url_for('site_setup') }}" role="menuitem">{{ ic.icon('gear') }} Settings</a>
+          <a class="appmenu-item simple" href="{{ url_for('logout') }}" role="menuitem">{{ ic.icon('logout') }} Sign out</a>
+        </div>
+      </details>
     </header>
     <main class="appbody" id="main" role="main" tabindex="-1">
 {% else %}
@@ -195,10 +254,13 @@
 })();
 </script>
 <script>
-// Close the study switcher when clicking outside it.
+// Close the study switcher + top-bar dropdowns when clicking outside them.
 document.addEventListener('click', function (e) {
   var sw = document.getElementById('studySwitch');
   if (sw && sw.open && !sw.contains(e.target)) sw.open = false;
+  document.querySelectorAll('details.appmenu[open]').forEach(function (d) {
+    if (!d.contains(e.target)) d.open = false;
+  });
 });
 </script>
 <script>
