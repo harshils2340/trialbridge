@@ -190,37 +190,6 @@
       {% endif %}
     </div>
 
-    {% if workspace %}
-    {# Trial-scoped: campaigns for this study, then the team on it #}
-    <div class="app-card pad" style="margin-bottom:16px;">
-      <div class="rail-h">{{ ic.icon('megaphone') }} Campaigns</div>
-      {% if not workspace.campaigns %}
-      <div class="app-sub" style="font-size:13px;color:var(--faint);">No campaigns for this trial yet.</div>
-      {% else %}
-      {% for c in workspace.campaigns %}
-      <a class="rail-item rail-link" href="{{ url_for('campaign_detail', cid=c.id) }}">
-        <div>
-          <div class="t">{{ c.name or 'Untitled' }} {{ ui.badge(c.status|capitalize, 'ok' if c.status=='active' else ('warn' if c.status=='paused' else 'neutral')) }}</div>
-          <div class="s">{{ c.applicants }} applicants · {{ c.enrolled }} enrolled{% if c.cost_per_enrolled %} · ${{ c.cost_per_enrolled|round|int }}/enrolled{% endif %}</div>
-        </div>
-      </a>
-      {% endfor %}
-      {% endif %}
-      <a href="{{ url_for('campaign_list') }}" class="rail-more">Manage campaigns →</a>
-    </div>
-
-    <div class="app-card pad">
-      <div class="rail-h">{{ ic.icon('users') }} Team &amp; seats <span class="rail-count">{{ workspace.team_total }}</span></div>
-      {% for m in workspace.team[:6] %}
-      <div class="rail-item rail-member">
-        <span class="app-av neutral mem-av">{{ m.initials }}</span>
-        <div><div class="t">{{ m.name }}</div><div class="s">{{ m.role_label }}</div></div>
-      </div>
-      {% endfor %}
-      {% if can_manage_team %}<a href="{{ url_for('team_page') }}" class="rail-more">Manage team &amp; invites →</a>{% endif %}
-    </div>
-    {% else %}
-    {# Global: record matches summary, then shortcuts #}
     <div class="app-card pad" style="margin-bottom:16px;">
       <div class="rail-h">{{ ic.icon('crosshair') }} Record matches{% if match_counts and match_counts.new %} <span class="rail-count">{{ match_counts.new }}</span>{% endif %}</div>
       {% if not new_matches %}
@@ -237,7 +206,6 @@
       {% endif %}
       <a href="{{ url_for('matching_page') }}" class="rail-more">{% if match_counts and match_counts.new %}Review {{ match_counts.new }} matches →{% else %}Open Matches →{% endif %}</a>
     </div>
-    {% endif %}
   </div>
 </div>
 

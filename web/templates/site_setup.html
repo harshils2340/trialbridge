@@ -9,20 +9,7 @@
   <p>Claim your active ClinicalTrials.gov studies so applicants for those NCTs route to your board.</p>
 </div>
 
-<div class="card setup-shell" data-active-tab="{{ active_tab or '' }}">
-  <nav class="setup-tabs" aria-label="Site setup sections">
-    <button type="button" class="setup-tab on" data-setup-tab="profile">{{ ic.icon('award') }} Organization</button>
-    <button type="button" class="setup-tab" data-setup-tab="redcap">{{ ic.icon('activity') }} REDCap intake</button>
-    <button type="button" class="setup-tab" data-setup-tab="claim">{{ ic.icon('plus') }} Claim study</button>
-    <button type="button" class="setup-tab" data-setup-tab="post">{{ ic.icon('plus') }} Post site study</button>
-    <button type="button" class="setup-tab" data-setup-tab="claimed">{{ ic.icon('list') }} Claimed NCTs {% if claims %}<span class="setup-count">{{ claims|length }}</span>{% endif %}</button>
-    <button type="button" class="setup-tab" data-setup-tab="posted">{{ ic.icon('activity') }} Site-posted {% if posted %}<span class="setup-count">{{ posted|length }}</span>{% endif %}</button>
-  </nav>
-  <p class="setup-sub">One section open at a time. Switch tabs to keep the page focused.</p>
-</div>
-
-<div class="setup-panel" data-setup-panel="profile">
-  <div class="card">
+<div class="card">
     <div class="section-title"><h2>Organization profile</h2></div>
     <form method="post" class="site-form site-form-2col">
       <label>Organization name
@@ -55,12 +42,11 @@
     <p class="site-hint">
       REDCap connection status: <b>{{ 'Connected' if redcap_on else 'Not connected' }}</b>.
       Manage the connection and choose your patient intake form in the
-      <b>REDCap intake</b> tab above.
+      <b>REDCap intake</b> section below.
     </p>
   </div>
-</div>
 
-<div class="card setup-panel" data-setup-panel="redcap" hidden>
+<div class="card">
   <div class="section-title redcap-title">
     <div>
       <h2>REDCap intake &amp; screening</h2>
@@ -188,7 +174,7 @@
   </div>
 </div>
 
-<div class="card setup-panel" data-setup-panel="claim" hidden>
+<div class="card">
   <div class="section-title"><h2>Claim a study</h2></div>
   <form method="post" action="{{ url_for('add_study_claim') }}" class="site-form">
     <label>NCT number
@@ -205,7 +191,7 @@
   <p class="site-hint">No trial recreation needed. Claim by NCT. Leave notification email blank to use org profile contact email.</p>
 </div>
 
-<div class="card setup-panel" data-setup-panel="post" hidden>
+<div class="card">
   <div class="section-title"><h2>Post a site study</h2></div>
   <p class="site-hint">Use this when a study is actively enrolling at your site but not published on ClinicalTrials.gov yet.</p>
   <form method="post" action="{{ url_for('post_site_study') }}" class="site-form site-form-2col">
@@ -246,7 +232,7 @@
     </form>
 </div>
 
-<div class="card setup-panel" data-setup-panel="claimed" hidden>
+<div class="card">
   <div class="section-title"><h2>Your claimed studies</h2></div>
   {% if not claims %}
   {{ ui.empty('No claimed NCTs yet', 'Claim one above to start receiving applicants.', icon='list') }}
@@ -286,7 +272,7 @@
   {% endif %}
 </div>
 
-<div class="card setup-panel" data-setup-panel="posted" hidden>
+<div class="card">
   <div class="section-title"><h2>Your site-posted studies</h2></div>
   {% if not posted %}
   {{ ui.empty('No site-posted studies yet', icon='activity') }}
@@ -338,40 +324,7 @@
 
 <script>
 (function () {
-  var tabs = Array.prototype.slice.call(document.querySelectorAll('.setup-tab'));
-  var panels = Array.prototype.slice.call(document.querySelectorAll('[data-setup-panel]'));
-  var names = tabs.map(function (t) { return t.getAttribute('data-setup-tab'); });
-
-  function activate(name) {
-    if (names.indexOf(name) === -1) return;
-    tabs.forEach(function (tab) {
-      var on = tab.getAttribute('data-setup-tab') === name;
-      tab.classList.toggle('on', on);
-      tab.setAttribute('aria-pressed', on ? 'true' : 'false');
-    });
-    panels.forEach(function (panel) {
-      panel.hidden = panel.getAttribute('data-setup-panel') !== name;
-    });
-  }
-
-  if (tabs.length && panels.length) {
-    tabs.forEach(function (tab) {
-      tab.addEventListener('click', function () {
-        var name = tab.getAttribute('data-setup-tab');
-        activate(name);
-        try { history.replaceState(null, '', '#' + name); } catch (e) {}
-      });
-    });
-    // Keep the right section open after navigation / re-render: URL hash wins,
-    // then a server hint (e.g. after "Load my forms"), else the default tab.
-    var shell = document.querySelector('.setup-shell');
-    var hash = (location.hash || '').replace('#', '');
-    var server = shell ? shell.getAttribute('data-active-tab') : '';
-    if (names.indexOf(hash) !== -1) activate(hash);
-    else if (names.indexOf(server) !== -1) activate(server);
-  }
-
-  // REDCap "How to connect" walkthrough - kept in a modal so the panel stays fast.
+  // REDCap "How to connect" walkthrough - kept in a modal so the page stays fast.
   var guide = document.getElementById('redcapGuide');
   function setGuide(open) {
     if (!guide) return;
