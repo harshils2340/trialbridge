@@ -41,7 +41,7 @@
 {% if pov == 'study' %}
 {# ── Study-team app: "BridgeMD for sites" shell (sidebar + top bar) ── #}
 <div class="appshell">
-  <aside class="appside" id="appSidebar">
+  <aside class="appside is-collapsed" id="appSidebar">
     <a class="appside-brand" href="{{ url_for('study_home') }}">
       <span class="appside-logo"><img src="{{ static_url('logo.svg') }}" width="18" height="18" alt=""></span>
       <span class="bt"><b>BridgeMD</b><small>for sites</small></span>
@@ -66,41 +66,16 @@
       <button type="button" class="theme-toggle side-theme-toggle mini" id="themeToggle" aria-label="Switch between light and dark theme" title="Toggle light / dark theme">
         {{ ic.icon('sun', 'ico icon-sun') }}{{ ic.icon('moon', 'ico icon-moon') }} <span>Theme</span>
       </button>
-      <button type="button" class="appside-toggle mini" id="sideToggle" aria-label="Collapse sidebar" title="Collapse sidebar">
-        {{ ic.icon('chevron-right') }} <span>Collapse</span>
-      </button>
     </div>
   </aside>
-  <script>
-  (function () {
-    var side = document.getElementById('appSidebar');
-    var btn = document.getElementById('sideToggle');
-    if (!side) return;
-    var saved = null; try { saved = localStorage.getItem('bm_side_collapsed'); } catch (e) {}
-    function set(c) {
-      side.classList.toggle('is-collapsed', c);
-      try { localStorage.setItem('bm_side_collapsed', c ? '1' : '0'); } catch (e) {}
-      if (btn) btn.title = c ? 'Expand sidebar' : 'Collapse sidebar';
-    }
-    // Default collapsed so the main page is the control surface; remember choice.
-    set(saved === null ? true : saved === '1');
-    if (btn) btn.addEventListener('click', function () {
-      set(!side.classList.contains('is-collapsed'));
-    });
-  })();
-  </script>
   <div class="appmain">
     <header class="apptop">
       <details class="appswitch-wrap" id="studySwitch">
         <summary class="appswitch">
-          <span class="appswitch-lbl">{{ active_study_label }}</span>
+          <span class="appswitch-lbl">{{ active_study_label or 'No studies yet' }}</span>
           {{ ic.icon('chevron-down') }}
         </summary>
         <div class="appswitch-menu" role="menu">
-          <a href="{{ url_for('study_home', nct='all') }}" class="{{ 'active' if not active_nct }}" role="menuitem">
-            <span class="ss-main">All studies</span>
-            <span class="ss-sub">Everything the team manages</span>
-          </a>
           {% for s in nav_studies %}
           <a href="{{ url_for('study_home', nct=s.nct) }}" class="{{ 'active' if active_nct == s.nct }}" role="menuitem">
             <span class="ss-main">{{ s.title[:40] or s.nct }}</span>

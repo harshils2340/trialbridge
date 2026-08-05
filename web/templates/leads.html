@@ -16,9 +16,9 @@
   <div>
     <h1>Applicants</h1>
     {% if q %}
-    <p>{{ queue|length }} result{{ '' if queue|length == 1 else 's' }} for &ldquo;{{ q }}&rdquo;{% if active_nct %} in {{ active_nct }}{% endif %}. <a href="{{ url_for('leads', nct='all') }}">Clear</a></p>
+    <p>{{ queue|length }} result{{ '' if queue|length == 1 else 's' }} for &ldquo;{{ q }}&rdquo;{% if active_nct %} in {{ active_nct }}{% endif %}. <a href="{{ url_for('leads') }}">Clear search</a></p>
     {% elif active_nct %}
-    <p>{{ queue|length }} applicant{{ '' if queue|length == 1 else 's' }} in {{ active_nct }}. <a href="{{ url_for('leads', nct='all') }}">Show all studies</a></p>
+    <p>{{ queue|length }} applicant{{ '' if queue|length == 1 else 's' }} in {{ active_nct }}. Pre-screened by AI - you decide.</p>
     {% else %}
     <p>{{ queue|length }} total across {{ claims|length }} stud{{ 'y' if claims|length == 1 else 'ies' }}. Pre-screened by AI - you decide.</p>
     {% endif %}

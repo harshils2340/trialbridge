@@ -779,6 +779,7 @@ CREATE TABLE IF NOT EXISTS memberships (
     org_id      INTEGER NOT NULL,
     user_id     INTEGER NOT NULL,
     role        TEXT NOT NULL DEFAULT 'coordinator',
+    role_label  TEXT DEFAULT '',  -- optional custom display name for the role
     created_at  TEXT NOT NULL,
     UNIQUE (org_id, user_id),
     FOREIGN KEY (org_id) REFERENCES organizations(id),
@@ -791,6 +792,7 @@ CREATE TABLE IF NOT EXISTS org_invites (
     org_id      INTEGER NOT NULL,
     email       TEXT DEFAULT '',
     role        TEXT NOT NULL DEFAULT 'student',
+    role_label  TEXT DEFAULT '',  -- optional custom display name for the role
     token       TEXT UNIQUE NOT NULL,
     invited_by  INTEGER,
     created_at  TEXT NOT NULL,
@@ -1036,6 +1038,14 @@ _MIGRATIONS = {
         # so a site sees which channel/place actually converts to enrolled.
         "placement_id": "INTEGER",
     },
+    "memberships": {
+        # Optional custom role name (e.g. "Data manager"); permissions still come
+        # from the base `role`, so a custom label can't grant new access.
+        "role_label": "TEXT DEFAULT ''",
+    },
+    "org_invites": {
+        "role_label": "TEXT DEFAULT ''",
+    },
     "web_events": {
         # User-agent kept for bot auditing only (not PHI). Bot traffic is
         # filtered before insert, so this should only ever hold real browsers.
@@ -1216,7 +1226,7 @@ def list_org_members(user_id):
     """Team roster (for the Team page): each member's id, name, email, role."""
     oid = user_org_id(user_id)
     return get_db().execute(
-        "SELECT m.user_id, m.role, m.created_at, u.name, u.email "
+        "SELECT m.user_id, m.role, m.role_label, m.created_at, u.name, u.email "
         "FROM memberships m JOIN users u ON u.id = m.user_id "
         "WHERE m.org_id = ? ORDER BY "
         "CASE m.role WHEN 'coordinator' THEN 0 WHEN 'pi' THEN 1 ELSE 2 END, "
@@ -1240,17 +1250,20 @@ def can_approve_docs(user_id):
     return member_role(user_id) in _ROLE_CAN_APPROVE_DOCS
 
 
-def set_member_role(actor_id, target_user_id, role):
-    """Change a teammate's role. Only same-org and a valid role."""
+def set_member_role(actor_id, target_user_id, role, role_label=""):
+    """Change a teammate's role. Only same-org and a valid base role; an optional
+    custom label renames it for display without changing permissions."""
     if role not in ORG_ROLES:
         return False
+    role_label = (role_label or "").strip()[:40]
     oid = user_org_id(actor_id)
     db = get_db()
     row = db.execute("SELECT id FROM memberships WHERE org_id = ? AND user_id = ?",
                      (oid, target_user_id)).fetchone()
     if not row:
         return False
-    db.execute("UPDATE memberships SET role = ? WHERE id = ?", (role, row["id"]))
+    db.execute("UPDATE memberships SET role = ?, role_label = ? WHERE id = ?",
+               (role, role_label, row["id"]))
     db.commit()
     return True
 
@@ -1279,17 +1292,18 @@ def remove_member(actor_id, target_user_id):
     return True
 
 
-def create_org_invite(actor_id, email, role="student"):
+def create_org_invite(actor_id, email, role="student", role_label=""):
     """Create a join link for a teammate. Returns the token."""
     if role not in ORG_ROLES:
         role = "student"
+    role_label = (role_label or "").strip()[:40]
     oid = user_org_id(actor_id)
     token = gen_token()
     db = get_db()
     db.execute(
-        "INSERT INTO org_invites (org_id, email, role, token, invited_by, created_at) "
-        "VALUES (?,?,?,?,?,?)",
-        (oid, (email or "").strip().lower(), role, token, actor_id, now()))
+        "INSERT INTO org_invites (org_id, email, role, role_label, token, "
+        "invited_by, created_at) VALUES (?,?,?,?,?,?,?)",
+        (oid, (email or "").strip().lower(), role, role_label, token, actor_id, now()))
     db.commit()
     return token
 
@@ -1366,9 +1380,11 @@ def accept_org_invite(user_id, token):
     oid = inv["org_id"]
     db = get_db()
     db.execute(
-        "INSERT INTO memberships (org_id, user_id, role, created_at) VALUES (?,?,?,?) "
-        "ON CONFLICT(org_id, user_id) DO UPDATE SET role = excluded.role",
-        (oid, user_id, inv["role"], now()))
+        "INSERT INTO memberships (org_id, user_id, role, role_label, created_at) "
+        "VALUES (?,?,?,?,?) ON CONFLICT(org_id, user_id) DO UPDATE SET "
+        "role = excluded.role, role_label = excluded.role_label",
+        (oid, user_id, inv["role"],
+         (inv["role_label"] if "role_label" in inv.keys() else ""), now()))
     db.execute("UPDATE users SET org_id = ? WHERE id = ?", (oid, user_id))
     db.execute("UPDATE org_invites SET accepted_at = ? WHERE id = ?",
                (now(), inv["id"]))

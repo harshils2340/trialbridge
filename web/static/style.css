@@ -3763,8 +3763,18 @@ main:focus { outline: none; }
 .appside.is-collapsed .appside-user .u { display: none; }
 .appside.is-collapsed .appside-foot .mini { font-size: 0; justify-content: center; gap: 0; }
 .appside.is-collapsed .appside-foot .mini .ico { font-size: initial; }
-.appside-toggle .ico { transition: transform .15s ease; transform: rotate(180deg); }
-.appside.is-collapsed .appside-toggle .ico { transform: rotate(0deg); }
+/* Hover the collapsed rail to reveal full labels (no toggle button needed). */
+.appside.is-collapsed:hover { width: 240px; box-shadow: var(--shadow-lift); z-index: 5; }
+.appside.is-collapsed:hover .appside-brand { justify-content: flex-start; }
+.appside.is-collapsed:hover .appside-brand .bt { display: block; }
+.appside.is-collapsed:hover .appnav a { justify-content: flex-start; gap: 10px;
+  font-size: 14px; padding-left: 12px; padding-right: 12px; }
+.appside.is-collapsed:hover .appnav-count { display: inline-flex; }
+.appside.is-collapsed:hover .appnav-group-label { display: block; }
+.appside.is-collapsed:hover .appside-user { justify-content: flex-start; }
+.appside.is-collapsed:hover .appside-user .u { display: block; }
+.appside.is-collapsed:hover .appside-foot .mini { font-size: 12.5px;
+  justify-content: flex-start; gap: 8px; }
 .appside-brand { padding: 20px 20px 16px; border-bottom: 1px solid var(--border);
   display: flex; gap: 10px; align-items: center; }
 .appside-logo { width: 30px; height: 30px; background: var(--accent);
@@ -5018,3 +5028,8 @@ a.detail-row:hover { color: var(--accent); text-decoration: none; }
   .near-wrap { padding: 0 16px; }
   .trust-strip { padding: 0 16px; }
 }
+
+/* Team roster: role editor + custom ("Other") role inputs */
+.role-form { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.role-custom { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.role-custom input[type="text"] { min-width: 180px; }

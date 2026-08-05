@@ -8,15 +8,10 @@
 {% block body %}
 <div class="app-head">
   <div>
-    <h1>Team workspace</h1>
-    <p>Everyone on the trial - PI, coordinators, and research students - shares this workspace with full visibility of applicants, documents, and campaigns.</p>
+    <h1>Team</h1>
+    <p>Everyone shares this workspace. Roles only gate sign-off — full-access members can approve documents and manage the team; others do day-to-day work.</p>
   </div>
   {% if can_manage_team %}{{ ui.btn('Invite teammate', 'primary', icon='user-plus', extra='data-ui-open="inviteModal"') }}{% endif %}
-</div>
-
-<div class="callout info" style="margin-bottom:18px;">
-  {{ ic.icon('shield-check') }}
-  <span>Everyone sees the same applicants and documents (shared like a Google Doc). Roles only gate sensitive actions: a <b>PI</b> or <b>coordinator</b> can approve/sign documents and manage the team; <b>research students</b> can do all day-to-day work but not sign off. Every action is logged to the audit trail.</span>
 </div>
 
 <div class="app-card">
@@ -38,11 +33,21 @@
         </td>
         <td>
           {% if can_manage_team and not m.is_me %}
-          <form method="post" action="{{ url_for('team_set_role') }}" style="display:flex;gap:8px;align-items:center;">
+          <form method="post" action="{{ url_for('team_set_role') }}" class="role-form">
             <input type="hidden" name="user_id" value="{{ m.user_id }}">
-            <select name="role" onchange="this.form.submit()">
-              {% for r in roles %}<option value="{{ r }}" {{ 'selected' if r == m.role }}>{{ role_labels[r] }}</option>{% endfor %}
+            <select name="role" class="js-role" data-autosubmit="1">
+              {% for r in roles %}<option value="{{ r }}" {{ 'selected' if r == m.role and not m.custom_label }}>{{ role_labels[r] }}</option>{% endfor %}
+              {% if m.custom_label %}<option value="__current" selected>{{ m.custom_label }}</option>{% endif %}
+              <option value="other">Other…</option>
             </select>
+            <div class="role-custom" hidden>
+              <input type="text" name="custom_role" maxlength="40" placeholder="Role name (e.g. Data manager)" value="{{ m.custom_label }}">
+              <select name="access">
+                <option value="standard">Day-to-day only</option>
+                <option value="full">Approve &amp; manage</option>
+              </select>
+              {{ ui.btn('Save', 'primary', 'sm', type='submit') }}
+            </div>
           </form>
           {% else %}
           {{ ui.badge(m.role_label, role_tone.get(m.role, 'neutral')) }}
@@ -97,11 +102,19 @@
   </div>
   <div class="field">
     <label>Role</label>
-    <select name="role">
+    <select name="role" class="js-role">
       <option value="student" selected>Research student (grad/undergrad)</option>
       <option value="coordinator">Coordinator</option>
       <option value="pi">Principal Investigator</option>
+      <option value="other">Other…</option>
     </select>
+    <div class="role-custom" hidden>
+      <input type="text" name="custom_role" maxlength="40" placeholder="Role name (e.g. Data manager)">
+      <select name="access">
+        <option value="standard">Day-to-day only (no sign-off)</option>
+        <option value="full">Approve &amp; manage</option>
+      </select>
+    </div>
   </div>
   <p class="app-sub" style="color:var(--faint);font-size:12.5px;">We'll generate a join link to share. When they sign in and open it, they join this workspace with the role you picked.</p>
   <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px;">
@@ -111,4 +124,20 @@
 </form>
 {% endcall %}
 {% endif %}
+
+<script>
+// Role selects: reveal the custom name + access inputs when "Other…" is picked.
+// Inline roster selects auto-submit on a base-role change; "Other…" waits for Save.
+document.querySelectorAll('.js-role').forEach(function (sel) {
+  var custom = sel.closest('.field, .role-form').querySelector('.role-custom');
+  function sync() { if (custom) custom.hidden = (sel.value !== 'other'); }
+  sync();
+  sel.addEventListener('change', function () {
+    sync();
+    if (sel.dataset.autosubmit === '1' && sel.value !== 'other' && sel.value !== '__current') {
+      sel.form.submit();
+    }
+  });
+});
+</script>
 {% endblock %}

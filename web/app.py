@@ -1301,7 +1301,7 @@ def inject_globals():
     nav_study_ncts = []
     nav_studies = []
     active_nct = ""
-    active_study_label = "All studies"
+    active_study_label = ""
     my_role = ""
     my_role_label = ""
     can_manage_team = False
@@ -1318,14 +1318,16 @@ def inject_globals():
         try:
             nav_studies = [{"nct": s["nct"], "title": s["title"] or s["nct"]}
                            for s in db.list_team_studies(g.user["id"])]
+            # There is no "all studies" view - a specific study is always active.
             active_nct = session.get("active_nct", "")
             if active_nct not in {s["nct"] for s in nav_studies}:
-                active_nct = ""
-            if active_nct:
-                for s in nav_studies:
-                    if s["nct"] == active_nct:
-                        active_study_label = s["title"] or s["nct"]
-                        break
+                active_nct = nav_studies[0]["nct"] if nav_studies else ""
+                if active_nct:
+                    session["active_nct"] = active_nct
+            for s in nav_studies:
+                if s["nct"] == active_nct:
+                    active_study_label = s["title"] or s["nct"]
+                    break
         except Exception:
             nav_studies = []
         try:
@@ -6188,18 +6190,20 @@ def search_index():
 
 
 def _set_active_study(claims):
-    """Resolve the study-switcher selection. A `nct` query param sets it (and
-    'all' clears); otherwise the last choice persists in the session. Only a
-    study the team actually has is honored."""
+    """Resolve the study-switcher selection. A valid `nct` query param sets it;
+    otherwise the last choice persists in the session. There is no "all studies"
+    view - a specific study is always active, defaulting to the first one."""
     valid = {c["nct"] for c in claims}
     param = request.args.get("nct")
-    if param is not None:
-        if param in valid:
-            session["active_nct"] = param
-        else:
-            session.pop("active_nct", None)
+    if param is not None and param in valid:
+        session["active_nct"] = param
     cur = session.get("active_nct", "")
-    return cur if cur in valid else ""
+    if cur in valid:
+        return cur
+    first = claims[0]["nct"] if claims else ""
+    if first:
+        session["active_nct"] = first
+    return first
 
 
 def _queue_matches(qi, row, q):
@@ -6232,14 +6236,13 @@ def study_home():
     team_studies = db.list_team_studies(g.user["id"])
     valid_ncts = {s["nct"] for s in team_studies}
     _p = request.args.get("nct")
-    if _p is not None:
-        if _p in valid_ncts:
-            session["active_nct"] = _p
-        else:
-            session.pop("active_nct", None)
+    if _p is not None and _p in valid_ncts:
+        session["active_nct"] = _p
     active_nct = session.get("active_nct", "")
     if active_nct not in valid_ncts:
-        active_nct = ""
+        active_nct = team_studies[0]["nct"] if team_studies else ""
+        if active_nct:
+            session["active_nct"] = active_nct
     active_study_label = next((s["title"] or s["nct"]
                                for s in team_studies if s["nct"] == active_nct),
                               "") if active_nct else ""
@@ -9735,16 +9738,34 @@ def team_page():
     members = db.list_org_members(g.user["id"])
     members = [{
         "user_id": m["user_id"], "name": m["name"], "email": m["email"],
-        "role": m["role"], "role_label": db.ORG_ROLE_LABELS.get(m["role"], m["role"]),
+        "role": m["role"], "custom_label": m["role_label"] or "",
+        "role_label": (m["role_label"] or db.ORG_ROLE_LABELS.get(m["role"], m["role"])),
         "is_me": m["user_id"] == g.user["id"],
     } for m in members]
     invites = [{
         "token": i["token"], "email": i["email"],
-        "role_label": db.ORG_ROLE_LABELS.get(i["role"], i["role"]),
+        "role_label": (i["role_label"] or db.ORG_ROLE_LABELS.get(i["role"], i["role"])),
         "url": url_for("team_join", token=i["token"], _external=True),
     } for i in db.list_org_invites(g.user["id"])]
     return render_template("team.html", members=members, invites=invites,
                            roles=db.ORG_ROLES, role_labels=db.ORG_ROLE_LABELS)
+
+
+def _resolve_team_role(form):
+    """Map the role form (including a custom 'Other') to a base role + display
+    label. A custom role NEVER grants new access - it inherits one of two tiers:
+    'full' (approve + manage, like a coordinator) or 'standard' (day-to-day)."""
+    role = (form.get("role") or "student").strip()
+    label = ""
+    if role == "other":
+        label = (form.get("custom_role") or "").strip()[:40]
+        access = (form.get("access") or "standard").strip()
+        role = "coordinator" if access == "full" else "student"
+        if not label:
+            label = db.ORG_ROLE_LABELS.get(role, "Member")
+    if role not in db.ORG_ROLES:
+        role = "student"
+    return role, label
 
 
 @app.route("/app/team/invite", methods=["POST"])
@@ -9754,8 +9775,8 @@ def team_invite():
         flash("Only a coordinator or PI can invite teammates.", "error")
         return redirect(url_for("team_page"))
     email = request.form.get("email", "").strip()
-    role = request.form.get("role", "student").strip()
-    token = db.create_org_invite(g.user["id"], email, role)
+    role, label = _resolve_team_role(request.form)
+    token = db.create_org_invite(g.user["id"], email, role, role_label=label)
     link = url_for("team_join", token=token, _external=True)
     flash(f"Invite link ready - share it with your teammate: {link}", "ok")
     return redirect(url_for("team_page"))
@@ -9767,8 +9788,8 @@ def team_set_role():
     if not db.can_manage_team(g.user["id"]):
         abort(403)
     target = request.form.get("user_id", type=int)
-    role = request.form.get("role", "").strip()
-    if target and db.set_member_role(g.user["id"], target, role):
+    role, label = _resolve_team_role(request.form)
+    if target and db.set_member_role(g.user["id"], target, role, role_label=label):
         flash("Role updated.", "ok")
     else:
         flash("Couldn't update that role.", "error")

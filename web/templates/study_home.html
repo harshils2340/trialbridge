@@ -19,7 +19,7 @@
     <div>
       <span class="ws-eyebrow">{{ ic.icon('crosshair') }} Trial workspace</span>
       <h1>{{ workspace.title }}</h1>
-      <p class="ws-nct">{{ workspace.nct }} · <a href="{{ url_for('study_home', nct='all') }}">View all studies</a></p>
+      <p class="ws-nct">{{ workspace.nct }} · <span class="ws-switch-hint">switch trials from the top bar</span></p>
     </div>
     <div class="ws-stats">
       <div class="ws-stat"><div class="n">{{ workspace.applicants }}</div><div class="l">Applicants</div></div>
