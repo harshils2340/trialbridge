@@ -3977,6 +3977,60 @@ main:focus { outline: none; }
   background: var(--accent-soft); color: var(--accent); }
 .rail-member { cursor: default; }
 .mem-av { width: 28px; height: 28px; font-size: 11px; flex-shrink: 0; }
+
+/* ── Applicant record: header, action bar, details, notes ── */
+.pt-topbar { display: flex; justify-content: space-between; align-items: flex-start;
+  gap: 16px; flex-wrap: wrap; margin: 4px 0 20px; }
+.pt-id { display: flex; gap: 14px; align-items: center; min-width: 0; }
+.pt-id-main h1 { margin: 0; font-size: 22px; line-height: 1.15; }
+.pt-meta { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 7px;
+  font-size: 12.5px; color: var(--muted); }
+.pt-meta > span { display: inline-flex; align-items: center; gap: 5px; }
+.pt-meta .ico { width: 14px; height: 14px; color: var(--faint); }
+.pt-sep { width: 1px; height: 14px; background: var(--border); }
+.pt-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.pt-actions form { margin: 0; }
+
+.pt-grid { display: grid; grid-template-columns: 1fr 340px; gap: 24px; align-items: start; }
+@media (max-width: 1000px) { .pt-grid { grid-template-columns: 1fr; } }
+.pt-side-card { margin-bottom: 16px; }
+.pt-hint { font-size: 11px; font-weight: 600; color: var(--faint); }
+.pt-stage-note { margin: 12px 0 0; font-size: 12px; color: var(--faint); line-height: 1.5; }
+
+.detail-list { display: flex; flex-direction: column; }
+.detail-row { display: flex; align-items: center; gap: 9px; padding: 8px 0; font-size: 13.5px;
+  color: var(--ink); text-decoration: none; border-bottom: 1px solid var(--border);
+  word-break: break-word; }
+.detail-row:last-child { border-bottom: none; }
+a.detail-row:hover { color: var(--accent); text-decoration: none; }
+.detail-row.muted { color: var(--muted); }
+.detail-row .ico { width: 15px; height: 15px; color: var(--faint); flex-shrink: 0; }
+.detail-trial { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+.dt-label { font-size: 11px; text-transform: uppercase; letter-spacing: .04em;
+  color: var(--faint); font-weight: 700; }
+.dt-title { font-weight: 650; margin-top: 3px; line-height: 1.35; }
+.dt-nct { font-size: 12px; color: var(--muted); margin-top: 1px; }
+.dt-links { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+
+.note-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
+.note-item { background: var(--bg); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 9px 11px; }
+.note-body { font-size: 13.5px; color: var(--ink); white-space: pre-wrap; line-height: 1.5; }
+.note-meta { font-size: 11.5px; color: var(--faint); margin-top: 5px; }
+.note-form { display: flex; flex-direction: column; gap: 8px; }
+.note-form textarea { width: 100%; min-height: 62px; resize: vertical; }
+.note-form .btn { align-self: flex-end; }
+
+.pt-collapse > summary { list-style: none; cursor: pointer; display: flex;
+  align-items: center; gap: 8px; }
+.pt-collapse > summary::-webkit-details-marker { display: none; }
+.pt-collapse > summary::after { content: ""; margin-left: auto; width: 8px; height: 8px;
+  border-right: 2px solid var(--faint); border-bottom: 2px solid var(--faint);
+  transform: rotate(45deg); transition: transform .15s ease; }
+.pt-collapse[open] > summary::after { transform: rotate(-135deg); }
+.pt-flag-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--amber); }
+/* Keep the conversation a tidy, self-scrolling pane so the composer stays close. */
+.pt-grid .thread { max-height: 460px; overflow-y: auto; padding-right: 4px; }
 .home-seeall { display: inline-flex; align-items: center; gap: 4px; margin-top: 10px;
   font-size: 13px; font-weight: 600; color: var(--accent); }
 .home-seeall:hover { text-decoration: underline; }

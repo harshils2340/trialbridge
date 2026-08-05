@@ -348,6 +348,17 @@ CREATE TABLE IF NOT EXISTS lead_tasks (
     FOREIGN KEY (lead_id) REFERENCES leads(id)
 );
 
+-- Internal, team-only notes on a candidate. Never shown to the patient - this is
+-- the coordinator/PI/CRO scratchpad (context, call outcomes, screening judgment).
+CREATE TABLE IF NOT EXISTS lead_notes (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    lead_id    INTEGER NOT NULL,
+    body       TEXT NOT NULL,
+    author     TEXT DEFAULT '',
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (lead_id) REFERENCES leads(id)
+);
+
 -- Specific records the study team asks a candidate for (e.g. "pathology report
 -- confirming diagnosis", "records of prior therapy"). Unlike a free-text to-do,
 -- each request tracks a status and links the uploaded file, so a coordinator can
@@ -3196,6 +3207,26 @@ def set_task_status(task_id, status):
         "UPDATE lead_tasks SET status = ?, done_at = ? WHERE id = ?",
         (status, now() if status == "done" else "", task_id))
     db.commit()
+
+
+def add_note(lead_id, body, author=""):
+    """Internal team-only note on a candidate (not visible to the patient)."""
+    body = (body or "").strip()
+    if not body:
+        return None
+    db = get_db()
+    cur = db.execute(
+        "INSERT INTO lead_notes (lead_id, body, author, created_at) VALUES (?,?,?,?)",
+        (lead_id, body, (author or "").strip(), now()))
+    db.execute("UPDATE leads SET updated_at = ? WHERE id = ?", (now(), lead_id))
+    db.commit()
+    return cur.lastrowid
+
+
+def list_notes(lead_id):
+    return get_db().execute(
+        "SELECT * FROM lead_notes WHERE lead_id = ? ORDER BY id DESC",
+        (lead_id,)).fetchall()
 
 
 def open_task_count(lead_id, assigned_to=None):

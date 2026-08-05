@@ -5,33 +5,53 @@
 
 {% block body %}
 {% set elig = it.elig %}
-{% set sf = 'hi' if view.verdict.score >= 75 else ('mid' if view.verdict.score >= 50 else 'lo') %}
+{% set first = (view.name or 'them').split(' ')[0] %}
+{# Contact channels: patient's own if revealed, or the operator view for owners. #}
+{% set c_email = view.email or (l['email'] if (is_owner and not view.revealed) else '') %}
+{% set c_phone = view.phone or (l['phone'] if (is_owner and not view.revealed) else '') %}
 
 <a class="app-back" href="{{ url_for('leads') }}">{{ ic.icon('arrow-left') }} Back to applicants</a>
 
-<div class="app-head">
-  <div style="display:flex;gap:16px;align-items:flex-start;">
+{# ── Patient header: identity, status, and every fast action in one bar ── #}
+<div class="pt-topbar">
+  <div class="pt-id">
     <span class="app-av lg{{ ' neutral' if not view.revealed }}">{{ view.initials }}</span>
-    <div>
+    <div class="pt-id-main">
       <h1>{{ view.name }}</h1>
-      <p style="display:flex;gap:16px;flex-wrap:wrap;">
-        {% if view.email %}<span>{{ ic.icon('mail') }} {{ view.email }}</span>{% endif %}
-        {% if view.phone %}<span>{{ ic.icon('phone') }} {{ view.phone }}</span>{% endif %}
-        {% if not view.revealed and is_owner %}
-          {% if l['email'] %}<span>{{ ic.icon('mail') }} {{ l['email'] }}</span>{% endif %}
-          {% if l['phone'] %}<span>{{ ic.icon('phone') }} {{ l['phone'] }}</span>{% endif %}
-          <span class="badge">{{ ic.icon('lock') }} operator view</span>
-        {% elif not view.revealed %}<span>{{ ic.icon('lock') }} Contact hidden until accepted</span>{% endif %}
-        <span>Source: {{ view.source }}</span>
-        <span>Applied {{ view.last_activity }}</span>
-      </p>
+      <div class="pt-meta">
+        {{ ui.badge(view.stage.label, view.stage.tone) }}
+        {{ ui.badge(view.verdict.label, view.verdict.tone) }}
+        <span class="score-pill {{ 'hi' if view.verdict.score >= 70 else ('mid' if view.verdict.score >= 40 else 'lo') }}">{{ view.verdict.score }}/100</span>
+        <span class="pt-sep"></span>
+        <span>{{ ic.icon('activity') }} {{ view.source }}</span>
+        <span>{{ ic.icon('calendar') }} Applied {{ view.last_activity }}</span>
+        {% if not view.revealed and not is_owner %}<span>{{ ic.icon('lock') }} Contact hidden until accepted</span>{% endif %}
+      </div>
     </div>
   </div>
-  <div style="display:flex;gap:8px;align-items:center;">
-    {% if fwd %}{{ ui.btn('Forward to coordinator', 'primary', 'sm', icon='send', extra='data-ui-open="fwdModal"') }}{% endif %}
-    {{ ui.badge(view.stage.label, view.stage.tone) }}
-    {{ ui.badge(view.verdict.label, view.verdict.tone) }}
-    <span class="score-pill {{ 'hi' if view.verdict.score >= 70 else ('mid' if view.verdict.score >= 40 else 'lo') }}">{{ view.verdict.score }}/100</span>
+  <div class="pt-actions">
+    {% if c_email %}{{ ui.btn('Email', 'ghost', 'sm', icon='mail', href='mailto:' ~ c_email) }}{% endif %}
+    {% if c_phone %}
+      {{ ui.btn('Call', 'ghost', 'sm', icon='phone', href='tel:' ~ c_phone) }}
+      {{ ui.btn('Text', 'ghost', 'sm', icon='chat', href='sms:' ~ c_phone) }}
+    {% endif %}
+    {% if fwd %}{{ ui.btn('Forward', 'ghost', 'sm', icon='send', extra='data-ui-open="fwdModal"') }}{% endif %}
+    {% if l['revealed'] and l['status'] not in ['enrolled','closed','withdrawn'] %}
+    <form method="post" action="{{ url_for('update_lead', lead_id=l['id']) }}">
+      <input type="hidden" name="status" value="enrolled">
+      <input type="hidden" name="note" value="Marked enrolled">
+      <input type="hidden" name="next" value="{{ url_for('applicant_detail', lead_id=l['id']) }}">
+      {{ ui.btn('Mark enrolled', 'primary', 'sm', type='submit', icon='check') }}
+    </form>
+    {% endif %}
+    {% if l['status'] not in ['closed','withdrawn'] %}
+    <form method="post" action="{{ url_for('update_lead', lead_id=l['id']) }}">
+      <input type="hidden" name="status" value="withdrawn">
+      <input type="hidden" name="note" value="Withdrawn by coordinator">
+      <input type="hidden" name="next" value="{{ url_for('applicant_detail', lead_id=l['id']) }}">
+      {{ ui.btn('Withdraw', 'ghost', 'sm', type='submit') }}
+    </form>
+    {% endif %}
   </div>
 </div>
 
@@ -71,30 +91,11 @@
 {% endcall %}
 {% endif %}
 
-{% if l['title'] or l['nct'] %}
-<div class="app-card pad" style="margin-bottom:16px;display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;">
-  <div style="min-width:0;">
-    <div class="app-card-title" style="margin:0 0 2px;">Applied to</div>
-    <div style="font-weight:600;">{{ l['title'] or l['nct'] }}</div>
-    {% if l['nct'] %}<div class="app-sub" style="font-size:12px;color:var(--muted);">{{ l['nct'] }}</div>{% endif %}
-  </div>
-  {% if l['nct'] %}
-  <div style="display:flex;gap:8px;flex-shrink:0;">
-    {{ ui.btn('View trial page', 'ghost', 'sm', icon='arrow-right', href=url_for('study_page', nct=l['nct']), extra='target="_blank" rel="noopener"') }}
-    {{ ui.btn('CT.gov', 'ghost', 'sm', href='https://clinicaltrials.gov/study/' ~ l['nct'], extra='target="_blank" rel="noopener"') }}
-  </div>
-  {% endif %}
-</div>
-{% endif %}
-
-<div style="display:grid;grid-template-columns:1fr 320px;gap:24px;align-items:start;">
-  {# ── Main column ── #}
+<div class="pt-grid">
+  {# ── Main column: the decision, then the conversation ── #}
   <div>
-    {# ── Confirm eligibility → invite to book (the whole job on one card) ── #}
-    {% set first = (view.name or 'them').split(' ')[0] %}
+    {# ── AI pre-screen + the one next action (accept / booking) ── #}
     <div class="app-card pad verdict">
-      {# Compact AI pre-screen: verdict + score + one-line reason. Full reasons
-         are one click away so the card stays scannable, not a wall of text. #}
       <div class="verdict-head">
         <span class="l">{{ ic.icon('sparkle') }} AI pre-screen</span>
         <span style="display:flex;gap:8px;align-items:center;">
@@ -133,8 +134,6 @@
       </details>
       {% endif %}
 
-      {# Reusable line: shows exactly how the booking invite reaches this
-         applicant, using the channels they actually gave (email / phone-text). #}
       {% macro reach_line() %}
       {% if view.email or view.phone %}
       <div class="ns-reach">{{ ic.icon('send') }}
@@ -169,7 +168,6 @@
       {% elif l['decision'] == 'declined' %}
       <div class="callout warn">{{ ic.icon('info') }} Marked not eligible{% if l['decision_reason'] %} — {{ l['decision_reason'] }}{% endif %}.</div>
       {% else %}
-      {# Accepted → sending the booking link is the one obvious next action. #}
       <div class="nextstep">
         {% if l['schedule_url'] %}
         <div class="ns-h">{{ ic.icon('check') }} Booking link sent to {{ first }}</div>
@@ -200,29 +198,7 @@
       <div class="verdict-fine">AI-assisted decision support. A qualified team member must review and decide.</div>
     </div>
 
-    {# Screening questionnaire — the answers the applicant actually submitted #}
-    {% if it.screener %}
-    <div class="app-card pad">
-      <div class="app-card-title">{{ ic.icon('file') }} Screening questionnaire</div>
-      <p class="qa-sub">Answers {{ first }} submitted when they applied.</p>
-      <div class="qa-list">
-        {% for key, ans in it.screener.items() %}
-        {% set concern = (screener_flags.get(key) == ans) %}
-        <div class="qa-row{{ ' concern' if concern }}">
-          <span class="qa-q">{{ screener_labels.get(key, key) }}</span>
-          <span class="qa-a">{{ ans|title }}{% if concern %} {{ ic.icon('alert') }}{% endif %}</span>
-        </div>
-        {% endfor %}
-      </div>
-      {% if it.flags %}
-      <div class="callout warn" style="margin:12px 0 0;">{{ ic.icon('alert') }}
-        <span>Flag{{ '' if it.flags|length == 1 else 's' }} to review: {{ it.flags | join(', ') }}.</span>
-      </div>
-      {% endif %}
-    </div>
-    {% endif %}
-
-    {# Messages #}
+    {# ── Messages: the primary contact surface ── #}
     <div class="app-card pad">
       <div class="app-card-title">{{ ic.icon('chat') }} Messages</div>
       <div class="thread">
@@ -238,7 +214,7 @@
       </div>
       {% if l['revealed'] %}
       <div class="app-chips" id="quickReplies" style="margin-bottom:10px;">
-        <button type="button" class="ui-chip" data-msg="Hi {{ (view.name or 'there').split(' ')[0] }}, just checking in on your interest in the study - happy to answer any questions.">Check in</button>
+        <button type="button" class="ui-chip" data-msg="Hi {{ first }}, just checking in on your interest in the study - happy to answer any questions.">Check in</button>
         <button type="button" class="ui-chip" data-msg="Friendly reminder to book your screening visit using the link we sent - let me know if you need another time.">Booking reminder</button>
         <button type="button" class="ui-chip" data-msg="Are you still available for your screening visit? If not, we can easily reschedule.">Reschedule</button>
         <button type="button" class="ui-chip" data-msg="Thanks so much - we've received everything we need for now and will follow up with next steps shortly.">Thanks</button>
@@ -260,59 +236,65 @@
             box.focus();
           });
         });
+        // Jump the thread to the newest message on load.
+        var thread = document.querySelector('.thread');
+        if (thread) thread.scrollTop = thread.scrollHeight;
       })();
       </script>
       {% else %}
       <div class="callout info">{{ ic.icon('lock') }} Accept this applicant to unlock two-way messaging.</div>
       {% endif %}
     </div>
-
-    {# Timeline #}
-    <div class="app-card pad">
-      <div class="app-card-title">{{ ic.icon('activity') }} Timeline</div>
-      {% for ev in it.events %}
-      {% set tone = 'ok' if ev['status'] in ['eligible','enrolled'] else ('brand' if ev['status'] == 'screening' else ('violet' if ev['status'] == 'prescreen' else 'neutral')) %}
-      <div class="tl-item">
-        <span class="line"></span><span class="dot {{ tone }}"></span>
-        <div>
-          <div class="lbl">{{ ev['note'] or ev['status'] }}</div>
-          <div class="dt">{{ ev['created_at'][:16] }} · {{ ev['actor'] }}</div>
-        </div>
-      </div>
-      {% else %}
-      <div class="app-sub" style="font-size:13px;color:var(--faint);">No activity recorded.</div>
-      {% endfor %}
-    </div>
   </div>
 
-  {# ── Side column ── #}
+  {# ── Side column: everything you reference while working the patient ── #}
   <div>
-    <div class="app-card pad" style="margin-bottom:16px;">
-      <div class="app-card-title">Stage</div>
-      <div style="margin-bottom:6px;">{{ ui.badge(view.stage.label, view.stage.tone) }}</div>
-      <p class="app-sub" style="font-size:13px;color:var(--faint);margin:0 0 10px;">
-        Advances automatically from what you do — accepting marks them likely
-        eligible, and booking a screening visit moves them to screening.
-      </p>
-      {% if l['revealed'] and l['status'] not in ['enrolled','closed','withdrawn'] %}
-      <form method="post" action="{{ url_for('update_lead', lead_id=l['id']) }}" style="margin-bottom:8px;">
-        <input type="hidden" name="status" value="enrolled">
-        <input type="hidden" name="note" value="Marked enrolled">
-        <input type="hidden" name="next" value="{{ url_for('applicant_detail', lead_id=l['id']) }}">
-        {{ ui.btn('Mark enrolled', 'primary', 'sm', type='submit', extra='style="justify-content:center;width:100%;"') }}
-      </form>
+    <div class="app-card pad pt-side-card">
+      <div class="app-card-title">Contact &amp; details</div>
+      <div class="detail-list">
+        {% if c_email %}<a class="detail-row" href="mailto:{{ c_email }}">{{ ic.icon('mail') }}<span>{{ c_email }}</span></a>{% endif %}
+        {% if c_phone %}<a class="detail-row" href="tel:{{ c_phone }}">{{ ic.icon('phone') }}<span>{{ c_phone }}</span></a>{% endif %}
+        {% if not c_email and not c_phone %}<div class="detail-row muted">{{ ic.icon('lock') }}<span>Contact unlocks when you accept</span></div>{% endif %}
+        <div class="detail-row muted">{{ ic.icon('activity') }}<span>Source: {{ view.source }}</span></div>
+        <div class="detail-row muted">{{ ic.icon('calendar') }}<span>Applied {{ view.last_activity }}</span></div>
+      </div>
+      {% if l['title'] or l['nct'] %}
+      <div class="detail-trial">
+        <div class="dt-label">Applied to</div>
+        <div class="dt-title">{{ l['title'] or l['nct'] }}</div>
+        {% if l['nct'] %}
+        <div class="dt-nct">{{ l['nct'] }}</div>
+        <div class="dt-links">
+          {{ ui.btn('Trial page', 'ghost', 'sm', icon='arrow-right', href=url_for('study_page', nct=l['nct']), extra='target="_blank" rel="noopener"') }}
+          {{ ui.btn('CT.gov', 'ghost', 'sm', href='https://clinicaltrials.gov/study/' ~ l['nct'], extra='target="_blank" rel="noopener"') }}
+        </div>
+        {% endif %}
+      </div>
       {% endif %}
-      {% if l['status'] not in ['closed','withdrawn'] %}
-      <form method="post" action="{{ url_for('update_lead', lead_id=l['id']) }}">
-        <input type="hidden" name="status" value="withdrawn">
-        <input type="hidden" name="note" value="Withdrawn by coordinator">
-        <input type="hidden" name="next" value="{{ url_for('applicant_detail', lead_id=l['id']) }}">
-        {{ ui.btn('Withdraw', 'ghost', 'sm', type='submit', extra='style="justify-content:center;width:100%;"') }}
-      </form>
-      {% endif %}
+      <p class="pt-stage-note">Stage advances from what you do — accepting marks them likely eligible; booking a visit moves them to screening.</p>
     </div>
 
-    <div class="app-card pad" style="margin-bottom:16px;">
+    {# ── Notes: internal team scratchpad ── #}
+    <div class="app-card pad pt-side-card">
+      <div class="app-card-title">{{ ic.icon('file') }} Notes <span class="pt-hint">team-only</span></div>
+      <div class="note-list">
+        {% for n in notes %}
+        <div class="note-item">
+          <div class="note-body">{{ n['body'] }}</div>
+          <div class="note-meta">{{ n['author'] or 'Team' }} · {{ n['created_at'][:16] }}</div>
+        </div>
+        {% else %}
+        <div class="app-sub" style="font-size:13px;color:var(--faint);">No notes yet. Jot context only your team sees.</div>
+        {% endfor %}
+      </div>
+      <form method="post" action="{{ url_for('add_lead_note', lead_id=l['id']) }}" class="note-form">
+        <textarea name="body" placeholder="Add a private note…" required></textarea>
+        {{ ui.btn('Add note', 'ghost', 'sm', type='submit', icon='plus') }}
+      </form>
+    </div>
+
+    {# ── Tasks: patient-facing to-dos ── #}
+    <div class="app-card pad pt-side-card">
       <div class="app-card-title">Tasks</div>
       {% for t in it.tasks %}
       <div class="task {{ 'done' if t['status'] == 'done' }}">
@@ -332,7 +314,29 @@
       {% endif %}
     </div>
 
-    <div class="app-card pad">
+    {# ── Screening answers (collapsed to keep the rail scannable) ── #}
+    {% if it.screener %}
+    <details class="app-card pad pt-side-card pt-collapse"{% if it.flags %} open{% endif %}>
+      <summary class="app-card-title">{{ ic.icon('file') }} Screening answers {% if it.flags %}<span class="pt-flag-dot" title="Has flags"></span>{% endif %}</summary>
+      <div class="qa-list" style="margin-top:10px;">
+        {% for key, ans in it.screener.items() %}
+        {% set concern = (screener_flags.get(key) == ans) %}
+        <div class="qa-row{{ ' concern' if concern }}">
+          <span class="qa-q">{{ screener_labels.get(key, key) }}</span>
+          <span class="qa-a">{{ ans|title }}{% if concern %} {{ ic.icon('alert') }}{% endif %}</span>
+        </div>
+        {% endfor %}
+      </div>
+      {% if it.flags %}
+      <div class="callout warn" style="margin:12px 0 0;">{{ ic.icon('alert') }}
+        <span>Flag{{ '' if it.flags|length == 1 else 's' }} to review: {{ it.flags | join(', ') }}.</span>
+      </div>
+      {% endif %}
+    </details>
+    {% endif %}
+
+    {# ── Documents ── #}
+    <div class="app-card pad pt-side-card">
       <div class="app-card-title">Documents</div>
       <div class="mini-list">
         {% for f in it.files %}
@@ -345,6 +349,25 @@
         {% endfor %}
       </div>
     </div>
+
+    {# ── Timeline (collapsed by default) ── #}
+    <details class="app-card pad pt-side-card pt-collapse">
+      <summary class="app-card-title">{{ ic.icon('activity') }} Timeline</summary>
+      <div style="margin-top:10px;">
+        {% for ev in it.events %}
+        {% set tone = 'ok' if ev['status'] in ['eligible','enrolled'] else ('brand' if ev['status'] == 'screening' else ('violet' if ev['status'] == 'prescreen' else 'neutral')) %}
+        <div class="tl-item">
+          <span class="line"></span><span class="dot {{ tone }}"></span>
+          <div>
+            <div class="lbl">{{ ev['note'] or ev['status'] }}</div>
+            <div class="dt">{{ ev['created_at'][:16] }} · {{ ev['actor'] }}</div>
+          </div>
+        </div>
+        {% else %}
+        <div class="app-sub" style="font-size:13px;color:var(--faint);">No activity recorded.</div>
+        {% endfor %}
+      </div>
+    </details>
   </div>
 </div>
 {% endblock %}

@@ -6692,10 +6692,11 @@ def applicant_detail(lead_id):
         except Exception:
             app.logger.exception("forward draft failed")
             fwd = None
+    notes = db.list_notes(lead_id)
     return render_template("applicant_detail.html", it=it, l=lead, view=view,
                            statuses=db.LEAD_STATUSES, labels=db.LEAD_LABELS,
                            screener_labels=SCREENER_LABELS,
-                           screener_flags=SCREENER_FLAGS,
+                           screener_flags=SCREENER_FLAGS, notes=notes,
                            default_schedule=default_schedule, fwd=fwd)
 
 
@@ -7347,6 +7348,26 @@ def toggle_lead_task(lead_id, task_id):
     db.set_task_status(task_id, new_status)
     flash("To-do marked done." if new_status == "done"
           else "To-do reopened.", "success")
+    return redirect(back)
+
+
+@app.route("/app/leads/<int:lead_id>/note", methods=["POST"])
+@login_required
+def add_lead_note(lead_id):
+    """Add an internal, team-only note to a candidate (never sent to the patient)."""
+    _ensure_site_access_for_lead(lead_id)
+    back = _lead_action_return()
+    lead = db.get_lead(lead_id)
+    if not lead:
+        flash("Couldn't find that candidate.", "error")
+        return redirect(back)
+    body = request.form.get("body", "").strip()
+    if not body:
+        flash("Write a note first.", "error")
+        return redirect(back)
+    author = (g.user.get("name") or g.user.get("email") or "Team") if g.user else "Team"
+    db.add_note(lead_id, body, author=author)
+    flash("Note added.", "success")
     return redirect(back)
 
 
