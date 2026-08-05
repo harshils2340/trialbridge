@@ -5772,6 +5772,44 @@ def leads():
                            claims=claims, q=q, active_nct=active_nct)
 
 
+@app.route("/app/applicants/export.csv")
+@login_required
+def leads_export():
+    """Download the current applicant list as CSV - the export coordinators/CROs
+    live on. Scoped to the active study (top switcher) and the current search, so
+    what you export matches what you see."""
+    import csv
+    import io
+    rows = db.list_leads_for_user(g.user["id"])
+    recon = db.latest_reconciliation_for_leads([r["id"] for r in rows])
+    claims = db.list_team_studies(g.user["id"])
+    active_nct = _set_active_study(claims)
+    q = request.args.get("q", "").strip()
+    out = []
+    for r in rows:
+        if active_nct and r["nct"] != active_nct:
+            continue
+        item = _decode_lead(r, recon.get(r["id"]))
+        qi = _queue_item(item)
+        if q and not _queue_matches(qi, r, q):
+            continue
+        out.append((r, qi))
+    out.sort(key=lambda t: t[1].get("last_activity_at") or "", reverse=True)
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["Name", "Email", "Phone", "Verdict", "Score", "Stage", "Source",
+                "NCT", "Study", "Applied", "Last activity"])
+    for r, qi in out:
+        w.writerow([qi["full_name"], r["email"] or "", r["phone"] or "",
+                    qi["verdict"]["label"], qi["verdict"]["score"],
+                    qi["stage"]["label"], qi["source"], r["nct"] or "",
+                    r["title"] or "", (r["created_at"] or "")[:16],
+                    (qi.get("last_activity_at") or "")[:16]])
+    fname = f"applicants-{(active_nct or 'all')}-{dt.date.today().isoformat()}.csv"
+    return app.response_class(buf.getvalue(), mimetype="text/csv", headers={
+        "Content-Disposition": f'attachment; filename="{fname}"'})
+
+
 def _is_recent_apply(created_at, hours=48):
     """True if an application timestamp is within the last `hours`. Tolerant of
     the few timestamp shapes the DB may hold; returns False if it can't parse."""

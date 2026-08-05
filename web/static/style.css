@@ -4031,6 +4031,28 @@ a.detail-row:hover { color: var(--accent); text-decoration: none; }
 .pt-flag-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--amber); }
 /* Keep the conversation a tidy, self-scrolling pane so the composer stays close. */
 .pt-grid .thread { max-height: 460px; overflow-y: auto; padding-right: 4px; }
+
+/* ── Applicants list toolbar: internal search + sort + export ── */
+.lead-toolbar { display: flex; gap: 12px; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; margin-bottom: 12px; }
+.lead-search { position: relative; display: flex; align-items: center; flex: 1; min-width: 220px;
+  max-width: 460px; background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 0 10px; }
+.lead-search:focus-within { border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft); }
+.lead-search > .ico { width: 16px; height: 16px; color: var(--faint); flex-shrink: 0; }
+.lead-search input { flex: 1; border: none; outline: none; background: none; font: inherit;
+  font-size: 13.5px; padding: 9px 8px; color: var(--ink); }
+.lead-search #leadSearchClear { display: inline-flex; border: none; background: none;
+  cursor: pointer; color: var(--faint); padding: 2px; }
+.lead-search #leadSearchClear:hover { color: var(--ink); }
+.lead-search #leadSearchClear .ico { width: 14px; height: 14px; }
+.lead-tools { display: flex; align-items: center; gap: 10px; }
+.lead-sort { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px;
+  color: var(--muted); white-space: nowrap; }
+.lead-sort select { font: inherit; font-size: 13px; padding: 7px 10px;
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--surface); color: var(--ink); }
 .home-seeall { display: inline-flex; align-items: center; gap: 4px; margin-top: 10px;
   font-size: 13px; font-weight: 600; color: var(--accent); }
 .home-seeall:hover { text-decoration: underline; }

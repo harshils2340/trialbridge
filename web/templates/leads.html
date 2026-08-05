@@ -32,6 +32,25 @@
   <div class="app-stat ok"><div class="l">Enrolled</div><div class="n">{{ enrolled_n }}</div></div>
 </div>
 
+<div class="lead-toolbar">
+  <div class="lead-search">
+    {{ ic.icon('search') }}
+    <input type="text" id="leadSearch" placeholder="Search these applicants — name, email, source, stage…" autocomplete="off" aria-label="Search applicants in this list">
+    <button type="button" id="leadSearchClear" aria-label="Clear search" hidden>{{ ic.icon('x') }}</button>
+  </div>
+  <div class="lead-tools">
+    <label class="lead-sort">Sort
+      <select id="leadSort">
+        <option value="recent">Newest first</option>
+        <option value="score">Score: high → low</option>
+        <option value="name">Name A–Z</option>
+        <option value="stage">Stage</option>
+      </select>
+    </label>
+    {{ ui.btn('Export CSV', 'ghost', 'sm', icon='download', href=url_for('leads_export', nct=active_nct or 'all', q=q)) }}
+  </div>
+</div>
+
 <div class="app-chips" id="queueChips">
   <button type="button" class="ui-chip is-active" data-filter="all">All</button>
   <button type="button" class="ui-chip" data-filter="awaiting">Awaiting review</button>
@@ -65,7 +84,8 @@
           data-unread="{{ q.unread }}"
           data-awaiting="{{ '1' if q.status == 'prescreen' else '0' }}"
           data-score="{{ q.verdict.score }}"
-          data-activity="{{ q.last_activity_at }}">
+          data-activity="{{ q.last_activity_at }}"
+          data-search="{{ (q.name ~ ' ' ~ (q.email or '') ~ ' ' ~ (q.title or '') ~ ' ' ~ q.source ~ ' ' ~ q.stage.label ~ ' ' ~ q.verdict.label)|lower }}">
         <td>
           <div class="who">
             <span class="app-av{{ ' neutral' if not q.revealed }}">{{ q.initials }}</span>
@@ -100,37 +120,74 @@
   var chips = document.querySelectorAll('#queueChips .ui-chip');
   var rows = Array.prototype.slice.call(document.querySelectorAll('#queueTable tbody tr'));
   var empty = document.getElementById('queueEmpty');
-  if (!chips.length || !rows.length) return;
-  function apply(f) {
+  var search = document.getElementById('leadSearch');
+  var clearBtn = document.getElementById('leadSearchClear');
+  var sortSel = document.getElementById('leadSort');
+  var table = document.getElementById('queueTable');
+  var tbody = table ? table.querySelector('tbody') : null;
+  if (!rows.length) return;
+  var activeFilter = 'all';
+
+  function matchesFilter(r) {
+    var f = activeFilter;
+    return f === 'all'
+      || (f === 'awaiting' && r.getAttribute('data-awaiting') === '1')
+      || (f === 'unread' && parseInt(r.getAttribute('data-unread'), 10) > 0)
+      || (f === 'enrolled' && r.getAttribute('data-status') === 'enrolled')
+      || (r.getAttribute('data-verdict') === f);
+  }
+  function matchesSearch(r) {
+    var t = (search && search.value || '').trim().toLowerCase();
+    if (!t) return true;
+    return (r.getAttribute('data-search') || '').indexOf(t) !== -1;
+  }
+  function apply() {
     var shown = 0;
     rows.forEach(function (r) {
-      var ok = f === 'all'
-        || (f === 'awaiting' && r.getAttribute('data-awaiting') === '1')
-        || (f === 'unread' && parseInt(r.getAttribute('data-unread'), 10) > 0)
-        || (f === 'enrolled' && r.getAttribute('data-status') === 'enrolled')
-        || (r.getAttribute('data-verdict') === f);
+      var ok = matchesFilter(r) && matchesSearch(r);
       r.style.display = ok ? '' : 'none';
       if (ok) shown += 1;
     });
     if (empty) empty.style.display = shown ? 'none' : '';
+    if (clearBtn) clearBtn.hidden = !(search && search.value);
   }
+
   chips.forEach(function (c) {
     c.addEventListener('click', function () {
       chips.forEach(function (x) { x.classList.remove('is-active'); });
       c.classList.add('is-active');
-      apply(c.getAttribute('data-filter'));
+      activeFilter = c.getAttribute('data-filter');
+      apply();
     });
   });
-})();
+  if (search) search.addEventListener('input', apply);
+  if (clearBtn) clearBtn.addEventListener('click', function () {
+    search.value = ''; apply(); search.focus();
+  });
 
-// Click a column header to sort; click again to reverse. Sorting only reorders
-// rows, so it plays nicely with the filter chips (which just hide rows).
-(function () {
-  var table = document.getElementById('queueTable');
-  if (!table) return;
-  var tbody = table.querySelector('tbody');
-  var ths = Array.prototype.slice.call(table.querySelectorAll('thead th.sort'));
-  if (!tbody || !ths.length) return;
+  // Simple sort dropdown - reorders rows; the filter/search just hide rows, so
+  // sorting composes cleanly with them.
+  function sortBy(mode) {
+    if (!tbody) return;
+    var rs = Array.prototype.slice.call(tbody.querySelectorAll('tr'));
+    rs.sort(function (a, b) {
+      if (mode === 'score') {
+        return (parseFloat(b.getAttribute('data-score')) || 0) - (parseFloat(a.getAttribute('data-score')) || 0);
+      }
+      if (mode === 'name') {
+        return (a.getAttribute('data-search') || '').localeCompare(b.getAttribute('data-search') || '');
+      }
+      if (mode === 'stage') {
+        return (a.getAttribute('data-status') || '').localeCompare(b.getAttribute('data-status') || '');
+      }
+      return (b.getAttribute('data-activity') || '').localeCompare(a.getAttribute('data-activity') || '');
+    });
+    rs.forEach(function (r) { tbody.appendChild(r); });
+  }
+  if (sortSel) sortSel.addEventListener('change', function () { sortBy(sortSel.value); });
+
+  // Column headers still sort (click to toggle direction).
+  var ths = table ? Array.prototype.slice.call(table.querySelectorAll('thead th.sort')) : [];
   var curCol = -1, curDir = 1;
   function cellVal(row, idx, type) {
     if (type === 'num') return parseFloat(row.getAttribute('data-score')) || 0;
@@ -144,14 +201,14 @@
       if (curCol === idx) { curDir = -curDir; } else { curCol = idx; curDir = 1; }
       ths.forEach(function (h) { h.classList.remove('asc', 'desc'); });
       th.classList.add(curDir === 1 ? 'asc' : 'desc');
-      var rows = Array.prototype.slice.call(tbody.querySelectorAll('tr'));
-      rows.sort(function (a, b) {
+      var rs = Array.prototype.slice.call(tbody.querySelectorAll('tr'));
+      rs.sort(function (a, b) {
         var va = cellVal(a, idx, type), vb = cellVal(b, idx, type);
         if (va < vb) return -1 * curDir;
         if (va > vb) return 1 * curDir;
         return 0;
       });
-      rows.forEach(function (r) { tbody.appendChild(r); });
+      rs.forEach(function (r) { tbody.appendChild(r); });
     });
   });
 })();
