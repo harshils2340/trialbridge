@@ -51,8 +51,7 @@
       <a href="{{ url_for('matching_page') }}" class="{{ 'active' if request.endpoint in ['matching_page','match_detail'] }}">{{ ic.icon('crosshair') }}Matches{% if matches_new %}<span class="appnav-count">{{ matches_new }}</span>{% endif %}</a>
       <a href="{{ url_for('leads') }}" class="{{ 'active' if request.endpoint in ['leads','applicant_detail'] }}">{{ ic.icon('user-plus') }}Applicants</a>
       <a href="{{ url_for('campaign_list') }}" class="{{ 'active' if request.endpoint in ['campaign_list','campaign_detail'] }}">{{ ic.icon('megaphone') }}Campaigns</a>
-      <a href="{{ url_for('recruitment_dashboard') }}" class="{{ 'active' if request.endpoint == 'recruitment_dashboard' }}">{{ ic.icon('activity') }}Recruitment</a>
-      <a href="{{ url_for('recruitment_balance') }}" class="{{ 'active' if request.endpoint in ['recruitment_balance','recruitment_balance_targets'] }}">{{ ic.icon('users') }}Enrollment balance</a>
+      <a href="{{ url_for('recruitment_dashboard') }}" class="{{ 'active' if request.endpoint in ['recruitment_dashboard','recruitment_balance','recruitment_balance_targets'] }}">{{ ic.icon('activity') }}Recruitment</a>
       <a href="{{ url_for('site_setup') }}" class="{{ 'active' if request.endpoint in ['site_setup','add_study_claim','remove_study_claim','team_page','team_invite','team_set_role','team_remove','intake_page','intake_import'] }}">{{ ic.icon('gear') }}Settings</a>
       {% if is_owner %}
       <a href="{{ url_for('internal_hub') }}" class="appnav-internal {{ 'active' if request.endpoint in ['internal_hub','operator_inbox','internal_registry','internal_registry_opt_out','internal_recruitment','internal_recruitment_targets','owner_analytics'] }}">{{ ic.icon('shield') }}Internal</a>

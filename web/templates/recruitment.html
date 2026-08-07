@@ -14,6 +14,11 @@
   </div>
 </div>
 
+<div class="app-subnav">
+  <a href="{{ url_for('recruitment_dashboard') }}">{{ ui.chip('Overview', active=True, icon='activity') }}</a>
+  <a href="{{ url_for('recruitment_balance') }}">{{ ui.chip('Enrollment balance', icon='users') }}</a>
+</div>
+
 {% if not claims %}
 <div class="app-card pad">
   {{ ui.empty('Claim studies to activate analytics', 'Claim at least one NCT and applicants, sources, and conversion show up here.', 'award', action=ui.btn('Go to Settings', variant='primary', icon='award', href=url_for('site_setup'))) }}

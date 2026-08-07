@@ -165,7 +165,8 @@ h1, h2, h3, h4 { color: var(--ink); }
 label { display: block; font-size: 13px; font-weight: 600; color: var(--ink);
   margin-bottom: 7px; letter-spacing: -.01em; }
 .hint { font-weight: 400; color: var(--faint); }
-input[type=text], input[type=email], input[type=password], input[type=number],
+input:not([type]), input[type=text], input[type=email], input[type=password], input[type=number],
+input[type=tel], input[type=search], input[type=url], input[type=date],
 textarea, select {
   width: 100%; padding: 11px 13px; border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm); font-size: 15px; font-family: inherit; color: var(--ink);
@@ -180,8 +181,8 @@ textarea { resize: vertical; min-height: 150px; line-height: 1.6; }
 /* iOS Safari zooms the whole page when a field under 16px takes focus, which
    leaves the form half off-screen. Hold every field at 16px on phones. */
 @media (max-width: 760px) {
-  input[type=text], input[type=email], input[type=password], input[type=number],
-  input[type=tel], input[type=search], input[type=date], textarea, select {
+  input:not([type]), input[type=text], input[type=email], input[type=password], input[type=number],
+  input[type=tel], input[type=search], input[type=url], input[type=date], textarea, select {
     font-size: 16px;
   }
 }
@@ -3221,10 +3222,15 @@ main:focus { outline: none; }
 }
 
 /* Surfaces that hardcode #fff / light backgrounds -> theme surface */
+[data-theme="dark"] input:not([type]),
 [data-theme="dark"] input[type=text],
 [data-theme="dark"] input[type=email],
 [data-theme="dark"] input[type=password],
 [data-theme="dark"] input[type=number],
+[data-theme="dark"] input[type=tel],
+[data-theme="dark"] input[type=search],
+[data-theme="dark"] input[type=url],
+[data-theme="dark"] input[type=date],
 [data-theme="dark"] textarea,
 [data-theme="dark"] select,
 [data-theme="dark"] .btn-ghost,
@@ -4301,6 +4307,11 @@ a.detail-row:hover { color: var(--accent); text-decoration: none; }
 .app-back { display: inline-flex; align-items: center; gap: 6px; color: var(--accent);
   font-size: 13px; font-weight: 600; margin-bottom: 14px; }
 .app-back .ico { width: 15px; height: 15px; }
+
+/* In-page sub-navigation: chips-as-links that switch views within one section
+   (e.g. Recruitment: Overview / Enrollment balance), so a view is not a top-level tab. */
+.app-subnav { display: flex; gap: var(--space-2); flex-wrap: wrap; margin: -6px 0 22px; }
+.app-subnav a { text-decoration: none; }
 
 /* Cards ----------------------------------------------------------- */
 .app-card { background: var(--surface); border: 1px solid var(--border);
@@ -5385,29 +5396,9 @@ body.fs-page { background:
 .fs-ai-btn { flex: none; font-size: 12px; font-weight: 700; padding: 6px 13px; border-radius: var(--radius-pill);
   color: var(--accent-ink); background: var(--accent); }
 .fs-ai-btn.ghost { color: var(--accent); background: var(--accent-soft); border: 1px solid var(--brand-border); }
-.fs-hv-panel[data-hv="ask"].is-active .fs-ai-top { animation: fs-hv-row .34s ease both; }
-.fs-hv-panel[data-hv="ask"].is-active .fs-ai-act { animation: fs-hv-row .4s ease both; animation-delay: .14s; }
-.fs-hv-panel[data-hv="ask"].is-active .fs-ai-act:nth-child(2) { animation-delay: .3s; }
-.fs-hv-panel[data-hv="ask"].is-active .fs-ai-act:nth-child(3) { animation-delay: .46s; }
-
-/* Workspace scene: the whole site at a glance, so it sells the OS (pipeline + trials +
-   team in one screen) rather than a single feature. */
-.fs-ws { display: flex; flex-direction: column; gap: 9px; }
-.fs-ws-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-.fs-ws-stat { text-align: center; padding: 11px 6px; border-radius: 12px;
-  background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow); }
-.fs-ws-stat b { display: block; font-size: 22px; font-weight: 800; color: var(--ink); letter-spacing: -.02em; }
-.fs-ws-stat span { font-size: 10.5px; color: var(--muted); }
-.fs-ws-trials { display: flex; flex-direction: column; gap: 6px; }
-.fs-ws-trial { display: flex; align-items: center; gap: 9px; padding: 9px 12px; font-size: 12.5px;
-  border-radius: 10px; background: var(--surface); border: 1px solid var(--border); }
-.fs-ws-trial b { color: var(--ink); font-weight: 700; min-width: 0; overflow: hidden;
-  text-overflow: ellipsis; white-space: nowrap; }
-.fs-ws-meta { margin-left: auto; flex: none; font-size: 11px; color: var(--muted); }
-.fs-ws-stage { flex: none; font-size: 10px; font-weight: 700; color: var(--accent);
-  background: var(--accent-soft); border: 1px solid var(--brand-border); padding: 2px 8px;
-  border-radius: var(--radius-pill); }
-.fs-ws-stage.warn { color: var(--amber); background: var(--amber-bg); border-color: var(--warn-border); }
+/* Workspace scene: the OS command center. The AI briefs you on what needs you today
+   across every trial (triage), and the team strip shows one shared, scoped workspace —
+   so this tab sells the operating system, not a single feature. */
 .fs-ws-team { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 10px;
   background: var(--accent-soft); border: 1px solid var(--brand-border); }
 .fs-ws-avs { display: inline-flex; flex: none; }
@@ -5416,13 +5407,11 @@ body.fs-page { background:
   background: var(--surface); border: 1px solid var(--brand-border); margin-left: -6px; }
 .fs-ws-avs i:first-child { margin-left: 0; }
 .fs-ws-teamtx { font-size: 11.5px; color: var(--muted); min-width: 0; }
-.fs-hv-panel[data-hv="work"].is-active .fs-ws-stat { animation: fs-hv-row .4s ease both; }
-.fs-hv-panel[data-hv="work"].is-active .fs-ws-stat:nth-child(2) { animation-delay: .08s; }
-.fs-hv-panel[data-hv="work"].is-active .fs-ws-stat:nth-child(3) { animation-delay: .16s; }
-.fs-hv-panel[data-hv="work"].is-active .fs-ws-trial { animation: fs-hv-row .4s ease both; animation-delay: .24s; }
-.fs-hv-panel[data-hv="work"].is-active .fs-ws-trial:nth-child(2) { animation-delay: .34s; }
-.fs-hv-panel[data-hv="work"].is-active .fs-ws-trial:nth-child(3) { animation-delay: .44s; }
-.fs-hv-panel[data-hv="work"].is-active .fs-ws-team { animation: fs-hv-row .4s ease both; animation-delay: .54s; }
+.fs-hv-panel[data-hv="work"].is-active .fs-ai-top { animation: fs-hv-row .34s ease both; }
+.fs-hv-panel[data-hv="work"].is-active .fs-ai-act { animation: fs-hv-row .4s ease both; animation-delay: .14s; }
+.fs-hv-panel[data-hv="work"].is-active .fs-ai-act:nth-child(2) { animation-delay: .3s; }
+.fs-hv-panel[data-hv="work"].is-active .fs-ai-act:nth-child(3) { animation-delay: .46s; }
+.fs-hv-panel[data-hv="work"].is-active .fs-ws-team { animation: fs-hv-row .4s ease both; animation-delay: .6s; }
 
 .fs-qrow { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 9px 13px;
   font-size: 13.5px; font-weight: 600; color: var(--ink-soft);
@@ -5459,8 +5448,6 @@ body.fs-page { background:
   .fs-hv-panel.is-active .fs-camp-step,
   .fs-hv-panel.is-active .fs-ai-top,
   .fs-hv-panel.is-active .fs-ai-act,
-  .fs-hv-panel.is-active .fs-ws-stat,
-  .fs-hv-panel.is-active .fs-ws-trial,
   .fs-hv-panel.is-active .fs-ws-team { animation: none; }
   .fs-conv-l { animation: none; opacity: .5; }
   .fs-hvchat-caret, .fs-hvtype span, .fs-hvbub, .fs-camp-caret { animation: none; }

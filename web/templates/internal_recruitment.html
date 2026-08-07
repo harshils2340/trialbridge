@@ -22,6 +22,13 @@
   </form>
 </div>
 
+{% if coordinator %}
+<div class="app-subnav">
+  <a href="{{ url_for('recruitment_dashboard') }}">{{ ui.chip('Overview', icon='activity') }}</a>
+  <a href="{{ url_for('recruitment_balance') }}">{{ ui.chip('Enrollment balance', active=True, icon='users') }}</a>
+</div>
+{% endif %}
+
 <div class="app-stats">
   <div class="app-stat"><div class="l">Applications</div><div class="n">{{ stats.total }}</div></div>
   <div class="app-stat{% if tmode %} accent{% endif %}"><div class="l">Target</div><div class="n">{{ stats.target or '—' }}</div></div>
