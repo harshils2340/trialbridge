@@ -115,15 +115,10 @@
           </div>
 
           <div class="fs-hv-panel" data-hv="ask" role="tabpanel" aria-hidden="true">
-            <h3 class="fs-hv-head">One copilot across your whole site</h3>
+            <h3 class="fs-hv-head">It triages your morning, then acts on your word</h3>
             <div class="fs-ai">
-              <div class="fs-ai-top">{{ ic.icon('sparkle') }}<b>Good morning</b>
-                <span>Across 3 trials, here's what needs you</span></div>
-              <div class="fs-ws-stats">
-                <div class="fs-ws-stat"><b>3</b><span>active trials</span></div>
-                <div class="fs-ws-stat"><b>11</b><span>in screening</span></div>
-                <div class="fs-ws-stat"><b>6</b><span>enrolled this month</span></div>
-              </div>
+              <div class="fs-ai-top">{{ ic.icon('sparkle') }}<b>Triaged for you overnight</b>
+                <span class="fs-ai-auto">{{ ic.icon('check') }} no prompt needed</span></div>
               <div class="fs-ai-acts">
                 <div class="fs-ai-act">
                   <span class="fs-ai-ic">{{ ic.icon('chat') }}</span>
@@ -144,10 +139,16 @@
                   <span class="fs-ai-btn ghost">Start</span>
                 </div>
               </div>
-              <div class="fs-cop-ask">
-                {{ ic.icon('sparkle') }}
-                <span class="fs-cop-ask-q" data-cop-typed>Does an eGFR of 48 exclude this patient?</span><span class="fs-cop-ask-caret" aria-hidden="true"></span>
-                <span class="fs-cop-ask-btn" aria-hidden="true">{{ ic.icon('send') }}</span>
+              <div class="fs-cop">
+                <span class="fs-cop-lbl">Or just tell it what to do &mdash; it does it, not just answers</span>
+                <div class="fs-cop-ask">
+                  {{ ic.icon('sparkle') }}
+                  <span class="fs-cop-ask-q" data-cop-typed></span><span class="fs-cop-ask-caret" aria-hidden="true"></span>
+                  <span class="fs-cop-ask-btn" aria-hidden="true">{{ ic.icon('send') }}</span>
+                </div>
+                <div class="fs-cop-done" data-cop-done>
+                  <span class="fs-cop-done-ic">{{ ic.icon('check') }}</span><span data-cop-done-tx></span>
+                </div>
               </div>
             </div>
           </div>
@@ -491,31 +492,42 @@
     }
   })();
 
-  // Copilot ask bar: type example questions on a loop so the copilot reads as
-  // something you actively use, not a static list. It writes to a single-line
-  // field only, so it never leaves an empty panel the way a chat transcript can.
+  // Copilot command bar: type a command, then show it being DONE (not just
+  // answered). Each loop types an instruction, flashes a "done" result under it,
+  // then clears — so the copilot reads as something that takes actions for you.
   (function () {
     var el = document.querySelector('[data-cop-typed]');
+    var done = document.querySelector('[data-cop-done]');
+    var doneTx = document.querySelector('[data-cop-done-tx]');
     if (!el) return;
-    var qs = [
-      'Does an eGFR of 48 exclude this patient?',
-      'Draft a reply offering Leo a Thursday visit',
-      'Who needs re-consent after Amendment 2?',
-      'Is metformin allowed during the study?'
+    var cmds = [
+      ['Send Leo the Thursday 10am screening slot', 'Sent \u00B7 visit booked \u00B7 reminder scheduled'],
+      ['Book screening for everyone marked eligible', '4 visits booked \u00B7 calendar invites sent'],
+      ['Start re-consent for Amendment 2', '6 patients queued \u00B7 ICF v4 attached'],
+      ['Post the T2D campaign to Meta & Google', 'Live on 2 channels \u00B7 tracking on']
     ];
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) { el.textContent = qs[0]; return; }
+    function setDone(txt) {
+      if (!done || !doneTx) return;
+      doneTx.textContent = txt;
+      done.classList.toggle('is-on', !!txt);
+    }
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      el.textContent = cmds[0][0]; setDone(cmds[0][1]); return;
+    }
     var qi = 0;
     function typeQ() {
-      var text = qs[qi % qs.length]; qi++; var k = 0; el.textContent = '';
+      var pair = cmds[qi % cmds.length]; qi++;
+      var text = pair[0]; var k = 0; el.textContent = ''; setDone('');
       (function add() {
-        if (k < text.length) { el.textContent += text[k++]; setTimeout(add, 36 + Math.random() * 40); }
-        else setTimeout(erase, 2200);
+        if (k < text.length) { el.textContent += text[k++]; setTimeout(add, 34 + Math.random() * 40); }
+        else setTimeout(function () { setDone(pair[1]); setTimeout(erase, 2400); }, 420);
       })();
     }
     function erase() {
+      setDone('');
       var cur = el.textContent;
-      if (cur.length) { el.textContent = cur.slice(0, -1); setTimeout(erase, 16); }
-      else setTimeout(typeQ, 320);
+      if (cur.length) { el.textContent = cur.slice(0, -1); setTimeout(erase, 14); }
+      else setTimeout(typeQ, 300);
     }
     typeQ();
   })();

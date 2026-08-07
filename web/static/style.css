@@ -5360,17 +5360,19 @@ body.fs-page { background:
 .fs-ai-btn { flex: none; font-size: 12px; font-weight: 700; padding: 6px 13px; border-radius: var(--radius-pill);
   color: var(--accent-ink); background: var(--accent); }
 .fs-ai-btn.ghost { color: var(--accent); background: var(--accent-soft); border: 1px solid var(--brand-border); }
-/* AI copilot scene shows the site at a glance (stat strip) so the copilot reads as
-   working across the whole OS, not one feature. */
-.fs-ws-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-.fs-ws-stat { text-align: center; padding: 11px 6px; border-radius: 12px;
-  background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow); }
-.fs-ws-stat b { display: block; font-size: 22px; font-weight: 800; color: var(--ink); letter-spacing: -.02em; }
-.fs-ws-stat span { font-size: 10.5px; color: var(--muted); }
-/* Ask bar: the copilot is interactive too. A single-line field types example
-   questions on a loop (see JS), framed by the sparkle + send so it never looks empty. */
+/* AI copilot scene: proactive triage (auto-drafted actions) + a command bar that
+   DOES things. No stat strip — the value is the actions, not the counts. */
+.fs-ai-auto { margin-left: auto; display: inline-flex; align-items: center; gap: 5px;
+  font-size: 10.5px; font-weight: 700; color: var(--green); background: var(--green-bg);
+  border: 1px solid var(--ok-border);
+  padding: 3px 9px; border-radius: var(--radius-pill); }
+.fs-ai-auto svg { width: 12px; height: 12px; }
+/* Command bar: type an instruction (JS), then reveal a "done" result under it, so
+   the copilot reads as something that takes actions, not just answers. */
+.fs-cop { display: flex; flex-direction: column; gap: 7px; margin-top: 3px; }
+.fs-cop-lbl { font-size: 11.5px; font-weight: 600; color: var(--muted); }
 .fs-cop-ask { display: flex; align-items: center; gap: 9px; padding: 10px 12px; border-radius: 10px;
-  background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow); }
+  background: var(--surface); border: 1px solid var(--brand-border); box-shadow: var(--shadow); }
 .fs-cop-ask > svg { width: 16px; height: 16px; flex: none; color: var(--accent); }
 .fs-cop-ask-q { min-width: 0; font-size: 12.5px; color: var(--ink-soft);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -5379,14 +5381,18 @@ body.fs-page { background:
 .fs-cop-ask-btn { flex: none; margin-left: auto; display: grid; place-items: center; width: 30px; height: 30px;
   border-radius: 8px; background: var(--accent); color: var(--accent-ink); }
 .fs-cop-ask-btn svg { width: 15px; height: 15px; }
+.fs-cop-done { display: flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 700;
+  color: var(--green); padding: 0 2px; max-height: 0; opacity: 0; overflow: hidden;
+  transition: max-height .25s ease, opacity .25s ease; }
+.fs-cop-done.is-on { max-height: 30px; opacity: 1; }
+.fs-cop-done-ic { display: grid; place-items: center; width: 16px; height: 16px; flex: none;
+  border-radius: 50%; background: var(--green-bg); }
+.fs-cop-done-ic svg { width: 11px; height: 11px; color: var(--green); }
 .fs-hv-panel[data-hv="ask"].is-active .fs-ai-top { animation: fs-hv-row .34s ease both; }
-.fs-hv-panel[data-hv="ask"].is-active .fs-ws-stat { animation: fs-hv-row .34s ease both; animation-delay: .08s; }
-.fs-hv-panel[data-hv="ask"].is-active .fs-ws-stat:nth-child(2) { animation-delay: .14s; }
-.fs-hv-panel[data-hv="ask"].is-active .fs-ws-stat:nth-child(3) { animation-delay: .2s; }
-.fs-hv-panel[data-hv="ask"].is-active .fs-ai-act { animation: fs-hv-row .4s ease both; animation-delay: .28s; }
-.fs-hv-panel[data-hv="ask"].is-active .fs-ai-act:nth-child(2) { animation-delay: .4s; }
-.fs-hv-panel[data-hv="ask"].is-active .fs-ai-act:nth-child(3) { animation-delay: .52s; }
-.fs-hv-panel[data-hv="ask"].is-active .fs-cop-ask { animation: fs-hv-row .4s ease both; animation-delay: .64s; }
+.fs-hv-panel[data-hv="ask"].is-active .fs-ai-act { animation: fs-hv-row .4s ease both; animation-delay: .16s; }
+.fs-hv-panel[data-hv="ask"].is-active .fs-ai-act:nth-child(2) { animation-delay: .28s; }
+.fs-hv-panel[data-hv="ask"].is-active .fs-ai-act:nth-child(3) { animation-delay: .4s; }
+.fs-hv-panel[data-hv="ask"].is-active .fs-cop { animation: fs-hv-row .4s ease both; animation-delay: .52s; }
 
 .fs-qrow { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 9px 13px;
   font-size: 13.5px; font-weight: 600; color: var(--ink-soft);
