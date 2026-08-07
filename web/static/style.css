@@ -730,10 +730,31 @@ tr { transition: background .12s; }
 /* Public consumer site (patient-facing)                              */
 /* ------------------------------------------------------------------ */
 body.pub { background: var(--surface); }
+/* Patient-facing site keeps its original blue identity. The sites product
+   (the /for-sites marketing pages add .fs-page; the study app uses the app shell)
+   stays teal — so only the consumer pages are rescoped to blue here. */
+body.pub:not(.fs-page) {
+  --accent: #1257b0;
+  --accent-soft: #e7f0fb;
+  --brand-border: #b9d4f2;
+  --btn: #1257b0;
+  --btn-hover: #0f4a94;
+  --mark-a: #1257b0;
+  --mark-b: #7fb8ee;
+  /* Soft tint painted on the page (not the nav) so the transparent header blends
+     into it continuously, the way the /for-sites header does. */
+  background:
+    radial-gradient(1100px 520px at 78% -60px, var(--accent-soft), transparent 62%),
+    var(--surface);
+  background-repeat: no-repeat;
+}
 .btn-lg { padding: 13px 22px; font-size: 15px; border-radius: 12px; }
 
 .pub-nav { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center;
-  gap: 16px; padding: 14px 40px; }
+  gap: 16px; padding: 20px 40px; }
+/* Bigger, more confident brand lockup — matches the scale of the /for-sites header. */
+.pub-nav .brand { font-size: 23px; gap: 12px; }
+.pub-nav .brand .brand-glyph { width: 36px; height: 36px; }
 .pub-nav .brand { justify-self: start; }
 .pub-nav-center { display: flex; align-items: center; gap: 4px; justify-self: center; }
 .pub-nav-center a { color: var(--muted); text-decoration: none; font-weight: 500;
@@ -5175,7 +5196,10 @@ body.fs-page { background:
 @keyframes fs-hv-fill { from { transform: scaleX(0); } to { transform: scaleX(1); } }
 .fs-hv-panels { display: grid; grid-template-columns: minmax(0, 1fr);
   padding: 18px 24px 14px; min-height: 322px; }
-.fs-hv-panel { grid-area: 1 / 1; min-width: 0; display: flex; flex-direction: column; gap: 13px;
+/* Panels share one grid cell sized to the tallest scene; center each scene's content
+   vertically so shorter scenes fill the space evenly instead of hugging the top. */
+.fs-hv-panel { grid-area: 1 / 1; min-width: 0; display: flex; flex-direction: column;
+  justify-content: center; gap: 13px;
   opacity: 0; visibility: hidden; transform: translateY(7px); pointer-events: none;
   transition: opacity .3s ease, transform .3s ease, visibility .3s ease; }
 .fs-hv-panel.is-active { opacity: 1; visibility: visible; transform: none; pointer-events: auto; }
