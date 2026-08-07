@@ -5272,29 +5272,6 @@ body.fs-page { background:
 .fs-hv-panel[data-hv="intake"].is-active .fs-conv-inbox .fs-qrow:nth-child(1) { animation-delay: .44s; }
 .fs-hv-panel[data-hv="intake"].is-active .fs-conv-inbox .fs-qrow:nth-child(2) { animation-delay: .54s; }
 .fs-hv-panel[data-hv="intake"].is-active .fs-conv-inbox .fs-qrow:nth-child(3) { animation-delay: .64s; }
-
-/* Document sync (Workspace scene): each role row shows a spinner that resolves to a
-   green "current" state, staggered, so it reads as one upload syncing to everyone. */
-.fs-syncst { margin-left: auto; flex: none; position: relative; min-width: 96px; height: 16px;
-  display: inline-flex; align-items: center; justify-content: flex-end; }
-.fs-syncspin { position: absolute; right: 0; width: 13px; height: 13px; border-radius: 50%;
-  border: 2px solid var(--border); border-top-color: var(--accent); }
-.fs-syncst em { display: inline-flex; align-items: center; gap: 4px; font-style: normal;
-  font-size: 11px; font-weight: 700; color: var(--green); opacity: 0; }
-.fs-syncst em svg { width: 12px; height: 12px; }
-@keyframes fs-spin { to { transform: rotate(360deg); } }
-@keyframes fs-syncspin-out { 0%, 55% { opacity: 1; } 72%, 100% { opacity: 0; } }
-@keyframes fs-syncst-in { 0%, 60% { opacity: 0; transform: translateX(5px); }
-  82%, 100% { opacity: 1; transform: none; } }
-.fs-hv-panel[data-hv="work"].is-active .fs-syncrow .fs-syncspin {
-  animation: fs-spin .7s linear infinite, fs-syncspin-out 1.1s ease forwards; }
-.fs-hv-panel[data-hv="work"].is-active .fs-syncrow .fs-syncst em {
-  animation: fs-syncst-in 1.1s ease forwards; }
-.fs-hv-panel[data-hv="work"].is-active .fs-syncrow:nth-child(3) .fs-syncspin,
-.fs-hv-panel[data-hv="work"].is-active .fs-syncrow:nth-child(3) .fs-syncst em { animation-delay: .5s; }
-.fs-hv-panel[data-hv="work"].is-active .fs-syncrow:nth-child(4) .fs-syncspin,
-.fs-hv-panel[data-hv="work"].is-active .fs-syncrow:nth-child(4) .fs-syncst em { animation-delay: 1s; }
-
 /* Campaign (Campaigns scene): a connected 4-step stepper that makes the loop obvious -
    you describe the trial ONCE (step 1), and BridgeMD does the rest (recommend + write,
    post, track), ending on cost per enrolled. A vertical thread links the steps so it
@@ -5383,44 +5360,33 @@ body.fs-page { background:
 .fs-ai-btn { flex: none; font-size: 12px; font-weight: 700; padding: 6px 13px; border-radius: var(--radius-pill);
   color: var(--accent-ink); background: var(--accent); }
 .fs-ai-btn.ghost { color: var(--accent); background: var(--accent-soft); border: 1px solid var(--brand-border); }
-.fs-hv-panel[data-hv="ask"].is-active .fs-ai-top { animation: fs-hv-row .34s ease both; }
-.fs-hv-panel[data-hv="ask"].is-active .fs-ai-act { animation: fs-hv-row .4s ease both; animation-delay: .14s; }
-.fs-hv-panel[data-hv="ask"].is-active .fs-ai-act:nth-child(2) { animation-delay: .3s; }
-.fs-hv-panel[data-hv="ask"].is-active .fs-ai-act:nth-child(3) { animation-delay: .46s; }
-
-/* Workspace scene: the whole site at a glance, so it sells the OS (pipeline + trials +
-   team in one screen) rather than a single feature. */
-.fs-ws { display: flex; flex-direction: column; gap: 9px; }
+/* AI copilot scene shows the site at a glance (stat strip) so the copilot reads as
+   working across the whole OS, not one feature. */
 .fs-ws-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .fs-ws-stat { text-align: center; padding: 11px 6px; border-radius: 12px;
   background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow); }
 .fs-ws-stat b { display: block; font-size: 22px; font-weight: 800; color: var(--ink); letter-spacing: -.02em; }
 .fs-ws-stat span { font-size: 10.5px; color: var(--muted); }
-.fs-ws-trials { display: flex; flex-direction: column; gap: 6px; }
-.fs-ws-trial { display: flex; align-items: center; gap: 9px; padding: 9px 12px; font-size: 12.5px;
-  border-radius: 10px; background: var(--surface); border: 1px solid var(--border); }
-.fs-ws-trial b { color: var(--ink); font-weight: 700; min-width: 0; overflow: hidden;
-  text-overflow: ellipsis; white-space: nowrap; }
-.fs-ws-meta { margin-left: auto; flex: none; font-size: 11px; color: var(--muted); }
-.fs-ws-stage { flex: none; font-size: 10px; font-weight: 700; color: var(--accent);
-  background: var(--accent-soft); border: 1px solid var(--brand-border); padding: 2px 8px;
-  border-radius: var(--radius-pill); }
-.fs-ws-stage.warn { color: var(--amber); background: var(--amber-bg); border-color: var(--warn-border); }
-.fs-ws-team { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 10px;
-  background: var(--accent-soft); border: 1px solid var(--brand-border); }
-.fs-ws-avs { display: inline-flex; flex: none; }
-.fs-ws-avs i { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center;
-  font-size: 8.5px; font-weight: 800; font-style: normal; color: var(--accent);
-  background: var(--surface); border: 1px solid var(--brand-border); margin-left: -6px; }
-.fs-ws-avs i:first-child { margin-left: 0; }
-.fs-ws-teamtx { font-size: 11.5px; color: var(--muted); min-width: 0; }
-.fs-hv-panel[data-hv="work"].is-active .fs-ws-stat { animation: fs-hv-row .4s ease both; }
-.fs-hv-panel[data-hv="work"].is-active .fs-ws-stat:nth-child(2) { animation-delay: .08s; }
-.fs-hv-panel[data-hv="work"].is-active .fs-ws-stat:nth-child(3) { animation-delay: .16s; }
-.fs-hv-panel[data-hv="work"].is-active .fs-ws-trial { animation: fs-hv-row .4s ease both; animation-delay: .24s; }
-.fs-hv-panel[data-hv="work"].is-active .fs-ws-trial:nth-child(2) { animation-delay: .34s; }
-.fs-hv-panel[data-hv="work"].is-active .fs-ws-trial:nth-child(3) { animation-delay: .44s; }
-.fs-hv-panel[data-hv="work"].is-active .fs-ws-team { animation: fs-hv-row .4s ease both; animation-delay: .54s; }
+/* Ask bar: the copilot is interactive too. A single-line field types example
+   questions on a loop (see JS), framed by the sparkle + send so it never looks empty. */
+.fs-cop-ask { display: flex; align-items: center; gap: 9px; padding: 10px 12px; border-radius: 10px;
+  background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow); }
+.fs-cop-ask > svg { width: 16px; height: 16px; flex: none; color: var(--accent); }
+.fs-cop-ask-q { min-width: 0; font-size: 12.5px; color: var(--ink-soft);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fs-cop-ask-caret { flex: none; width: 2px; height: 15px; background: var(--accent); border-radius: 1px; }
+.fs-hv-panel[data-hv="ask"].is-active .fs-cop-ask-caret { animation: fs-camp-blink 1s steps(2) infinite; }
+.fs-cop-ask-btn { flex: none; margin-left: auto; display: grid; place-items: center; width: 30px; height: 30px;
+  border-radius: 8px; background: var(--accent); color: var(--accent-ink); }
+.fs-cop-ask-btn svg { width: 15px; height: 15px; }
+.fs-hv-panel[data-hv="ask"].is-active .fs-ai-top { animation: fs-hv-row .34s ease both; }
+.fs-hv-panel[data-hv="ask"].is-active .fs-ws-stat { animation: fs-hv-row .34s ease both; animation-delay: .08s; }
+.fs-hv-panel[data-hv="ask"].is-active .fs-ws-stat:nth-child(2) { animation-delay: .14s; }
+.fs-hv-panel[data-hv="ask"].is-active .fs-ws-stat:nth-child(3) { animation-delay: .2s; }
+.fs-hv-panel[data-hv="ask"].is-active .fs-ai-act { animation: fs-hv-row .4s ease both; animation-delay: .28s; }
+.fs-hv-panel[data-hv="ask"].is-active .fs-ai-act:nth-child(2) { animation-delay: .4s; }
+.fs-hv-panel[data-hv="ask"].is-active .fs-ai-act:nth-child(3) { animation-delay: .52s; }
+.fs-hv-panel[data-hv="ask"].is-active .fs-cop-ask { animation: fs-hv-row .4s ease both; animation-delay: .64s; }
 
 .fs-qrow { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 9px 13px;
   font-size: 13.5px; font-weight: 600; color: var(--ink-soft);
@@ -5458,13 +5424,10 @@ body.fs-page { background:
   .fs-hv-panel.is-active .fs-ai-top,
   .fs-hv-panel.is-active .fs-ai-act,
   .fs-hv-panel.is-active .fs-ws-stat,
-  .fs-hv-panel.is-active .fs-ws-trial,
-  .fs-hv-panel.is-active .fs-ws-team { animation: none; }
+  .fs-hv-panel.is-active .fs-cop-ask { animation: none; }
   .fs-conv-l { animation: none; opacity: .5; }
   .fs-camp-caret { animation: none; }
   .fs-hv .fs-hv-tab.is-active::after { animation: none; transform: scaleX(1); }
-  .fs-syncspin { display: none; }
-  .fs-syncst em { opacity: 1; }
 }
 
 /* Animated "ask the protocol" AI demo — SHOW the AI (compliant), don't describe it. */
