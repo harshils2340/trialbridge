@@ -5168,11 +5168,6 @@ body.fs-page { background:
   opacity: 0; visibility: hidden; transform: translateY(7px); pointer-events: none;
   transition: opacity .3s ease, transform .3s ease, visibility .3s ease; }
 .fs-hv-panel.is-active { opacity: 1; visibility: visible; transform: none; pointer-events: auto; }
-.fs-hv-was { display: inline-flex; align-self: flex-start; align-items: center; gap: 6px; margin: 0;
-  font-size: 11px; font-weight: 700; letter-spacing: .01em; color: var(--muted);
-  background: var(--amber-bg); border: 1px solid var(--warn-border);
-  border-radius: var(--radius-pill); padding: 4px 10px 4px 8px; }
-.fs-hv-was svg { width: 12px; height: 12px; flex: none; color: var(--amber); }
 .fs-hv-head { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; margin: 1px 0 3px;
   font-size: 20px; font-weight: 800; letter-spacing: -.03em; line-height: 1.22; color: var(--ink); }
 .fs-hv-st { flex: none; font-size: 9.5px; font-weight: 800; letter-spacing: .04em;
@@ -5302,9 +5297,30 @@ body.fs-page { background:
 .fs-hv-panel[data-hv="work"].is-active .fs-syncrow:nth-child(4) .fs-syncspin,
 .fs-hv-panel[data-hv="work"].is-active .fs-syncrow:nth-child(4) .fs-syncst em { animation-delay: 1s; }
 
-/* Campaign (Campaigns scene): draft -> a posting bar fills -> channels flip to
-   "posted" -> the payoff metrics count in. All CSS, retriggered on each visit. */
+/* Campaign (Campaigns scene): a 4-step loop that reveals in order - paste the trial,
+   we recommend the channel + write the ad, it posts, then spend ties back to cost per
+   enrolled (closing the loop). All CSS, retriggered on each visit. */
 .fs-camp { display: flex; flex-direction: column; gap: 9px; }
+/* Numbered step: a small index chip on the left, the step's card on the right. */
+.fs-camp-step { display: flex; align-items: flex-start; gap: 10px; }
+.fs-camp-n { flex: none; width: 20px; height: 20px; margin-top: 1px; border-radius: 50%;
+  display: grid; place-items: center; font-size: 11px; font-weight: 800; color: var(--accent);
+  background: var(--accent-soft); border: 1px solid var(--brand-border); }
+.fs-camp-step > .fs-camp-paste, .fs-camp-step > .fs-camp-rec, .fs-camp-step > .fs-camp-run,
+.fs-camp-step > .fs-camp-res { flex: 1; min-width: 0; }
+.fs-camp-run { display: flex; flex-direction: column; gap: 8px; }
+.fs-camp-rec { display: flex; flex-direction: column; gap: 8px; }
+.fs-camp-rec-h { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; font-size: 12.5px;
+  font-weight: 700; color: var(--accent); }
+.fs-camp-rec-h svg { width: 14px; height: 14px; flex: none; }
+.fs-camp-rec-h b { color: var(--ink); }
+.fs-camp-rec-h em { font-style: normal; font-weight: 600; color: var(--muted); font-size: 11.5px; }
+/* Step 1: the trial info the coordinator pasted. */
+.fs-camp-paste { display: flex; align-items: center; gap: 10px; padding: 11px 13px;
+  background: var(--surface); border: 1px dashed var(--border); border-radius: 10px;
+  font-size: 12px; color: var(--ink-soft); }
+.fs-camp-paste svg { width: 15px; height: 15px; color: var(--muted); flex: none; }
+.fs-camp-paste b { color: var(--ink); font-weight: 700; }
 .fs-camp-draft { display: flex; align-items: center; gap: 10px; padding: 12px 14px;
   background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
   font-size: 13px; color: var(--ink-soft); }
@@ -5316,7 +5332,7 @@ body.fs-page { background:
 .fs-camp-post svg { width: 13px; height: 13px; position: relative; z-index: 1; }
 .fs-camp-posting { position: relative; z-index: 1; display: inline-flex; align-items: center; gap: 6px; }
 .fs-camp-post i { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: var(--accent); opacity: .16; }
-.fs-hv-panel[data-hv="camp"].is-active .fs-camp-post i { animation: fs-camp-fill 1.1s ease forwards; }
+.fs-hv-panel[data-hv="camp"].is-active .fs-camp-post i { animation: fs-camp-fill .8s ease 2.35s forwards; }
 @keyframes fs-camp-fill { to { width: 100%; } }
 .fs-camp-chans { display: flex; gap: 8px; }
 .fs-camp-chan { flex: 1; min-width: 0; display: inline-flex; align-items: center; gap: 7px;
@@ -5326,15 +5342,28 @@ body.fs-page { background:
 .fs-camp-chan em { margin-left: auto; display: inline-flex; align-items: center; gap: 4px;
   font-style: normal; font-size: 11px; font-weight: 700; color: var(--green); }
 .fs-camp-chan em svg { width: 12px; height: 12px; }
-.fs-hv-panel[data-hv="camp"].is-active .fs-camp-chan { animation: fs-hv-row .4s ease both; animation-delay: 1.05s; }
-.fs-hv-panel[data-hv="camp"].is-active .fs-camp-chan:nth-child(2) { animation-delay: 1.2s; }
-.fs-camp-res { display: flex; gap: 8px; }
-.fs-camp-metric { flex: 1; text-align: center; padding: 10px 8px; border-radius: 10px;
-  background: var(--bg); border: 1px solid var(--border); font-size: 11.5px; color: var(--muted); opacity: 0; }
-.fs-camp-metric b { display: block; font-size: 20px; font-weight: 800; color: var(--ink);
+.fs-hv-panel[data-hv="camp"].is-active .fs-camp-chan { animation: fs-hv-row .4s ease both; animation-delay: 3.2s; }
+.fs-hv-panel[data-hv="camp"].is-active .fs-camp-chan:nth-child(2) { animation-delay: 3.32s; }
+.fs-camp-res { display: flex; gap: 7px; }
+.fs-camp-metric { flex: 1; text-align: center; padding: 10px 6px; border-radius: 10px;
+  background: var(--bg); border: 1px solid var(--border); font-size: 11px; color: var(--muted); opacity: 0; }
+.fs-camp-metric b { display: block; font-size: 18px; font-weight: 800; color: var(--ink);
   letter-spacing: -.02em; margin-bottom: 2px; }
-.fs-hv-panel[data-hv="camp"].is-active .fs-camp-metric { animation: fs-hv-row .45s ease both; animation-delay: 1.5s; }
-.fs-hv-panel[data-hv="camp"].is-active .fs-camp-metric:nth-child(2) { animation-delay: 1.62s; }
+/* Cost per enrolled is the payoff of the loop, so it is the emphasized metric. */
+.fs-camp-metric.is-key { background: var(--accent-soft); border-color: var(--brand-border); color: var(--accent); }
+.fs-camp-metric.is-key b { color: var(--accent); }
+.fs-hv-panel[data-hv="camp"].is-active .fs-camp-metric { animation: fs-hv-row .45s ease both; animation-delay: 3.85s; }
+.fs-hv-panel[data-hv="camp"].is-active .fs-camp-metric:nth-child(2) { animation-delay: 3.97s; }
+.fs-hv-panel[data-hv="camp"].is-active .fs-camp-metric:nth-child(3) { animation-delay: 4.09s; }
+/* Steps 1-4 play one at a time (paste -> recommend -> post -> track), each with a
+   beat between so it reads like it's really happening, not all at once. The whole
+   sequence lands ~4.5s, under the ~6.2s the scene is on screen before it auto-advances,
+   leaving a beat to read the cost-per-enrolled payoff. */
+.fs-hv-panel[data-hv="camp"].is-active .fs-camp-step { animation: fs-hv-row .5s ease both; }
+.fs-hv-panel[data-hv="camp"].is-active .fs-camp-step:nth-child(1) { animation-delay: .15s; }
+.fs-hv-panel[data-hv="camp"].is-active .fs-camp-step:nth-child(2) { animation-delay: 1.15s; }
+.fs-hv-panel[data-hv="camp"].is-active .fs-camp-step:nth-child(3) { animation-delay: 2.15s; }
+.fs-hv-panel[data-hv="camp"].is-active .fs-camp-step:nth-child(4) { animation-delay: 3.55s; }
 
 /* AI copilot scene: an OS-wide assistant that triages the morning across trials and
    drafts the next action. Cards pop in one at a time like notifications. */
@@ -5397,15 +5426,6 @@ body.fs-page { background:
 .fs-hv-panel[data-hv="work"].is-active .fs-ws-trial:nth-child(3) { animation-delay: .44s; }
 .fs-hv-panel[data-hv="work"].is-active .fs-ws-team { animation: fs-hv-row .4s ease both; animation-delay: .54s; }
 
-.fs-hv-out { margin: auto 0 0; font-size: 13.5px; line-height: 1.5; color: var(--muted); }
-.fs-hv-out b { color: var(--ink); font-weight: 700; }
-.fs-hv-foot { display: flex; align-items: center; gap: 12px; padding: 0 18px 15px; }
-.fs-hv-dots { display: flex; gap: 5px; flex: none; }
-.fs-hv-dots span { width: 5px; height: 5px; border-radius: 50%; background: var(--border-strong);
-  transition: background .2s ease, transform .2s ease; }
-.fs-hv-dots span.is-on { background: var(--accent); transform: scale(1.35); }
-.fs-hv-note { display: flex; align-items: center; gap: 6px; margin: 0; font-size: 11.5px; color: var(--faint); }
-.fs-hv-note svg { width: 12px; height: 12px; flex: none; color: var(--green); }
 .fs-qrow { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 9px 13px;
   font-size: 13.5px; font-weight: 600; color: var(--ink-soft);
   background: var(--bg); border: 1px solid var(--border); border-radius: 10px; }
@@ -5438,6 +5458,8 @@ body.fs-page { background:
   .fs-hv-panel.is-active .fs-qrow,
   .fs-hv-panel.is-active .fs-hv-chip,
   .fs-hv-panel.is-active .fs-conv-inbox,
+  .fs-hv-panel.is-active .fs-camp-step,
+  .fs-hv-panel.is-active .fs-camp-step,
   .fs-hv-panel.is-active .fs-camp-chan,
   .fs-hv-panel.is-active .fs-camp-metric,
   .fs-hv-panel.is-active .fs-ai-top,
@@ -6313,7 +6335,7 @@ body.fs-page { background:
   /* Four tabs stop fitting: the words carry the meaning, so the icons go. */
   .fs-hv-tab svg { display: none; }
   .fs-hv-tab { font-size: 11.5px; padding: 10px 2px 11px; }
-  .fs-hv-panels, .fs-hv-foot { padding-left: 14px; padding-right: 14px; }
+  .fs-hv-panels { padding-left: 14px; padding-right: 14px; }
   .fs-hv-head { font-size: 16px; }
   /* Applicant row + status side by side wraps the name onto three lines, so the
      status moves under the text (indented past the avatar). */
@@ -6359,8 +6381,7 @@ body.fs-page { background:
   .fs-sync-mid { flex-direction: column; justify-content: center; }
   .fs-sync-mid::before, .fs-sync-mid::after { width: 2px; height: 22px; }
   .fs-prev-h h3 { font-size: 19px; }
-  /* Hero film on phones: let the "today" pill wrap, and tighten the convergence. */
-  .fs-hv-was { white-space: normal; max-width: 100%; }
+  /* Hero film on phones: tighten the convergence graphic. */
   .fs-conv { grid-template-columns: auto minmax(14px, 1fr) minmax(180px, 1.2fr); gap: 5px; }
   .fs-hv-chip { font-size: 11.5px; padding: 5px 9px; }
 }

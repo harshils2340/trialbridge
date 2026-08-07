@@ -18,10 +18,11 @@
 <section class="fs-hero">
   <div class="fs-hero-in">
     <div class="fs-hero-copy">
-      <span class="fs-eyebrow">{{ ic.icon('shield') }} For research sites, coordinators &amp; sponsors</span>
-      <h1>Recruit, pre-screen, schedule<br><span class="fs-grad">and enroll, in one place.</span></h1>
-      <p class="fs-sub">One workspace for intake, screening, scheduling and the sponsor paperwork,
-        so the day goes to patients, not busywork.</p>
+      <span class="fs-eyebrow">{{ ic.icon('shield') }} The operating system for research coordinators</span>
+      <h1>The coordinator's<br><span class="fs-grad">superpower.</span></h1>
+      <p class="fs-sub">The operating system that triages, pre-screens, schedules and handles the
+        sponsor paperwork for you &mdash; so you run more studies without more hours, and patients,
+        PIs and sponsors all move with you.</p>
       <div class="fs-cta">
         <a class="fs-btn fs-btn-primary" href="{{ cal_link }}" target="_blank" rel="noopener">Book a demo {{ ic.icon('arrow-right') }}</a>
       </div>
@@ -82,7 +83,6 @@
 
         <div class="fs-hv-panels">
           <div class="fs-hv-panel is-active" data-hv="intake" role="tabpanel">
-            <p class="fs-hv-was">{{ ic.icon('x') }} Today: ads, referrals, CT.gov and email, in eight tabs</p>
             <h3 class="fs-hv-head">Every source converges into one queue</h3>
             <div class="fs-conv" aria-hidden="true">
               <div class="fs-conv-srcs">
@@ -114,12 +114,9 @@
                 </div>
               </div>
             </div>
-            <p class="fs-hv-out">Every applicant from every source lands here automatically, with duplicates
-              removed and each one filed under the right study — <b>nothing waiting in someone else's inbox</b>.</p>
           </div>
 
           <div class="fs-hv-panel" data-hv="ask" role="tabpanel" aria-hidden="true">
-            <p class="fs-hv-was">{{ ic.icon('x') }} Today: a full inbox across every trial, and no idea what needs you first</p>
             <h3 class="fs-hv-head">Your copilot triages the morning</h3>
             <div class="fs-ai">
               <div class="fs-ai-top">{{ ic.icon('sparkle') }}<b>Good morning</b>
@@ -145,12 +142,9 @@
                 </div>
               </div>
             </div>
-            <p class="fs-hv-out">One AI across every trial, drafting replies and checking the protocol for you,
-              so you open the day knowing what to do — <b>it drafts, you approve</b>. No-training, every answer cited.</p>
           </div>
 
           <div class="fs-hv-panel" data-hv="work" role="tabpanel" aria-hidden="true">
-            <p class="fs-hv-was">{{ ic.icon('x') }} Today: five spreadsheets, three logins, and a Friday status email</p>
             <h3 class="fs-hv-head">Run the whole site from one screen</h3>
             <div class="fs-ws">
               <div class="fs-ws-stats">
@@ -174,41 +168,51 @@
                 <span class="fs-ws-teamtx">PI, coordinators and the sponsor's monitor, one place with scoped access</span>
               </div>
             </div>
-            <p class="fs-hv-out">Every trial, task and teammate in one place, updated in real time —
-              <b>the whole site runs from one screen</b>.</p>
           </div>
 
           <div class="fs-hv-panel" data-hv="camp" role="tabpanel" aria-hidden="true">
-            <p class="fs-hv-was">{{ ic.icon('x') }} Today: ad spend you can't tie to a single enrolled patient</p>
-            <h3 class="fs-hv-head">Launch a campaign, measured to cost per enrolled</h3>
+            <h3 class="fs-hv-head">Paste the trial. We pick the ad, run it, and track every dollar.</h3>
             <div class="fs-camp">
-              <div class="fs-camp-draft">{{ ic.icon('megaphone') }}
-                <span><b>"Now enrolling: Type 2 diabetes"</b> &middot; ad copy drafted for you</span></div>
-              <div class="fs-camp-post"><i aria-hidden="true"></i>
-                <span class="fs-camp-posting">{{ ic.icon('clock') }} Posting to Meta &amp; Google&hellip;</span></div>
-              <div class="fs-camp-chans">
-                <span class="fs-camp-chan">{{ ic.icon('meta', 'brand-ico') }} Meta
-                  <em>{{ ic.icon('check') }} Posted</em></span>
-                <span class="fs-camp-chan">{{ ic.icon('google', 'brand-ico') }} Google
-                  <em>{{ ic.icon('check') }} Posted</em></span>
+              <div class="fs-camp-step">
+                <span class="fs-camp-n">1</span>
+                <div class="fs-camp-paste">{{ ic.icon('file') }}
+                  <span><b>Pasted:</b> Type 2 diabetes &middot; adults 18&ndash;75 &middot; HbA1c 7&ndash;10 &middot; Toronto</span></div>
               </div>
-              <div class="fs-camp-res">
-                <span class="fs-camp-metric"><b>+14</b> applicants this week</span>
-                <span class="fs-camp-metric"><b>$18</b> per enrolled</span>
+              <div class="fs-camp-step">
+                <span class="fs-camp-n">2</span>
+                <div class="fs-camp-rec">
+                  <div class="fs-camp-rec-h">{{ ic.icon('sparkle') }} <b>Recommended:</b> Meta + Google Search
+                    <em>best reach for T2D near you</em></div>
+                  <div class="fs-camp-draft">{{ ic.icon('megaphone') }}
+                    <span><b>"Now enrolling: a Type 2 diabetes study"</b> &middot; ad written for you,
+                      IRB/REB-ready</span></div>
+                </div>
+              </div>
+              <div class="fs-camp-step">
+                <span class="fs-camp-n">3</span>
+                <div class="fs-camp-run">
+                  <div class="fs-camp-post"><i aria-hidden="true"></i>
+                    <span class="fs-camp-posting">{{ ic.icon('clock') }} Posting to Meta &amp; Google&hellip;</span></div>
+                  <div class="fs-camp-chans">
+                    <span class="fs-camp-chan">{{ ic.icon('meta', 'brand-ico') }} Meta
+                      <em>{{ ic.icon('check') }} Live</em></span>
+                    <span class="fs-camp-chan">{{ ic.icon('google', 'brand-ico') }} Google
+                      <em>{{ ic.icon('check') }} Live</em></span>
+                  </div>
+                </div>
+              </div>
+              <div class="fs-camp-step">
+                <span class="fs-camp-n">4</span>
+                <div class="fs-camp-res">
+                  <span class="fs-camp-metric"><b>+14</b> applicants</span>
+                  <span class="fs-camp-metric"><b>$252</b> spent</span>
+                  <span class="fs-camp-metric is-key"><b>$18</b> per enrolled</span>
+                </div>
               </div>
             </div>
-            <p class="fs-hv-out">Every dollar tied to an enrolled patient, so <b>spend follows
-              what actually converts</b>.</p>
           </div>
         </div>
 
-        <div class="fs-hv-foot">
-          <div class="fs-hv-dots" aria-hidden="true">
-            <span class="is-on"></span><span></span><span></span><span></span>
-          </div>
-          <p class="fs-hv-note">{{ ic.icon('check') }} A walk-through of the coordinator OS.
-            Live features have real screens below.</p>
-        </div>
       </div>
     </div>
   </div>
@@ -471,7 +475,6 @@
     if (!hv) return;
     var hvTabs = Array.prototype.slice.call(hv.querySelectorAll('.fs-hv-tab'));
     var hvPanels = Array.prototype.slice.call(hv.querySelectorAll('.fs-hv-panel'));
-    var dots = Array.prototype.slice.call(hv.querySelectorAll('.fs-hv-dots span'));
     var STEP = 6200;
     var at = 0, tick = null, held = false;
 
@@ -556,7 +559,6 @@
         p.classList.toggle('is-active', i === at);
         p.setAttribute('aria-hidden', i === at ? 'false' : 'true');
       });
-      dots.forEach(function (d, i) { d.classList.toggle('is-on', i === at); });
       if (chat) chat.toggle(hvTabs[at].getAttribute('data-hv') === 'ask');
     }
     function run() {
