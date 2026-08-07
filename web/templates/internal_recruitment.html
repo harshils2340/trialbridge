@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Recruitment tracker · BridgeMD{% endblock %}
+{% block title %}{{ 'Enrollment balance' if coordinator else 'Recruitment tracker' }} · BridgeMD{% endblock %}
 {% import "_icons.html" as ic %}
 {% import "_ui.html" as ui %}
 
@@ -8,11 +8,11 @@
 {% block body %}
 <div class="app-head">
   <div>
-    <h1>Recruitment tracker</h1>
+    <h1>{{ 'Enrollment balance' if coordinator else 'Recruitment tracker' }}</h1>
     <p>Applications by source, and demographic balance against your target. Spot
        skewed or under-filled buckets before they become an enrollment problem.</p>
   </div>
-  <form method="get" action="{{ url_for('internal_recruitment') }}" class="rt-studypick">
+  <form method="get" action="{{ url_for(page_endpoint) }}" class="rt-studypick">
     <select name="nct" onchange="this.form.submit()">
       <option value="">All studies</option>
       {% for id, title in studies %}
@@ -99,7 +99,7 @@
 
 <div class="app-card pad">
   <div class="rt-cardhead"><h2>Targets</h2><span class="rt-sub">{{ 'this study' if nct else 'all studies' }}</span></div>
-  <form method="post" action="{{ url_for('internal_recruitment_targets') }}" class="rt-targets">
+  <form method="post" action="{{ url_for(targets_endpoint) }}" class="rt-targets">
     <input type="hidden" name="nct" value="{{ nct }}">
     <label class="field">
       <span>Enrollment target (total)</span>

@@ -1,6 +1,8 @@
 {% macro icon(name, cls="ico") -%}
 {%- if name == "search" -%}
 <svg class="{{ cls }}" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+{%- elif name == "menu" -%}
+<svg class="{{ cls }}" viewBox="0 0 24 24" aria-hidden="true"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
 {%- elif name == "list" -%}
 <svg class="{{ cls }}" viewBox="0 0 24 24" aria-hidden="true"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
 {%- elif name == "inbox" -%}
@@ -110,5 +112,21 @@
 <svg class="{{ cls }}" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3" fill="#c00000"/><rect x="6.4" y="12" width="2.4" height="5" rx=".5" fill="#fff"/><rect x="10.8" y="9" width="2.4" height="8" rx=".5" fill="#fff"/><rect x="15.2" y="6.5" width="2.4" height="10.5" rx=".5" fill="#fff"/></svg>
 {%- elif name == "pdf" -%}
 <svg class="{{ cls }}" viewBox="0 0 24 24" aria-hidden="true"><path fill="#fff" stroke="#e2e8f0" stroke-width="1" d="M6.5 2.5h7L18 7v13a1.5 1.5 0 0 1-1.5 1.5h-10A1.5 1.5 0 0 1 5 20V4A1.5 1.5 0 0 1 6.5 2.5z"/><path fill="#e2e8f0" d="M13.5 2.5L18 7h-4.5z"/><rect x="3.5" y="12.5" width="13" height="6" rx="1.2" fill="#e2574c"/><text x="10" y="17" font-size="4.4" font-family="Arial, sans-serif" font-weight="700" fill="#fff" text-anchor="middle" letter-spacing=".3">PDF</text></svg>
+{%- elif name == "meta" -%}
+<svg class="{{ cls }}" viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="6" fill="#0866FF"/><path fill="#fff" d="M15.35 12.5l.42-2.63h-2.52V8.16c0-.72.35-1.42 1.48-1.42h1.15V4.5s-1.04-.18-2.04-.18c-2.08 0-3.44 1.26-3.44 3.54v2.01H8.05v2.63h2.35V19h2.85v-6.5z"/></svg>
+{%- elif name == "reddit" -%}
+<svg class="{{ cls }}" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="11" fill="#FF4500"/><circle cx="8.6" cy="12.4" r="1.15" fill="#fff"/><circle cx="15.4" cy="12.4" r="1.15" fill="#fff"/><path d="M8.7 15.4c.95.82 2.15 1.15 3.3 1.15s2.35-.33 3.3-1.15" stroke="#fff" stroke-width="1.1" fill="none" stroke-linecap="round"/><circle cx="18.3" cy="7.6" r="1.5" fill="#fff"/><circle cx="12.3" cy="6" r="1.05" fill="#fff"/><path d="M12.3 6l5.4 1.4" stroke="#fff" stroke-width="1" fill="none" stroke-linecap="round"/></svg>
+{%- elif name == "ctgov" -%}
+<svg class="{{ cls }}" viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="6" fill="#20558A"/><path fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" d="M4 13h3l2-4.5 2.6 8 2-10 1.8 6.5H20"/></svg>
+{%- elif name == "mark" -%}
+{#- The BridgeMD mark on its own (no tile). Two rounded squares with the overlap
+    cut out of both, so the notch shows whatever is behind. Tones come from the
+    --mark-* properties, so a dark or coloured context can flip them. Keep in
+    sync with tools/build_brand.py, which draws the same paths for the icons. -#}
+<svg class="{{ cls }}" viewBox="0 0 512 512" fill-rule="evenodd" aria-hidden="true"><path fill="var(--mark-b)" d="M142 96H254A46 46 0 0 1 300 142V254A46 46 0 0 1 254 300H142A46 46 0 0 1 96 254V142A46 46 0 0 1 142 96ZM258 212H300V254A46 46 0 0 1 254 300H212V258A46 46 0 0 1 258 212Z"/><path fill="var(--mark-a)" d="M258 212H370A46 46 0 0 1 416 258V370A46 46 0 0 1 370 416H258A46 46 0 0 1 212 370V258A46 46 0 0 1 258 212ZM258 212H300V254A46 46 0 0 1 254 300H212V258A46 46 0 0 1 258 212Z"/></svg>
+{%- elif name == "cloud-sync" -%}
+<svg class="{{ cls }}" viewBox="0 0 24 24" aria-hidden="true"><path d="M17.5 17.5H7a4.5 4.5 0 0 1-.5-8.97 6 6 0 0 1 11.4 1.55 3.75 3.75 0 0 1-.4 7.42"/><path d="M12 11.5v5.5"/><path d="M9.75 13.75 12 11.5l2.25 2.25"/></svg>
+{%- elif name == "database" -%}
+<svg class="{{ cls }}" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.66 3.58 3 8 3s8-1.34 8-3V5"/><path d="M4 11v6c0 1.66 3.58 3 8 3s8-1.34 8-3v-6"/></svg>
 {%- endif -%}
 {%- endmacro %}

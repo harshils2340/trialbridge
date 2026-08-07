@@ -1,0 +1,121 @@
+{% extends "public_base.html" %}
+{% import "_icons.html" as ic %}
+{% import "_fs_chrome.html" as chrome with context %}
+
+{% block title %}{{ feature.nav }} for clinical trial sites: BridgeMD{% endblock %}
+{% block description %}{{ feature.lead|striptags|truncate(155, true) }}{% endblock %}
+{% block og_title %}BridgeMD: {{ feature.title }}{% endblock %}
+{% block og_description %}{{ feature.blurb }} How it works, what it does not do, and where we stand legally.{% endblock %}
+
+{% block site_header %}{{ chrome.nav(cal_link) }}{% endblock %}
+{% block site_footer %}{{ chrome.foot() }}{% endblock %}
+
+{% block body %}
+
+<!-- ───────────────────────── Hero ───────────────────────── -->
+<section class="fs-hero fp-hero">
+  <div class="fp-hero-in">
+    <a class="fp-back" href="{{ url_for('for_sites') }}">{{ ic.icon('arrow-left') }} The coordinator OS</a>
+    <span class="fs-eyebrow">{{ ic.icon(feature.icon) }} {{ feature.eyebrow }}</span>
+    <h1>{{ feature.title }}</h1>
+    <p class="fs-sub">{{ feature.lead }}</p>
+    <div class="fp-meta">
+      <span class="fp-status is-{{ feature.status[0] }}">
+        {{ ic.icon('check') if feature.status[0] == 'live' else ic.icon('clock') }} {{ feature.status[1] }}</span>
+      <span class="fp-stage">{{ ic.icon('activity') }} {{ feature.stage }}</span>
+    </div>
+    <div class="fs-cta">
+      <a class="fs-btn fs-btn-primary" href="{{ cal_link }}" target="_blank" rel="noopener">Book a demo {{ ic.icon('arrow-right') }}</a>
+      <a class="fs-btn fs-btn-ghost" href="{{ url_for('for_sites') }}#demo">See it in the product</a>
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────── How it works (diagram) ─────────────────── -->
+<section class="fs-section" id="how">
+  <div class="fs-head">
+    <p class="fs-kicker">How it works</p>
+    <h2>Start to finish, in four steps.</h2>
+  </div>
+  <ol class="fp-flow">
+    {% for s in feature.flow %}
+    <li class="fp-node">
+      <span class="fp-node-n">{{ loop.index }}</span>
+      <b>{{ s.t }}</b>
+      <span class="fp-node-d">{{ s.d }}</span>
+    </li>
+    {% endfor %}
+  </ol>
+</section>
+
+<!-- ─────────────── What it does / does not do ─────────────── -->
+<section class="fs-section fp-honest" id="scope">
+  <div class="fp-card">
+    <header class="fp-card-h">
+      <span class="fp-card-ic is-ok">{{ ic.icon('check') }}</span>
+      <b>What it actually does</b>
+    </header>
+    <ul class="fp-points">
+      {% for d in feature.does %}
+      <li>{{ ic.icon('check') }}<span>{{ d }}</span></li>
+      {% endfor %}
+    </ul>
+  </div>
+  <div class="fp-card">
+    <header class="fp-card-h">
+      <span class="fp-card-ic is-warn">{{ ic.icon('info') }}</span>
+      <b>What it does not do</b>
+    </header>
+    <ul class="fp-points is-limits">
+      {% for l in feature.limits %}
+      <li>{{ ic.icon('x') }}<span>{{ l }}</span></li>
+      {% endfor %}
+    </ul>
+    <p class="fp-card-foot">We would rather lose a deal here than have you find this out
+      after signing.</p>
+  </div>
+</section>
+
+<!-- ─────────────────── Legal position ─────────────────── -->
+<section class="fs-section" id="legal">
+  <div class="fs-head">
+    <p class="fs-kicker">Legal and compliance</p>
+    <h2>Where this stands, precisely.</h2>
+    <p class="fs-lead">The rules that constrain this part of the product, stated plainly.
+      Nothing here is claimed before it is real.</p>
+  </div>
+  <div class="fs-seclist">
+    {% for item in feature.legal %}
+    <div class="fs-secrow">
+      <span class="fs-secrow-ic">{{ ic.icon('shield-check') }}</span>
+      <div class="fs-secrow-txt">
+        <b>{{ item.h }}</b>
+        <span>{{ item.d }}</span>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  <div class="fs-sec-foot">
+    <span>{{ ic.icon('lock') }} Need the security overview, a DPA, or a BAA for review?</span>
+    <a href="{{ url_for('for_sites') }}#contact">Request security docs {{ ic.icon('arrow-right') }}</a>
+  </div>
+</section>
+
+<!-- ─────────────────── Next / CTA ─────────────────── -->
+<section class="fs-section fp-next">
+  <div class="fp-next-card">
+    <div>
+      <p class="fs-kicker">Next</p>
+      <h2>{{ feature.next_nav }}</h2>
+      <p>The rest of the coordinator's operating system, one piece at a time.</p>
+    </div>
+    <div class="fp-next-cta">
+      <a class="fs-btn fs-btn-ghost" href="{{ url_for('for_sites_feature', slug=feature.next_slug) }}">
+        {{ feature.next_nav }} {{ ic.icon('arrow-right') }}</a>
+      <a class="fs-btn fs-btn-primary" href="{{ cal_link }}" target="_blank" rel="noopener">
+        Book a demo {{ ic.icon('arrow-right') }}</a>
+    </div>
+  </div>
+</section>
+
+{% endblock %}

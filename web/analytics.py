@@ -190,17 +190,35 @@ def _engagement(ncts=None):
     return {"messages": msgs, "patient_messages": from_patient, "visits": visits}
 
 
-def _source_breakdown(leads, recon, pipeline):
-    """Channel-level throughput/cohort quality by lead source."""
-    def _bucket(src):
-        s = (src or "web").strip().lower()
-        return "physician" if s in {
-            "referral", "invite", "physician", "emr", "doctor_referral"
-        } else "patient"
+# Real acquisition channels a coordinator actually uses, so campaign ROI and
+# channel quality are provable instead of collapsed into physician/patient.
+_CHANNEL_LABELS = {
+    "referral": "Physician referral", "invite": "Physician referral",
+    "physician": "Physician referral", "doctor_referral": "Physician referral",
+    "emr": "EMR match", "csv_import": "CSV import", "import": "CSV import",
+    "intake": "Intake email", "email_intake": "Intake email",
+    "ctgov": "ClinicalTrials.gov", "site_posted": "Site listing",
+    "web": "Patient self-serve", "": "Patient self-serve",
+}
 
+
+def _channel(lead):
+    """Friendly acquisition channel for a lead. Campaign-attributed applicants
+    are their own channel regardless of the raw source string."""
+    try:
+        if lead["campaign_id"]:
+            return "Campaign"
+    except (KeyError, IndexError):
+        pass
+    s = (lead["source"] or "").strip().lower()
+    return _CHANNEL_LABELS.get(s, s.replace("_", " ").title() or "Patient self-serve")
+
+
+def _source_breakdown(leads, recon, pipeline):
+    """Channel-level throughput/cohort quality by real acquisition channel."""
     out = {}
     for lead in leads:
-        src = _bucket(lead["source"])
+        src = _channel(lead)
         row = out.setdefault(src, {
             "source": src,
             "total": 0,
@@ -218,18 +236,6 @@ def _source_breakdown(leads, recon, pipeline):
         row["enrolled"] += 1 if mx >= _stage_index("enrolled", pipeline) else 0
         if _recon_outcome(recon.get(lead["id"])) == "enrolled_verified":
             row["verified_enrolled"] += 1
-    rows = list(out.values())
-    # Keep the dashboard stable with exactly two platform sources.
-    for src in ("physician", "patient"):
-        out.setdefault(src, {
-            "source": src,
-            "total": 0,
-            "prescreen": 0,
-            "eligible": 0,
-            "screening": 0,
-            "enrolled": 0,
-            "verified_enrolled": 0,
-        })
     rows = list(out.values())
     for r in rows:
         r["enroll_conv"] = round((r["enrolled"] / r["total"] * 100.0), 1) \

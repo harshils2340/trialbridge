@@ -1,0 +1,141 @@
+{# Shared chrome for the site-side site (/for-sites and its feature pages), so the
+   header and footer cannot drift between them. Anchors are absolute on purpose:
+   the same markup works on the hub (in-page jump) and on a feature page. #}
+{% import "_icons.html" as ic %}
+
+{% macro nav(cal_link) %}
+{% set hub = url_for('for_sites') %}
+<header class="fs-nav" id="fsNav">
+  <div class="fs-nav-in">
+    <a class="fs-nav-brand" href="{{ hub }}">
+      {{ ic.icon('mark', 'brand-glyph') }}BridgeMD <span>for sites</span></a>
+    <nav class="fs-nav-links" aria-label="Primary">
+      {# Platform: a small hover panel so each pillar is one click from anywhere. #}
+      <div class="fs-navitem fs-has-menu">
+        <button type="button" class="fs-nav-trig" aria-expanded="false" aria-controls="fsMenuPlatform">
+          Platform {{ ic.icon('chevron-down') }}</button>
+        <div class="fs-menu" id="fsMenuPlatform">
+          <div class="fs-menu-grid">
+            {% for f in sites_nav_features %}
+            <a class="fs-menu-card" href="{{ url_for('for_sites_feature', slug=f.slug) }}">
+              <span class="fs-menu-ic">{{ ic.icon(f.icon) }}</span>
+              <span class="fs-menu-tx">
+                <b>{{ f.nav }}</b>
+                <span>{{ f.blurb }}</span>
+              </span>
+            </a>
+            {% endfor %}
+          </div>
+          <a class="fs-menu-foot" href="{{ hub }}#demo">See it in the product {{ ic.icon('arrow-right') }}</a>
+        </div>
+      </div>
+      <a href="{{ hub }}#demo">See it work</a>
+      <a href="{{ hub }}#security">Security</a>
+      <a href="{{ hub }}#contact">Contact</a>
+    </nav>
+    <div class="fs-nav-cta">
+      <a class="fs-nav-signin" href="{{ url_for('login') }}">Sign in</a>
+      <a class="fs-btn fs-btn-primary fs-btn-sm" href="{{ cal_link }}" target="_blank" rel="noopener">Book a demo {{ ic.icon('arrow-right') }}</a>
+      {# Phone-only: the link row above is hidden below 760px, so it reopens here. #}
+      <button type="button" class="fs-nav-burger" id="fsBurger" aria-expanded="false"
+              aria-controls="fsSheet" aria-label="Open menu">{{ ic.icon('menu') }}</button>
+    </div>
+  </div>
+  <div class="fs-sheet" id="fsSheet" hidden>
+    <div class="fs-sheet-in">
+      <p class="fs-sheet-l">Platform</p>
+      {% for f in sites_nav_features %}
+      <a class="fs-sheet-card" href="{{ url_for('for_sites_feature', slug=f.slug) }}">
+        <span class="fs-sheet-ic">{{ ic.icon(f.icon) }}</span>
+        <span class="fs-sheet-tx">
+          <b>{{ f.nav }}</b>
+          <span>{{ f.blurb }}</span>
+        </span>
+      </a>
+      {% endfor %}
+      <p class="fs-sheet-l">More</p>
+      <a class="fs-sheet-row" href="{{ hub }}#demo">See it work</a>
+      <a class="fs-sheet-row" href="{{ hub }}#demo">See it in the product</a>
+      <a class="fs-sheet-row" href="{{ hub }}#security">Security &amp; legal</a>
+      <a class="fs-sheet-row" href="{{ hub }}#contact">Contact</a>
+      <a class="fs-sheet-row" href="{{ url_for('login') }}">Sign in</a>
+    </div>
+  </div>
+</header>
+<script>
+(function () {
+  // Sticky nav: transparent over the hero, frosted glass once the page moves, so
+  // there is no hard seam under the header on arrival.
+  var nav = document.getElementById('fsNav');
+  if (nav) {
+    var stick = function () { nav.classList.toggle('is-stuck', window.scrollY > 8); };
+    window.addEventListener('scroll', stick, { passive: true });
+    stick();
+  }
+  // Phone menu sheet.
+  var burger = document.getElementById('fsBurger');
+  var sheet = document.getElementById('fsSheet');
+  if (burger && sheet) {
+    var setSheet = function (on) {
+      sheet.hidden = !on;
+      nav.classList.toggle('is-menu', on);
+      burger.setAttribute('aria-expanded', on ? 'true' : 'false');
+      burger.setAttribute('aria-label', on ? 'Close menu' : 'Open menu');
+    };
+    burger.addEventListener('click', function () { setSheet(sheet.hidden); });
+    sheet.addEventListener('click', function (e) {
+      if (e.target.closest('a')) setSheet(false);
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') setSheet(false);
+    });
+    window.addEventListener('resize', function () {
+      if (window.innerWidth > 760) setSheet(false);
+    });
+  }
+  // Platform menu. Hover and keyboard focus are handled in CSS; this adds click
+  // (for touch and for anyone who clicks the label) plus Escape and click-away.
+  var wrap = nav && nav.querySelector('.fs-has-menu');
+  var trig = wrap && wrap.querySelector('.fs-nav-trig');
+  if (!wrap || !trig) return;
+  var setOpen = function (on) {
+    wrap.classList.toggle('is-open', on);
+    trig.setAttribute('aria-expanded', on ? 'true' : 'false');
+  };
+  trig.addEventListener('click', function (e) {
+    e.preventDefault();
+    setOpen(!wrap.classList.contains('is-open'));
+  });
+  document.addEventListener('click', function (e) {
+    if (!wrap.contains(e.target)) setOpen(false);
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') { setOpen(false); trig.blur(); }
+  });
+  wrap.addEventListener('mouseleave', function () { setOpen(false); });
+})();
+</script>
+{% endmacro %}
+
+{% macro foot() %}
+{% set hub = url_for('for_sites') %}
+<footer class="fs-foot">
+  <div class="fs-foot-in">
+    <div class="fs-foot-brand">
+      <span class="fs-foot-mark">{{ ic.icon('mark', 'brand-glyph brand-glyph-sm') }}BridgeMD <b>for sites</b></span>
+      <p>The operating system for clinical trial sites.</p>
+    </div>
+    {# The feature links live here as well, since the header nav is hidden on a phone. #}
+    <nav class="fs-foot-links" aria-label="Footer">
+      {% for f in sites_nav_features %}
+      <a href="{{ url_for('for_sites_feature', slug=f.slug) }}">{{ f.nav }}</a>
+      {% endfor %}
+      <a href="{{ hub }}#security">Security</a>
+      <a href="{{ url_for('login') }}">Sign in</a>
+      <a href="{{ url_for('privacy') }}">Privacy</a>
+      <a href="{{ url_for('terms') }}">Terms</a>
+    </nav>
+  </div>
+  <p class="fs-foot-legal">© BridgeMD. Not the study sponsor. Trial data comes from ClinicalTrials.gov; the study team decides eligibility.</p>
+</footer>
+{% endmacro %}

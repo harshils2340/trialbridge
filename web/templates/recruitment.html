@@ -23,9 +23,57 @@
 <div class="app-stats">
   <div class="app-stat"><div class="l">Applicants</div><div class="n">{{ stats.totals.total }}</div></div>
   <div class="app-stat"><div class="l">Active</div><div class="n">{{ stats.totals.active }}</div><div class="s">in the funnel</div></div>
-  <div class="app-stat ok"><div class="l">Enrolled</div><div class="n">{{ stats.totals.enrolled }}</div></div>
+  <div class="app-stat ok"><div class="l">Enrolled</div><div class="n">{{ stats.totals.enrolled }}</div>{% if stats.totals.verified_enrolled %}<div class="s">{{ stats.totals.verified_enrolled }} verified</div>{% endif %}</div>
   <div class="app-stat accent"><div class="l">Conversion</div><div class="n">{{ stats.overall_conv }}%</div><div class="s">applicant → enrolled</div></div>
+  {% if spend and spend.cost_per_enrolled is not none %}
+  <div class="app-stat"><div class="l">Cost / enrolled</div><div class="n">${{ '%.0f'|format(spend.cost_per_enrolled) }}</div><div class="s">${{ '%.0f'|format(spend.total_usd) }} spent</div></div>
+  {% endif %}
 </div>
+
+<div class="app-card" style="margin-bottom:18px;">
+  <div class="app-card-title" style="padding:14px 18px 0;">{{ ic.icon('activity') }} <b>Funnel</b> <span class="app-sub" style="font-weight:400;color:var(--faint);">applicant → enrolled</span></div>
+  {% if stats.stages %}
+  <div class="rfunnel">
+    {% for st in stats.stages %}
+    <div class="rfunnel-step">
+      <div class="rfunnel-barwrap">
+        <div class="rfunnel-bar{{ ' is-leak' if stats.dropoff and st.label == stats.dropoff.to else '' }}" style="width: {{ [st.pct_of_top, 4]|max }}%;"></div>
+      </div>
+      <div class="rfunnel-meta">
+        <b>{{ st.label }}</b>
+        <span class="rfunnel-n">{{ st.reached }}</span>
+        {% if not loop.first %}{{ ui.badge('%d%%'|format(st.conv_from_prev|int), 'ok' if st.conv_from_prev|int >= 50 else ('warn' if st.conv_from_prev|int >= 25 else 'danger')) }}{% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% if stats.dropoff and stats.dropoff.lost %}
+  <div class="pad" style="padding-top:0;">
+    <div class="callout warn">Biggest leak: <b>{{ stats.dropoff.from }} → {{ stats.dropoff.to }}</b> loses {{ stats.dropoff.pct|int }}% ({{ stats.dropoff.lost }} applicant{{ 's' if stats.dropoff.lost != 1 else '' }}). Focus here to lift enrollment velocity.</div>
+  </div>
+  {% endif %}
+  {% else %}
+  <div class="pad">{{ ui.empty('No funnel data yet', 'As applicants move through stages, the funnel and leak points show here.', 'activity') }}</div>
+  {% endif %}
+</div>
+
+{% if stats.time_in_stage %}
+<div class="app-card" style="margin-bottom:18px;">
+  <div class="app-card-title" style="padding:14px 18px 0;">{{ ic.icon('clock') }} <b>Time in stage</b> <span class="app-sub" style="font-weight:400;color:var(--faint);">median days between steps</span></div>
+  <table class="app-table">
+    <thead><tr><th>Transition</th><th>Median days</th><th>Sample</th></tr></thead>
+    <tbody>
+      {% for t in stats.time_in_stage %}
+      <tr>
+        <td><b>{{ t.from }} → {{ t.to }}</b></td>
+        <td>{% if t.n %}{{ t.median_days }}d{% else %}<span style="color:var(--faint);">—</span>{% endif %}</td>
+        <td><span style="color:var(--faint);">{{ t.n }}</span></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
 
 <div class="app-card" style="margin-bottom:18px;">
   <div class="app-card-title" style="padding:14px 18px 0;">{{ ic.icon('file') }} <b>By study</b></div>
@@ -64,7 +112,7 @@
     <tbody>
       {% for s in stats.source_breakdown %}
       <tr>
-        <td><b>{{ 'Physician referrals' if (s.source or '') == 'physician' else 'Patient self-serve' }}</b></td>
+        <td><b>{{ s.source }}</b></td>
         <td>{{ s.total }}</td>
         <td>{{ s.screening }}</td>
         <td>{{ s.enrolled }}</td>

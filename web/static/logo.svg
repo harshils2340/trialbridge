@@ -1,10 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="BridgeMD">
-  <rect width="512" height="512" rx="112" fill="#1a6eb0"/>
-  <!-- Medical cross whose horizontal span carries bridge abutments (connecting two sides) -->
-  <g fill="#ffffff">
-    <rect x="120" y="236" width="272" height="40" rx="20"/>
-    <rect x="108" y="224" width="44" height="64" rx="16"/>
-    <rect x="360" y="224" width="44" height="64" rx="16"/>
-    <rect x="236" y="150" width="40" height="212" rx="20"/>
+  <rect width="512" height="512" rx="116" fill="#0d6c6a"/>
+  <g transform="translate(256 256) scale(0.84) translate(-256 -256)" fill-rule="evenodd">
+    <path fill="#86b5b4" d="M142 96 H254 A46 46 0 0 1 300 142 V254 A46 46 0 0 1 254 300 H142 A46 46 0 0 1 96 254 V142 A46 46 0 0 1 142 96 Z M258 212 H300 V254 A46 46 0 0 1 254 300 H212 V258 A46 46 0 0 1 258 212 Z"/>
+    <path fill="#ffffff" d="M258 212 H370 A46 46 0 0 1 416 258 V370 A46 46 0 0 1 370 416 H258 A46 46 0 0 1 212 370 V258 A46 46 0 0 1 258 212 Z M258 212 H300 V254 A46 46 0 0 1 254 300 H212 V258 A46 46 0 0 1 258 212 Z"/>
   </g>
 </svg>

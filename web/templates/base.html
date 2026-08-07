@@ -24,8 +24,8 @@
   <link rel="icon" href="{{ static_url('favicon.ico') }}" sizes="any">
   <link rel="apple-touch-icon" sizes="180x180" href="{{ static_url('apple-touch-icon.png') }}">
   <link rel="manifest" href="{{ static_url('site.webmanifest') }}">
-  <meta name="theme-color" content="#f8fafc" media="(prefers-color-scheme: light)">
-  <meta name="theme-color" content="#0f172a" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#f8f9fa" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#17191d" media="(prefers-color-scheme: dark)">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -43,7 +43,7 @@
 <div class="appshell">
   <aside class="appside" id="appSidebar">
     <a class="appside-brand" href="{{ url_for('study_home') }}">
-      <span class="appside-logo"><img src="{{ static_url('logo.svg') }}" width="18" height="18" alt=""></span>
+      <span class="appside-logo">{{ ic.icon('mark') }}</span>
       <span class="bt"><b>BridgeMD</b><small>for sites</small></span>
     </a>
     <nav class="appnav">
@@ -52,6 +52,7 @@
       <a href="{{ url_for('leads') }}" class="{{ 'active' if request.endpoint in ['leads','applicant_detail'] }}">{{ ic.icon('user-plus') }}Applicants</a>
       <a href="{{ url_for('campaign_list') }}" class="{{ 'active' if request.endpoint in ['campaign_list','campaign_detail'] }}">{{ ic.icon('megaphone') }}Campaigns</a>
       <a href="{{ url_for('recruitment_dashboard') }}" class="{{ 'active' if request.endpoint == 'recruitment_dashboard' }}">{{ ic.icon('activity') }}Recruitment</a>
+      <a href="{{ url_for('recruitment_balance') }}" class="{{ 'active' if request.endpoint in ['recruitment_balance','recruitment_balance_targets'] }}">{{ ic.icon('users') }}Enrollment balance</a>
       <a href="{{ url_for('site_setup') }}" class="{{ 'active' if request.endpoint in ['site_setup','add_study_claim','remove_study_claim','team_page','team_invite','team_set_role','team_remove','intake_page','intake_import'] }}">{{ ic.icon('gear') }}Settings</a>
       {% if is_owner %}
       <a href="{{ url_for('internal_hub') }}" class="appnav-internal {{ 'active' if request.endpoint in ['internal_hub','operator_inbox','internal_registry','internal_registry_opt_out','internal_recruitment','internal_recruitment_targets','owner_analytics'] }}">{{ ic.icon('shield') }}Internal</a>
@@ -140,7 +141,7 @@
 {% else %}
 <div class="layout">
   <aside class="sidebar">
-    <a class="brand" href="{{ url_for('dashboard') }}"><img class="brand-mark" src="{{ static_url('logo.svg') }}" width="24" height="24" alt="">BridgeMD</a>
+    <a class="brand" href="{{ url_for('dashboard') }}">{{ ic.icon('mark', 'brand-glyph') }}BridgeMD</a>
     {% if demo_available %}<div class="side-pov">{% include "_pov_bar.html" %}</div>{% endif %}
     <nav class="side-nav">
       {# Clinician = the referring physician. They refer their own patients; they

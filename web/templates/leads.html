@@ -93,7 +93,7 @@
               <b>{{ q.name }}</b>
               <span>{{ q.email or q.title[:38] }}</span>
             </div>
-            {% if q.unread %}{{ ui.count(q.unread, 'danger') }}{% endif %}
+            {% if q.unread %}{{ ui.count(q.unread, 'brand') }}{% endif %}
           </div>
         </td>
         <td>{{ ui.badge(q.verdict.label, q.verdict.tone) }}</td>

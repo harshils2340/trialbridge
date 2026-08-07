@@ -26,11 +26,11 @@ SIZES = {
 # ── Accents: named -> (bar/ink color, tint for soft fills). Default is "ink"
 # (near-black) to match the app's black-not-blue brand. All are on-brand. ──
 ACCENTS = {
-    "ink":    ("#0f172a", "#eef2f7"),
-    "blue":   ("#1a6eb0", "#e8f2fb"),
+    "ink":    ("#17191d", "#eef0f2"),
+    "teal":   ("#0d6c6a", "#e6f4f3"),
     "green":  ("#16a34a", "#e7f7ec"),
-    "violet": ("#6d28d9", "#f2ecfd"),
-    "teal":   ("#0e7490", "#e6f6fb"),
+    "plum":   ("#9d3f6d", "#fbeef4"),
+    "pine":   ("#115e59", "#e4f2f0"),
 }
 
 TEMPLATES = ("clean", "bold", "flyer")
@@ -162,7 +162,7 @@ def render_ad_svg(headline: str, body: str = "", *, template: str = "clean",
             f'font-weight="700" letter-spacing="2" fill="{ink}">{eyebrow}</text>')
         hy = int(pad * 2.1)
         parts.append(
-            f'<text {font} font-size="{h_size}" font-weight="800" fill="#0f172a">'
+            f'<text {font} font-size="{h_size}" font-weight="800" fill="#17191d">'
             f'{_tspans(h_lines, pad, hy, h_lh)}</text>')
         if b_lines:
             by = hy + len(h_lines) * h_lh + int(pad * 0.5)

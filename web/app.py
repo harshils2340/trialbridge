@@ -65,6 +65,7 @@ import payer  # noqa: E402
 import records as records_mod  # noqa: E402
 import redcap  # noqa: E402
 import reminders as reminders_mod  # noqa: E402
+import sites_features  # noqa: E402
 import summarize  # noqa: E402
 import trends  # noqa: E402
 import ctis  # noqa: E402
@@ -172,14 +173,24 @@ if NO_LOGIN and IS_PROD and PUBLIC_DEMO:
 # the site side fully locked down.
 SITE_DEMO = os.environ.get("SITE_DEMO", "1") == "1"
 
+# Optional dedicated host for the site-side marketing site (e.g.
+# "sites.bridgemd.health"). When set AND a request arrives on that host, "/"
+# serves the for-sites page so it behaves like its own standalone website.
+# Empty by default => zero effect; the page still lives at /for-sites on the
+# main domain (so the "For sites" link and normal search keep working).
+SITES_HOST = os.environ.get("SITES_HOST", "").strip().lower()
+
+# Booking link used by the "Book a demo" CTA on the site-side site.
+CAL_LINK = os.environ.get("CAL_LINK", "https://cal.com/harshil-shah-7tkvs7/30min").strip()
+
 # Study-team paths where an anonymous visitor may be shown the demo account.
 # (Excludes owner-only /app/analytics.) Patient/clinician/public paths are never
 # auto-impersonated, so they stay public/gated exactly as before.
 _STUDY_TEAM_DEMO_PREFIXES = (
     "/app/leads", "/app/messages", "/app/site", "/app/dashboard",
-    "/app/campaign", "/app/intake", "/app/home", "/app/applicant",
-    "/app/matching", "/app/documents", "/app/copilot", "/app/team",
-    "/files/lead", "/files/team")
+    "/app/balance", "/app/campaign", "/app/intake", "/app/home",
+    "/app/applicant", "/app/matching", "/app/documents", "/app/copilot",
+    "/app/team", "/files/lead", "/files/team")
 
 # Health-records / EHR sync (SMART Health IT) is hidden for now — the connector
 # is still a sandbox and not patient-ready. Flip RECORDS_UI=1 to re-enable the
@@ -1289,6 +1300,7 @@ def inject_globals():
             or path.startswith("/app/inbox")
             or path.startswith("/app/site") or path.startswith("/app/messages")
             or path.startswith("/app/analytics") or path.startswith("/app/home")
+            or path.startswith("/app/balance")
             or path.startswith("/app/applicant") or path.startswith("/app/matching")
             or path.startswith("/app/documents")
             or path.startswith("/app/team")
@@ -1349,7 +1361,37 @@ def inject_globals():
             "nav_studies": nav_studies, "active_nct": active_nct,
             "active_study_label": active_study_label,
             "matches_new": matches_new,
+            "sites_home_url": _sites_home_url(),
+            "sites_nav_features": sites_features.nav_items(),
             "is_owner": _is_owner()}
+
+
+def _sites_home_url():
+    """Absolute URL of the site-side site: the dedicated subdomain when
+    SITES_HOST is configured, otherwise the /for-sites route on the current
+    domain. Lets the 'For sites' link point at sites.bridgemd.health in prod
+    while still working locally / before DNS is set up."""
+    if SITES_HOST:
+        scheme = "https" if os.environ.get("BEHIND_PROXY") else request.scheme
+        return f"{scheme}://{SITES_HOST}/"
+    try:
+        return url_for("for_sites")
+    except Exception:
+        return "/for-sites"
+
+
+@app.before_request
+def _serve_sites_subdomain():
+    """When a request lands on the dedicated site-side host (SITES_HOST), serve
+    the for-sites marketing page at the root so it behaves like its own website
+    (e.g. sites.bridgemd.health). No effect unless SITES_HOST is set and matches
+    the request host, so it is completely inert in dev / on the main domain."""
+    if not SITES_HOST:
+        return None
+    host = (request.host or "").split(":")[0].lower()
+    if host == SITES_HOST and request.path == "/":
+        return for_sites()
+    return None
 
 
 @app.route("/demo-mode", methods=["POST"])
@@ -4008,12 +4050,49 @@ def how_it_works():
 
 @app.route("/for-clinicians")
 def for_clinicians():
-    """B2B marketing page for research sites, clinics and sponsors: what BridgeMD
-    does for study teams (pre-screened intake, enrollment funnel, compliant
-    in-clinic recruitment) plus a live-demo request form. Patient-free by design
-    to keep the page role-pure."""
+    """Legacy B2B page for sites/clinics/sponsors. Superseded by the /for-sites
+    coordinator-OS page, which now covers sites, clinics and sponsors. Redirect so
+    old links, ads and bookmarks land on the current site-side page instead."""
     _log_event("view_for_clinicians")
-    return render_template("for_clinicians.html", legal_contact=LEGAL_CONTACT)
+    return redirect(_sites_home_url(), code=301)
+
+
+@app.route("/for-sites")
+def for_sites():
+    """Flagship site-side product site for research sites & sponsors/CROs: a modern
+    overview of the coordinator OS with an INTEGRATED live demo (the real app in
+    SITE_DEMO mode, embedded), honest capability stats, and a security/legal
+    section with truthful status labels (SOC 2 shown as In progress - never a
+    fabricated certification). Patient-free by design to keep the page role-pure."""
+    _log_event("view_for_sites")
+    try:
+        conditions_count = len(SEO_CONDITIONS)
+    except Exception:
+        conditions_count = 0
+    try:
+        cities_count = len(_CITY_BY_SLUG)
+    except Exception:
+        cities_count = 0
+    return render_template(
+        "for_sites.html", legal_contact=LEGAL_CONTACT,
+        conditions_count=conditions_count, cities_count=cities_count,
+        cal_link=CAL_LINK, site_demo=_site_demo_enabled())
+
+
+@app.route("/for-sites/<slug>")
+def for_sites_feature(slug):
+    """Detail page for one pillar of the coordinator OS (intake, pre-screen,
+    scheduling, documents). Content lives in sites_features.py so every page
+    carries the same honest sections: what it does, what it does NOT do, how it
+    works, and the legal position. 404 on an unknown slug rather than rendering
+    an empty shell."""
+    feature = sites_features.get(slug)
+    if feature is None:
+        abort(404)
+    _log_event("view_for_sites_feature", slug)
+    return render_template(
+        "for_sites_feature.html", feature=feature, legal_contact=LEGAL_CONTACT,
+        cal_link=CAL_LINK)
 
 
 @app.route("/for-clinicians/demo", methods=["POST"])
@@ -4021,9 +4100,12 @@ def demo_request():
     """Handle the 'book a live demo' form. Records the request (so it is never
     lost even if email delivery is off) and emails the team. Compliance: this is
     a SaaS sales lead, not a referral - no money moves to any referral source."""
+    return_to = url_for("for_sites") + "#contact" \
+        if request.form.get("source") == "sites" \
+        else url_for("for_clinicians") + "#demo"
     blocked = _guard_ip_rate_limit("demo_request")
     if blocked is not None:
-        return redirect(url_for("for_clinicians") + "#demo")
+        return redirect(return_to)
     name = request.form.get("name", "").strip()
     org = request.form.get("org", "").strip()
     email = request.form.get("email", "").strip()
@@ -4031,7 +4113,7 @@ def demo_request():
     message = request.form.get("message", "").strip()
     if not (name and org and email):
         flash("Please add your name, organization, and work email.", "error")
-        return redirect(url_for("for_clinicians") + "#demo")
+        return redirect(return_to)
     # Log first so the lead is captured even when SMTP/notifications are off.
     _log_event("demo_request", {"org": org, "role": role})
     subject = f"BridgeMD demo request - {org}"
@@ -4048,7 +4130,7 @@ def demo_request():
     ])
     _notify(OWNER_NOTIFY_EMAIL, subject, body)
     flash("Thanks - we'll email you shortly to schedule your live demo.", "success")
-    return redirect(url_for("for_clinicians") + "#demo")
+    return redirect(return_to)
 
 
 @app.route("/privacy")
@@ -6021,16 +6103,13 @@ def _age_bands(boundaries):
     return bands
 
 
-@app.route("/internal/recruitment")
-@owner_required
-def internal_recruitment():
-    """Owner-only recruitment tracker: applications by source and demographic
-    balance (age bands + sex) against a target, so skewed/under-filled buckets
-    are obvious at a glance."""
-    all_leads = db.list_leads()
+def _recruitment_balance_ctx(all_leads, nct):
+    """Demographic-balance + source-mix view for a set of leads. Shared by the
+    owner tracker (global) and the coordinator page (scoped to claimed studies),
+    so the exact same math backs both - no duplicated logic, no drift."""
     studies = sorted({(l["nct"], (l["title"] or l["nct"]))
                       for l in all_leads if l["nct"]}, key=lambda x: (x[1] or "").lower())
-    nct = (request.args.get("nct") or "").strip()
+    nct = (nct or "").strip()
     leads = [l for l in all_leads if l["nct"] == nct] if nct else all_leads
 
     try:
@@ -6111,19 +6190,18 @@ def internal_recruitment():
     stats = {"total": len(leads), "known_age": total_known,
              "sources": len(src), "campaign_tracked": campaign_tracked,
              "target": total_target}
-    return render_template(
-        "internal_recruitment.html", studies=studies, nct=nct, stats=stats,
-        age_rows=age_rows, age_unknown=age_unknown, skew=skew,
-        sex_rows=sex_rows, source_rows=source_rows,
-        boundaries=",".join(str(b) for b in boundaries),
-        total_target=total_target)
+    return {
+        "studies": studies, "nct": nct, "stats": stats,
+        "age_rows": age_rows, "age_unknown": age_unknown, "skew": skew,
+        "sex_rows": sex_rows, "source_rows": source_rows,
+        "boundaries": ",".join(str(b) for b in boundaries),
+        "total_target": total_target,
+    }
 
 
-@app.route("/internal/recruitment/targets", methods=["POST"])
-@owner_required
-def internal_recruitment_targets():
-    """Save the enrollment target + age boundaries for a study (or all studies)."""
-    nct = (request.form.get("nct") or "").strip()
+def _save_recruitment_targets(nct):
+    """Persist enrollment target + age boundaries for a study (shared by owner
+    and coordinator save routes). Target is per-NCT (a protocol's own goal)."""
     boundaries = _parse_boundaries(request.form.get("boundaries", "18,30,45,65"))
     try:
         total_target = max(0, int(request.form.get("total_target") or 0))
@@ -6132,8 +6210,55 @@ def internal_recruitment_targets():
     db.set_kv(_recruit_targets_key(nct), json.dumps({
         "boundaries": ",".join(str(b) for b in boundaries),
         "total_target": total_target}))
+
+
+@app.route("/internal/recruitment")
+@owner_required
+def internal_recruitment():
+    """Owner-only recruitment tracker (global): applications by source and
+    demographic balance (age bands + sex) against a target."""
+    ctx = _recruitment_balance_ctx(db.list_leads(), request.args.get("nct"))
+    return render_template(
+        "internal_recruitment.html", page_endpoint="internal_recruitment",
+        targets_endpoint="internal_recruitment_targets", allow_all_studies=True,
+        **ctx)
+
+
+@app.route("/internal/recruitment/targets", methods=["POST"])
+@owner_required
+def internal_recruitment_targets():
+    """Save the enrollment target + age boundaries for a study (or all studies)."""
+    nct = (request.form.get("nct") or "").strip()
+    _save_recruitment_targets(nct)
     flash("Recruitment targets saved.", "success")
     return redirect(url_for("internal_recruitment", nct=nct or None))
+
+
+@app.route("/app/balance")
+@login_required
+def recruitment_balance():
+    """Coordinator enrollment-balance page: demographic + source mix vs target,
+    SCOPED to the account's claimed studies (not global). Same math as the owner
+    tracker; lets a coordinator keep the cohort balanced per protocol."""
+    claims = _site_claims()
+    leads = analytics._scoped_leads(sorted(claims)) if claims else []
+    ctx = _recruitment_balance_ctx(leads, request.args.get("nct"))
+    return render_template(
+        "internal_recruitment.html", page_endpoint="recruitment_balance",
+        targets_endpoint="recruitment_balance_targets", allow_all_studies=True,
+        coordinator=True, **ctx)
+
+
+@app.route("/app/balance/targets", methods=["POST"])
+@login_required
+def recruitment_balance_targets():
+    """Save enrollment target + boundaries for a claimed study (coordinator)."""
+    nct = (request.form.get("nct") or "").strip()
+    if nct and nct not in _site_claims():
+        abort(403)
+    _save_recruitment_targets(nct)
+    flash("Enrollment targets saved.", "success")
+    return redirect(url_for("recruitment_balance", nct=nct or None))
 
 
 @app.route("/app/inbox")
@@ -7879,7 +8004,7 @@ def sitemap():
 def sitemap_static():
     wk = _week_lastmod()
     urls = [(_sitemap_loc(e), wk) for e in
-            ("home", "find", "trials_index", "how_it_works", "for_clinicians")]
+            ("home", "find", "trials_index", "how_it_works", "for_sites")]
     return _sitemap_xml(urls)
 
 
