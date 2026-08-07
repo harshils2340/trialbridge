@@ -5297,73 +5297,71 @@ body.fs-page { background:
 .fs-hv-panel[data-hv="work"].is-active .fs-syncrow:nth-child(4) .fs-syncspin,
 .fs-hv-panel[data-hv="work"].is-active .fs-syncrow:nth-child(4) .fs-syncst em { animation-delay: 1s; }
 
-/* Campaign (Campaigns scene): a 4-step loop that reveals in order - paste the trial,
-   we recommend the channel + write the ad, it posts, then spend ties back to cost per
-   enrolled (closing the loop). All CSS, retriggered on each visit. */
-.fs-camp { display: flex; flex-direction: column; gap: 9px; }
-/* Numbered step: a small index chip on the left, the step's card on the right. */
-.fs-camp-step { display: flex; align-items: flex-start; gap: 10px; }
-.fs-camp-n { flex: none; width: 20px; height: 20px; margin-top: 1px; border-radius: 50%;
-  display: grid; place-items: center; font-size: 11px; font-weight: 800; color: var(--accent);
+/* Campaign (Campaigns scene): a connected 4-step stepper that makes the loop obvious -
+   you describe the trial ONCE (step 1), and BridgeMD does the rest (recommend + write,
+   post, track), ending on cost per enrolled. A vertical thread links the steps so it
+   reads as one flow. Steps reveal one at a time. All CSS, retriggered on each visit. */
+.fs-camp { position: relative; display: flex; flex-direction: column; gap: 14px; }
+/* Each step: numbered node + body. The node column carries a connector line to the next
+   step, turning four cards into one visible pipeline. */
+.fs-camp-step { display: grid; grid-template-columns: 24px 1fr; gap: 13px; align-items: start; }
+.fs-camp-n { position: relative; z-index: 1; width: 24px; height: 24px; border-radius: 50%;
+  display: grid; place-items: center; font-size: 11.5px; font-weight: 800; color: var(--accent);
   background: var(--accent-soft); border: 1px solid var(--brand-border); }
-.fs-camp-step > .fs-camp-paste, .fs-camp-step > .fs-camp-rec, .fs-camp-step > .fs-camp-run,
-.fs-camp-step > .fs-camp-res { flex: 1; min-width: 0; }
-.fs-camp-run { display: flex; flex-direction: column; gap: 8px; }
-.fs-camp-rec { display: flex; flex-direction: column; gap: 8px; }
-.fs-camp-rec-h { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; font-size: 12.5px;
-  font-weight: 700; color: var(--accent); }
-.fs-camp-rec-h svg { width: 14px; height: 14px; flex: none; }
-.fs-camp-rec-h b { color: var(--ink); }
-.fs-camp-rec-h em { font-style: normal; font-weight: 600; color: var(--muted); font-size: 11.5px; }
-/* Step 1: the trial info the coordinator pasted. */
-.fs-camp-paste { display: flex; align-items: center; gap: 10px; padding: 11px 13px;
-  background: var(--surface); border: 1px dashed var(--border); border-radius: 10px;
+.fs-camp-step:not(:last-child) .fs-camp-n::after { content: ""; position: absolute; top: 24px;
+  left: 50%; transform: translateX(-50%); width: 2px; height: calc(100% + 14px);
+  background: var(--brand-border); }
+.fs-camp-body { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+/* Step title: the plain-English "what just happened", so the loop is self-explanatory. */
+.fs-camp-t { margin: 0; font-size: 12px; font-weight: 700; color: var(--ink); }
+.fs-camp-t em { font-style: normal; color: var(--accent); }
+/* Step 1: styled like the one thing YOU type - a description, with a live caret. */
+.fs-camp-paste { display: flex; align-items: center; gap: 9px; padding: 11px 13px;
+  background: var(--surface); border: 1px dashed var(--border-strong); border-radius: 10px;
   font-size: 12px; color: var(--ink-soft); }
 .fs-camp-paste svg { width: 15px; height: 15px; color: var(--muted); flex: none; }
-.fs-camp-paste b { color: var(--ink); font-weight: 700; }
-.fs-camp-draft { display: flex; align-items: center; gap: 10px; padding: 12px 14px;
-  background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
-  font-size: 13px; color: var(--ink-soft); }
-.fs-camp-draft svg { width: 16px; height: 16px; color: var(--accent); flex: none; }
-.fs-camp-draft b { color: var(--ink); font-weight: 700; }
-.fs-camp-post { position: relative; overflow: hidden; display: flex; align-items: center; gap: 7px;
-  padding: 10px 14px; border-radius: 10px; background: var(--accent-soft);
-  border: 1px solid var(--brand-border); font-size: 12.5px; font-weight: 700; color: var(--accent); }
-.fs-camp-post svg { width: 13px; height: 13px; position: relative; z-index: 1; }
-.fs-camp-posting { position: relative; z-index: 1; display: inline-flex; align-items: center; gap: 6px; }
-.fs-camp-post i { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: var(--accent); opacity: .16; }
-.fs-hv-panel[data-hv="camp"].is-active .fs-camp-post i { animation: fs-camp-fill .8s ease 2.35s forwards; }
-@keyframes fs-camp-fill { to { width: 100%; } }
+.fs-camp-paste span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fs-camp-caret { flex: none; width: 2px; height: 15px; background: var(--accent); border-radius: 1px; }
+.fs-hv-panel[data-hv="camp"].is-active .fs-camp-caret { animation: fs-camp-blink 1s steps(2) infinite; }
+@keyframes fs-camp-blink { 50% { opacity: 0; } }
+/* Steps 2-4 share one card style so the column reads consistent. */
+.fs-camp-card { display: flex; flex-direction: column; gap: 8px; padding: 11px 13px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow); }
+.fs-camp-rec-h { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; font-size: 12.5px;
+  font-weight: 800; color: var(--ink); }
+.fs-camp-rec-h svg { width: 14px; height: 14px; flex: none; color: var(--accent); }
+.fs-camp-rec-h em { font-style: normal; font-weight: 600; color: var(--muted); font-size: 11.5px; }
+.fs-camp-ad { display: flex; align-items: center; gap: 8px; padding: 9px 11px; border-radius: 8px;
+  background: var(--bg); border: 1px solid var(--border); font-size: 12px; color: var(--ink-soft); }
+.fs-camp-ad svg { width: 14px; height: 14px; flex: none; color: var(--accent); }
+.fs-camp-ad span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fs-camp-flag { margin-left: auto; flex: none; font-size: 10px; font-weight: 800; color: var(--green);
+  background: var(--ok-bg); border: 1px solid var(--ok-border); border-radius: var(--radius-pill);
+  padding: 2px 8px; }
 .fs-camp-chans { display: flex; gap: 8px; }
 .fs-camp-chan { flex: 1; min-width: 0; display: inline-flex; align-items: center; gap: 7px;
-  padding: 9px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface);
-  font-size: 12.5px; font-weight: 700; color: var(--ink-soft); opacity: 0; }
+  padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface);
+  font-size: 12.5px; font-weight: 700; color: var(--ink-soft); box-shadow: var(--shadow); }
 .fs-camp-chan svg { width: 15px; height: 15px; flex: none; }
 .fs-camp-chan em { margin-left: auto; display: inline-flex; align-items: center; gap: 4px;
   font-style: normal; font-size: 11px; font-weight: 700; color: var(--green); }
 .fs-camp-chan em svg { width: 12px; height: 12px; }
-.fs-hv-panel[data-hv="camp"].is-active .fs-camp-chan { animation: fs-hv-row .4s ease both; animation-delay: 3.2s; }
-.fs-hv-panel[data-hv="camp"].is-active .fs-camp-chan:nth-child(2) { animation-delay: 3.32s; }
 .fs-camp-res { display: flex; gap: 7px; }
 .fs-camp-metric { flex: 1; text-align: center; padding: 10px 6px; border-radius: 10px;
-  background: var(--bg); border: 1px solid var(--border); font-size: 11px; color: var(--muted); opacity: 0; }
-.fs-camp-metric b { display: block; font-size: 18px; font-weight: 800; color: var(--ink);
+  background: var(--surface); border: 1px solid var(--border); font-size: 11px; color: var(--muted);
+  box-shadow: var(--shadow); }
+.fs-camp-metric b { display: block; font-size: 19px; font-weight: 900; color: var(--ink);
   letter-spacing: -.02em; margin-bottom: 2px; }
-/* Cost per enrolled is the payoff of the loop, so it is the emphasized metric. */
+/* Cost per enrolled is the payoff that closes the loop, so it is the emphasized metric. */
 .fs-camp-metric.is-key { background: var(--accent-soft); border-color: var(--brand-border); color: var(--accent); }
 .fs-camp-metric.is-key b { color: var(--accent); }
-.fs-hv-panel[data-hv="camp"].is-active .fs-camp-metric { animation: fs-hv-row .45s ease both; animation-delay: 3.85s; }
-.fs-hv-panel[data-hv="camp"].is-active .fs-camp-metric:nth-child(2) { animation-delay: 3.97s; }
-.fs-hv-panel[data-hv="camp"].is-active .fs-camp-metric:nth-child(3) { animation-delay: 4.09s; }
-/* Steps 1-4 play one at a time (paste -> recommend -> post -> track), each with a
-   beat between so it reads like it's really happening, not all at once. The whole
-   sequence lands ~4.5s, under the ~6.2s the scene is on screen before it auto-advances,
-   leaving a beat to read the cost-per-enrolled payoff. */
+/* Steps reveal one at a time so it reads like it's really running, ending ~3.7s -
+   well under the ~6.2s the scene is on screen, leaving a beat on the payoff. */
 .fs-hv-panel[data-hv="camp"].is-active .fs-camp-step { animation: fs-hv-row .5s ease both; }
 .fs-hv-panel[data-hv="camp"].is-active .fs-camp-step:nth-child(1) { animation-delay: .15s; }
-.fs-hv-panel[data-hv="camp"].is-active .fs-camp-step:nth-child(2) { animation-delay: 1.15s; }
-.fs-hv-panel[data-hv="camp"].is-active .fs-camp-step:nth-child(3) { animation-delay: 2.15s; }
-.fs-hv-panel[data-hv="camp"].is-active .fs-camp-step:nth-child(4) { animation-delay: 3.55s; }
+.fs-hv-panel[data-hv="camp"].is-active .fs-camp-step:nth-child(2) { animation-delay: 1.1s; }
+.fs-hv-panel[data-hv="camp"].is-active .fs-camp-step:nth-child(3) { animation-delay: 2.05s; }
+.fs-hv-panel[data-hv="camp"].is-active .fs-camp-step:nth-child(4) { animation-delay: 3s; }
 
 /* AI copilot scene: an OS-wide assistant that triages the morning across trials and
    drafts the next action. Cards pop in one at a time like notifications. */
@@ -5459,21 +5457,16 @@ body.fs-page { background:
   .fs-hv-panel.is-active .fs-hv-chip,
   .fs-hv-panel.is-active .fs-conv-inbox,
   .fs-hv-panel.is-active .fs-camp-step,
-  .fs-hv-panel.is-active .fs-camp-step,
-  .fs-hv-panel.is-active .fs-camp-chan,
-  .fs-hv-panel.is-active .fs-camp-metric,
   .fs-hv-panel.is-active .fs-ai-top,
   .fs-hv-panel.is-active .fs-ai-act,
   .fs-hv-panel.is-active .fs-ws-stat,
   .fs-hv-panel.is-active .fs-ws-trial,
   .fs-hv-panel.is-active .fs-ws-team { animation: none; }
   .fs-conv-l { animation: none; opacity: .5; }
-  .fs-hvchat-caret, .fs-hvtype span, .fs-hvbub { animation: none; }
+  .fs-hvchat-caret, .fs-hvtype span, .fs-hvbub, .fs-camp-caret { animation: none; }
   .fs-hv .fs-hv-tab.is-active::after { animation: none; transform: scaleX(1); }
   .fs-syncspin { display: none; }
   .fs-syncst em { opacity: 1; }
-  .fs-camp-post i { width: 100%; }
-  .fs-camp-chan, .fs-camp-metric { opacity: 1; }
 }
 
 /* Animated "ask the protocol" AI demo — SHOW the AI (compliant), don't describe it. */

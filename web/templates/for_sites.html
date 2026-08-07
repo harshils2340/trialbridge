@@ -171,28 +171,34 @@
           </div>
 
           <div class="fs-hv-panel" data-hv="camp" role="tabpanel" aria-hidden="true">
-            <h3 class="fs-hv-head">Paste the trial. We pick the ad, run it, and track every dollar.</h3>
+            <h3 class="fs-hv-head">Describe the trial once. We run the whole campaign.</h3>
             <div class="fs-camp">
               <div class="fs-camp-step">
                 <span class="fs-camp-n">1</span>
-                <div class="fs-camp-paste">{{ ic.icon('file') }}
-                  <span><b>Pasted:</b> Type 2 diabetes &middot; adults 18&ndash;75 &middot; HbA1c 7&ndash;10 &middot; Toronto</span></div>
+                <div class="fs-camp-body">
+                  <p class="fs-camp-t">You describe the trial <em>once</em></p>
+                  <div class="fs-camp-paste">{{ ic.icon('file') }}
+                    <span>Type 2 diabetes &middot; adults 18&ndash;75 &middot; HbA1c 7&ndash;10 &middot; Toronto</span>
+                    <i class="fs-camp-caret" aria-hidden="true"></i></div>
+                </div>
               </div>
               <div class="fs-camp-step">
                 <span class="fs-camp-n">2</span>
-                <div class="fs-camp-rec">
-                  <div class="fs-camp-rec-h">{{ ic.icon('sparkle') }} <b>Recommended:</b> Meta + Google Search
-                    <em>best reach for T2D near you</em></div>
-                  <div class="fs-camp-draft">{{ ic.icon('megaphone') }}
-                    <span><b>"Now enrolling: a Type 2 diabetes study"</b> &middot; ad written for you,
-                      IRB/REB-ready</span></div>
+                <div class="fs-camp-body">
+                  <p class="fs-camp-t">BridgeMD picks the channel and writes the ad</p>
+                  <div class="fs-camp-card">
+                    <div class="fs-camp-rec-h">{{ ic.icon('sparkle') }} Meta + Google Search
+                      <em>best reach for T2D near you</em></div>
+                    <div class="fs-camp-ad">{{ ic.icon('megaphone') }}
+                      <span>&ldquo;Now enrolling: a Type 2 diabetes study&rdquo;</span>
+                      <b class="fs-camp-flag">IRB/REB-ready</b></div>
+                  </div>
                 </div>
               </div>
               <div class="fs-camp-step">
                 <span class="fs-camp-n">3</span>
-                <div class="fs-camp-run">
-                  <div class="fs-camp-post"><i aria-hidden="true"></i>
-                    <span class="fs-camp-posting">{{ ic.icon('clock') }} Posting to Meta &amp; Google&hellip;</span></div>
+                <div class="fs-camp-body">
+                  <p class="fs-camp-t">It goes live for you</p>
                   <div class="fs-camp-chans">
                     <span class="fs-camp-chan">{{ ic.icon('meta', 'brand-ico') }} Meta
                       <em>{{ ic.icon('check') }} Live</em></span>
@@ -203,10 +209,13 @@
               </div>
               <div class="fs-camp-step">
                 <span class="fs-camp-n">4</span>
-                <div class="fs-camp-res">
-                  <span class="fs-camp-metric"><b>+14</b> applicants</span>
-                  <span class="fs-camp-metric"><b>$252</b> spent</span>
-                  <span class="fs-camp-metric is-key"><b>$18</b> per enrolled</span>
+                <div class="fs-camp-body">
+                  <p class="fs-camp-t">Every dollar tracked to an enrolled patient</p>
+                  <div class="fs-camp-res">
+                    <span class="fs-camp-metric"><b>+14</b> applicants</span>
+                    <span class="fs-camp-metric"><b>$252</b> spent</span>
+                    <span class="fs-camp-metric is-key"><b>$18</b> per enrolled</span>
+                  </div>
                 </div>
               </div>
             </div>
