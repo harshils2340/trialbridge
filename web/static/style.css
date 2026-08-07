@@ -5846,11 +5846,9 @@ body.fs-page { background:
 .fs-stat + .fs-stat { border-left: 1px solid var(--border); }
 .fs-stat-k { font-size: 11px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase;
   color: var(--accent); margin-bottom: 10px; }
-.fs-stat-n { font-family: var(--sans); font-size: clamp(32px, 4.2vw, 48px); font-weight: 800;
-  letter-spacing: -.035em; color: var(--ink); line-height: 1; white-space: nowrap; }
+.fs-stat-n { font-family: var(--sans); font-size: clamp(40px, 5vw, 60px); font-weight: 900;
+  letter-spacing: -.04em; color: var(--ink); line-height: 1; white-space: nowrap; }
 .fs-stat-l { font-size: 13px; line-height: 1.45; color: var(--muted); margin-top: 10px; }
-.fs-stat-sup { font-size: .42em; font-weight: 700; color: var(--muted); vertical-align: super;
-  margin-left: 2px; }
 .fs-stats-note { max-width: 900px; margin: 28px auto 0; font-size: 12px; line-height: 1.55;
   color: var(--faint); text-align: center; }
 .fs-stats-note b { color: var(--muted); font-weight: 700; }
