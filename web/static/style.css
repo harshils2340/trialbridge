@@ -2545,9 +2545,16 @@ h1, h2, h3 {
   position: sticky;
   top: 0;
   z-index: 20;
+  background: transparent;
+  border-bottom: 1px solid transparent;
+  transition: background .2s ease, border-color .2s ease, backdrop-filter .2s ease;
+}
+/* Transparent at the top so it melts into the page tint; frosts once you scroll
+   past the hero so text stays legible over content. */
+body.pub.is-scrolled .pub-nav {
+  background: color-mix(in srgb, var(--surface) 82%, transparent);
   backdrop-filter: blur(10px);
-  background: rgba(255,255,255,.88);
-  border-bottom: 1px solid var(--border);
+  border-bottom-color: var(--border);
 }
 @media (max-width: 760px) {
   .pub-nav { display: flex; flex-wrap: wrap; justify-content: space-between; }
@@ -5266,50 +5273,6 @@ body.fs-page { background:
 .fs-hv-panel[data-hv="intake"].is-active .fs-conv-inbox .fs-qrow:nth-child(2) { animation-delay: .54s; }
 .fs-hv-panel[data-hv="intake"].is-active .fs-conv-inbox .fs-qrow:nth-child(3) { animation-delay: .64s; }
 
-/* Protocol chat (Ask scene): a real typing -> cited-answer loop. */
-.fs-hvchat { display: flex; flex-direction: column; background: var(--bg);
-  border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; }
-.fs-hvchat-bar { display: flex; align-items: center; gap: 8px; padding: 9px 13px;
-  background: var(--surface); border-bottom: 1px solid var(--border); }
-.fs-hvchat-doc { display: inline-flex; align-items: center; gap: 6px; font-size: 12px;
-  font-weight: 700; color: var(--muted); }
-.fs-hvchat-doc svg { width: 14px; height: 14px; color: var(--accent); }
-.fs-hvchat-tag { margin-left: auto; display: inline-flex; align-items: center; gap: 5px;
-  font-size: 11px; font-weight: 700; color: var(--accent); background: var(--accent-soft);
-  border: 1px solid var(--brand-border); border-radius: var(--radius-pill); padding: 3px 9px;
-  white-space: nowrap; }
-.fs-hvchat-tag svg { width: 11px; height: 11px; }
-.fs-hvchat-scroll { height: 156px; overflow: hidden; padding: 14px; display: flex;
-  flex-direction: column; gap: 10px; justify-content: flex-end; }
-.fs-hvbub { max-width: 86%; font-size: 13.5px; line-height: 1.45; padding: 10px 13px;
-  border-radius: var(--radius-lg); animation: fs-hv-row .3s ease both; }
-.fs-hvbub.is-you { align-self: flex-end; background: var(--accent); color: var(--accent-ink);
-  font-weight: 600; border-bottom-right-radius: 4px; }
-.fs-hvbub.is-ai { align-self: flex-start; background: var(--surface); color: var(--ink);
-  border: 1px solid var(--border); border-bottom-left-radius: 4px; }
-.fs-hvbub.is-ai b { color: var(--green); }
-.fs-hvbub-cite { display: inline-flex; align-items: center; gap: 6px; margin-top: 9px;
-  font-size: 11.5px; font-weight: 700; color: var(--muted); background: var(--bg);
-  border: 1px solid var(--border); border-radius: var(--radius-pill); padding: 4px 9px; }
-.fs-hvbub-cite svg { width: 12px; height: 12px; color: var(--accent); }
-.fs-hvtype { align-self: flex-start; display: inline-flex; gap: 5px; padding: 12px 14px;
-  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg);
-  border-bottom-left-radius: 4px; }
-.fs-hvtype span { width: 6px; height: 6px; border-radius: 50%; background: var(--faint);
-  animation: fsAiBlink 1.2s infinite ease-in-out; }
-.fs-hvtype span:nth-child(2) { animation-delay: .2s; }
-.fs-hvtype span:nth-child(3) { animation-delay: .4s; }
-.fs-hvchat-input { display: flex; align-items: center; gap: 8px; padding: 10px 13px;
-  border-top: 1px solid var(--border); background: var(--surface); min-height: 44px; }
-.fs-hvchat-field { flex: 1; min-width: 0; font-size: 13.5px; color: var(--ink);
-  white-space: nowrap; overflow: hidden; }
-.fs-hvchat-caret { width: 2px; height: 17px; margin-left: -6px; background: var(--accent);
-  animation: fs-hv-caret 1s steps(1) infinite; }
-@keyframes fs-hv-caret { 50% { opacity: 0; } }
-.fs-hvchat-btn { display: grid; place-items: center; width: 32px; height: 32px; flex: none;
-  border-radius: 9px; background: var(--accent); color: var(--accent-ink); }
-.fs-hvchat-btn svg { width: 15px; height: 15px; }
-
 /* Document sync (Workspace scene): each role row shows a spinner that resolves to a
    green "current" state, staggered, so it reads as one upload syncing to everyone. */
 .fs-syncst { margin-left: auto; flex: none; position: relative; min-width: 96px; height: 16px;
@@ -5420,9 +5383,29 @@ body.fs-page { background:
 .fs-ai-btn { flex: none; font-size: 12px; font-weight: 700; padding: 6px 13px; border-radius: var(--radius-pill);
   color: var(--accent-ink); background: var(--accent); }
 .fs-ai-btn.ghost { color: var(--accent); background: var(--accent-soft); border: 1px solid var(--brand-border); }
-/* Workspace scene: the OS command center. The AI briefs you on what needs you today
-   across every trial (triage), and the team strip shows one shared, scoped workspace —
-   so this tab sells the operating system, not a single feature. */
+.fs-hv-panel[data-hv="ask"].is-active .fs-ai-top { animation: fs-hv-row .34s ease both; }
+.fs-hv-panel[data-hv="ask"].is-active .fs-ai-act { animation: fs-hv-row .4s ease both; animation-delay: .14s; }
+.fs-hv-panel[data-hv="ask"].is-active .fs-ai-act:nth-child(2) { animation-delay: .3s; }
+.fs-hv-panel[data-hv="ask"].is-active .fs-ai-act:nth-child(3) { animation-delay: .46s; }
+
+/* Workspace scene: the whole site at a glance, so it sells the OS (pipeline + trials +
+   team in one screen) rather than a single feature. */
+.fs-ws { display: flex; flex-direction: column; gap: 9px; }
+.fs-ws-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.fs-ws-stat { text-align: center; padding: 11px 6px; border-radius: 12px;
+  background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow); }
+.fs-ws-stat b { display: block; font-size: 22px; font-weight: 800; color: var(--ink); letter-spacing: -.02em; }
+.fs-ws-stat span { font-size: 10.5px; color: var(--muted); }
+.fs-ws-trials { display: flex; flex-direction: column; gap: 6px; }
+.fs-ws-trial { display: flex; align-items: center; gap: 9px; padding: 9px 12px; font-size: 12.5px;
+  border-radius: 10px; background: var(--surface); border: 1px solid var(--border); }
+.fs-ws-trial b { color: var(--ink); font-weight: 700; min-width: 0; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; }
+.fs-ws-meta { margin-left: auto; flex: none; font-size: 11px; color: var(--muted); }
+.fs-ws-stage { flex: none; font-size: 10px; font-weight: 700; color: var(--accent);
+  background: var(--accent-soft); border: 1px solid var(--brand-border); padding: 2px 8px;
+  border-radius: var(--radius-pill); }
+.fs-ws-stage.warn { color: var(--amber); background: var(--amber-bg); border-color: var(--warn-border); }
 .fs-ws-team { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 10px;
   background: var(--accent-soft); border: 1px solid var(--brand-border); }
 .fs-ws-avs { display: inline-flex; flex: none; }
@@ -5431,11 +5414,13 @@ body.fs-page { background:
   background: var(--surface); border: 1px solid var(--brand-border); margin-left: -6px; }
 .fs-ws-avs i:first-child { margin-left: 0; }
 .fs-ws-teamtx { font-size: 11.5px; color: var(--muted); min-width: 0; }
-.fs-hv-panel[data-hv="work"].is-active .fs-ai-top { animation: fs-hv-row .34s ease both; }
-.fs-hv-panel[data-hv="work"].is-active .fs-ai-act { animation: fs-hv-row .4s ease both; animation-delay: .14s; }
-.fs-hv-panel[data-hv="work"].is-active .fs-ai-act:nth-child(2) { animation-delay: .3s; }
-.fs-hv-panel[data-hv="work"].is-active .fs-ai-act:nth-child(3) { animation-delay: .46s; }
-.fs-hv-panel[data-hv="work"].is-active .fs-ws-team { animation: fs-hv-row .4s ease both; animation-delay: .6s; }
+.fs-hv-panel[data-hv="work"].is-active .fs-ws-stat { animation: fs-hv-row .4s ease both; }
+.fs-hv-panel[data-hv="work"].is-active .fs-ws-stat:nth-child(2) { animation-delay: .08s; }
+.fs-hv-panel[data-hv="work"].is-active .fs-ws-stat:nth-child(3) { animation-delay: .16s; }
+.fs-hv-panel[data-hv="work"].is-active .fs-ws-trial { animation: fs-hv-row .4s ease both; animation-delay: .24s; }
+.fs-hv-panel[data-hv="work"].is-active .fs-ws-trial:nth-child(2) { animation-delay: .34s; }
+.fs-hv-panel[data-hv="work"].is-active .fs-ws-trial:nth-child(3) { animation-delay: .44s; }
+.fs-hv-panel[data-hv="work"].is-active .fs-ws-team { animation: fs-hv-row .4s ease both; animation-delay: .54s; }
 
 .fs-qrow { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 9px 13px;
   font-size: 13.5px; font-weight: 600; color: var(--ink-soft);
@@ -5472,9 +5457,11 @@ body.fs-page { background:
   .fs-hv-panel.is-active .fs-camp-step,
   .fs-hv-panel.is-active .fs-ai-top,
   .fs-hv-panel.is-active .fs-ai-act,
+  .fs-hv-panel.is-active .fs-ws-stat,
+  .fs-hv-panel.is-active .fs-ws-trial,
   .fs-hv-panel.is-active .fs-ws-team { animation: none; }
   .fs-conv-l { animation: none; opacity: .5; }
-  .fs-hvchat-caret, .fs-hvtype span, .fs-hvbub, .fs-camp-caret { animation: none; }
+  .fs-camp-caret { animation: none; }
   .fs-hv .fs-hv-tab.is-active::after { animation: none; transform: scaleX(1); }
   .fs-syncspin { display: none; }
   .fs-syncst em { opacity: 1; }

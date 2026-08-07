@@ -74,9 +74,9 @@
           <button class="fs-hv-tab is-active" role="tab" aria-selected="true" data-hv="intake" type="button">
             {{ ic.icon('inbox') }}<span>Intake</span></button>
           <button class="fs-hv-tab" role="tab" aria-selected="false" data-hv="ask" type="button">
-            {{ ic.icon('chat') }}<span>Ask protocol</span></button>
+            {{ ic.icon('sparkle') }}<span>AI copilot</span></button>
           <button class="fs-hv-tab" role="tab" aria-selected="false" data-hv="work" type="button">
-            {{ ic.icon('sparkle') }}<span>Workspace</span></button>
+            {{ ic.icon('grid') }}<span>Workspace</span></button>
           <button class="fs-hv-tab" role="tab" aria-selected="false" data-hv="camp" type="button">
             {{ ic.icon('megaphone') }}<span>Campaigns</span></button>
         </div>
@@ -117,22 +117,7 @@
           </div>
 
           <div class="fs-hv-panel" data-hv="ask" role="tabpanel" aria-hidden="true">
-            <h3 class="fs-hv-head">Ask the protocol, without leaking it</h3>
-            <div class="fs-hvchat" data-hvchat>
-              <div class="fs-hvchat-bar">
-                <span class="fs-hvchat-doc">{{ ic.icon('file-check') }} Phase 2 protocol &middot; v3</span>
-                <span class="fs-hvchat-tag">{{ ic.icon('lock') }} No-training endpoint</span>
-              </div>
-              <div class="fs-hvchat-scroll" data-hvchat-scroll></div>
-              <div class="fs-hvchat-input">
-                <span class="fs-hvchat-field" data-hvchat-field></span><span class="fs-hvchat-caret"></span>
-                <span class="fs-hvchat-btn" aria-hidden="true">{{ ic.icon('send') }}</span>
-              </div>
-            </div>
-          </div>
-
-          <div class="fs-hv-panel" data-hv="work" role="tabpanel" aria-hidden="true">
-            <h3 class="fs-hv-head">One screen that tells you what to do next</h3>
+            <h3 class="fs-hv-head">Your copilot triages the morning</h3>
             <div class="fs-ai">
               <div class="fs-ai-top">{{ ic.icon('sparkle') }}<b>This morning, across 3 trials</b>
                 <span>3 things need you</span></div>
@@ -156,9 +141,31 @@
                   <span class="fs-ai-btn ghost">Start</span>
                 </div>
               </div>
+            </div>
+          </div>
+
+          <div class="fs-hv-panel" data-hv="work" role="tabpanel" aria-hidden="true">
+            <h3 class="fs-hv-head">Run the whole site from one screen</h3>
+            <div class="fs-ws">
+              <div class="fs-ws-stats">
+                <div class="fs-ws-stat"><b>3</b><span>active trials</span></div>
+                <div class="fs-ws-stat"><b>11</b><span>in screening</span></div>
+                <div class="fs-ws-stat"><b>6</b><span>enrolled this month</span></div>
+              </div>
+              <div class="fs-ws-trials">
+                <div class="fs-ws-trial"><span class="fs-hub-trial-dot"></span>
+                  <b>Tirzepatide &middot; T2D</b>
+                  <span class="fs-ws-meta">12 in queue</span><span class="fs-ws-stage">Screening</span></div>
+                <div class="fs-ws-trial"><span class="fs-hub-trial-dot is-b"></span>
+                  <b>Semaglutide CV</b>
+                  <span class="fs-ws-meta">5 new</span><span class="fs-ws-stage">Enrolling</span></div>
+                <div class="fs-ws-trial"><span class="fs-hub-trial-dot is-c"></span>
+                  <b>NASH Phase 2</b>
+                  <span class="fs-ws-meta">8 new</span><span class="fs-ws-stage warn">Startup</span></div>
+              </div>
               <div class="fs-ws-team">
                 <span class="fs-ws-avs"><i>PI</i><i>JC</i><i>MR</i><i>SM</i></span>
-                <span class="fs-ws-teamtx">PI, coordinators and the sponsor's monitor &mdash; one workspace, scoped access &amp; a full audit trail</span>
+                <span class="fs-ws-teamtx">PI, coordinators and the sponsor's monitor, one place with scoped access</span>
               </div>
             </div>
           </div>
@@ -249,9 +256,9 @@
 
 <!-- ─────────── Product tour: real screens from the app ─────────── -->
 {% set tour = [
-  ('home',        'Homepage',
-   'Your homepage opens on what needs you today',
-   'The morning triage from the film, live: replies, new applicants and follow-ups due, next visits and the eligible matches the AI already found, one screen per trial.'),
+  ('home',        'One inbox',
+   'Every study lands in one queue',
+   'Replies, new applicants and the follow-ups that are due, not four inboxes and a spreadsheet.'),
   ('applicants',  'AI pre-screen',
    'Scored against the protocol before you open it',
    'Every source arrives deduped and attributed, with an eligibility read already on each applicant.'),
@@ -476,74 +483,6 @@
     var STEP = 6200;
     var at = 0, tick = null, held = false;
 
-    // Protocol chat: type a question, "send" it, show a thinking indicator, then
-    // stream a cited answer, and loop. Runs only while the Ask scene is active.
-    var chat = (function () {
-      var box = hv.querySelector('[data-hvchat]');
-      if (!box) return null;
-      var scroll = box.querySelector('[data-hvchat-scroll]');
-      var field = box.querySelector('[data-hvchat-field]');
-      var CITE = {{ ic.icon('file-check') | tojson }};
-      var turns = [
-        { q: 'Does an eGFR of 48 exclude this patient?',
-          a: '<b>No.</b> Exclusion is eGFR &lt; 45 mL/min/1.73m\u00B2 \u2014 48 clears it.',
-          cite: '\u00A75.2 Exclusion criteria \u00B7 v3' },
-        { q: 'Can they stay on metformin during the study?',
-          a: '<b>Yes</b>, if the dose was stable 8+ weeks before screening. A change needs PI sign-off.',
-          cite: '\u00A76.3 Concomitant meds \u00B7 v3' },
-        { q: "What's the washout for a prior biologic?",
-          a: '5 half-lives or 12 weeks, whichever is longer, before the first dose.',
-          cite: '\u00A74.1 Prior therapy \u00B7 v3' }
-      ];
-      var timers = [], on = false, i = 0;
-      function A(ms, fn) { var t = setTimeout(fn, ms); timers.push(t); return t; }
-      function clearAll() { timers.forEach(clearTimeout); timers = []; }
-      function trim() { while (scroll.children.length > 3) scroll.removeChild(scroll.firstChild); }
-      function esc(s) { return s.replace(/</g, '&lt;'); }
-      function bubble(cls, html) {
-        var b = document.createElement('div'); b.className = 'fs-hvbub ' + cls;
-        b.innerHTML = html; scroll.appendChild(b); trim(); return b;
-      }
-      function typeQ(text, done) {
-        field.textContent = ''; var k = 0;
-        (function nx() {
-          if (!on) return;
-          if (k >= text.length) { A(340, done); return; }
-          field.textContent += text[k++]; A(34 + Math.random() * 42, nx);
-        })();
-      }
-      function turn() {
-        if (!on) return;
-        var t = turns[i % turns.length]; i++;
-        typeQ(t.q, function () {
-          if (!on) return;
-          field.textContent = '';
-          bubble('is-you', esc(t.q));
-          var th = bubble('is-ai', '<span class="fs-hvtype"><span></span><span></span><span></span></span>');
-          A(950, function () {
-            if (!on) return;
-            th.innerHTML = t.a + '<span class="fs-hvbub-cite">' + CITE + ' ' + t.cite + '</span>';
-            A(2600, turn);
-          });
-        });
-      }
-      if (still) {
-        turns.forEach(function (t) {
-          bubble('is-you', esc(t.q));
-          bubble('is-ai', t.a + '<span class="fs-hvbub-cite">' + CITE + ' ' + t.cite + '</span>');
-        });
-        field.textContent = 'Ask about eligibility, visits, meds\u2026';
-        return { toggle: function () {} };
-      }
-      return {
-        toggle: function (active) {
-          if (active === on) return;
-          on = active; clearAll();
-          if (active) { scroll.innerHTML = ''; field.textContent = ''; turn(); }
-        }
-      };
-    })();
-
     function paint(n) {
       at = (n + hvTabs.length) % hvTabs.length;
       hvTabs.forEach(function (t, i) {
@@ -557,7 +496,6 @@
         p.classList.toggle('is-active', i === at);
         p.setAttribute('aria-hidden', i === at ? 'false' : 'true');
       });
-      if (chat) chat.toggle(hvTabs[at].getAttribute('data-hv') === 'ask');
     }
     function run() {
       if (tick) { clearInterval(tick); tick = null; }
@@ -597,10 +535,8 @@
         entries.forEach(function (e) {
           if (e.isIntersecting) {
             run();
-            if (chat) chat.toggle(hvTabs[at].getAttribute('data-hv') === 'ask');
           } else {
             if (tick) { clearInterval(tick); tick = null; hv.classList.remove('is-live'); }
-            if (chat) chat.toggle(false);
           }
         });
       }, { threshold: 0.25 }).observe(hv);

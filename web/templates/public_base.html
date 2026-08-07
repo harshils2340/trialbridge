@@ -267,5 +267,18 @@
   };
 })();
 </script>
+<script>
+/* Header blend: the patient nav is transparent at the top so it melts into the
+   page tint, then frosts once you scroll past the hero. */
+(function () {
+  var body = document.body;
+  if (!body.classList.contains('pub')) return;
+  function onScroll() {
+    body.classList.toggle('is-scrolled', window.scrollY > 12);
+  }
+  onScroll();
+  window.addEventListener('scroll', onScroll, { passive: true });
+})();
+</script>
 </body>
 </html>
