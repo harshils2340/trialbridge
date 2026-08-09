@@ -1691,13 +1691,11 @@ def static_url(filename):
     """url_for('static', ...) with a ?v=<mtime> cache-buster so browsers/CDNs
     fetch a fresh copy whenever a static asset changes (otherwise long-lived
     caches keep serving stale CSS/JS/logo)."""
-    ver = _ASSET_VER_CACHE.get(filename)
-    if ver is None or app.debug:
-        try:
-            ver = int(os.path.getmtime(os.path.join(app.static_folder, filename)))
-        except OSError:
-            ver = 0
-        _ASSET_VER_CACHE[filename] = ver
+    try:
+        ver = int(os.path.getmtime(os.path.join(app.static_folder, filename)))
+    except OSError:
+        ver = _ASSET_VER_CACHE.get(filename, 0)
+    _ASSET_VER_CACHE[filename] = ver
     return url_for("static", filename=filename) + (f"?v={ver}" if ver else "")
 
 

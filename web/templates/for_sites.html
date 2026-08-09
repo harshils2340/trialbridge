@@ -81,7 +81,8 @@
 
         <div class="fs-hv-panels">
           <div class="fs-hv-panel is-active" data-hv="intake" role="tabpanel">
-            <h3 class="fs-hv-head">Every source lands in one inbox</h3>
+            <h3 class="fs-hv-head">Recruit from every source into one inbox</h3>
+            <p class="fs-hv-sub">Ads, referrals, ClinicalTrials.gov and your EHR, all in one queue.</p>
             <div class="fs-conv" aria-hidden="true">
               <div class="fs-conv-srcs">
                 <span class="fs-hv-chip">{{ ic.icon('meta', 'brand-ico') }} Meta</span>
@@ -167,9 +168,7 @@
                   <span class="fs-cop-ask-q" data-cop-typed></span><span class="fs-cop-ask-caret" aria-hidden="true"></span>
                   <span class="fs-cop-ask-btn" aria-hidden="true">{{ ic.icon('send') }}</span>
                 </div>
-                <div class="fs-cop-done" data-cop-done>
-                  <span class="fs-cop-done-ic">{{ ic.icon('check') }}</span><span data-cop-done-tx></span>
-                </div>
+                <div class="fs-cop-steps" data-cop-steps aria-hidden="true"></div>
               </div>
             </div>
           </div>
@@ -521,44 +520,67 @@
     }
   })();
 
-  // Copilot command bar: type a command, then show it being DONE (not just
-  // answered). Each loop types an instruction, flashes a "done" result under it,
-  // then clears, so the copilot reads as something that takes actions for you.
+  // Copilot command bar: type a command, then show the copilot DOING it, step by
+  // step (found it -> made it -> sent), each ticking from a spinner to a check,
+  // then the final result. So it reads as real work, not a canned confirmation.
   (function () {
     var el = document.querySelector('[data-cop-typed]');
-    var done = document.querySelector('[data-cop-done]');
-    var doneTx = document.querySelector('[data-cop-done-tx]');
+    var steps = document.querySelector('[data-cop-steps]');
     if (!el) return;
+    var CHECK = {{ ic.icon('check') | tojson }};
     var cmds = [
-      ['Send Leo the Thursday 10am screening slot', 'Sent \u00B7 visit booked \u00B7 reminder scheduled'],
-      ['Book screening for everyone marked eligible', '4 visits booked \u00B7 calendar invites sent'],
-      ['Start re-consent for Amendment 2', '6 patients queued \u00B7 ICF v4 attached'],
-      ['Post the T2D campaign to Meta & Google', 'Live on 2 channels \u00B7 tracking on']
+      ['Send Leo the Thursday 10am screening slot',
+        ['Found an open Thursday 10am slot', 'Drafted the message to Leo', 'Sent, reminder scheduled']],
+      ['Book screening for everyone marked eligible',
+        ['Found 4 eligible applicants', 'Booked 4 screening visits', 'Sent calendar invites']],
+      ['Start re-consent for Amendment 2',
+        ['Found 6 affected patients', 'Attached ICF v4', 'Queued re-consent for 6 patients']],
+      ['Post the T2D campaign to Meta & Google',
+        ['Wrote the ad copy', 'Checked IRB-approved wording', 'Posted, live on 2 channels']]
     ];
-    function setDone(txt) {
-      if (!done || !doneTx) return;
-      doneTx.textContent = txt;
-      done.classList.toggle('is-on', !!txt);
+    function clearSteps() { if (steps) steps.innerHTML = ''; }
+    function addStep(label) {
+      if (!steps) return null;
+      var row = document.createElement('div'); row.className = 'fs-cop-step';
+      row.innerHTML = '<i class="fs-cop-step-spin"></i>' +
+        '<span class="fs-cop-step-check">' + CHECK + '</span>' +
+        '<span class="fs-cop-step-lbl">' + label + '</span>';
+      steps.appendChild(row); return row;
     }
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      el.textContent = cmds[0][0]; setDone(cmds[0][1]); return;
+      el.textContent = cmds[0][0];
+      cmds[0][1].forEach(function (s) { var r = addStep(s); if (r) r.classList.add('is-done'); });
+      return;
     }
     var qi = 0;
-    function typeQ() {
-      var pair = cmds[qi % cmds.length]; qi++;
-      var text = pair[0]; var k = 0; el.textContent = ''; setDone('');
+    function A(ms, fn) { return setTimeout(fn, ms); }
+    function runSteps(list, i, after) {
+      if (i >= list.length) { after(); return; }
+      var row = addStep(list[i]);
+      A(640, function () {
+        if (row) row.classList.add('is-done');
+        A(220, function () { runSteps(list, i + 1, after); });
+      });
+    }
+    function cycle() {
+      var c = cmds[qi % cmds.length]; qi++;
+      var text = c[0]; var k = 0;
+      el.textContent = ''; clearSteps();
       (function add() {
-        if (k < text.length) { el.textContent += text[k++]; setTimeout(add, 34 + Math.random() * 40); }
-        else setTimeout(function () { setDone(pair[1]); setTimeout(erase, 2400); }, 420);
+        if (k < text.length) { el.textContent += text[k++]; A(30 + Math.random() * 38, add); }
+        else A(380, function () {
+          runSteps(c[1], 0, function () {
+            A(2200, function () {
+              (function erase() {
+                if (el.textContent.length) { el.textContent = el.textContent.slice(0, -1); A(12, erase); }
+                else { clearSteps(); A(320, cycle); }
+              })();
+            });
+          });
+        });
       })();
     }
-    function erase() {
-      setDone('');
-      var cur = el.textContent;
-      if (cur.length) { el.textContent = cur.slice(0, -1); setTimeout(erase, 14); }
-      else setTimeout(typeQ, 300);
-    }
-    typeQ();
+    cycle();
   })();
 
   // Lightweight count-up for the stat numbers. Prefix/suffix (e.g. "~", "+",
@@ -570,7 +592,9 @@
     var suf = el.getAttribute('data-suffix') || '';
     // \u00A0 is a non-breaking space; keep the unit glued to the number.
     pre = pre.replace(/&nbsp;/g, '\u00A0'); suf = suf.replace(/&nbsp;/g, '\u00A0');
-    if (target < 1) { el.textContent = pre + target + suf; return; }
+    // Nothing to animate for 0 or 1: counting "0 -> 1" just flashes a broken-looking
+    // "0" for ~1s. Render those immediately; only larger numbers count up.
+    if (target <= 1) { el.textContent = pre + target + suf; return; }
     var start = null, dur = 900;
     function step(ts) {
       if (!start) start = ts;

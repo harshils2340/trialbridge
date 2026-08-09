@@ -5141,7 +5141,7 @@ body.fs-page { background:
    tokens (accent -> its lighter mark tone), so it's green on /for-sites and blue
    on the patient site with one rule. */
 .fs-grad, .hero-grad {
-  background: linear-gradient(100deg, var(--accent), color-mix(in srgb, var(--accent) 56%, var(--mark-b)));
+  background: linear-gradient(95deg, var(--accent) 0%, var(--mark-b) 115%);
   -webkit-background-clip: text; background-clip: text;
   -webkit-text-fill-color: transparent; color: transparent;
 }
@@ -5217,8 +5217,9 @@ body.fs-page { background:
   opacity: 0; visibility: hidden; transform: translateY(7px); pointer-events: none;
   transition: opacity .3s ease, transform .3s ease, visibility .3s ease; }
 .fs-hv-panel.is-active { opacity: 1; visibility: visible; transform: none; pointer-events: auto; }
-.fs-hv-head { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; margin: 1px 0 3px;
+.fs-hv-head { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; margin: 1px 0 7px;
   font-size: 20px; font-weight: 800; letter-spacing: -.03em; line-height: 1.22; color: var(--ink); }
+.fs-hv-sub { margin: 0 0 16px; font-size: 12.5px; line-height: 1.5; color: var(--muted); }
 .fs-hv-st { flex: none; font-size: 9.5px; font-weight: 800; letter-spacing: .04em;
   text-transform: uppercase; color: var(--muted); background: var(--neutral-bg);
   border: 1px solid var(--neutral-border); border-radius: var(--radius-pill); padding: 2px 7px; }
@@ -5379,14 +5380,38 @@ body.fs-page { background:
 .fs-hv-panel[data-hv="camp"].is-active .fs-camp-step:nth-child(3) { animation-delay: 2.05s; }
 .fs-hv-panel[data-hv="camp"].is-active .fs-camp-step:nth-child(4) { animation-delay: 3s; }
 
-/* AI copilot scene: an OS-wide assistant that triages the morning across trials and
-   drafts the next action. Cards pop in one at a time like notifications. */
+/* AI copilot scene: reads as the copilot actively WORKING, not an inbox. A scan
+   bar sweeps while it reviews the trials, then each action row "completes" with a
+   spinner -> check in sequence. Deliberately different chrome from the intake inbox. */
 .fs-ai { display: flex; flex-direction: column; gap: 9px; }
-.fs-ai-top { display: flex; align-items: center; gap: 8px; padding: 10px 13px; flex-wrap: wrap;
+.fs-ai-scan { display: flex; flex-direction: column; gap: 8px; padding: 11px 13px;
   border-radius: 12px; background: var(--accent-soft); border: 1px solid var(--brand-border); }
-.fs-ai-top svg { width: 16px; height: 16px; flex: none; color: var(--accent); }
-.fs-ai-top b { font-size: 13px; font-weight: 800; color: var(--ink); }
-.fs-ai-top span { margin-left: auto; font-size: 11.5px; color: var(--muted); }
+.fs-ai-scan-h { display: flex; align-items: center; justify-content: space-between; }
+.fs-ai-scan-h b { font-size: 13px; font-weight: 800; color: var(--ink); }
+.fs-ai-scan-n { font-size: 11px; font-weight: 700; color: var(--accent); }
+.fs-ai-scan-bar { height: 4px; border-radius: 3px; overflow: hidden;
+  background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.fs-ai-scan-bar i { display: block; height: 100%; width: 8%; border-radius: 3px; background: var(--accent); }
+.fs-hv-panel[data-hv="ask"].is-active .fs-ai-scan-bar i { animation: fs-ai-scanfill 1.5s ease forwards; }
+@keyframes fs-ai-scanfill { from { width: 8%; } to { width: 100%; } }
+/* Left status rail on each row: spins while "working", then flips to a green check,
+   staggered so the three tasks finish one after another as the bar fills. */
+.fs-ai-rail { position: relative; flex: none; width: 18px; height: 18px; }
+.fs-ai-rail .fs-ai-spin { position: absolute; inset: 0; border-radius: 50%;
+  border: 2px solid var(--brand-border); border-top-color: var(--accent); opacity: 1; }
+.fs-ai-rail em { position: absolute; inset: 0; display: grid; place-items: center; opacity: 0; }
+.fs-ai-rail em svg { width: 16px; height: 16px; color: var(--green); }
+@keyframes fs-ai-rot { to { transform: rotate(360deg); } }
+@keyframes fs-ai-fadeout { to { opacity: 0; } }
+@keyframes fs-ai-pop { from { opacity: 0; transform: scale(.6); } to { opacity: 1; transform: none; } }
+.fs-hv-panel[data-hv="ask"].is-active .fs-ai-spin { animation: fs-ai-rot .7s linear infinite, fs-ai-fadeout .2s forwards; }
+.fs-hv-panel[data-hv="ask"].is-active .fs-ai-rail em { animation: fs-ai-pop .3s ease forwards; }
+.fs-hv-panel[data-hv="ask"].is-active .fs-ai-act:nth-child(1) .fs-ai-spin { animation-delay: 0s, .7s; }
+.fs-hv-panel[data-hv="ask"].is-active .fs-ai-act:nth-child(1) .fs-ai-rail em { animation-delay: .72s; }
+.fs-hv-panel[data-hv="ask"].is-active .fs-ai-act:nth-child(2) .fs-ai-spin { animation-delay: 0s, 1.1s; }
+.fs-hv-panel[data-hv="ask"].is-active .fs-ai-act:nth-child(2) .fs-ai-rail em { animation-delay: 1.12s; }
+.fs-hv-panel[data-hv="ask"].is-active .fs-ai-act:nth-child(3) .fs-ai-spin { animation-delay: 0s, 1.5s; }
+.fs-hv-panel[data-hv="ask"].is-active .fs-ai-act:nth-child(3) .fs-ai-rail em { animation-delay: 1.52s; }
 .fs-ai-acts { display: flex; flex-direction: column; gap: 8px; }
 .fs-ai-act { display: flex; align-items: center; gap: 10px; padding: 10px 12px;
   border-radius: 12px; background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow); }
@@ -5422,6 +5447,41 @@ body.fs-page { background:
 .fs-cop-ask-btn { flex: none; margin-left: auto; display: grid; place-items: center; width: 30px; height: 30px;
   border-radius: 8px; background: var(--accent); color: var(--accent-ink); }
 .fs-cop-ask-btn svg { width: 15px; height: 15px; }
+/* Work steps: each line shows the copilot doing one part (found it -> made it ->
+   sent), spinning then ticking to a check, before the final result line. */
+/* Reserve height for 3 rows so the film doesn't jump as steps build/clear. */
+.fs-cop-steps { display: flex; flex-direction: column; gap: 8px; margin-top: 2px; min-height: 66px; }
+/* each step is its own card */
+.fs-cop-step { display: flex; align-items: center; gap: 10px; font-size: 12px; font-weight: 600;
+  color: var(--muted); padding: 10px 12px; border-radius: 10px;
+  background: var(--bg); border: 1px solid var(--border);
+  animation: fs-ai-fadein .22s ease both; }
+.fs-cop-step:not(.is-done) { background: var(--accent-soft); border-color: var(--brand-border); }
+.fs-cop-step.is-done { border-color: var(--ok-border); background: var(--ok-bg); }
+/* spinner while a step is "working" */
+.fs-cop-step-spin { flex: none; width: 14px; height: 14px; border-radius: 50%;
+  border: 2px solid color-mix(in srgb, var(--accent) 22%, transparent);
+  border-top-color: var(--accent); animation: fs-ai-rot .7s linear infinite; }
+.fs-cop-step.is-done .fs-cop-step-spin { display: none; }
+/* green check pops in when the step resolves */
+.fs-cop-step-check { display: none; }
+.fs-cop-step.is-done .fs-cop-step-check { display: grid; place-items: center; width: 15px; height: 15px; flex: none;
+  border-radius: 50%; background: var(--green-bg); animation: fs-ai-pop .28s ease both; }
+.fs-cop-step-check svg { width: 11px; height: 11px; color: var(--green); }
+/* label: the ACTIVE (still-working) row shimmers so it reads as live fetching,
+   with animated trailing dots; done rows settle to a calm muted line. */
+.fs-cop-step-lbl { min-width: 0; }
+.fs-cop-step:not(.is-done) .fs-cop-step-lbl {
+  background: linear-gradient(100deg, var(--muted) 30%, var(--ink) 50%, var(--muted) 70%);
+  background-size: 220% 100%; -webkit-background-clip: text; background-clip: text;
+  color: transparent; animation: fs-cop-shimmer 1.25s linear infinite; }
+.fs-cop-step:not(.is-done) .fs-cop-step-lbl::after {
+  content: ""; animation: fs-cop-dots 1.2s steps(1) infinite; }
+.fs-cop-step.is-done { color: var(--ink-soft); }
+.fs-cop-step.is-done .fs-cop-step-lbl { font-weight: 600; }
+@keyframes fs-cop-shimmer { to { background-position: -220% 0; } }
+@keyframes fs-cop-dots { 0% { content: ""; } 25% { content: "."; } 50% { content: ".."; } 75% { content: "..."; } }
+@keyframes fs-ai-fadein { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
 .fs-cop-done { display: flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 700;
   color: var(--green); padding: 0 2px; max-height: 0; opacity: 0; overflow: hidden;
   transition: max-height .25s ease, opacity .25s ease; }
@@ -5434,6 +5494,40 @@ body.fs-page { background:
 .fs-hv-panel[data-hv="ask"].is-active .fs-ai-act:nth-child(2) { animation-delay: .28s; }
 .fs-hv-panel[data-hv="ask"].is-active .fs-ai-act:nth-child(3) { animation-delay: .4s; }
 .fs-hv-panel[data-hv="ask"].is-active .fs-cop { animation: fs-hv-row .4s ease both; animation-delay: .52s; }
+
+/* Demo affordance: the mock UI inside the hero film looks interactive (pointer +
+   hover feedback) so it feels like the real product, but it's a walkthrough —
+   clicking performs no real action. */
+.fs-hv .fs-ai-btn,
+.fs-hv .fs-cop-ask,
+.fs-hv .fs-cop-ask-btn,
+.fs-hv .fs-conv-tab,
+.fs-hv .fs-hv-chip,
+.fs-hv .fs-camp-chan,
+.fs-hv .fs-conv-inbox .fs-qrow,
+.fs-hv .fs-ai-act {
+  cursor: pointer;
+  transition: background .14s ease, border-color .14s ease, box-shadow .14s ease,
+    transform .14s ease, filter .14s ease;
+}
+.fs-hv .fs-ai-btn:hover { filter: brightness(1.06); transform: translateY(-1px); }
+.fs-hv .fs-cop-ask-btn:hover { filter: brightness(1.08); }
+.fs-hv .fs-cop-ask:hover { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.fs-hv .fs-conv-tab:hover { color: var(--accent); border-color: var(--brand-border); background: var(--accent-soft); }
+.fs-hv .fs-hv-chip:hover { border-color: var(--brand-border); box-shadow: var(--shadow-lift); transform: translateY(-1px); }
+.fs-hv .fs-conv-inbox .fs-qrow:hover,
+.fs-hv .fs-ai-act:hover { border-color: var(--brand-border); box-shadow: var(--shadow-lift); }
+.fs-hv .fs-camp-chan:hover { border-color: var(--brand-border); box-shadow: var(--shadow-lift); transform: translateY(-1px); }
+/* Press feedback so a click feels real even though it's a demo. */
+.fs-hv .fs-ai-btn:active, .fs-hv .fs-cop-ask-btn:active,
+.fs-hv .fs-conv-tab:active, .fs-hv .fs-hv-chip:active,
+.fs-hv .fs-camp-chan:active,
+.fs-hv .fs-conv-inbox .fs-qrow:active,
+.fs-hv .fs-ai-act:active { transform: scale(.98); }
+@media (prefers-reduced-motion: reduce) {
+  .fs-hv .fs-ai-btn:hover, .fs-hv .fs-hv-chip:hover,
+  .fs-hv .fs-camp-chan:hover { transform: none; }
+}
 
 .fs-qrow { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 9px 13px;
   font-size: 13.5px; font-weight: 600; color: var(--ink-soft);
@@ -5468,13 +5562,17 @@ body.fs-page { background:
   .fs-hv-panel.is-active .fs-hv-chip,
   .fs-hv-panel.is-active .fs-conv-inbox,
   .fs-hv-panel.is-active .fs-camp-step,
-  .fs-hv-panel.is-active .fs-ai-top,
   .fs-hv-panel.is-active .fs-ai-act,
-  .fs-hv-panel.is-active .fs-ws-stat,
   .fs-hv-panel.is-active .fs-cop-ask { animation: none; }
   .fs-conv-l { animation: none; opacity: .5; }
   .fs-camp-caret { animation: none; }
   .fs-hv .fs-hv-tab.is-active::after { animation: none; transform: scaleX(1); }
+  /* Copilot working feed: show the finished state (bar full, checks shown). */
+  .fs-ai-scan-bar i { width: 100%; }
+  .fs-ai-rail .fs-ai-spin { display: none; }
+  .fs-ai-rail em { opacity: 1; }
+  .fs-hv-panel[data-hv="ask"].is-active .fs-ai-spin,
+  .fs-hv-panel[data-hv="ask"].is-active .fs-ai-rail em { animation: none; }
 }
 
 /* Animated "ask the protocol" AI demo — SHOW the AI (compliant), don't describe it. */
@@ -6391,17 +6489,23 @@ body.fs-page { background:
   .fs-hv-chip { font-size: 11.5px; padding: 5px 9px; }
 }
 
-/* Tightest phones: shrink the source chips, drop the inbox subtitle, and let the
-   inbox take the room it needs so its rows never clip. */
-@media (max-width: 520px) {
-  .fs-conv { grid-template-columns: auto 14px 1fr; gap: 4px; }
+/* Phones: the 3-column funnel (sources -> wire -> inbox) is too wide for a phone
+   and clips the inbox card. Stack it instead: the sources become a centered
+   wrapping chip row on top, the connecting wire is hidden (it only reads as a
+   funnel side by side), and the inbox takes the full width below. Reads clean
+   and nothing clips. */
+@media (max-width: 560px) {
+  .fs-conv { grid-template-columns: 1fr; gap: 12px; }
+  .fs-conv-wire { display: none; }
+  .fs-conv-srcs { flex-direction: row; flex-wrap: wrap; justify-content: center; gap: 7px; }
+  .fs-conv-inbox { width: 100%; align-self: stretch; }
   /* Keep the AI chip (the point of the scene); drop the per-trial subtitle to save room. */
   .fs-conv-inbox-sub { display: none; }
-  .fs-conv-inbox-h { padding: 8px 10px; }
-  .fs-hv-chip { font-size: 10.5px; padding: 4px 7px; gap: 4px; }
-  .fs-hv-chip svg { width: 12px; height: 12px; }
-  .fs-conv-inbox-rows { padding: 6px; gap: 5px; }
-  .fs-conv-inbox-rows .fs-qrow { padding: 7px 8px; font-size: 11px; }
+  .fs-conv-inbox-h { padding: 9px 11px; }
+  .fs-hv-chip { font-size: 11px; padding: 5px 10px; gap: 6px; }
+  .fs-hv-chip svg { width: 13px; height: 13px; }
+  .fs-conv-inbox-rows { padding: 7px; gap: 6px; }
+  .fs-conv-inbox-rows .fs-qrow { padding: 8px 10px; font-size: 11.5px; }
 }
 
 @media (max-width: 620px) {
