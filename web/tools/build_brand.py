@@ -33,6 +33,13 @@ ON_TEAL = ("#ffffff", "#86b5b4")
 # mark still reads teal rather than sinking into the background.
 ON_CHARCOAL = ("#7ec9c3", "#3a7f7b")
 
+# Patient-facing (consumer) side keeps its blue identity (--accent #1257b0), so it
+# needs its own favicon/app-icon set: the browser tab must match the page you are
+# on (blue on the patient site, teal on the sites/app side). Same mark, blue tile,
+# white tones pre-mixed over the blue.
+BLUE = "#1257b0"
+ON_BLUE = ("#ffffff", "#8ab4e6")
+
 # Both squares carry the same 22.5% corner radius as the tile they sit in. Each
 # is drawn with the intersection appended as a second subpath and an even-odd
 # fill, so the overlap is a real hole rather than a third colour - which keeps
@@ -60,13 +67,14 @@ def mark(tones: tuple[str, str] = (TEAL, TINT), scale: float = 1.0) -> str:
     )
 
 
-def tile_svg(radius: int = 116, bg: str = TEAL) -> str:
-    """The app-icon lockup: mark in white tones on a rounded teal tile."""
+def tile_svg(radius: int = 116, bg: str = TEAL,
+             tones: tuple[str, str] = ON_TEAL) -> str:
+    """The app-icon lockup: mark in white tones on a rounded coloured tile."""
     return (
         '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" '
         'role="img" aria-label="BridgeMD">\n'
         f'  <rect width="512" height="512" rx="{radius}" fill="{bg}"/>\n'
-        f"  {mark(ON_TEAL, TILE_SCALE)}\n"
+        f"  {mark(tones, TILE_SCALE)}\n"
         "</svg>\n"
     )
 
@@ -121,35 +129,86 @@ def og_html() -> str:
 """
 
 
+def manifest_json(theme: str, suffix: str) -> str:
+    """PWA manifest for one palette. Icons point at that palette's app icons so an
+    installed patient PWA matches the blue site, not the teal one."""
+    return (
+        "{\n"
+        '  "name": "BridgeMD",\n'
+        '  "short_name": "BridgeMD",\n'
+        '  "description": "Find recruiting clinical trials near you.",\n'
+        '  "start_url": "/",\n'
+        '  "scope": "/",\n'
+        '  "display": "standalone",\n'
+        '  "background_color": "#f8fafc",\n'
+        f'  "theme_color": "{theme}",\n'
+        '  "icons": [\n'
+        f'    {{ "src": "/static/icon{suffix}-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" }},\n'
+        f'    {{ "src": "/static/icon{suffix}-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }},\n'
+        f'    {{ "src": "/static/icon{suffix}-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }}\n'
+        "  ]\n"
+        "}\n"
+    )
+
+
+# Each palette produces a full icon set. "" is the default (teal) sites/app brand;
+# "-blue" is the consumer/patient brand. Templates pick the set to match the page.
+PALETTES = [
+    ("", TEAL, ON_TEAL, "#0d6c6a"),
+    ("-blue", BLUE, ON_BLUE, "#1257b0"),
+]
+
+
 def main() -> int:
-    (STATIC / "logo.svg").write_text(tile_svg())
-    print("ok logo.svg")
-
-    # Rounded tile for favicons/PWA; square bleed for iOS, which masks it itself.
-    rounded = STATIC / "_tmp_rounded.svg"
-    square = STATIC / "_tmp_square.svg"
-    rounded.write_text(tile_svg())
-    square.write_text(tile_svg(radius=0))
-    og = STATIC / "_tmp_og.html"
-    og.write_text(og_html())
-
-    jobs = [
-        (rounded, "favicon-16.png", 16), (rounded, "favicon-32.png", 32),
-        (rounded, "_tmp-48.png", 48), (rounded, "icon-192.png", 192),
-        (rounded, "icon-512.png", 512), (square, "apple-touch-icon.png", 180),
-    ]
+    tmps: list[pathlib.Path] = []
     try:
         with sync_playwright() as p:
             b = p.chromium.launch()
-            for src, name, size in jobs:
-                pg = b.new_context(viewport={"width": size, "height": size},
-                                   device_scale_factor=1).new_page()
-                pg.goto(f"file://{src}")
-                pg.wait_for_timeout(120)
-                pg.screenshot(path=str(STATIC / name), omit_background=False)
-                pg.close()
-                print(f"ok {name} ({size}px)")
 
+            for suffix, bg, tones, theme in PALETTES:
+                (STATIC / f"logo{suffix}.svg").write_text(
+                    tile_svg(bg=bg, tones=tones))
+                print(f"ok logo{suffix}.svg")
+
+                # Rounded tile for favicons/PWA; square bleed for iOS (it masks
+                # its own corners).
+                rounded = STATIC / f"_tmp_rounded{suffix}.svg"
+                square = STATIC / f"_tmp_square{suffix}.svg"
+                rounded.write_text(tile_svg(bg=bg, tones=tones))
+                square.write_text(tile_svg(radius=0, bg=bg, tones=tones))
+                tmp48 = STATIC / f"_tmp-48{suffix}.png"
+                tmps += [rounded, square, tmp48]
+
+                jobs = [
+                    (rounded, f"favicon{suffix}-16.png", 16),
+                    (rounded, f"favicon{suffix}-32.png", 32),
+                    (rounded, tmp48.name, 48),
+                    (rounded, f"icon{suffix}-192.png", 192),
+                    (rounded, f"icon{suffix}-512.png", 512),
+                    (square, f"apple-touch-icon{suffix}.png", 180),
+                ]
+                for src, name, size in jobs:
+                    pg = b.new_context(viewport={"width": size, "height": size},
+                                       device_scale_factor=1).new_page()
+                    pg.goto(f"file://{src}")
+                    pg.wait_for_timeout(120)
+                    pg.screenshot(path=str(STATIC / name), omit_background=False)
+                    pg.close()
+                    print(f"ok {name} ({size}px)")
+
+                write_ico([STATIC / f"favicon{suffix}-16.png",
+                           STATIC / f"favicon{suffix}-32.png", tmp48],
+                          STATIC / f"favicon{suffix}.ico")
+                print(f"ok favicon{suffix}.ico (16/32/48)")
+
+                man = "site.webmanifest" if not suffix else f"site{suffix}.webmanifest"
+                (STATIC / man).write_text(manifest_json(theme, suffix))
+                print(f"ok {man}")
+
+            # Social card is palette-agnostic (charcoal), built once.
+            og = STATIC / "_tmp_og.html"
+            og.write_text(og_html())
+            tmps.append(og)
             pg = b.new_context(viewport={"width": 1536, "height": 1024},
                                device_scale_factor=1).new_page()
             pg.goto(f"file://{og}")
@@ -158,12 +217,8 @@ def main() -> int:
             pg.close()
             print("ok og-default.png (1536x1024)")
             b.close()
-
-        write_ico([STATIC / "favicon-16.png", STATIC / "favicon-32.png",
-                   STATIC / "_tmp-48.png"], STATIC / "favicon.ico")
-        print("ok favicon.ico (16/32/48)")
     finally:
-        for tmp in (rounded, square, og, STATIC / "_tmp-48.png"):
+        for tmp in tmps:
             tmp.unlink(missing_ok=True)
     return 0
 
