@@ -58,7 +58,7 @@
 {% if fwd %}
 {% call ui.modal('fwdModal', 'Forward to study coordinator') %}
   {% if fwd.found %}
-  <p class="app-sub" style="margin-top:0;color:var(--muted);">Opens in your own email app. Review and edit before sending — the patient consented to the study team contacting them.</p>
+  <p class="app-sub" style="margin-top:0;color:var(--muted);">Opens in your own email app. Review and edit before sending. The patient consented to the study team contacting them.</p>
   {% else %}
   <div class="callout warn" style="margin-bottom:12px;">{{ ic.icon('alert') }} No public coordinator email is listed for this study.{% if fwd.ctgov_url %} Open the <a href="{{ fwd.ctgov_url }}" target="_blank" rel="noopener">ClinicalTrials.gov contacts</a> and paste the address below.{% endif %}</div>
   {% endif %}
@@ -149,7 +149,7 @@
       <div class="nextstep">
         <div class="ns-h">Decide on {{ first }}</div>
         {% if default_schedule %}
-        <p class="ns-p">{{ first }} already completed the screening questionnaire. Accepting unlocks their contact and <b>emails them your booking link</b> so they can self-schedule their screening visit — one click, no back-and-forth.</p>
+        <p class="ns-p">{{ first }} already completed the screening questionnaire. Accepting unlocks their contact and <b>emails them your booking link</b> so they can self-schedule their screening visit in one click, no back-and-forth.</p>
         {{ reach_line() }}
         {% else %}
         <p class="ns-p">{{ first }} already completed the screening questionnaire. Accepting unlocks their contact so you can invite them to book. <a href="{{ url_for('site_setup') }}">Add your booking calendar</a> to auto-send the link on accept.</p>
@@ -166,12 +166,12 @@
         </div>
       </div>
       {% elif l['decision'] == 'declined' %}
-      <div class="callout warn">{{ ic.icon('info') }} Marked not eligible{% if l['decision_reason'] %} — {{ l['decision_reason'] }}{% endif %}.</div>
+      <div class="callout warn">{{ ic.icon('info') }} Marked not eligible{% if l['decision_reason'] %}: {{ l['decision_reason'] }}{% endif %}.</div>
       {% else %}
       <div class="nextstep">
         {% if l['schedule_url'] %}
         <div class="ns-h">{{ ic.icon('check') }} Booking link sent to {{ first }}</div>
-        <p class="ns-p">They can self-book a screening call — <a href="{{ l['schedule_url'] }}" target="_blank" rel="noopener">open your booking link</a>.</p>
+        <p class="ns-p">They can self-book a screening call. <a href="{{ l['schedule_url'] }}" target="_blank" rel="noopener">Open your booking link</a>.</p>
         {% if l['video_url'] %}<p class="ns-p">Video call ready: <a href="{{ l['video_url'] }}" target="_blank" rel="noopener">join link</a>.</p>{% endif %}
         {{ reach_line() }}
         <form method="post" action="{{ url_for('schedule_lead', lead_id=l['id']) }}">
@@ -180,7 +180,7 @@
         </form>
         {% elif default_schedule %}
         <div class="ns-h">Step 2 · Invite {{ first }} to book</div>
-        <p class="ns-p">Your booking calendar is set up. Send it and they self-book a screening visit — one click, no back-and-forth.</p>
+        <p class="ns-p">Your booking calendar is set up. Send it and they self-book a screening visit in one click, no back-and-forth.</p>
         {{ reach_line() }}
         <form method="post" action="{{ url_for('schedule_lead', lead_id=l['id']) }}">
           <input type="hidden" name="next" value="{{ url_for('applicant_detail', lead_id=l['id']) }}">
@@ -190,7 +190,7 @@
         <div class="ns-h">Step 2 · Invite {{ first }} to book</div>
         <div class="callout warn" style="margin:0;">{{ ic.icon('info') }}
           <span>Add your booking calendar once in
-          <a href="{{ url_for('site_setup') }}">Settings</a> — then invite applicants to self-book with one click.</span>
+          <a href="{{ url_for('site_setup') }}">Settings</a>, then invite applicants to self-book with one click.</span>
         </div>
         {% endif %}
       </div>
@@ -271,7 +271,7 @@
         {% endif %}
       </div>
       {% endif %}
-      <p class="pt-stage-note">Stage advances from what you do — accepting marks them likely eligible; booking a visit moves them to screening.</p>
+      <p class="pt-stage-note">Stage advances from what you do. Accepting marks them likely eligible; booking a visit moves them to screening.</p>
     </div>
 
     {# ── Notes: internal team scratchpad ── #}

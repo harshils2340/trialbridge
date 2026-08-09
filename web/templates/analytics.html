@@ -6,7 +6,7 @@
 {% block body %}
 <div class="page-head">
   <h1>Visitors</h1>
-  <p>Private to you — who's coming to the site, what they search, and how they move from landing to applying · last {{ web.days }} days.</p>
+  <p>Private to you. Who's coming to the site, what they search, and how they move from landing to applying · last {{ web.days }} days.</p>
   <p class="site-hint">
     {% for d in [7, 30, 90] %}
       {% if d == days %}<strong>{{ d }}d</strong>{% else %}<a href="{{ url_for('owner_analytics', days=d) }}">{{ d }}d</a>{% endif %}{% if not loop.last %} · {% endif %}
@@ -18,7 +18,7 @@
     {% if ip_ignored %}
       your visits are <strong>excluded</strong>.
     {% else %}
-      your visits are <strong>counted</strong> — sign in as the owner to
+      your visits are <strong>counted</strong>. Sign in as the owner to
       auto-exclude, or add your IP to <code>ANALYTICS_IGNORE_IPS</code> and restart.
     {% endif %}
   </p>
@@ -53,7 +53,7 @@
       <button type="button" class="ts-key ts-key-applies" data-series="applies" aria-pressed="true">Applied</button>
     </div>
   </div>
-  <p class="site-hint ts-legend-hint">Tap a metric to show or hide it — the chart rescales to what's visible.</p>
+  <p class="site-hint ts-legend-hint">Tap a metric to show or hide it. The chart rescales to what's visible.</p>
   <div class="ts-chart" id="tsChart" role="img"
        aria-label="Daily visitors, searches, and applications over the last {{ days }} days">
     <svg class="ts-svg" viewBox="0 0 1000 320" preserveAspectRatio="none">
@@ -260,7 +260,7 @@
         <td><span class="dash-trial-title">{{ r.term }}</span></td>
         <td>
           {% if r.place %}<span class="dash-src">{{ r.place }}</span>{% if r.place_kind == 'geo' %} <span class="dash-src-sub">(approx)</span>{% endif %}
-          {% else %}<span class="dash-src-sub">—</span>{% endif %}
+          {% else %}<span class="dash-src-sub">–</span>{% endif %}
         </td>
         <td>{% if r.results %}{{ r.results }}{% else %}<span class="dash-conv">0</span>{% endif %}</td>
         <td><span class="dash-src">{{ r.source }}</span></td>
@@ -268,7 +268,7 @@
       {% endfor %}
     </tbody>
   </table>
-  <p class="site-hint">Newest first. A search returning <strong>0 results</strong> is unmet demand — worth seeding a trial or reaching out.</p>
+  <p class="site-hint">Newest first. A search returning <strong>0 results</strong> is unmet demand, worth seeding a trial or reaching out.</p>
   {% else %}
   {{ ui.empty('No searches yet', 'Once visitors search, each query shows up here in real time.', 'search') }}
   {% endif %}
@@ -291,7 +291,7 @@
   </table>
   <p class="site-hint">People searched these and found <strong>nothing</strong>. Each is a candidate to seed a study for, recruit a site, or route to a trial manually.</p>
   {% else %}
-  {{ ui.empty('No unmet demand yet', 'Searches that return zero results will collect here — your clearest signal of what to build or recruit next.', 'search') }}
+  {{ ui.empty('No unmet demand yet', 'Searches that return zero results will collect here. This is your clearest signal of what to build or recruit next.', 'search') }}
   {% endif %}
 </div>
 
@@ -306,7 +306,7 @@
         <td>{{ f.label }}</td>
         <td>{{ f.unique }}</td>
         <td>{{ f.count }}</td>
-        <td>{% if loop.first %}<span class="dash-src-sub">&mdash;</span>{% else %}<span class="dash-conv">{{ f.conv_from_prev|int }}%</span>{% endif %}</td>
+        <td>{% if loop.first %}<span class="dash-src-sub">–</span>{% else %}<span class="dash-conv">{{ f.conv_from_prev|int }}%</span>{% endif %}</td>
       </tr>
       {% endfor %}
     </tbody>
@@ -339,7 +339,7 @@
       {% endfor %}
     </tbody>
   </table>
-  <p class="site-hint">Where interest is landing. A trial with lots of viewers but <strong>no applies</strong> is a leak — bad fit, a weak listing, or an unclaimed trial with no follow-up.</p>
+  <p class="site-hint">Where interest is landing. A trial with lots of viewers but <strong>no applies</strong> is a leak: bad fit, a weak listing, or an unclaimed trial with no follow-up.</p>
   {% else %}
   {{ ui.empty('No trial views yet', 'Once visitors open a trial, the most-viewed ones show here.', 'file') }}
   {% endif %}
@@ -382,7 +382,7 @@
       {% endfor %}
     </tbody>
   </table>
-  <p class="site-hint">Approximate area from IP (city/region/country) &mdash; the raw IP is never stored.{% if areas.unknown_visitors %} {{ areas.unknown_visitors }} visitor(s) couldn't be located.{% endif %}</p>
+  <p class="site-hint">Approximate area from IP (city/region/country). The raw IP is never stored.{% if areas.unknown_visitors %} {{ areas.unknown_visitors }} visitor(s) couldn't be located.{% endif %}</p>
   {% else %}
   {{ ui.empty('No location data yet', 'Visitor areas will show here once real traffic comes in.', 'activity') }}
   {% endif %}

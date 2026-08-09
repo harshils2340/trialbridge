@@ -18,7 +18,7 @@
 {% if not claims %}
 <div class="app-card pad">
   {{ ui.empty('Connect your records to surface matches',
-     'Once your patient list is connected, BridgeMD scans it against the studies you run and partner trials, and surfaces the people who look like a fit — pre-screened and de-identified.',
+     'Once your patient list is connected, BridgeMD scans it against the studies you run and partner trials, and surfaces the people who look like a fit, pre-screened and de-identified.',
      'crosshair', action=ui.btn('Set up your site', 'primary', href=url_for('site_setup'), icon='award')) }}
 </div>
 {% else %}

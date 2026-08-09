@@ -9,7 +9,7 @@
   {% elif v == 'possible' %}{{ ui.badge('Possible', 'warn') }}
   {% elif v in ('ineligible', 'not eligible', 'excluded') %}{{ ui.badge('Ineligible', 'danger') }}
   {% elif v %}{{ ui.badge(v|capitalize, 'neutral') }}
-  {% else %}<span style="color:var(--faint);">—</span>{% endif %}
+  {% else %}<span style="color:var(--faint);">–</span>{% endif %}
 {% endmacro %}
 
 {% block body %}
@@ -87,16 +87,16 @@
           <a href="{{ url_for('study_page', nct=a.nct) }}" target="_blank" rel="noopener" class="study-link" title="{{ a.title or a.nct }}" onclick="event.stopPropagation();">{{ a.title or a.nct }}</a>
           <span class="study-sub">{{ a.nct }} · <a href="https://clinicaltrials.gov/study/{{ a.nct }}" target="_blank" rel="noopener" onclick="event.stopPropagation();">CT.gov</a></span>
           {% else %}
-          <span class="study-link" title="{{ a.title or '' }}">{{ a.title or '—' }}</span>
+          <span class="study-link" title="{{ a.title or '' }}">{{ a.title or '–' }}</span>
           {% endif %}
         </td>
-        <td>{{ a.condition or '—' }}</td>
-        <td>{{ a.location or '—' }}</td>
+        <td>{{ a.condition or '–' }}</td>
+        <td>{{ a.location or '–' }}</td>
         <td>
           {{ verdict_badge(a.verdict) }}
           {% if a.flags %} {{ ui.badge(a.flags ~ ' flag' ~ ('' if a.flags == 1 else 's'), 'warn') }}{% endif %}
         </td>
-        <td style="font-size:12px;color:var(--muted);white-space:nowrap;">{{ a.created_at or '—' }}</td>
+        <td style="font-size:12px;color:var(--muted);white-space:nowrap;">{{ a.created_at or '–' }}</td>
         <td>{{ ui.badge(a.status|capitalize, 'neutral') }}</td>
         <td style="text-align:right;">{{ ui.btn('Open', 'ghost', 'sm', href=url_for('applicant_detail', lead_id=a.id)) }}</td>
       </tr>

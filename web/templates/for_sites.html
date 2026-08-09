@@ -18,11 +18,11 @@
 <section class="fs-hero">
   <div class="fs-hero-in">
     <div class="fs-hero-copy">
-      <span class="fs-eyebrow">{{ ic.icon('shield') }} The operating system for research coordinators</span>
-      <h1>The coordinator's<br><span class="fs-grad">superpower.</span></h1>
+      <span class="fs-eyebrow">{{ ic.icon('shield') }} The operating system for research sites</span>
+      <h1>Your site's<br><span class="fs-grad">unfair advantage.</span></h1>
       <p class="fs-sub">The operating system that triages, pre-screens, schedules and handles the
-        sponsor paperwork for you &mdash; so you run more studies without more hours, and patients,
-        PIs and sponsors all move with you.</p>
+        sponsor paperwork for you. Run more studies without more hours, and keep patients, PIs and
+        sponsors all in sync.</p>
       <div class="fs-cta">
         <a class="fs-btn fs-btn-primary" href="{{ cal_link }}" target="_blank" rel="noopener">Book a demo {{ ic.icon('arrow-right') }}</a>
       </div>
@@ -65,7 +65,7 @@
       </div>
     </div>
 
-    {# The film: one scene at a time, each a moving visual (not a screenshot) —
+    {# The film: one scene at a time, each a moving visual (not a screenshot):
        sources converging, a protocol Q&A typing itself, a document syncing to every
        role, a campaign posting and paying back. It auto-advances and pauses on hover. #}
     <div class="fs-hero-visual">
@@ -81,7 +81,7 @@
 
         <div class="fs-hv-panels">
           <div class="fs-hv-panel is-active" data-hv="intake" role="tabpanel">
-            <h3 class="fs-hv-head">Every source converges into one queue</h3>
+            <h3 class="fs-hv-head">Every source lands in one inbox</h3>
             <div class="fs-conv" aria-hidden="true">
               <div class="fs-conv-srcs">
                 <span class="fs-hv-chip">{{ ic.icon('meta', 'brand-ico') }} Meta</span>
@@ -100,22 +100,28 @@
                 <path class="fs-conv-l" d="M0 165 C 60 165, 40 90, 100 90"/>
               </svg>
               <div class="fs-conv-inbox">
-                <div class="fs-conv-inbox-h">{{ ic.icon('inbox') }} <b>One inbox</b>
-                  <span class="fs-conv-ai">{{ ic.icon('sparkle') }} AI pre-screened</span></div>
-                <div class="fs-conv-inbox-sub">Tirzepatide &middot; T2D &middot; sorted by fit</div>
+                <div class="fs-conv-inbox-h">
+                  <span class="fs-conv-inbox-t">{{ ic.icon('inbox') }} <b>Inbox</b>
+                    <span class="fs-conv-badge">6 new</span></span>
+                </div>
+                <div class="fs-conv-tabs">
+                  <span class="fs-conv-tab is-on">All</span>
+                  <span class="fs-conv-tab">New</span>
+                  <span class="fs-conv-tab">Replies</span>
+                </div>
                 <div class="fs-conv-inbox-rows">
-                  <div class="fs-qrow"><span class="fs-qav">EB</span>
+                  <div class="fs-qrow is-unread"><i class="fs-qdot" aria-hidden="true"></i><span class="fs-qav">EB</span>
                     <div class="fs-qmeta"><b>Ethan B.</b>
-                      <span>{{ ic.icon('ctgov', 'brand-ico') }} CT.gov</span></div>
-                    <span class="fs-qai is-ok">{{ ic.icon('sparkle') }} 94% match</span></div>
-                  <div class="fs-qrow"><span class="fs-qav">LD</span>
+                      <span>{{ ic.icon('ctgov', 'brand-ico') }} CT.gov &middot; new applicant</span></div>
+                    <span class="fs-qai is-ok">94% match</span></div>
+                  <div class="fs-qrow is-unread"><i class="fs-qdot" aria-hidden="true"></i><span class="fs-qav">LD</span>
                     <div class="fs-qmeta"><b>Leo D.</b>
-                      <span>{{ ic.icon('meta', 'brand-ico') }} Meta</span></div>
-                    <span class="fs-qai is-ok">{{ ic.icon('sparkle') }} 88% match</span></div>
-                  <div class="fs-qrow"><span class="fs-qav">PK</span>
+                      <span>{{ ic.icon('meta', 'brand-ico') }} Meta &middot; replied</span></div>
+                    <span class="fs-qai is-ok">88% match</span></div>
+                  <div class="fs-qrow"><i class="fs-qdot is-off" aria-hidden="true"></i><span class="fs-qav">PK</span>
                     <div class="fs-qmeta"><b>Priya K.</b>
-                      <span>{{ ic.icon('google', 'brand-ico') }} Google</span></div>
-                    <span class="fs-qai is-warn">{{ ic.icon('sparkle') }} 61% review</span></div>
+                      <span>{{ ic.icon('google', 'brand-ico') }} Google &middot; new applicant</span></div>
+                    <span class="fs-qai is-warn">61% review</span></div>
                 </div>
                 <div class="fs-conv-inbox-foot">{{ ic.icon('check') }}
                   1 duplicate from Referral merged automatically</div>
@@ -126,22 +132,28 @@
           <div class="fs-hv-panel" data-hv="ask" role="tabpanel" aria-hidden="true">
             <h3 class="fs-hv-head">It triages your morning, then acts on your word</h3>
             <div class="fs-ai">
-              <div class="fs-ai-top">{{ ic.icon('sparkle') }}<b>Triaged for you overnight</b>
-                <span class="fs-ai-auto">{{ ic.icon('check') }} no prompt needed</span></div>
+              <div class="fs-ai-scan">
+                <div class="fs-ai-scan-h"><b>Reviewing your trials</b>
+                  <span class="fs-ai-scan-n">3 need you today</span></div>
+                <div class="fs-ai-scan-bar" aria-hidden="true"><i></i></div>
+              </div>
               <div class="fs-ai-acts">
                 <div class="fs-ai-act">
+                  <span class="fs-ai-rail" aria-hidden="true"><i class="fs-ai-spin"></i><em>{{ ic.icon('check') }}</em></span>
                   <span class="fs-ai-ic">{{ ic.icon('chat') }}</span>
                   <div class="fs-ai-tx"><b>Reply drafted for Leo D.</b>
                     <span>Tirzepatide &middot; offers a screening visit Thu 10am</span></div>
                   <span class="fs-ai-btn">Send</span>
                 </div>
                 <div class="fs-ai-act">
+                  <span class="fs-ai-rail" aria-hidden="true"><i class="fs-ai-spin"></i><em>{{ ic.icon('check') }}</em></span>
                   <span class="fs-ai-ic">{{ ic.icon('file-check') }}</span>
                   <div class="fs-ai-tx"><b>Ethan B. looks eligible</b>
                     <span>Semaglutide &middot; eGFR &amp; HbA1c clear, cited &sect;5.2</span></div>
                   <span class="fs-ai-btn ghost">Review</span>
                 </div>
                 <div class="fs-ai-act">
+                  <span class="fs-ai-rail" aria-hidden="true"><i class="fs-ai-spin"></i><em>{{ ic.icon('check') }}</em></span>
                   <span class="fs-ai-ic">{{ ic.icon('users') }}</span>
                   <div class="fs-ai-tx"><b>Re-consent 6 patients</b>
                     <span>NASH &middot; Amendment 2 moved them to ICF v4</span></div>
@@ -149,7 +161,7 @@
                 </div>
               </div>
               <div class="fs-cop">
-                <span class="fs-cop-lbl">Or just tell it what to do &mdash; it does it, not just answers</span>
+                <span class="fs-cop-lbl">Or just tell it what to do. It does it, not just answers.</span>
                 <div class="fs-cop-ask">
                   {{ ic.icon('sparkle') }}
                   <span class="fs-cop-ask-q" data-cop-typed></span><span class="fs-cop-ask-caret" aria-hidden="true"></span>
@@ -511,7 +523,7 @@
 
   // Copilot command bar: type a command, then show it being DONE (not just
   // answered). Each loop types an instruction, flashes a "done" result under it,
-  // then clears — so the copilot reads as something that takes actions for you.
+  // then clears, so the copilot reads as something that takes actions for you.
   (function () {
     var el = document.querySelector('[data-cop-typed]');
     var done = document.querySelector('[data-cop-done]');

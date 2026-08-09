@@ -1,6 +1,6 @@
 {% extends "public_base.html" %}
 {% import "_icons.html" as ic %}
-{% block title %}BridgeMD for clinics, sites & sponsors — fill trials faster{% endblock %}
+{% block title %}BridgeMD for clinics, sites & sponsors: fill trials faster{% endblock %}
 {% block description %}Match patients from your EHR on de-identified data and work a queue of pre-screened, consented applicants from first contact to enrolled. Book a demo of BridgeMD.{% endblock %}
 {% block og_title %}BridgeMD for clinics, research sites & sponsors{% endblock %}
 {% block og_description %}EHR matching on de-identified data, pre-screened consented applicants, and enrollment you can measure. Book a 20-minute demo.{% endblock %}
@@ -11,7 +11,7 @@
     <span class="hero-eyebrow">{{ ic.icon('activity') }} For research sites, clinics &amp; sponsors</span>
     <h1>Fill your trials faster.</h1>
     <p class="b2b-sub">Match patients from your own EHR on de-identified data, then work a queue of
-      pre-screened, consented applicants — from first contact to enrolled.</p>
+      pre-screened, consented applicants, from first contact to enrolled.</p>
     <div class="b2b-cta">
       {% if site_demo %}
       <a class="btn btn-primary btn-lg" href="{{ url_for('study_home') }}">See the demo {{ ic.icon('arrow-right') }}</a>
@@ -31,7 +31,7 @@
       <div class="step-ic">{{ ic.icon('search') }}</div>
       <h3>Candidates from your EHR</h3>
       <p>We screen your existing patients against recruiting protocols using de-identified, structured
-        facts — surfacing eligible candidates without manual chart review.</p>
+        facts, surfacing eligible candidates without manual chart review.</p>
     </div>
     <div class="step">
       <div class="step-ic">{{ ic.icon('user-plus') }}</div>
@@ -65,7 +65,7 @@
 
 <section id="how" class="snaps">
   <div class="snaps-in">
-    <p class="snaps-eyebrow">How it works — safely</p>
+    <p class="snaps-eyebrow">How it works, safely</p>
 
     <div class="snap">
       <div class="snap-ui">
@@ -92,8 +92,8 @@
         <p>BridgeMD checks your patients against recruiting trials without shipping charts around. We
           take only the minimum needed to match, and identities stay sealed until the patient opts in.</p>
         <ul class="snap-crit">
-          <li class="ok">{{ ic.icon('shield') }} De-identified by default — built around HIPAA Safe Harbor</li>
-          <li class="ok">{{ ic.icon('check') }} Only structured facts (age, dx, meds, labs) — never names</li>
+          <li class="ok">{{ ic.icon('shield') }} De-identified by default, built around HIPAA Safe Harbor</li>
+          <li class="ok">{{ ic.icon('check') }} Only structured facts (age, dx, meds, labs), never names</li>
           <li class="ok">{{ ic.icon('lock') }} Patients stay blinded to your site until they consent</li>
           <li class="ok">{{ ic.icon('check') }} Role-scoped access and a full audit trail of every status change</li>
           <li class="ok">{{ ic.icon('check') }} BAAs available · we never sell patient data</li>

@@ -35,7 +35,7 @@
         <td>{{ ui.badge(c['status']|capitalize, 'ok' if c['status']=='active' else ('warn' if c['status']=='paused' else 'neutral')) }}</td>
         <td>{{ p.applicants if p else 0 }}</td>
         <td>{{ p.enrolled if p else 0 }}</td>
-        <td style="font-weight:600;color:{{ 'var(--green)' if (p and p.cost_per_enrolled) else 'var(--faint)' }};">{{ '$%.2f'|format(p.cost_per_enrolled) if p and p.cost_per_enrolled else '—' }}</td>
+        <td style="font-weight:600;color:{{ 'var(--green)' if (p and p.cost_per_enrolled) else 'var(--faint)' }};">{{ '$%.2f'|format(p.cost_per_enrolled) if p and p.cost_per_enrolled else '–' }}</td>
         <td>{{ ui.badge('Approved', 'ok') if c['irb_approved'] else ui.badge('Pending', 'warn') }}</td>
       </tr>
       {% endfor %}
@@ -48,14 +48,14 @@
 <form method="post" action="{{ url_for('campaign_create') }}">
   <div class="field">
     <label for="c-name">Campaign name</label>
-    <input id="c-name" name="name" placeholder="ADHD adults — Reddit outreach" required>
+    <input id="c-name" name="name" placeholder="ADHD adults · Reddit outreach" required>
   </div>
   <div class="field">
     <label for="c-nct">Study</label>
     <select id="c-nct" name="nct" required>
       <option value="">Pick a claimed study…</option>
       {% for cl in claims %}
-      <option value="{{ cl['nct'] }}">{{ cl['nct'] }} — {{ (cl['title'] or '')[:60] }}</option>
+      <option value="{{ cl['nct'] }}">{{ cl['nct'] }} · {{ (cl['title'] or '')[:60] }}</option>
       {% endfor %}
     </select>
   </div>

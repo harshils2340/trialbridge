@@ -71,7 +71,7 @@
       {% for t in stats.time_in_stage %}
       <tr>
         <td><b>{{ t.from }} → {{ t.to }}</b></td>
-        <td>{% if t.n %}{{ t.median_days }}d{% else %}<span style="color:var(--faint);">—</span>{% endif %}</td>
+        <td>{% if t.n %}{{ t.median_days }}d{% else %}<span style="color:var(--faint);">–</span>{% endif %}</td>
         <td><span style="color:var(--faint);">{{ t.n }}</span></td>
       </tr>
       {% endfor %}

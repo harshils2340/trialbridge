@@ -5137,7 +5137,14 @@ body.fs-page { background:
 .fs-eyebrow svg { width: 15px; height: 15px; }
 .fs-hero h1 { font-family: var(--sans); font-size: clamp(36px, 4.4vw, 56px); line-height: 1.04;
   letter-spacing: -.035em; margin: 18px 0 0; color: var(--ink); font-weight: 800; }
-.fs-grad { color: var(--accent); }
+/* Subtle ombré on the highlighted headline word — derived from each page's own
+   tokens (accent -> its lighter mark tone), so it's green on /for-sites and blue
+   on the patient site with one rule. */
+.fs-grad, .hero-grad {
+  background: linear-gradient(100deg, var(--accent), color-mix(in srgb, var(--accent) 56%, var(--mark-b)));
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent; color: transparent;
+}
 .fs-sub { font-size: 18px; line-height: 1.55; color: var(--muted); max-width: 54ch; margin: 18px 0 0; }
 .fs-sub b { color: var(--ink); font-weight: 700; }
 .fs-trust { display: flex; flex-wrap: wrap; gap: 8px; margin: 22px 0 0; justify-content: flex-start; }
@@ -5243,21 +5250,35 @@ body.fs-page { background:
 .fs-conv-inbox { align-self: center; min-width: 0; background: var(--surface);
   border: 1px solid var(--brand-border); border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lift); overflow: hidden; }
-.fs-conv-inbox-h { display: flex; align-items: center; gap: 7px; padding: 9px 12px;
-  background: var(--accent-soft); border-bottom: 1px solid var(--brand-border);
+/* Header reads like a real inbox toolbar: title + unread count on the left,
+   AI-pre-screened chip on the right. */
+.fs-conv-inbox-h { display: flex; align-items: center; justify-content: space-between; gap: 7px;
+  padding: 9px 12px; background: var(--accent-soft); border-bottom: 1px solid var(--brand-border);
   font-size: 11px; color: var(--accent); font-weight: 700; }
+.fs-conv-inbox-t { display: inline-flex; align-items: center; gap: 7px; }
 .fs-conv-inbox-h svg { width: 15px; height: 15px; flex: none; color: var(--accent); }
 .fs-conv-inbox-h b { color: var(--ink); font-weight: 800; font-size: 13px; }
-.fs-conv-inbox-h span { margin-left: auto; }
+.fs-conv-badge { font-size: 9.5px; font-weight: 800; color: var(--accent-ink); background: var(--accent);
+  border-radius: var(--radius-pill); padding: 1px 7px; }
 /* AI-native signal: the queue is pre-screened, so the header carries an AI chip and
    each row an AI match score - not just "here are some names". */
 .fs-conv-ai { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 800;
   color: var(--accent); background: var(--surface); border: 1px solid var(--brand-border);
   border-radius: var(--radius-pill); padding: 2px 8px; white-space: nowrap; }
 .fs-conv-ai svg { width: 11px; height: 11px; }
-.fs-conv-inbox-sub { padding: 6px 12px 0; font-size: 10.5px; font-weight: 600; color: var(--muted); }
+/* Filter tabs make it unmistakably an inbox; the note reinforces "all sources, deduped". */
+.fs-conv-tabs { display: flex; align-items: center; gap: 5px; padding: 8px 10px 2px; }
+.fs-conv-tab { font-size: 9.5px; font-weight: 700; color: var(--muted); padding: 3px 9px;
+  border-radius: var(--radius-pill); border: 1px solid var(--border); background: var(--surface); }
+.fs-conv-tab.is-on { color: var(--accent); background: var(--accent-soft); border-color: var(--brand-border); }
+.fs-conv-tabs-note { margin-left: auto; font-size: 9px; font-weight: 700; color: var(--faint);
+  white-space: nowrap; }
 .fs-conv-inbox-rows { display: flex; flex-direction: column; gap: 6px; padding: 8px; }
 .fs-conv-inbox-rows .fs-qrow { padding: 7px 10px; font-size: 12.5px; }
+/* Unread dot, like an email client: bright for new, hollow for read. */
+.fs-qdot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
+.fs-qdot.is-off { background: transparent; border: 1.5px solid var(--border-strong); }
+.fs-conv-inbox-rows .fs-qrow.is-unread b { font-weight: 800; }
 /* Two-line row: name over its source, with the AI match score pinned right. */
 .fs-qmeta { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .fs-qmeta b { font-size: 12.5px; font-weight: 700; color: var(--ink);

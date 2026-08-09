@@ -34,7 +34,7 @@
     <div class="quota-track"><div class="quota-fill" style="width:{{ workspace.progress }}%"></div></div>
   </div>
   {% else %}
-  <p class="ws-nudge">No enrollment target set yet — <a href="{{ url_for('recruitment_dashboard') }}">set one on Recruitment</a> to track progress here.</p>
+  <p class="ws-nudge">No enrollment target set yet. <a href="{{ url_for('recruitment_dashboard') }}">Set one on Recruitment</a> to track progress here.</p>
   {% endif %}
 </div>
 {% else %}
@@ -43,7 +43,7 @@
     <h1>{{ greeting }}{% if user['name'] %}, {{ user['name'].split()[0] }}{% endif %}</h1>
     <p class="home-hero-sub">
       {% if todo_total %}You have <b>{{ todo_total }}</b> {{ 'thing' if todo_total == 1 else 'things' }} to do today.
-      {% else %}You're all caught up — nice work.{% endif %}
+      {% else %}You're all caught up. Nice work.{% endif %}
       {% if nav_studies|length > 1 %}<span class="home-hero-hint">Pick a study up top to open its workspace.</span>{% endif %}
     </p>
   </div>

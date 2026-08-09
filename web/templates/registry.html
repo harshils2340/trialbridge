@@ -59,13 +59,13 @@
             </div>
           </div>
         </td>
-        <td>{{ m.location or '—' }}</td>
-        <td>{{ m.age or '—' }}{% if m.sex %} · {{ m.sex|capitalize }}{% endif %}</td>
+        <td>{{ m.location or '–' }}</td>
+        <td>{{ m.age or '–' }}{% if m.sex %} · {{ m.sex|capitalize }}{% endif %}</td>
         <td>
           {% for c in m.conditions %}{{ ui.badge(c, 'brand') }} {% endfor %}
-          {% if not m.conditions %}<span style="color:var(--faint);">—</span>{% endif %}
+          {% if not m.conditions %}<span style="color:var(--faint);">–</span>{% endif %}
         </td>
-        <td style="font-size:12px;color:var(--muted);white-space:nowrap;">{{ m.consent_at or '—' }}</td>
+        <td style="font-size:12px;color:var(--muted);white-space:nowrap;">{{ m.consent_at or '–' }}</td>
         <td style="text-align:right;">
           <form method="post" action="{{ url_for('internal_registry_opt_out') }}"
                 onsubmit="return confirm('Remove this person from the matching pool? This honours a withdrawal request and cannot be undone.');" style="margin:0;">

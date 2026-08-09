@@ -8,13 +8,13 @@
 <div class="app-head">
   <div>
     <h1>Applicant intake</h1>
-    <p>Pull applicants from every source into one queue — without changing how you already collect them.</p>
+    <p>Pull applicants from every source into one queue, without changing how you already collect them.</p>
   </div>
 </div>
 
 <div class="callout info" style="margin-bottom:20px;">{{ ic.icon('shield') }}
   <span>Intake carries patient info (PHI). Addresses and imported lists are scoped to
-  your team only — never share an intake address publicly.</span>
+  your team only. Never share an intake address publicly.</span>
 </div>
 
 {% if not rows %}
@@ -25,7 +25,7 @@
 
 {% for r in rows %}
 <div class="app-card pad" style="margin-bottom:16px;">
-  <div class="app-card-title">{{ ic.icon('file') }} {{ r.claim['nct'] }} — {{ (r.claim['title'] or 'Study')[:70] }}</div>
+  <div class="app-card-title">{{ ic.icon('file') }} {{ r.claim['nct'] }} · {{ (r.claim['title'] or 'Study')[:70] }}</div>
 
   <label style="display:block;font-size:13px;font-weight:600;color:var(--ink);margin-bottom:6px;">Inbound intake address</label>
   <div class="codebox" style="margin-bottom:8px;">

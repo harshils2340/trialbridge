@@ -20,7 +20,7 @@
 <div class="app-split">
   <div>
     <div class="app-sec">
-      <div class="app-sec-head">{{ ic.icon('user') }}<b>Patient snapshot</b><span>De-identified — from your records</span></div>
+      <div class="app-sec-head">{{ ic.icon('user') }}<b>Patient snapshot</b><span>De-identified, from your records</span></div>
       <div class="app-card pad">
         <p class="match-snapshot">{{ m.summary }}</p>
         <div class="match-facts">
@@ -93,7 +93,7 @@
       </form>
       {% endif %}
       <form method="post" action="{{ url_for('dismiss_match', match_id=m.id) }}" style="margin-top:8px;">
-        {{ ui.btn('Not a fit — pass', 'ghost', 'block', type='submit') }}
+        {{ ui.btn('Not a fit, pass', 'ghost', 'block', type='submit') }}
       </form>
       {% elif m.status == 'approved' %}
       <div class="rail-h">{{ ic.icon('check') }} Added to your study</div>

@@ -112,7 +112,7 @@
 </section>
 
 <script>
-// Condition + location typeahead for the "new alert" form — same suggestion
+// Condition + location typeahead for the "new alert" form, same suggestion
 // sources as the main hero search bar (condition list + Google/Nominatim geo).
 (function () {
   var conditionOptions = {{ (condition_options[:80] if condition_options else [])|tojson }};

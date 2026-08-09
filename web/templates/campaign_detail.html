@@ -20,7 +20,7 @@
   <div class="stat"><div class="l">{{ ic.icon('list', 'ico stat-ico') }}Applicants</div><div class="n">{{ perf.applicants if perf else 0 }}</div></div>
   <div class="stat"><div class="l">{{ ic.icon('activity', 'ico stat-ico') }}Screened</div><div class="n">{{ perf.screened if perf else 0 }}</div></div>
   <div class="stat"><div class="l">{{ ic.icon('user-plus', 'ico stat-ico') }}Enrolled</div><div class="n">{{ perf.enrolled if perf else 0 }}</div></div>
-  <div class="stat accent"><div class="l">{{ ic.icon('dollar', 'ico stat-ico') }}Cost / enrolled</div><div class="n">{{ '$%.0f'|format(perf.cost_per_enrolled) if perf and perf.cost_per_enrolled else '—' }}</div></div>
+  <div class="stat accent"><div class="l">{{ ic.icon('dollar', 'ico stat-ico') }}Cost / enrolled</div><div class="n">{{ '$%.0f'|format(perf.cost_per_enrolled) if perf and perf.cost_per_enrolled else '–' }}</div></div>
 </div>
 
 {# ── Status controls ── #}
@@ -42,7 +42,7 @@
 {# ── Ad creative ── #}
 <div class="card">
   <div class="section-title"><h2>Ad creative</h2></div>
-  <p class="site-hint">Neutral, truthful copy only — no benefit, efficacy, or payment
+  <p class="site-hint">Neutral, truthful copy only. No benefit, efficacy, or payment
     claims. Editing resets IRB approval.</p>
 
   <form method="post" action="{{ url_for('campaign_creative', cid=camp['id']) }}" id="amForm">

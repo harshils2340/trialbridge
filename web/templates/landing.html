@@ -21,7 +21,11 @@
 {% block body %}
 <section class="hero">
   <div class="hero-in">
-    <h1>{{ 'Find your next trial match.' if patient_user else 'Find clinical trials near you.' }}</h1>
+    {% if patient_user %}
+    <h1>Find your next <span class="hero-grad">trial match.</span></h1>
+    {% else %}
+    <h1>Find clinical trials <span class="hero-grad">near you.</span></h1>
+    {% endif %}
     <p class="hero-sub">{{ 'Search again with your saved context and keep applications moving.' if patient_user else 'Search by condition or describe your situation. We find recruiting studies nearby.' }}</p>
 
     {% if not patient_user %}
@@ -285,8 +289,8 @@
   var heroHint = document.getElementById('heroHint');
   var HINTS = {
     condition: 'Know your condition? Search it directly. Not sure? Switch to “Describe it” and write in plain English.',
-    describe: 'Describe your situation in plain English — e.g. “I have obesity and want to try new treatments”.',
-    location: 'Just browsing? See every recruiting trial near a city — no condition needed.'
+    describe: 'Describe your situation in plain English, e.g. “I have obesity and want to try new treatments”.',
+    location: 'Just browsing? See every recruiting trial near a city, no condition needed.'
   };
   var queryWrap = document.querySelector('.hero-search-query');
   var currentMode = 'condition';
