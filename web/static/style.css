@@ -5238,6 +5238,20 @@ body.fs-page { background:
 .fs-conv-srcs { display: flex; flex-direction: column; align-items: flex-start;
   justify-content: space-between; }
 .fs-conv-wire { width: 100%; height: 100%; display: block; overflow: hidden; align-self: center; }
+/* Mobile-only: the horizontal wire hides when the scene stacks, so a clean
+   "many sources -> one inbox" cue sits between the chips and the inbox: a hairline
+   rule broken by a small accent chevron badge that gently nudges downward. */
+.fs-conv-down { display: none; align-items: center; gap: 12px; margin: 2px 0; }
+.fs-conv-down-line { flex: 1; height: 1px; background: linear-gradient(90deg,
+  transparent, var(--border-strong)); }
+.fs-conv-down-line:last-child { background: linear-gradient(90deg,
+  var(--border-strong), transparent); }
+.fs-conv-down-badge { flex: none; display: grid; place-items: center; width: 28px; height: 28px;
+  border-radius: 50%; background: var(--accent-soft); border: 1px solid var(--brand-border);
+  animation: fs-conv-nudge 1.8s ease-in-out infinite; }
+.fs-conv-down-badge svg { width: 15px; height: 15px; color: var(--accent); }
+@keyframes fs-conv-nudge { 0%, 100% { transform: translateY(-1px); } 50% { transform: translateY(2px); } }
+@media (prefers-reduced-motion: reduce) { .fs-conv-down-badge { animation: none; } }
 .fs-conv-l { fill: none; stroke: var(--accent); stroke-width: 1.4; opacity: .45;
   stroke-linecap: round; stroke-dasharray: 4 8; animation: fs-conv-flow 1s linear infinite; }
 .fs-conv-l:nth-child(2) { animation-delay: -.16s; }
@@ -6432,6 +6446,10 @@ body.fs-page { background:
 @media (max-width: 620px) {
   /* Narrow enough that most of the screen is off-frame: say so. */
   .fs-swipe { display: flex; }
+  /* Wrap the tabs into centered rows instead of a sideways scroll that hard-clips
+     the last tab ("Scheduli...") and reads as unfinished. */
+  .fs-tabs { flex-wrap: wrap; justify-content: center; overflow-x: visible; width: 100%; }
+  .fs-tab { white-space: nowrap; }
 }
 
 @media (max-width: 520px) {
@@ -6495,8 +6513,14 @@ body.fs-page { background:
    funnel side by side), and the inbox takes the full width below. Reads clean
    and nothing clips. */
 @media (max-width: 560px) {
-  .fs-conv { grid-template-columns: 1fr; gap: 12px; }
+  /* Stacked scene is taller than the desktop fixed heights, so let it flow and
+     top-align instead of centering in the tallest-scene cell (which left a dead
+     gap above the heading and clipped the last inbox row). */
+  .fs-hv-panels { min-height: 0; }
+  .fs-hv-panel { justify-content: flex-start; }
+  .fs-conv { grid-template-columns: 1fr; gap: 10px; height: auto; }
   .fs-conv-wire { display: none; }
+  .fs-conv-down { display: flex; }
   .fs-conv-srcs { flex-direction: row; flex-wrap: wrap; justify-content: center; gap: 7px; }
   .fs-conv-inbox { width: 100%; align-self: stretch; }
   /* Keep the AI chip (the point of the scene); drop the per-trial subtitle to save room. */

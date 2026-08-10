@@ -100,6 +100,11 @@
                 <path class="fs-conv-l" d="M0 135 C 60 135, 40 90, 100 90"/>
                 <path class="fs-conv-l" d="M0 165 C 60 165, 40 90, 100 90"/>
               </svg>
+              <div class="fs-conv-down" aria-hidden="true">
+                <span class="fs-conv-down-line"></span>
+                <span class="fs-conv-down-badge">{{ ic.icon('chevron-down') }}</span>
+                <span class="fs-conv-down-line"></span>
+              </div>
               <div class="fs-conv-inbox">
                 <div class="fs-conv-inbox-h">
                   <span class="fs-conv-inbox-t">{{ ic.icon('inbox') }} <b>Inbox</b>
@@ -471,6 +476,12 @@
         p.classList.toggle('is-active', i === at);
         p.setAttribute('aria-hidden', i === at ? 'false' : 'true');
       });
+      // Restart the copilot command bar from scratch whenever its scene opens, and
+      // clear it otherwise, so switching in never lands on a pre-run query.
+      if (window.__fsCop) {
+        var active = hvPanels[at] && hvPanels[at].getAttribute('data-hv');
+        if (active === 'ask') window.__fsCop.play(); else window.__fsCop.reset();
+      }
     }
     function run() {
       if (tick) { clearInterval(tick); tick = null; }
@@ -538,6 +549,10 @@
       ['Post the T2D campaign to Meta & Google',
         ['Wrote the ad copy', 'Checked IRB-approved wording', 'Posted, live on 2 channels']]
     ];
+    var reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    var qi = 0, token = 0, timers = [];
+    function clearTimers() { timers.forEach(clearTimeout); timers = []; }
+    function A(ms, fn) { var t = setTimeout(fn, ms); timers.push(t); return t; }
     function clearSteps() { if (steps) steps.innerHTML = ''; }
     function addStep(label) {
       if (!steps) return null;
@@ -547,40 +562,42 @@
         '<span class="fs-cop-step-lbl">' + label + '</span>';
       steps.appendChild(row); return row;
     }
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      el.textContent = cmds[0][0];
-      cmds[0][1].forEach(function (s) { var r = addStep(s); if (r) r.classList.add('is-done'); });
-      return;
-    }
-    var qi = 0;
-    function A(ms, fn) { return setTimeout(fn, ms); }
-    function runSteps(list, i, after) {
-      if (i >= list.length) { after(); return; }
+    // reset() cancels any in-flight run (bumping the token invalidates pending
+    // callbacks) and clears the bar, so a scene switch never shows a stale result.
+    function reset() { token++; clearTimers(); el.textContent = ''; clearSteps(); }
+    function runSteps(list, i, my, done) {
+      if (my !== token) return;
+      if (i >= list.length) { done(); return; }
       var row = addStep(list[i]);
       A(640, function () {
+        if (my !== token) return;
         if (row) row.classList.add('is-done');
-        A(220, function () { runSteps(list, i + 1, after); });
+        A(220, function () { runSteps(list, i + 1, my, done); });
       });
     }
-    function cycle() {
+    // play() always starts from a blank bar: type the command, then run its steps.
+    function play() {
+      reset();
+      var my = token;
       var c = cmds[qi % cmds.length]; qi++;
-      var text = c[0]; var k = 0;
-      el.textContent = ''; clearSteps();
+      if (reduced) {
+        el.textContent = c[0];
+        c[1].forEach(function (s) { var r = addStep(s); if (r) r.classList.add('is-done'); });
+        return;
+      }
+      var text = c[0], k = 0;
       (function add() {
+        if (my !== token) return;
         if (k < text.length) { el.textContent += text[k++]; A(30 + Math.random() * 38, add); }
         else A(380, function () {
-          runSteps(c[1], 0, function () {
-            A(2200, function () {
-              (function erase() {
-                if (el.textContent.length) { el.textContent = el.textContent.slice(0, -1); A(12, erase); }
-                else { clearSteps(); A(320, cycle); }
-              })();
-            });
-          });
+          if (my !== token) return;
+          runSteps(c[1], 0, my, function () {});
         });
       })();
     }
-    cycle();
+    // Driven by the film controller: it calls play() when the copilot scene opens
+    // and reset() when it leaves, so nothing runs until you're actually looking.
+    window.__fsCop = { play: play, reset: reset };
   })();
 
   // Lightweight count-up for the stat numbers. Prefix/suffix (e.g. "~", "+",
