@@ -414,6 +414,164 @@ CREATE TABLE IF NOT EXISTS lead_visits (
     FOREIGN KEY (lead_id) REFERENCES leads(id)
 );
 
+-- Participant PAYMENTS (stipends / reimbursement for time & travel).
+-- COMPLIANCE (see COMPLIANCE.md §5): these pay STUDY SUBJECTS only - never a
+-- referral source, and never tied to enrollment. Every rule carries its
+-- IRB/REB-approved amount + attestation; the ledger is the auditable record and
+-- the tax basis (US 1099 threshold). A payment rule pays a fixed amount per
+-- completed visit of a given kind (auto-queued from the calendar).
+CREATE TABLE IF NOT EXISTS payment_rules (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id      INTEGER NOT NULL,
+    nct          TEXT DEFAULT '',
+    kind         TEXT DEFAULT 'screening',   -- visit kind this rule pays for
+    label        TEXT DEFAULT '',            -- e.g. "Screening visit - time & travel"
+    amount_cents INTEGER DEFAULT 0,
+    currency     TEXT DEFAULT 'USD',
+    method       TEXT DEFAULT 'gift_card',   -- gift_card | manual | ach
+    irb_approved INTEGER DEFAULT 0,          -- hard gate before it can auto-issue
+    irb_note     TEXT DEFAULT '',            -- approval ref / consent section
+    active       INTEGER DEFAULT 1,
+    created_at   TEXT NOT NULL,
+    updated_at   TEXT NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
+-- One row per amount owed/paid to a participant (usually per completed visit).
+CREATE TABLE IF NOT EXISTS participant_payments (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    lead_id      INTEGER NOT NULL,
+    nct          TEXT DEFAULT '',
+    visit_id     INTEGER,                    -- the completed visit that triggered it
+    rule_id      INTEGER,
+    kind         TEXT DEFAULT '',
+    label        TEXT DEFAULT '',
+    amount_cents INTEGER DEFAULT 0,
+    currency     TEXT DEFAULT 'USD',
+    method       TEXT DEFAULT 'gift_card',
+    -- queued (owed, not sent) | issued (sent to provider) | paid (confirmed)
+    -- | void (cancelled) | failed
+    status       TEXT DEFAULT 'queued',
+    provider     TEXT DEFAULT '',            -- manual | tremendous | tango | ...
+    provider_ref TEXT DEFAULT '',            -- external disbursement id
+    note         TEXT DEFAULT '',
+    created_by   TEXT DEFAULT 'system',
+    created_at   TEXT NOT NULL,
+    updated_at   TEXT NOT NULL,
+    issued_at    TEXT DEFAULT '',
+    FOREIGN KEY (lead_id) REFERENCES leads(id)
+);
+-- Tax / payout profile per participant. Totals are derived from the ledger; this
+-- only holds the W-9 collection state that gates crossing the 1099 threshold.
+CREATE TABLE IF NOT EXISTS payment_recipients (
+    lead_id        INTEGER PRIMARY KEY,
+    w9_status      TEXT DEFAULT 'not_needed', -- not_needed | requested | collected
+    w9_collected_at TEXT DEFAULT '',
+    payout_email   TEXT DEFAULT '',
+    updated_at     TEXT DEFAULT '',
+    FOREIGN KEY (lead_id) REFERENCES leads(id)
+);
+-- Append-only audit trail for money movement (never updated/deleted).
+CREATE TABLE IF NOT EXISTS payment_events (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    payment_id  INTEGER NOT NULL,
+    action      TEXT DEFAULT '',   -- queued|issued|paid|void|failed|w9_requested|w9_collected
+    actor       TEXT DEFAULT '',
+    note        TEXT DEFAULT '',
+    created_at  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_payments_lead ON participant_payments(lead_id);
+CREATE INDEX IF NOT EXISTS idx_payments_nct ON participant_payments(nct, status);
+CREATE INDEX IF NOT EXISTS idx_payment_rules_user ON payment_rules(user_id, nct);
+CREATE INDEX IF NOT EXISTS idx_payment_events_pay ON payment_events(payment_id);
+
+-- Sponsor -> site UPDATES (amendments, safety letters, doc requests, bulletins).
+-- The #1 site burden is protocol amendments: one sponsor change forces every
+-- site to acknowledge, submit to IRB, update the ICF, RE-CONSENT enrolled
+-- participants, and retrain. This models that as one item per site with an
+-- explicit checklist state, so nothing falls through the cracks. In this MVP an
+-- update is owned by the site (user_id); a future sponsor side will broadcast
+-- one update to many sites. The re-consent step books real visits on the
+-- calendar (lead_visits.update_id links them back). KPI: Tier-2 efficiency +
+-- retention (staying compliant through an amendment avoids dropouts/deviations).
+CREATE TABLE IF NOT EXISTS sponsor_updates (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id        INTEGER NOT NULL,
+    nct            TEXT DEFAULT '',
+    type           TEXT DEFAULT 'amendment',  -- amendment|safety|doc_request|bulletin
+    version        TEXT DEFAULT '',           -- e.g. "Protocol v3.0"
+    title          TEXT DEFAULT '',
+    summary        TEXT DEFAULT '',           -- plain-language "what changed"
+    source         TEXT DEFAULT '',           -- sponsor/CRO name (free text in MVP)
+    received_at    TEXT DEFAULT '',
+    due_at         TEXT DEFAULT '',
+    requires_ack   INTEGER DEFAULT 1,
+    -- Checklist state. '' or 'pending' = to do; 'not_required' hides the step.
+    ack_status         TEXT DEFAULT 'pending',   -- pending|done
+    ack_at             TEXT DEFAULT '',
+    irb_status         TEXT DEFAULT 'pending',   -- pending|submitted|approved|not_required
+    irb_submitted_at   TEXT DEFAULT '',
+    irb_approved_at    TEXT DEFAULT '',
+    icf_status         TEXT DEFAULT 'pending',   -- pending|done|not_required
+    icf_note           TEXT DEFAULT '',
+    reconsent_status   TEXT DEFAULT 'pending',   -- pending|in_progress|complete|not_required
+    retrain_status     TEXT DEFAULT 'pending',   -- pending|done|not_required
+    created_by     TEXT DEFAULT 'you',
+    created_at     TEXT NOT NULL,
+    updated_at     TEXT NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
+CREATE TABLE IF NOT EXISTS update_events (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    update_id   INTEGER NOT NULL,
+    action      TEXT DEFAULT '',
+    actor       TEXT DEFAULT '',
+    note        TEXT DEFAULT '',
+    created_at  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_sponsor_updates_user ON sponsor_updates(user_id, nct);
+CREATE INDEX IF NOT EXISTS idx_update_events_upd ON update_events(update_id);
+
+-- Controlled-document version history per study (Protocol, ICF, IB, …). An
+-- amendment introduces a NEW version (status 'pending' until IRB-approved), then
+-- it becomes 'current' and the prior 'current' version is 'superseded'. Lets a
+-- site see exactly which document version is in effect (and its trail) instead of
+-- hunting through email - the #1 cause of consenting someone on a stale ICF.
+-- These are STUDY documents (not PHI, not ads); review access is site-team only.
+CREATE TABLE IF NOT EXISTS study_doc_versions (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id       INTEGER NOT NULL,
+    nct           TEXT DEFAULT '',
+    doc_type      TEXT DEFAULT 'protocol',   -- protocol|icf|ib|other
+    version       TEXT DEFAULT '',           -- "v4.0"
+    label         TEXT DEFAULT '',           -- optional human label
+    status        TEXT DEFAULT 'current',    -- pending|current|superseded
+    effective_at  TEXT DEFAULT '',
+    update_id     INTEGER,                   -- amendment that introduced it
+    note          TEXT DEFAULT '',
+    created_at    TEXT NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
+CREATE INDEX IF NOT EXISTS idx_doc_versions_study ON study_doc_versions(user_id, nct, doc_type);
+CREATE INDEX IF NOT EXISTS idx_doc_versions_update ON study_doc_versions(update_id);
+
+-- One-way calendar SYNC: every study visit published as a live iCalendar feed the
+-- coordinator subscribes to from Google/Outlook/Apple (read-only, auto-refreshing),
+-- so visits appear in the calendar they already live in - no double entry, fewer
+-- missed visits. `token` is the per-user feed secret (the URL is the auth). Events
+-- are DE-IDENTIFIED by default (initials + code, never full name) so no PHI leaves
+-- BridgeMD to a non-BAA calendar vendor. KPI: Tier-2 efficiency + retention.
+CREATE TABLE IF NOT EXISTS calendar_feeds (
+    user_id        INTEGER PRIMARY KEY,
+    token          TEXT NOT NULL,             -- secret path segment for the .ics URL
+    provider       TEXT DEFAULT '',           -- ''|google|outlook|apple|ics (connected app)
+    connected_at   TEXT DEFAULT '',
+    last_synced_at TEXT DEFAULT '',           -- updated each time the feed is fetched
+    deidentify     INTEGER DEFAULT 1,         -- 1 = initials+code only (compliant default)
+    created_at     TEXT NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_calendar_feeds_token ON calendar_feeds(token);
+
 -- Payer eligibility + travel/logistics readiness checks per lead. These reduce
 -- late-stage drop-off by surfacing blockers (coverage/travel) earlier.
 CREATE TABLE IF NOT EXISTS lead_support_checks (
@@ -1037,6 +1195,31 @@ _MIGRATIONS = {
         # The specific placement (posting location) that produced this applicant,
         # so a site sees which channel/place actually converts to enrolled.
         "placement_id": "INTEGER",
+    },
+    "lead_visits": {
+        # Lifecycle so the calendar can show/flag state, not just a date.
+        "status": "TEXT DEFAULT 'scheduled'",   # scheduled|completed|missed|cancelled
+        # Protocol visit window (e.g. "Day 28 +/-3"): the allowed booking range.
+        # A visit whose window is closing is a protocol-deviation (dropout) risk.
+        "window_start": "TEXT DEFAULT ''",
+        "window_end": "TEXT DEFAULT ''",
+        "duration_min": "INTEGER DEFAULT 30",
+        # Optional explicit title (else derived from kind).
+        "title": "TEXT DEFAULT ''",
+        # Prep checklist shown to the patient in reminders (one item per line):
+        # "Fast 8h before", "Bring current meds", "Arrive 15 min early".
+        "prep": "TEXT DEFAULT ''",
+        # Set when this visit was booked to re-consent a participant for a
+        # specific amendment (sponsor_updates.id), so the update can track
+        # re-consent progress from real calendar visits.
+        "update_id": "INTEGER",
+        # Coordinator-facing agenda ("what to go over" this visit), one item per
+        # line. Distinct from `prep` (which is shown to the patient).
+        "agenda": "TEXT DEFAULT ''",
+        # Recurrence: visits sharing a series_id are one repeating set; recurrence
+        # holds the cadence label (weekly|biweekly|monthly) for display + shifting.
+        "series_id": "TEXT DEFAULT ''",
+        "recurrence": "TEXT DEFAULT ''",
     },
     "memberships": {
         # Optional custom role name (e.g. "Data manager"); permissions still come
@@ -3443,14 +3626,118 @@ def engagement_for_ncts(ncts):
 # --------------------------------------------------------------------------- #
 # Visits (site books a screening/follow-up; drives reminders)
 # --------------------------------------------------------------------------- #
-def add_visit(lead_id, visit_at, kind="screening", location="", note=""):
+def add_visit(lead_id, visit_at, kind="screening", location="", note="",
+              window_start="", window_end="", duration_min=30, title="",
+              prep="", update_id=None, agenda="", series_id="", recurrence=""):
     db = get_db()
     db.execute(
         "INSERT INTO lead_visits (lead_id, kind, visit_at, location, note, "
-        "created_at) VALUES (?,?,?,?,?,?)",
-        (lead_id, kind or "screening", visit_at, location, note, now()))
+        "window_start, window_end, duration_min, title, prep, status, "
+        "update_id, agenda, series_id, recurrence, created_at) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        (lead_id, kind or "screening", visit_at, location, note,
+         window_start or "", window_end or "", int(duration_min or 30),
+         (title or "").strip(), (prep or "").strip(), "scheduled",
+         update_id, (agenda or "").strip(), series_id or "", recurrence or "",
+         now()))
     db.commit()
     return db.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+
+
+_RECUR_DAYS = {"weekly": 7, "biweekly": 14, "monthly": 28}
+
+
+def add_visit_series(lead_id, first_visit_at, count, recurrence="weekly",
+                     **visit_kwargs):
+    """Create a repeating set of visits sharing one series_id, spaced by the
+    recurrence cadence. Returns the list of created visit ids. KPI: Tier-2 -
+    booking a whole schedule once cuts coordinator scheduling time per patient."""
+    import datetime as _dt
+    import uuid as _uuid
+    step = _RECUR_DAYS.get(recurrence, 7)
+    try:
+        base = _dt.datetime.strptime(first_visit_at[:16], "%Y-%m-%d %H:%M")
+    except (ValueError, TypeError):
+        base = _dt.datetime.strptime(first_visit_at[:10] + " 09:00",
+                                     "%Y-%m-%d %H:%M")
+    sid = _uuid.uuid4().hex[:12]
+    ids = []
+    for i in range(max(1, int(count or 1))):
+        when = (base + _dt.timedelta(days=step * i)).strftime("%Y-%m-%d %H:%M")
+        ids.append(add_visit(lead_id, when, series_id=sid,
+                             recurrence=recurrence, **visit_kwargs))
+    return sid, ids
+
+
+def get_series_visits(series_id):
+    if not series_id:
+        return []
+    return get_db().execute(
+        "SELECT * FROM lead_visits WHERE series_id = ? ORDER BY visit_at ASC",
+        (series_id,)).fetchall()
+
+
+def shift_series_after(series_id, pivot_visit_at, delta_seconds, exclude_id=None):
+    """Move every not-yet-completed visit in a series that falls on/after the
+    pivot time by delta_seconds (used when a recurring visit is rescheduled and
+    the coordinator opts to slide the rest of the series). Clears reminded_at so
+    patients get a fresh reminder. Returns the count of visits shifted."""
+    import datetime as _dt
+    if not series_id or not delta_seconds:
+        return 0
+    q = ("SELECT id, visit_at FROM lead_visits WHERE series_id = ? "
+         "AND status NOT IN ('completed','cancelled') AND visit_at >= ?")
+    params = [series_id, pivot_visit_at]
+    if exclude_id is not None:
+        q += " AND id != ?"
+        params.append(exclude_id)
+    rows = get_db().execute(q, params).fetchall()
+    db = get_db()
+    n = 0
+    for r in rows:
+        try:
+            va = _dt.datetime.strptime(r["visit_at"][:16], "%Y-%m-%d %H:%M")
+        except (ValueError, TypeError):
+            continue
+        new_at = (va + _dt.timedelta(seconds=delta_seconds)).strftime(
+            "%Y-%m-%d %H:%M")
+        db.execute("UPDATE lead_visits SET visit_at = ?, reminded_at = '' "
+                   "WHERE id = ?", (new_at, r["id"]))
+        n += 1
+    db.commit()
+    return n
+
+
+def update_visit(visit_id, **fields):
+    """Update a visit. Rescheduling (a new visit_at) clears reminded_at so the
+    reminder engine re-notifies the patient about the new time."""
+    allowed = ("visit_at", "kind", "location", "note", "window_start",
+               "window_end", "duration_min", "title", "prep", "status",
+               "agenda", "series_id", "recurrence")
+    sets, vals = [], []
+    for k, v in fields.items():
+        if k not in allowed:
+            continue
+        sets.append(f"{k} = ?")
+        vals.append(v)
+    if not sets:
+        return False
+    if "visit_at" in fields:
+        sets.append("reminded_at = ?")
+        vals.append("")
+    vals.append(visit_id)
+    db = get_db()
+    db.execute(f"UPDATE lead_visits SET {', '.join(sets)} WHERE id = ?", vals)
+    db.commit()
+    return True
+
+
+def set_visit_status(visit_id, status):
+    db = get_db()
+    db.execute("UPDATE lead_visits SET status = ? WHERE id = ?",
+               ((status or "scheduled").strip(), visit_id))
+    db.commit()
+    return True
 
 
 def get_visit(visit_id):
@@ -3463,6 +3750,458 @@ def get_visits(lead_id):
     return get_db().execute(
         "SELECT * FROM lead_visits WHERE lead_id = ? ORDER BY visit_at ASC",
         (lead_id,)).fetchall()
+
+
+def list_calendar_visits(user_id, start_iso, end_iso):
+    """All visits in [start, end) across the trials this user's team runs, joined
+    with the applicant + trial so the calendar can render across studies. Scoped
+    by claimed NCTs (the same access model as list_leads_for_user)."""
+    claims = sorted(user_claimed_ncts(user_id))
+    if not claims:
+        return []
+    qs = ",".join("?" * len(claims))
+    return get_db().execute(
+        f"SELECT v.*, l.name AS lead_name, l.nct, l.title AS trial_title, "
+        f"l.token AS lead_token, l.status AS lead_status "
+        f"FROM lead_visits v JOIN leads l ON l.id = v.lead_id "
+        f"WHERE l.nct IN ({qs}) AND v.visit_at >= ? AND v.visit_at < ? "
+        f"ORDER BY v.visit_at ASC",
+        (*claims, start_iso, end_iso)).fetchall()
+
+
+# --------------------------------------------------------------------------- #
+# Calendar sync: a per-user, secret iCalendar (.ics) feed the coordinator
+# subscribes to from Google/Outlook/Apple. One-way, read-only, auto-refreshing.
+# --------------------------------------------------------------------------- #
+def get_or_create_calendar_feed(user_id):
+    """Return the user's calendar-feed row, creating it (with a fresh secret
+    token) on first use. The token is the feed URL's only credential."""
+    import secrets as _secrets
+    db = get_db()
+    row = db.execute("SELECT * FROM calendar_feeds WHERE user_id = ?",
+                     (user_id,)).fetchone()
+    if row:
+        return row
+    token = _secrets.token_urlsafe(24)
+    db.execute(
+        "INSERT INTO calendar_feeds (user_id, token, deidentify, created_at) "
+        "VALUES (?,?,1,?)", (user_id, token, now()))
+    db.commit()
+    return db.execute("SELECT * FROM calendar_feeds WHERE user_id = ?",
+                      (user_id,)).fetchone()
+
+
+def get_calendar_feed_by_token(token):
+    if not token:
+        return None
+    return get_db().execute(
+        "SELECT * FROM calendar_feeds WHERE token = ?", (token,)).fetchone()
+
+
+def set_calendar_feed(user_id, provider=None, deidentify=None):
+    """Update connection state (provider connected, de-identify preference)."""
+    feed = get_or_create_calendar_feed(user_id)
+    db = get_db()
+    sets, vals = [], []
+    if provider is not None:
+        sets.append("provider = ?")
+        vals.append(provider or "")
+        sets.append("connected_at = ?")
+        vals.append(now() if provider else "")
+    if deidentify is not None:
+        sets.append("deidentify = ?")
+        vals.append(1 if deidentify else 0)
+    if not sets:
+        return feed
+    vals.append(user_id)
+    db.execute(f"UPDATE calendar_feeds SET {', '.join(sets)} WHERE user_id = ?",
+               vals)
+    db.commit()
+    return db.execute("SELECT * FROM calendar_feeds WHERE user_id = ?",
+                      (user_id,)).fetchone()
+
+
+def touch_calendar_feed_synced(user_id):
+    db = get_db()
+    db.execute("UPDATE calendar_feeds SET last_synced_at = ? WHERE user_id = ?",
+               (now(), user_id))
+    db.commit()
+
+
+def rotate_calendar_feed_token(user_id):
+    """Issue a new secret token (revokes any previously shared feed URL)."""
+    import secrets as _secrets
+    get_or_create_calendar_feed(user_id)
+    token = _secrets.token_urlsafe(24)
+    db = get_db()
+    db.execute("UPDATE calendar_feeds SET token = ? WHERE user_id = ?",
+               (token, user_id))
+    db.commit()
+    return token
+
+
+# --------------------------------------------------------------------------- #
+# Participant payments (stipends / reimbursement). See the schema comment above
+# and COMPLIANCE.md §5: subjects only, IRB-approved amounts, auditable ledger.
+# --------------------------------------------------------------------------- #
+def add_payment_rule(user_id, nct, kind, label, amount_cents, currency="USD",
+                     method="gift_card", irb_approved=0, irb_note=""):
+    db = get_db()
+    ts = now()
+    db.execute(
+        "INSERT INTO payment_rules (user_id, nct, kind, label, amount_cents, "
+        "currency, method, irb_approved, irb_note, active, created_at, updated_at) "
+        "VALUES (?,?,?,?,?,?,?,?,?,1,?,?)",
+        (user_id, nct or "", kind or "screening", (label or "").strip(),
+         int(amount_cents or 0), currency or "USD", method or "gift_card",
+         1 if irb_approved else 0, (irb_note or "").strip(), ts, ts))
+    db.commit()
+    return db.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+
+
+def update_payment_rule(rule_id, **fields):
+    allowed = ("kind", "label", "amount_cents", "currency", "method",
+               "irb_approved", "irb_note", "active")
+    sets, vals = [], []
+    for k, v in fields.items():
+        if k not in allowed:
+            continue
+        sets.append(f"{k} = ?")
+        vals.append(int(v) if k in ("amount_cents", "irb_approved", "active") else v)
+    if not sets:
+        return False
+    sets.append("updated_at = ?")
+    vals.append(now())
+    vals.append(rule_id)
+    db = get_db()
+    db.execute(f"UPDATE payment_rules SET {', '.join(sets)} WHERE id = ?", vals)
+    db.commit()
+    return True
+
+
+def get_payment_rule(rule_id):
+    return get_db().execute(
+        "SELECT * FROM payment_rules WHERE id = ?", (rule_id,)).fetchone()
+
+
+def list_payment_rules(user_id, nct=None):
+    if nct:
+        return get_db().execute(
+            "SELECT * FROM payment_rules WHERE user_id = ? AND nct = ? "
+            "ORDER BY active DESC, kind ASC", (user_id, nct)).fetchall()
+    return get_db().execute(
+        "SELECT * FROM payment_rules WHERE user_id = ? "
+        "ORDER BY nct ASC, active DESC, kind ASC", (user_id,)).fetchall()
+
+
+def find_active_payment_rule(user_id, nct, kind):
+    return get_db().execute(
+        "SELECT * FROM payment_rules WHERE user_id = ? AND nct = ? AND kind = ? "
+        "AND active = 1 ORDER BY id DESC LIMIT 1",
+        (user_id, nct, kind)).fetchone()
+
+
+def _log_payment_event(db, payment_id, action, actor="system", note=""):
+    db.execute(
+        "INSERT INTO payment_events (payment_id, action, actor, note, created_at) "
+        "VALUES (?,?,?,?,?)", (payment_id, action, actor, note, now()))
+
+
+def create_payment(lead_id, nct, amount_cents, kind="", label="", visit_id=None,
+                   rule_id=None, currency="USD", method="gift_card",
+                   status="queued", created_by="system", note=""):
+    db = get_db()
+    ts = now()
+    db.execute(
+        "INSERT INTO participant_payments (lead_id, nct, visit_id, rule_id, kind, "
+        "label, amount_cents, currency, method, status, created_by, note, "
+        "created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        (lead_id, nct or "", visit_id, rule_id, kind or "", (label or "").strip(),
+         int(amount_cents or 0), currency or "USD", method or "gift_card",
+         status, created_by, (note or "").strip(), ts, ts))
+    pid = db.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+    _log_payment_event(db, pid, status, created_by, note)
+    db.commit()
+    return pid
+
+
+def get_payment(payment_id):
+    return get_db().execute(
+        "SELECT * FROM participant_payments WHERE id = ?", (payment_id,)).fetchone()
+
+
+def payment_for_visit(visit_id):
+    """Existing non-void payment tied to a visit (dedupe auto-triggers)."""
+    if not visit_id:
+        return None
+    return get_db().execute(
+        "SELECT * FROM participant_payments WHERE visit_id = ? AND status != 'void' "
+        "ORDER BY id DESC LIMIT 1", (visit_id,)).fetchone()
+
+
+def list_payments(user_id, nct=None):
+    claims = sorted(user_claimed_ncts(user_id))
+    if not claims:
+        return []
+    if nct and nct in claims:
+        claims = [nct]
+    qs = ",".join("?" * len(claims))
+    return get_db().execute(
+        f"SELECT p.*, l.name AS lead_name, l.email AS lead_email, "
+        f"l.token AS lead_token, l.title AS trial_title "
+        f"FROM participant_payments p JOIN leads l ON l.id = p.lead_id "
+        f"WHERE p.nct IN ({qs}) ORDER BY p.created_at DESC, p.id DESC",
+        claims).fetchall()
+
+
+def update_payment_status(payment_id, status, actor="you", provider=None,
+                          provider_ref=None, note=""):
+    db = get_db()
+    ts = now()
+    sets = ["status = ?", "updated_at = ?"]
+    vals = [status, ts]
+    if provider is not None:
+        sets.append("provider = ?")
+        vals.append(provider)
+    if provider_ref is not None:
+        sets.append("provider_ref = ?")
+        vals.append(provider_ref)
+    if status == "issued":
+        sets.append("issued_at = ?")
+        vals.append(ts)
+    vals.append(payment_id)
+    db.execute(f"UPDATE participant_payments SET {', '.join(sets)} WHERE id = ?",
+               vals)
+    _log_payment_event(db, payment_id, status, actor, note)
+    db.commit()
+    return True
+
+
+def list_payment_events(payment_id):
+    return get_db().execute(
+        "SELECT * FROM payment_events WHERE payment_id = ? ORDER BY id ASC",
+        (payment_id,)).fetchall()
+
+
+def get_payment_recipient(lead_id):
+    row = get_db().execute(
+        "SELECT * FROM payment_recipients WHERE lead_id = ?", (lead_id,)).fetchone()
+    if row:
+        return dict(row)
+    return {"lead_id": lead_id, "w9_status": "not_needed",
+            "w9_collected_at": "", "payout_email": "", "updated_at": ""}
+
+
+def set_w9_status(lead_id, status):
+    db = get_db()
+    ts = now()
+    collected = ts if status == "collected" else ""
+    db.execute(
+        "INSERT INTO payment_recipients (lead_id, w9_status, w9_collected_at, "
+        "updated_at) VALUES (?,?,?,?) ON CONFLICT(lead_id) DO UPDATE SET "
+        "w9_status = excluded.w9_status, "
+        "w9_collected_at = CASE WHEN excluded.w9_status = 'collected' "
+        "THEN excluded.w9_collected_at ELSE payment_recipients.w9_collected_at END, "
+        "updated_at = excluded.updated_at",
+        (lead_id, status, collected, ts))
+    db.commit()
+    return True
+
+
+def participant_year_total_cents(lead_id, year, exclude_payment_id=None):
+    """Sum of issued/paid payments to a participant in a calendar year (tax
+    basis for the 1099 threshold). created_at is 'YYYY-MM-DD HH:MM'."""
+    q = ("SELECT COALESCE(SUM(amount_cents),0) AS t FROM participant_payments "
+         "WHERE lead_id = ? AND status IN ('issued','paid') "
+         "AND substr(created_at,1,4) = ?")
+    args = [lead_id, str(year)]
+    if exclude_payment_id:
+        q += " AND id != ?"
+        args.append(exclude_payment_id)
+    return get_db().execute(q, args).fetchone()["t"] or 0
+
+
+# --------------------------------------------------------------------------- #
+# Sponsor -> site updates (amendments, safety letters, doc requests, bulletins).
+# See the schema comment above. Owned by the site (user_id) in this MVP.
+# --------------------------------------------------------------------------- #
+# Participants who are already consented/active and therefore need re-consent
+# when a protocol amendment lands.
+RECONSENT_STATUSES = ("screening", "enrolled")
+
+
+def add_sponsor_update(user_id, nct, type="amendment", version="", title="",
+                       summary="", source="", received_at="", due_at="",
+                       requires_ack=1, created_by="you"):
+    db = get_db()
+    ts = now()
+    # Amendments need the full checklist; lighter types skip steps up front.
+    if type == "amendment":
+        irb, icf, recon, retr = "pending", "pending", "pending", "pending"
+    elif type == "safety":
+        irb, icf, recon, retr = "pending", "not_required", "not_required", "pending"
+    else:  # doc_request | bulletin
+        irb, icf, recon, retr = "not_required", "not_required", "not_required", "not_required"
+    db.execute(
+        "INSERT INTO sponsor_updates (user_id, nct, type, version, title, "
+        "summary, source, received_at, due_at, requires_ack, ack_status, "
+        "irb_status, icf_status, reconsent_status, retrain_status, created_by, "
+        "created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        (user_id, nct or "", type, (version or "").strip(), (title or "").strip(),
+         (summary or "").strip(), (source or "").strip(),
+         received_at or ts, (due_at or "").strip(), 1 if requires_ack else 0,
+         "pending", irb, icf, recon, retr, created_by, ts, ts))
+    uid = db.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+    db.execute("INSERT INTO update_events (update_id, action, actor, note, "
+               "created_at) VALUES (?,?,?,?,?)",
+               (uid, "created", created_by, "Update logged", ts))
+    db.commit()
+    return uid
+
+
+def get_sponsor_update(update_id):
+    return get_db().execute(
+        "SELECT * FROM sponsor_updates WHERE id = ?", (update_id,)).fetchone()
+
+
+def list_sponsor_updates(user_id, nct=None):
+    if nct:
+        return get_db().execute(
+            "SELECT * FROM sponsor_updates WHERE user_id = ? AND nct = ? "
+            "ORDER BY created_at DESC, id DESC", (user_id, nct)).fetchall()
+    return get_db().execute(
+        "SELECT * FROM sponsor_updates WHERE user_id = ? "
+        "ORDER BY created_at DESC, id DESC", (user_id,)).fetchall()
+
+
+def update_sponsor_update(update_id, actor="you", event=None, note="", **fields):
+    allowed = ("type", "version", "title", "summary", "source", "due_at",
+               "ack_status", "ack_at", "irb_status", "irb_submitted_at",
+               "irb_approved_at", "icf_status", "icf_note", "reconsent_status",
+               "retrain_status")
+    sets, vals = [], []
+    for k, v in fields.items():
+        if k not in allowed:
+            continue
+        sets.append(f"{k} = ?")
+        vals.append(v)
+    if not sets:
+        return False
+    sets.append("updated_at = ?")
+    vals.append(now())
+    vals.append(update_id)
+    db = get_db()
+    db.execute(f"UPDATE sponsor_updates SET {', '.join(sets)} WHERE id = ?", vals)
+    if event:
+        db.execute("INSERT INTO update_events (update_id, action, actor, note, "
+                   "created_at) VALUES (?,?,?,?,?)",
+                   (update_id, event, actor, note, now()))
+    db.commit()
+    return True
+
+
+def list_update_events(update_id):
+    return get_db().execute(
+        "SELECT * FROM update_events WHERE update_id = ? ORDER BY id ASC",
+        (update_id,)).fetchall()
+
+
+# --------------------------------------------------------------------------- #
+# Controlled-document versions (Protocol / ICF / IB) per study. An amendment
+# introduces a NEW version (pending) that becomes current on IRB approval and
+# supersedes the prior current one. Gives the site an unambiguous "which version
+# is in effect + its history" view instead of digging through sponsor email.
+# --------------------------------------------------------------------------- #
+def add_doc_version(user_id, nct, doc_type="protocol", version="",
+                    status="current", effective_at="", update_id=None,
+                    label="", note=""):
+    db = get_db()
+    ts = now()
+    db.execute(
+        "INSERT INTO study_doc_versions (user_id, nct, doc_type, version, label, "
+        "status, effective_at, update_id, note, created_at) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?)",
+        (user_id, nct or "", doc_type, (version or "").strip(),
+         (label or "").strip(), status, (effective_at or "").strip(),
+         update_id, (note or "").strip(), ts))
+    vid = db.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+    db.commit()
+    return vid
+
+
+def list_doc_versions(user_id, nct, doc_type=None):
+    db = get_db()
+    if doc_type:
+        return db.execute(
+            "SELECT * FROM study_doc_versions WHERE user_id=? AND nct=? "
+            "AND doc_type=? ORDER BY created_at DESC, id DESC",
+            (user_id, nct, doc_type)).fetchall()
+    return db.execute(
+        "SELECT * FROM study_doc_versions WHERE user_id=? AND nct=? "
+        "ORDER BY created_at DESC, id DESC", (user_id, nct)).fetchall()
+
+
+def doc_versions_for_update(update_id):
+    return get_db().execute(
+        "SELECT * FROM study_doc_versions WHERE update_id=? ORDER BY id ASC",
+        (update_id,)).fetchall()
+
+
+def promote_doc_versions_for_update(user_id, update_id, effective_at=""):
+    """On IRB approval: an amendment's pending doc versions become 'current' and
+    the previous current versions of the same doc_type are 'superseded'. Returns
+    how many versions were promoted."""
+    db = get_db()
+    pend = db.execute(
+        "SELECT * FROM study_doc_versions WHERE update_id=? AND status='pending'",
+        (update_id,)).fetchall()
+    eff = (effective_at or now()[:10]).strip()
+    for v in pend:
+        db.execute(
+            "UPDATE study_doc_versions SET status='superseded' WHERE user_id=? "
+            "AND nct=? AND doc_type=? AND status='current' AND id<>?",
+            (user_id, v["nct"], v["doc_type"], v["id"]))
+        db.execute(
+            "UPDATE study_doc_versions SET status='current', effective_at=? "
+            "WHERE id=?", (eff, v["id"]))
+    if pend:
+        db.commit()
+    return len(pend)
+
+
+def reconsent_candidates(user_id, nct):
+    """Enrolled/active (already-consented) participants on a trial this user
+    runs — the people who must re-consent when the protocol changes."""
+    if nct not in user_claimed_ncts(user_id):
+        return []
+    qs = ",".join("?" * len(RECONSENT_STATUSES))
+    return get_db().execute(
+        f"SELECT * FROM leads WHERE nct = ? AND revealed = 1 "
+        f"AND status IN ({qs}) ORDER BY name ASC",
+        (nct, *RECONSENT_STATUSES)).fetchall()
+
+
+def reconsent_visits_for_update(update_id):
+    """Re-consent visits booked for an amendment, joined with the participant."""
+    return get_db().execute(
+        "SELECT v.*, l.name AS lead_name, l.token AS lead_token "
+        "FROM lead_visits v JOIN leads l ON l.id = v.lead_id "
+        "WHERE v.update_id = ? ORDER BY v.visit_at ASC", (update_id,)).fetchall()
+
+
+def sponsor_updates_action_count(user_id):
+    """Badge count: updates with any open required step."""
+    rows = get_db().execute(
+        "SELECT ack_status, irb_status, icf_status, reconsent_status, "
+        "retrain_status FROM sponsor_updates WHERE user_id = ?", (user_id,)
+    ).fetchall()
+    n = 0
+    for r in rows:
+        steps = [r["ack_status"], r["irb_status"], r["icf_status"],
+                 r["reconsent_status"], r["retrain_status"]]
+        if any(s in ("pending", "submitted", "in_progress") for s in steps):
+            n += 1
+    return n
 
 
 def get_lead_support(lead_id):

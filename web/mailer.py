@@ -420,7 +420,23 @@ def build_dm_sms(lead, link, to="patient"):
     return f"BridgeMD: New applicant message about {trial}. Reply here: {link}"
 
 
-def build_visit_message(lead, when, location, link, invite_url=""):
+def _prep_lines(prep):
+    """Normalize a prep checklist (string with one item per line, or a list)
+    into email lines under a clear 'Please bring / prepare' heading."""
+    if not prep:
+        return []
+    if isinstance(prep, str):
+        items = [p.strip() for p in prep.splitlines() if p.strip()]
+    else:
+        items = [str(p).strip() for p in prep if str(p).strip()]
+    if not items:
+        return []
+    out = ["", "Please bring / prepare before you come:"]
+    out += [f"  - {it}" for it in items]
+    return out
+
+
+def build_visit_message(lead, when, location, link, invite_url="", prep=""):
     """Confirmation that a screening/visit was booked."""
     title = lead["title"] or lead["nct"] or "your clinical trial"
     subject = f"Visit booked - {lead['nct'] or 'your trial application'}"
@@ -433,6 +449,7 @@ def build_visit_message(lead, when, location, link, invite_url=""):
     ]
     if location:
         lines.append(f"  Where: {location}")
+    lines += _prep_lines(prep)
     if invite_url:
         lines += ["", "Add to calendar (.ics):", invite_url]
     lines += [
@@ -448,7 +465,7 @@ def build_visit_message(lead, when, location, link, invite_url=""):
     return subject, "\n".join(lines)
 
 
-def build_reminder_message(lead, when, location, link):
+def build_reminder_message(lead, when, location, link, prep=""):
     """Reminder sent shortly before an upcoming visit."""
     title = lead["title"] or lead["nct"] or "your clinical trial"
     subject = f"Reminder: your visit is coming up - {lead['nct'] or 'trial'}"
@@ -461,6 +478,7 @@ def build_reminder_message(lead, when, location, link):
     ]
     if location:
         lines.append(f"  Where: {location}")
+    lines += _prep_lines(prep)
     lines += [
         "",
         "Showing up to this visit is the most important step - it's how the team "

@@ -1,0 +1,234 @@
+{# ── Shared visit-detail overlay ─────────────────────────────────────────────
+   One rich, in-place card per visit, opened anywhere with data-ui-open="visit-<id>"
+   (dashboard timeline/rail, calendar cells/agenda/attention, etc.). Expects:
+     - visit_cards : list of card dicts (see app._build_visit_card)
+     - overlay_next: URL to return to after an action (defaults to the dashboard)
+   so the same object always looks and behaves the same. ── #}
+{% import "_icons.html" as ic %}
+{% import "_ui.html" as ui %}
+{% set _onext = overlay_next if overlay_next is defined and overlay_next else url_for('study_home') %}
+{% set flag_tone = {'overdue':'danger','deviation':'warn','closing':'warn','window':'info','soon':'brand'} %}
+{% for c in visit_cards %}
+{% call ui.modal('visit-' ~ c.visit_id, c.kind ~ ' · ' ~ c.name, icon='calendar') %}
+<div class="tev">
+  {% if c.flag in ('overdue','deviation','closing','window','soon') or c.status == 'completed' or c.status == 'cancelled' or c.recurrence %}
+  <div class="tev-top">
+    {% if c.status == 'completed' %}{{ ui.badge('Completed', 'ok') }}
+    {% elif c.status == 'cancelled' %}{{ ui.badge('Cancelled', 'neutral') }}
+    {% elif c.flag in ('overdue','deviation','closing','window','soon') %}{{ ui.badge(c.flag_label, flag_tone.get(c.flag, 'neutral')) }}{% endif %}
+    {% if c.recurrence %}{{ ui.badge('Recurring · ' ~ c.recurrence ~ (' (' ~ c.series.index ~ ' of ' ~ c.series.total ~ ')' if c.series and c.series.total), 'violet', icon='refresh') }}{% endif %}
+    {% if c.window %}<span class="tev-win">{{ ic.icon('calendar') }} Protocol window {{ c.window }}</span>{% endif %}
+  </div>
+  {% endif %}
+
+  <div class="tev-line">
+    <span class="tev-ic">{{ ic.icon('clock') }}</span>
+    <div><b>{{ c.date_long }}</b> · {{ c.time }} – {{ c.end_time }} <span class="tev-sub">({{ c.duration }} min)</span></div>
+  </div>
+  {% if c.location %}
+  <div class="tev-line">
+    <span class="tev-ic">{{ ic.icon('pin') }}</span>
+    <div class="tev-addr">{{ c.location }}</div>
+  </div>
+  {% endif %}
+  <div class="tev-line">
+    <span class="tev-ic">{{ ic.icon('crosshair') }}</span>
+    <div>{{ c.trial_full }}</div>
+  </div>
+  {% if c.note %}
+  <div class="tev-line">
+    <span class="tev-ic">{{ ic.icon('list') }}</span>
+    <div>{{ c.note }}</div>
+  </div>
+  {% endif %}
+
+  <div class="tev-people">
+    <div class="tev-people-h">{{ ic.icon('users') }} Attendees</div>
+    <div class="tev-person"><span class="app-av">{{ c.name[:1]|upper }}</span><span><b>{{ c.name }}</b><em>Participant</em></span></div>
+    <div class="tev-person"><span class="app-av neutral">{{ (user['name'] or 'You')[:1]|upper }}</span><span><b>{{ user['name'] or 'You' }}</b><em>Site coordinator · organizer</em></span></div>
+  </div>
+
+  {# ── What to go over this visit (coordinator agenda), editable inline ── #}
+  <div class="tev-sec">
+    <div class="tev-sec-h">
+      <span>{{ ic.icon('list') }} What to go over</span>
+      <button type="button" class="tev-editlink" data-tev-agenda="{{ c.visit_id }}">{{ 'Edit' if c.agenda else 'Add' }}</button>
+    </div>
+    {% if c.agenda %}
+    <ul class="tev-agenda" id="tev-agenda-view-{{ c.visit_id }}">{% for a in c.agenda %}<li>{{ a }}</li>{% endfor %}</ul>
+    {% else %}
+    <div class="tev-muted" id="tev-agenda-view-{{ c.visit_id }}">No agenda yet.</div>
+    {% endif %}
+    <form class="tev-agenda-edit" id="tev-agenda-edit-{{ c.visit_id }}" method="post" hidden
+          action="{{ url_for('calendar_visit_agenda', visit_id=c.visit_id) }}">
+      <input type="hidden" name="next" value="{{ _onext }}">
+      <textarea name="agenda" rows="4" placeholder="One item per line — e.g. Review symptom diary">{{ c.agenda|join('\n') }}</textarea>
+      <div class="tev-resched-acts">
+        {{ ui.btn('Save agenda', 'primary', 'sm', icon='check', type='submit') }}
+        <button type="button" class="btn btn-ghost btn-sm" data-tev-agenda-cancel="{{ c.visit_id }}">Back</button>
+      </div>
+    </form>
+  </div>
+
+  {% if c.prep %}
+  <div class="tev-prep">
+    <div class="tev-prep-h">{{ ic.icon('check') }} Patient prep checklist</div>
+    <ul>{% for p in c.prep %}<li>{{ p }}</li>{% endfor %}</ul>
+  </div>
+  {% endif %}
+
+  {# ── Case context: prior visits + what happened, so history walks in with you ── #}
+  {% if c.history %}
+  <div class="tev-sec">
+    <div class="tev-sec-h"><span>{{ ic.icon('clock') }} Previous visits</span></div>
+    <ol class="tev-hist">
+      {% for h in c.history %}
+      <li class="tev-hist-row">
+        <div class="tev-hist-top">
+          <b>{{ h.kind }}</b><span class="tev-hist-date">{{ h.date }}</span>
+          {{ ui.badge(h.status|capitalize, h.tone) }}
+        </div>
+        {% if h.note %}<div class="tev-hist-note">{{ h.note }}</div>{% endif %}
+      </li>
+      {% endfor %}
+    </ol>
+  </div>
+  {% endif %}
+
+  {# ── Team notes: anything anyone added; add one right here ── #}
+  <div class="tev-sec">
+    <div class="tev-sec-h"><span>{{ ic.icon('file') }} Team notes</span></div>
+    {% if c.notes %}
+    <div class="tev-notes">
+      {% for n in c.notes %}
+      <div class="tev-note"><div class="tev-note-body">{{ n.body }}</div><div class="tev-note-meta">{{ n.author }} · {{ n.when }}</div></div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="tev-muted">No notes yet.</div>
+    {% endif %}
+    <form class="tev-note-add" method="post" action="{{ url_for('calendar_visit_note', visit_id=c.visit_id) }}">
+      <input type="hidden" name="next" value="{{ _onext }}">
+      <input type="text" name="body" placeholder="Add a note the whole team sees…" required>
+      {{ ui.btn('Add', 'ghost', 'sm', icon='send', type='submit') }}
+    </form>
+  </div>
+
+  {# ── Real calendar actions, RSVP-style (act without leaving the page) ── #}
+  <div class="tev-acts">
+    {% if c.status != 'completed' %}
+    <form method="post" action="{{ url_for('calendar_visit_status', visit_id=c.visit_id) }}">
+      <input type="hidden" name="status" value="completed">
+      <input type="hidden" name="next" value="{{ _onext }}">
+      {{ ui.btn('Mark done', 'primary', icon='check', type='submit') }}
+    </form>
+    {% endif %}
+    <button type="button" class="btn btn-ghost" data-tev-resched="{{ c.visit_id }}">{{ ic.icon('calendar') }} Reschedule</button>
+    {% if not c.recurrence %}
+    <button type="button" class="btn btn-ghost" data-tev-recur="{{ c.visit_id }}">{{ ic.icon('refresh') }} Make recurring</button>
+    {% endif %}
+    {{ ui.btn('Open applicant', 'ghost', icon='user', href=url_for('applicant_detail', lead_id=c.id)) }}
+    {% if c.status != 'cancelled' %}
+    <form method="post" action="{{ url_for('calendar_visit_status', visit_id=c.visit_id) }}" onsubmit="return confirm('Cancel this visit? The patient reminder is stopped.');">
+      <input type="hidden" name="status" value="cancelled">
+      <input type="hidden" name="next" value="{{ _onext }}">
+      {{ ui.btn('Cancel', 'danger', type='submit') }}
+    </form>
+    {% endif %}
+  </div>
+
+  {# Inline reschedule (hidden until "Reschedule" is clicked) ── one fresh
+     reminder is auto-queued to the patient on save (server-side). #}
+  <form class="tev-resched" id="tev-resched-{{ c.visit_id }}" method="post" hidden
+        action="{{ url_for('calendar_reschedule', visit_id=c.visit_id) }}">
+    <input type="hidden" name="next" value="{{ _onext }}">
+    <div class="tev-resched-row">
+      <label class="field"><span>Date</span><input type="date" name="date" value="{{ c.date_iso }}" required></label>
+      <label class="field"><span>Time</span><input type="time" name="time" value="{{ c.time_iso }}" required></label>
+      <label class="field tev-dur-f"><span>Min</span><input type="number" name="duration_min" min="10" step="5" value="{{ c.duration }}"></label>
+    </div>
+    {% if c.series_id and c.series and c.series.remaining > 1 %}
+    <label class="tev-check"><input type="checkbox" name="apply_series" value="1" checked> Also move the {{ c.series.remaining - 1 }} later visit{{ 's' if (c.series.remaining - 1) != 1 }} in this series by the same amount</label>
+    {% endif %}
+    <div class="tev-resched-acts">
+      {{ ui.btn('Save new time', 'primary', 'sm', icon='check', type='submit') }}
+      <button type="button" class="btn btn-ghost btn-sm" data-tev-resched-cancel="{{ c.visit_id }}">Back</button>
+    </div>
+  </form>
+
+  {# Inline "make recurring" (hidden until clicked) ── generates the series. #}
+  <form class="tev-resched" id="tev-recur-{{ c.visit_id }}" method="post" hidden
+        action="{{ url_for('calendar_recur', visit_id=c.visit_id) }}">
+    <input type="hidden" name="next" value="{{ _onext }}">
+    <div class="tev-resched-row">
+      <label class="field"><span>Repeat</span>
+        <select name="recurrence">
+          <option value="weekly">Weekly</option>
+          <option value="biweekly">Every 2 weeks</option>
+          <option value="monthly">Every 4 weeks</option>
+        </select>
+      </label>
+      <label class="field tev-dur-f"><span>Visits</span><input type="number" name="count" min="2" max="24" value="4"></label>
+    </div>
+    <div class="tev-resched-acts">
+      {{ ui.btn('Create series', 'primary', 'sm', icon='refresh', type='submit') }}
+      <button type="button" class="btn btn-ghost btn-sm" data-tev-recur-cancel="{{ c.visit_id }}">Back</button>
+    </div>
+  </form>
+</div>
+{% endcall %}
+{% endfor %}
+
+<script>
+document.querySelectorAll('[data-tev-resched]').forEach(function(btn){
+  btn.addEventListener('click', function(){
+    var f = document.getElementById('tev-resched-' + btn.getAttribute('data-tev-resched'));
+    if (f) { f.hidden = false; btn.hidden = true; }
+  });
+});
+document.querySelectorAll('[data-tev-resched-cancel]').forEach(function(btn){
+  btn.addEventListener('click', function(){
+    var idx = btn.getAttribute('data-tev-resched-cancel');
+    var f = document.getElementById('tev-resched-' + idx);
+    var opener = document.querySelector('[data-tev-resched="' + idx + '"]');
+    if (f) f.hidden = true;
+    if (opener) opener.hidden = false;
+  });
+});
+document.querySelectorAll('[data-tev-recur]').forEach(function(btn){
+  btn.addEventListener('click', function(){
+    var f = document.getElementById('tev-recur-' + btn.getAttribute('data-tev-recur'));
+    if (f) { f.hidden = false; btn.hidden = true; }
+  });
+});
+document.querySelectorAll('[data-tev-recur-cancel]').forEach(function(btn){
+  btn.addEventListener('click', function(){
+    var idx = btn.getAttribute('data-tev-recur-cancel');
+    var f = document.getElementById('tev-recur-' + idx);
+    var opener = document.querySelector('[data-tev-recur="' + idx + '"]');
+    if (f) f.hidden = true;
+    if (opener) opener.hidden = false;
+  });
+});
+document.querySelectorAll('[data-tev-agenda]').forEach(function(btn){
+  btn.addEventListener('click', function(){
+    var idx = btn.getAttribute('data-tev-agenda');
+    var f = document.getElementById('tev-agenda-edit-' + idx);
+    var view = document.getElementById('tev-agenda-view-' + idx);
+    if (f) f.hidden = false;
+    if (view) view.hidden = true;
+    btn.hidden = true;
+  });
+});
+document.querySelectorAll('[data-tev-agenda-cancel]').forEach(function(btn){
+  btn.addEventListener('click', function(){
+    var idx = btn.getAttribute('data-tev-agenda-cancel');
+    var f = document.getElementById('tev-agenda-edit-' + idx);
+    var view = document.getElementById('tev-agenda-view-' + idx);
+    var opener = document.querySelector('[data-tev-agenda="' + idx + '"]');
+    if (f) f.hidden = true;
+    if (view) view.hidden = false;
+    if (opener) opener.hidden = false;
+  });
+});
+</script>

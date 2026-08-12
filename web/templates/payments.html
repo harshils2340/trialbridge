@@ -1,0 +1,182 @@
+{% extends "base.html" %}
+{% import "_icons.html" as ic %}
+{% import "_ui.html" as ui %}
+{% block title %}Payments · BridgeMD for sites{% endblock %}
+
+{% set status_tone = {'queued':'warn','issued':'info','paid':'ok','void':'neutral','failed':'danger'} %}
+
+{% block body %}
+<div class="app-head">
+  <div>
+    <h1>Payments</h1>
+    <p>Participant stipends for time &amp; travel - auto-queued from completed visits, issued in one click, tracked for tax.</p>
+  </div>
+  <div style="display:flex;gap:8px;">
+    {{ ui.btn('Add payment rule', 'primary', icon='plus', extra='data-ui-open="pay-rule" onclick="payRuleReset()"') }}
+  </div>
+</div>
+
+<div class="pay-note">
+  {{ ic.icon('shield') }}
+  <span><b>Compliant by design.</b> These pay <b>study participants</b> a reasonable, IRB/REB-approved amount for time &amp; travel - never a referral source, never tied to enrolling. Disbursing via <b>{{ provider_label }}</b>{% if not provider_live %} (record-only until a live gift-card rail is connected){% endif %}. Payments reaching {{ threshold }}/yr require a W-9 on file (1099).</span>
+</div>
+
+{% if not trials %}
+<div class="app-card pad">
+  {{ ui.empty('Claim a study to set up payments', 'Add an IRB-approved stipend per visit type, then payments auto-queue when you mark a visit completed.', 'dollar', action=ui.btn('Go to Settings', variant='primary', icon='gear', href=url_for('site_setup'))) }}
+</div>
+{% else %}
+
+<div class="app-stats">
+  <div class="app-stat warn"><div class="l">Queued</div><div class="n">{{ summary.queued }}</div><div class="s">{{ summary.queued_n }} to issue</div></div>
+  <div class="app-stat"><div class="l">Issued this month</div><div class="n">{{ summary.issued_month }}</div></div>
+  <div class="app-stat"><div class="l">Participants paid</div><div class="n">{{ summary.participants }}</div></div>
+  <div class="app-stat{{ ' danger' if summary.w9_needed }}"><div class="l">W-9 needed</div><div class="n">{{ summary.w9_needed }}</div><div class="s">near/over {{ threshold }}</div></div>
+</div>
+
+{% if needs_action %}
+<div class="app-card cal-attn" style="border-left-color:var(--amber);">
+  <div class="cal-attn-h">{{ ic.icon('alert') }} <b>Needs action</b> <span>{{ needs_action|length }} item{{ 's' if needs_action|length != 1 }}</span></div>
+  <div class="cal-attn-rows">
+    {% for p in needs_action %}
+    <div class="pay-action-row">
+      <span class="pay-who"><b>{{ p.lead_name }}</b> · {{ p.label }} · {{ p.amount }}</span>
+      <span class="pay-action-btns">
+        {% if p.needs_w9 %}
+        <span class="pay-w9-flag">{{ ic.icon('alert') }} {{ 'Over' if p.over_1099 else 'Near' }} {{ threshold }} · W-9 {{ p.w9_status }}</span>
+        <form method="post" action="{{ url_for('payments_w9', lead_id=p.lead_id) }}" style="display:inline">
+          <input type="hidden" name="status" value="collected">
+          {{ ui.btn('W-9 on file', 'ghost', size='sm', type='submit', icon='check') }}
+        </form>
+        {% endif %}
+        {% if p.status in ('queued','failed') %}
+        <form method="post" action="{{ url_for('payments_issue', payment_id=p.id) }}" style="display:inline"
+              onsubmit="return confirm('Issue {{ p.amount }} to {{ p.lead_name }}? This disburses the stipend now.');">
+          {{ ui.btn(('Retry ' if p.status == 'failed' else 'Issue ') ~ p.amount, 'primary', size='sm', type='submit', icon='dollar') }}
+        </form>
+        {% endif %}
+      </span>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<div class="app-card" style="margin-bottom:18px;">
+  <div class="app-card-title" style="padding:14px 18px 6px;">{{ ic.icon('list') }} <b>Ledger</b> <span class="app-sub" style="font-weight:400;color:var(--faint);">every stipend, with its audit state</span></div>
+  {% if not payments %}
+  {{ ui.empty('No payments yet', 'Mark a visit completed on the Calendar (with a payment rule set) and the stipend appears here.', 'dollar') }}
+  {% else %}
+  <div class="pay-table">
+    <div class="pay-tr pay-th">
+      <span>Participant</span><span>For</span><span>Amount</span><span>YTD</span><span>Status</span><span></span>
+    </div>
+    {% for p in payments %}
+    <div class="pay-tr">
+      <span class="pay-c-name"><b>{{ p.lead_name }}</b><em>{{ p.trial_title }}</em></span>
+      <span>{{ p.label }}{% if p.undue %} <span class="pay-undue" title="Above the undue-inducement flag - confirm it matches the IRB-approved amount">{{ ic.icon('alert') }}</span>{% endif %}</span>
+      <span class="pay-c-amt">{{ p.amount }}</span>
+      <span class="pay-c-ytd">{{ p.ytd }}{% if p.over_1099 %} <em class="pay-1099 over">1099</em>{% elif p.near_1099 %} <em class="pay-1099 near">near</em>{% endif %}</span>
+      <span>{{ ui.badge(p.status|capitalize, status_tone.get(p.status,'neutral')) }}</span>
+      <span class="pay-c-act">
+        {% if p.status in ('queued','issued','paid','failed') %}
+        <form method="post" action="{{ url_for('payments_void', payment_id=p.id) }}" onsubmit="return confirm('Void this payment for {{ p.lead_name }}? This reverses the {{ p.amount }} stipend.')">{{ ui.btn('Void', 'ghost', size='sm', type='submit') }}</form>
+        {% endif %}
+      </span>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+
+<div class="app-card">
+  <div class="app-card-title" style="padding:14px 18px 6px;">{{ ic.icon('dollar') }} <b>Payment schedule</b> <span class="app-sub" style="font-weight:400;color:var(--faint);">what each visit type pays — set once per protocol</span></div>
+  {% if not rules %}
+  <div style="padding:0 18px 18px;">
+    {{ ui.empty('No rules yet', 'Add a stipend per visit type. Attest IRB approval and it auto-queues when that visit is completed.', 'dollar', action=ui.btn('Add payment rule', variant='primary', icon='plus', extra='data-ui-open="pay-rule" onclick="payRuleReset()"')) }}
+  </div>
+  {% else %}
+  <div class="pay-rules">
+    {% for r in rules %}
+    <div class="pay-rule{{ ' is-off' if not r.active }}">
+      <span class="pay-rule-amt">{{ r.amount }}</span>
+      <span class="pay-rule-main">
+        <b>{{ r.label }}</b>
+        <em>{{ r.nct }} · {{ r.method|replace('_',' ') }}{% if not r.active %} · inactive{% endif %}</em>
+      </span>
+      <span class="pay-rule-irb">
+        {% if r.irb_approved %}{{ ui.badge('IRB approved', 'ok', icon='check') }}{% else %}{{ ui.badge('Attest IRB', 'warn') }}{% endif %}
+      </span>
+      <span class="pay-rule-act">
+        <button type="button" class="btn btn-ghost btn-sm pay-edit"
+          data-id="{{ r.id }}" data-nct="{{ r.nct }}" data-kind="{{ r.kind }}"
+          data-label="{{ r.label }}" data-amount="{{ '%.2f'|format(r.amount_cents/100) }}"
+          data-method="{{ r.method }}" data-irb="{{ r.irb_approved }}"
+          data-irbnote="{{ r.irb_note }}">Edit</button>
+        {% if r.active %}
+        <form method="post" action="{{ url_for('payments_rule_delete', rule_id=r.id) }}" onsubmit="return confirm('Deactivate this rule?')">{{ ui.btn('Off', 'ghost', size='sm', type='submit') }}</form>
+        {% endif %}
+      </span>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+
+{# ---- Add / edit rule modal ---- #}
+{% call ui.modal('pay-rule', 'Payment rule', icon='dollar') %}
+<form method="post" action="{{ url_for('payments_rule_save') }}" class="cal-form" id="pay-rule-form">
+  <input type="hidden" name="rule_id" id="pr-id">
+  <div class="field"><label>Study</label>
+    <select name="nct" id="pr-nct">
+      {% for t in trials %}<option value="{{ t.nct }}">{{ t.title }}</option>{% endfor %}
+    </select>
+  </div>
+  <div class="row">
+    <div class="field"><label>Visit type</label>
+      <select name="kind" id="pr-kind">{% for k, lbl in visit_kinds %}<option value="{{ k }}">{{ lbl }}</option>{% endfor %}</select>
+    </div>
+    <div class="field"><label>Amount (USD)</label><input type="number" name="amount" id="pr-amount" min="0" step="0.01" placeholder="75.00" required></div>
+  </div>
+  <div class="row">
+    <div class="field"><label>Method</label>
+      <select name="method" id="pr-method">
+        <option value="gift_card">Gift card</option>
+        <option value="manual">Manual / cash</option>
+        <option value="ach">ACH / bank</option>
+      </select>
+    </div>
+    <div class="field"><label>Label <span class="cal-hint">shown on the receipt</span></label><input type="text" name="label" id="pr-label" placeholder="Screening visit - time & travel"></div>
+  </div>
+  <div class="field pay-irb-field">
+    <label class="pay-check"><input type="checkbox" name="irb_approved" id="pr-irb" value="1"> This amount is <b>IRB/REB-approved</b> and disclosed in the consent form</label>
+    <span class="cal-hint">Required before a rule can auto-issue. Amounts are for time &amp; travel, never for enrolling.</span>
+  </div>
+  <div class="field"><label>IRB reference <span class="cal-hint">optional — approval # / consent section</span></label><input type="text" name="irb_note" id="pr-irbnote" placeholder="IRB #2024-118, consent sec. 12"></div>
+  <div class="cal-form-foot"><span></span>{{ ui.btn('Save rule', 'primary', type='submit', icon='check') }}</div>
+</form>
+{% endcall %}
+
+<script>
+function payRuleReset() {
+  var f = document.getElementById('pay-rule-form'); if (!f) return;
+  f.reset(); document.getElementById('pr-id').value = '';
+  var nct = document.getElementById('pr-nct'); if (nct) nct.disabled = false;
+}
+(function () {
+  function setv(id, v) { var e = document.getElementById(id); if (e) e.value = v || ''; }
+  document.querySelectorAll('.pay-edit').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var d = b.dataset;
+      setv('pr-id', d.id); setv('pr-kind', d.kind); setv('pr-amount', d.amount);
+      setv('pr-method', d.method); setv('pr-label', d.label); setv('pr-irbnote', d.irbnote);
+      var nct = document.getElementById('pr-nct');
+      if (nct) { nct.value = d.nct; nct.disabled = true; }  // study is fixed on edit
+      document.getElementById('pr-irb').checked = (d.irb === '1');
+      if (window.uiOpenModal) window.uiOpenModal('pay-rule');
+    });
+  });
+})();
+</script>
+{% endblock %}

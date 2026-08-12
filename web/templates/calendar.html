@@ -1,0 +1,231 @@
+{% extends "base.html" %}
+{% import "_icons.html" as ic %}
+{% import "_ui.html" as ui %}
+{% block title %}Calendar · BridgeMD for sites{% endblock %}
+
+{% macro visit_attrs(v) -%}
+  data-id="{{ v.id }}" data-lead="{{ v.lead_name }}" data-kind="{{ v.kind }}"
+  data-title="{{ v.title }}" data-date="{{ v.date }}" data-time="{{ v.time }}"
+  data-location="{{ v.location }}" data-note="{{ v.note }}"
+  data-prep="{{ v.prep|join('\n') }}" data-dur="{{ v.duration_min }}"
+  data-ws="{{ v.window_start[:10] }}" data-we="{{ v.window_end[:10] }}"
+  data-nct="{{ v.nct }}" data-status="{{ v.status }}"
+{%- endmacro %}
+
+{% block body %}
+<div class="app-head">
+  <div>
+    <h1>Calendar</h1>
+    <p>Every visit across your trials, on one schedule - with protocol windows, prep checklists and auto-reminders.</p>
+  </div>
+  <div style="display:flex;gap:8px;align-items:center;">
+    {% if sync and sync.connected %}
+    {{ ui.btn(sync.provider_label ~ ' \u00b7 synced', 'ghost', icon='refresh', extra='data-ui-open="cal-sync"') }}
+    {% else %}
+    {{ ui.btn('Sync calendar', 'ghost', icon='refresh', extra='data-ui-open="cal-sync"') }}
+    {% endif %}
+    {{ ui.btn('New visit', 'primary', icon='plus', extra='data-ui-open="cal-new"') }}
+  </div>
+</div>
+
+{% if not trials %}
+<div class="app-card pad">
+  {{ ui.empty('Claim a study to start scheduling', 'Once you claim an NCT and reveal applicants, their screening and follow-up visits live here.', 'calendar', action=ui.btn('Go to Settings', variant='primary', icon='gear', href=url_for('site_setup'))) }}
+</div>
+{% else %}
+
+<div class="cal-toolbar">
+  <div class="cal-nav">
+    <a class="cal-arrow" href="{{ url_for('calendar_page', m=prev_month, view=view) }}" aria-label="Previous month">{{ ic.icon('chevron-left') }}</a>
+    <b class="cal-month">{{ month_label }}</b>
+    <a class="cal-arrow" href="{{ url_for('calendar_page', m=next_month, view=view) }}" aria-label="Next month">{{ ic.icon('chevron-right') }}</a>
+    {% if month_key != today_key %}<a class="cal-today-link" href="{{ url_for('calendar_page', view=view) }}">Today</a>{% endif %}
+  </div>
+  <div class="cal-toggle">
+    <a href="{{ url_for('calendar_page', m=month_key, view='month') }}">{{ ui.chip('Month', active=(view=='month'), icon='grid') }}</a>
+    <a href="{{ url_for('calendar_page', m=month_key, view='agenda') }}">{{ ui.chip('Agenda', active=(view=='agenda'), icon='list') }}</a>
+  </div>
+</div>
+
+{% if attention %}
+<details class="cal-attn">
+  <summary class="cal-attn-sum">
+    <span class="cal-attn-sum-l">{{ ic.icon('alert') }} <b>{{ attention|length }}</b> need attention</span>
+    <span class="cal-attn-sum-names">{{ attention[:3] | map(attribute='lead_name') | join(', ') }}{% if attention|length > 3 %} +{{ attention|length - 3 }} more{% endif %}</span>
+    <span class="cal-attn-sum-cta">Review {{ ic.icon('chevron-down') }}</span>
+  </summary>
+  <div class="cal-attn-rows">
+    {% for v in attention[:8] %}
+    <button type="button" class="cal-attn-row" data-ui-open="visit-{{ v.id }}">
+      <span class="cal-attn-flag cal-flag-{{ v.flag }}">
+        {% if v.flag == 'overdue' %}Overdue{% elif v.flag == 'deviation' %}Out of window{% else %}Window closing{% endif %}
+      </span>
+      <span class="cal-attn-who"><b>{{ v.lead_name }}</b> · {{ v.kind_label }}</span>
+      <span class="cal-attn-when">{{ v.date }} · {{ v.time_label }}{% if v.flag_label %} — {{ v.flag_label }}{% endif %}</span>
+    </button>
+    {% endfor %}
+  </div>
+</details>
+{% endif %}
+
+{% if view == 'month' %}
+<div class="app-card cal-wrap">
+  <div class="cal-grid cal-head">
+    {% for d in weekday_labels %}<div class="cal-wd">{{ d }}</div>{% endfor %}
+  </div>
+  {% for week in grid %}
+  <div class="cal-grid">
+    {% for cell in week %}
+    <div class="cal-cell{{ ' is-out' if not cell.in_month }}{{ ' is-today' if cell.is_today }}">
+      <div class="cal-daynum">{{ cell.day }}</div>
+      <div class="cal-events">
+        {% for v in cell.visits[:3] %}
+        <button type="button" class="cal-ev cal-k-{{ v.kind }} cal-flag-{{ v.flag }}" data-ui-open="visit-{{ v.id }}" title="{{ v.time_label }} · {{ v.lead_name }} · {{ v.kind_label }}">
+          <span class="cal-ev-dot"></span>
+          <span class="cal-ev-t">{{ v.time_label }}</span>
+          <span class="cal-ev-n">{{ v.lead_name }}</span>
+        </button>
+        {% endfor %}
+        {% if cell.visits|length > 3 %}<div class="cal-more">+{{ cell.visits|length - 3 }} more</div>{% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="app-card">
+  {% if not agenda %}
+  {{ ui.empty('Nothing scheduled ahead', 'Book a visit or switch months to see past visits.', 'calendar') }}
+  {% else %}
+  <div class="cal-agenda">
+    {% for v in agenda %}
+    <button type="button" class="cal-ag-row" data-ui-open="visit-{{ v.id }}">
+      <span class="cal-ag-date">
+        <b>{{ v.date[8:10] }}</b><span>{{ v.date[5:7] }}</span>
+      </span>
+      <span class="cal-ag-dot cal-k-{{ v.kind }}"></span>
+      <span class="cal-ag-main">
+        <span class="cal-ag-top"><b>{{ v.lead_name }}</b> · {{ v.kind_label }}
+          {% if v.flag in ('overdue','deviation','closing') %}<em class="cal-flag-{{ v.flag }} cal-ag-flag">{{ v.flag_label }}</em>{% endif %}
+        </span>
+        <span class="cal-ag-sub">{{ v.time_label }} · {{ v.trial_title }}{% if v.location %} · {{ v.location }}{% endif %}</span>
+        {% if v.prep %}<span class="cal-ag-prep">{{ ic.icon('check') }} {{ v.prep|length }} prep item{{ 's' if v.prep|length != 1 }}</span>{% endif %}
+      </span>
+      <span class="cal-ag-status cal-flag-{{ v.flag }}">{{ v.status|capitalize }}</span>
+    </button>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+{% endif %}
+
+{# ---- New visit modal ---- #}
+{% call ui.modal('cal-new', 'New visit', icon='plus') %}
+<form method="post" action="{{ url_for('calendar_book') }}" class="cal-form">
+  <input type="hidden" name="m" value="{{ month_key }}">
+  <input type="hidden" name="view" value="{{ view }}">
+  <input type="hidden" name="nct" value="{{ nct_filter }}">
+  {% if not bookable %}
+  <p class="cal-hint">Reveal an applicant first (from Applicants) to book them a visit.</p>
+  {% else %}
+  <div class="field"><label>Applicant</label>
+    <select name="lead_id" required>
+      <option value="">Choose an applicant…</option>
+      {% for b in bookable %}<option value="{{ b.id }}">{{ b.name }} — {{ b.title }}</option>{% endfor %}
+    </select>
+  </div>
+  <div class="row">
+    <div class="field"><label>Date</label><input type="date" name="date" required></div>
+    <div class="field"><label>Time</label><input type="time" name="time" value="09:00" required></div>
+  </div>
+  <div class="row">
+    <div class="field"><label>Visit type</label>
+      <select name="kind">{% for k, lbl in visit_kinds %}<option value="{{ k }}">{{ lbl }}</option>{% endfor %}</select>
+    </div>
+    <div class="field"><label>Duration (min)</label><input type="number" name="duration_min" value="30" min="5" step="5"></div>
+  </div>
+  <div class="row">
+    <div class="field"><label>Window opens <span class="cal-hint">optional</span></label><input type="date" name="window_start"></div>
+    <div class="field"><label>Window closes</label><input type="date" name="window_end"></div>
+  </div>
+  <div class="field"><label>Location</label><input type="text" name="location" placeholder="Study site, room, or video link"></div>
+  <div class="field"><label>Prep checklist <span class="cal-hint">one item per line — sent to the patient</span></label>
+    <textarea name="prep" rows="3" placeholder="Fast 8 hours before&#10;Bring your medication list"></textarea>
+  </div>
+  <div class="cal-form-foot"><span></span>{{ ui.btn('Book visit', 'primary', type='submit', icon='calendar') }}</div>
+  {% endif %}
+</form>
+{% endcall %}
+
+{# ---- Calendar sync: subscribe from Google/Outlook/Apple (one-way, read-only) ---- #}
+{% call ui.modal('cal-sync', 'Calendar sync', icon='refresh') %}
+<div class="sync">
+  {% if sync.connected %}
+  <div class="sync-status is-on">
+    <span class="sync-status-ic">{{ ic.icon('check') }}</span>
+    <div><b>Connected to {{ sync.provider_label }}</b>
+      <em>{% if sync.last_synced_at %}Last synced {{ sync.last_synced_at }}{% else %}Syncing…{% endif %} · visits update automatically</em></div>
+  </div>
+  {% else %}
+  <p class="sync-lead">Your study visits show up automatically in the calendar you already live in. It's one-way and read-only — you keep booking and editing visits here in BridgeMD.</p>
+  {% endif %}
+
+  <div class="sync-provs">
+    {% for pid, plabel in [('google','Google Calendar'), ('outlook','Outlook'), ('apple','Apple Calendar')] %}
+    <form method="post" action="{{ url_for('calendar_sync_connect') }}" class="sync-prov-f">
+      <input type="hidden" name="provider" value="{{ pid }}">
+      <button class="sync-prov{{ ' is-on' if sync.provider == pid }}" type="submit">
+        <span class="sync-prov-l">{{ ic.icon('external') }} Add to {{ plabel }}</span>
+        {% if sync.provider == pid %}<span class="sync-prov-on">{{ ic.icon('check') }} Connected</span>{% endif %}
+      </button>
+    </form>
+    {% endfor %}
+  </div>
+
+  <div class="sync-url">
+    <label class="cal-hint">Or paste this private subscribe link into any calendar app</label>
+    <div class="sync-url-row">
+      <input type="text" id="sync-url" readonly value="{{ sync.webcal_url }}">
+      <button type="button" class="btn btn-ghost btn-sm" id="sync-copy">{{ ic.icon('copy') }} Copy</button>
+    </div>
+  </div>
+
+  <div class="sync-note">
+    <span class="sync-note-ic">{{ ic.icon('shield') }}</span>
+    <div>
+      <b>Patient-safe by default.</b> Synced events show initials + a record code (e.g. “Screening · I.M. #1042”), never the full name — so no PHI leaves BridgeMD for your calendar provider.
+      <form method="post" action="{{ url_for('calendar_sync_deidentify') }}" class="sync-deid">
+        <input type="hidden" name="deidentify" value="{{ '0' if sync.deidentify else '1' }}">
+        <button type="submit" class="sync-deid-link">{{ 'Show full patient names instead (requires a BAA)' if sync.deidentify else 'Switch back to initials only' }}</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="sync-foot">
+    <form method="post" action="{{ url_for('calendar_sync_rotate') }}">{{ ui.btn('Reset link', 'ghost', size='sm', icon='refresh', type='submit') }}</form>
+    {% if sync.connected %}
+    <form method="post" action="{{ url_for('calendar_sync_disconnect') }}">{{ ui.btn('Disconnect', 'danger', size='sm', type='submit') }}</form>
+    {% endif %}
+  </div>
+</div>
+{% endcall %}
+
+<script>
+(function () {
+  var c = document.getElementById('sync-copy'), u = document.getElementById('sync-url');
+  if (!c || !u) return;
+  c.addEventListener('click', function () {
+    u.focus(); u.select();
+    var done = function () { var h = c.innerHTML; c.textContent = 'Copied'; setTimeout(function () { c.innerHTML = h; }, 1500); };
+    if (navigator.clipboard) { navigator.clipboard.writeText(u.value).then(done, function () { try { document.execCommand('copy'); done(); } catch (e) {} }); }
+    else { try { document.execCommand('copy'); done(); } catch (e) {} }
+  });
+})();
+</script>
+
+{# ---- Shared visit-detail overlay (same as the dashboard) ---- #}
+{% set overlay_next = url_for('calendar_page', m=month_key, view=view) %}
+{% include "_visit_overlay.html" %}
+{% endblock %}

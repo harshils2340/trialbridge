@@ -4,28 +4,30 @@
 {% block title %}{{ camp['name'] or 'Campaign' }} · BridgeMD{% endblock %}
 
 {% block body %}
-<div class="page-head">
-  <p class="site-hint"><a href="{{ url_for('campaign_list') }}">{{ ic.icon('arrow-left') }} All campaigns</a></p>
-  <h1>{{ camp['name'] or 'Untitled campaign' }}</h1>
-  <p>
-    {{ camp['nct'] }} ·
+<div class="cal-back"><a href="{{ url_for('campaign_list') }}">{{ ic.icon('arrow-left') }} All campaigns</a></div>
+<div class="app-head">
+  <div>
+    <h1>{{ camp['name'] or 'Untitled campaign' }}</h1>
+    <p>{{ camp['nct'] }}</p>
+  </div>
+  <div class="app-head-badges">
     {{ ui.badge(camp['channel']|capitalize, 'brand') }}
     {{ ui.badge(camp['status']|capitalize, 'ok' if camp['status']=='active' else ('warn' if camp['status']=='paused' else 'neutral')) }}
-    {{ ui.badge('IRB approved', 'ok') if camp['irb_approved'] else ui.badge('IRB pending', 'warn') }}
-  </p>
+    {{ ui.badge('IRB approved', 'ok', icon='check') if camp['irb_approved'] else ui.badge('IRB pending', 'warn') }}
+  </div>
 </div>
 
 {# ── Performance strip ── #}
-<div class="stats">
-  <div class="stat"><div class="l">{{ ic.icon('list', 'ico stat-ico') }}Applicants</div><div class="n">{{ perf.applicants if perf else 0 }}</div></div>
-  <div class="stat"><div class="l">{{ ic.icon('activity', 'ico stat-ico') }}Screened</div><div class="n">{{ perf.screened if perf else 0 }}</div></div>
-  <div class="stat"><div class="l">{{ ic.icon('user-plus', 'ico stat-ico') }}Enrolled</div><div class="n">{{ perf.enrolled if perf else 0 }}</div></div>
-  <div class="stat accent"><div class="l">{{ ic.icon('dollar', 'ico stat-ico') }}Cost / enrolled</div><div class="n">{{ '$%.0f'|format(perf.cost_per_enrolled) if perf and perf.cost_per_enrolled else '–' }}</div></div>
+<div class="app-stats">
+  <div class="app-stat"><div class="l">Applicants</div><div class="n">{{ perf.applicants if perf else 0 }}</div></div>
+  <div class="app-stat"><div class="l">Screened</div><div class="n">{{ perf.screened if perf else 0 }}</div></div>
+  <div class="app-stat"><div class="l">Enrolled</div><div class="n">{{ perf.enrolled if perf else 0 }}</div></div>
+  <div class="app-stat accent"><div class="l">Cost / enrolled</div><div class="n">{{ '$%.0f'|format(perf.cost_per_enrolled) if perf and perf.cost_per_enrolled else '–' }}</div></div>
 </div>
 
 {# ── Status controls ── #}
-<div class="card">
-  <div class="section-title"><h2>Status</h2></div>
+<div class="app-card pad">
+  <div class="app-card-title">Status</div>
   <p class="site-hint">A campaign can only go live once its creative is IRB/REB-approved.</p>
   <div style="display:flex;gap:var(--space-2);flex-wrap:wrap;">
     {% for s in ['active','paused','ended','draft'] %}
@@ -40,8 +42,8 @@
 </div>
 
 {# ── Ad creative ── #}
-<div class="card">
-  <div class="section-title"><h2>Ad creative</h2></div>
+<div class="app-card pad">
+  <div class="app-card-title">Ad creative</div>
   <p class="site-hint">Neutral, truthful copy only. No benefit, efficacy, or payment
     claims. Editing resets IRB approval.</p>
 
@@ -77,8 +79,8 @@
 </div>
 
 {# ── Placements ── #}
-<div class="card">
-  <div class="section-title"><h2>Where you're posting</h2></div>
+<div class="app-card pad">
+  <div class="app-card-title">Where you're posting</div>
   <p class="site-hint">Each place you post gets its own tracked link, so applicants trace
     back to exactly where they came from.</p>
 
@@ -101,7 +103,7 @@
   {% for p in placements %}
   {% set s = shares[loop.index0] %}
   {% set pp = pl_perf.get(p['id']) %}
-  <div class="card" style="box-shadow:none;border:1px solid var(--border);margin-bottom:var(--space-3);">
+  <div class="app-card pad campaign-placement" style="box-shadow:none;margin-bottom:var(--space-3);">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:var(--space-3);flex-wrap:wrap;">
       <div><strong>{{ p['label'] }}</strong> {{ ui.badge((p['channel'] or camp['channel'])|capitalize, 'neutral') }}</div>
       <div class="site-hint">
@@ -123,7 +125,7 @@
 <script>
 document.querySelectorAll('[data-copy-btn]').forEach(function (btn) {
   btn.addEventListener('click', function () {
-    var card = btn.closest('.card');
+    var card = btn.closest('.campaign-placement');
     var el = card.querySelector('input[data-copy]');
     if (!el) return;
     el.select();

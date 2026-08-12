@@ -62,6 +62,7 @@ import logistics  # noqa: E402
 import mailer  # noqa: E402
 import notifications as notifications_mod  # noqa: E402
 import payer  # noqa: E402
+import payments as payments_mod  # noqa: E402
 import records as records_mod  # noqa: E402
 import redcap  # noqa: E402
 import reminders as reminders_mod  # noqa: E402
@@ -190,7 +191,8 @@ _STUDY_TEAM_DEMO_PREFIXES = (
     "/app/leads", "/app/messages", "/app/site", "/app/dashboard",
     "/app/balance", "/app/campaign", "/app/intake", "/app/home",
     "/app/applicant", "/app/matching", "/app/documents", "/app/copilot",
-    "/app/team", "/files/lead", "/files/team")
+    "/app/team", "/app/calendar", "/app/payments", "/app/updates",
+    "/files/lead", "/files/team")
 
 # Health-records / EHR sync (SMART Health IT) is hidden for now — the connector
 # is still a sandbox and not patient-ready. Flip RECORDS_UI=1 to re-enable the
@@ -1242,8 +1244,13 @@ def _remind_visit(visit):
     """Email a patient a reminder about an upcoming visit (row from a JOIN)."""
     if not visit["email"] and not visit["phone"]:
         return False
+    try:
+        prep = visit["prep"]
+    except (IndexError, KeyError):
+        prep = ""
     subject, body = mailer.build_reminder_message(
-        visit, visit["visit_at"], visit["location"], _abs_url("applications"))
+        visit, visit["visit_at"], visit["location"], _abs_url("applications"),
+        prep=prep)
     sms = mailer.build_reminder_sms(
         visit, visit["visit_at"], visit["location"], _abs_url("applications"))
     return _notify_patient(visit["email"], visit["phone"], subject, body, sms)
@@ -1266,6 +1273,40 @@ def _nudge_applicant(lead):
 if NO_LOGIN and "REMINDERS_BACKGROUND" not in os.environ:
     os.environ["REMINDERS_BACKGROUND"] = "0"
 reminders_mod.configure(app, on_visit=_remind_visit, on_nudge=_nudge_applicant)
+
+
+def _active_scope():
+    """The single trial scope for the whole app, driven by the top switcher.
+
+    Returns (active_nct, team_studies). ``active_nct == ""`` means "All studies"
+    (an explicit choice the user made in the switcher). When the user has never
+    chosen, we default to their first study so the dashboard opens as a workspace
+    rather than an empty greeting. Every page reads scope from here so there is
+    exactly one scoper - no per-page filter chips fighting the switcher."""
+    studies = []
+    if g.user:
+        try:
+            studies = db.list_team_studies(g.user["id"])
+        except Exception:
+            studies = []
+    valid = {s["nct"] for s in studies}
+    if "active_nct" not in session:
+        nct = studies[0]["nct"] if studies else ""
+    else:
+        nct = session.get("active_nct") or ""   # "" == All studies (explicit)
+        if nct and nct not in valid:
+            nct = studies[0]["nct"] if studies else ""
+    return nct, studies
+
+
+def _scope_label(active_nct, nav_studies):
+    """Human label for the switcher: study title, 'All studies', or empty."""
+    if not nav_studies:
+        return ""
+    if not active_nct:
+        return "All studies"
+    return next((s["title"] or s["nct"] for s in nav_studies
+                 if s["nct"] == active_nct), "")
 
 
 @app.context_processor
@@ -1303,7 +1344,8 @@ def inject_globals():
             or path.startswith("/app/balance")
             or path.startswith("/app/applicant") or path.startswith("/app/matching")
             or path.startswith("/app/documents")
-            or path.startswith("/app/team")
+            or path.startswith("/app/team") or path.startswith("/app/calendar")
+            or path.startswith("/app/payments") or path.startswith("/app/updates")
             or path.startswith("/app/campaign") or path.startswith("/app/intake")):
         pov = "study"
     elif path.startswith("/app") or path.startswith("/referral"):
@@ -1318,6 +1360,9 @@ def inject_globals():
     my_role_label = ""
     can_manage_team = False
     matches_new = 0
+    cal_due = 0
+    pay_due = 0
+    upd_due = 0
     if g.user:
         try:
             nav_study_ncts = sorted(db.user_claimed_ncts(g.user["id"]))
@@ -1327,19 +1372,30 @@ def inject_globals():
             matches_new = db.patient_match_counts(g.user["id"]).get("new", 0)
         except Exception:
             matches_new = 0
+        # Sidebar badge: visits still to run in the next 7 days.
         try:
+            _cw0 = db.now()
+            _cw1 = (dt.datetime.now() + dt.timedelta(days=7)).strftime("%Y-%m-%d %H:%M")
+            cal_due = sum(1 for v in db.list_calendar_visits(g.user["id"], _cw0, _cw1)
+                          if (v["status"] or "scheduled") == "scheduled")
+        except Exception:
+            cal_due = 0
+        # Sidebar badge: participant payments queued but not yet issued.
+        try:
+            pay_due = sum(1 for p in db.list_payments(g.user["id"])
+                          if p["status"] == "queued")
+        except Exception:
+            pay_due = 0
+        # Sidebar badge: sponsor updates/amendments with an open required step.
+        try:
+            upd_due = db.sponsor_updates_action_count(g.user["id"])
+        except Exception:
+            upd_due = 0
+        try:
+            active_nct, _studies = _active_scope()
             nav_studies = [{"nct": s["nct"], "title": s["title"] or s["nct"]}
-                           for s in db.list_team_studies(g.user["id"])]
-            # There is no "all studies" view - a specific study is always active.
-            active_nct = session.get("active_nct", "")
-            if active_nct not in {s["nct"] for s in nav_studies}:
-                active_nct = nav_studies[0]["nct"] if nav_studies else ""
-                if active_nct:
-                    session["active_nct"] = active_nct
-            for s in nav_studies:
-                if s["nct"] == active_nct:
-                    active_study_label = s["title"] or s["nct"]
-                    break
+                           for s in _studies]
+            active_study_label = _scope_label(active_nct, nav_studies)
         except Exception:
             nav_studies = []
         try:
@@ -1360,7 +1416,8 @@ def inject_globals():
             "site_demo": _site_demo_enabled(), "nav_study_ncts": nav_study_ncts,
             "nav_studies": nav_studies, "active_nct": active_nct,
             "active_study_label": active_study_label,
-            "matches_new": matches_new,
+            "matches_new": matches_new, "cal_due": cal_due,
+            "pay_due": pay_due, "upd_due": upd_due,
             "sites_home_url": _sites_home_url(),
             "sites_nav_features": sites_features.nav_items(),
             "is_owner": _is_owner()}
@@ -6197,6 +6254,30 @@ def _recruitment_balance_ctx(all_leads, nct):
     }
 
 
+def _seed_demo_targets_if_demo():
+    """In the demo, assume the site is fully set up: give every claimed study a
+    sensible enrollment target so the workspace shows real progress instead of a
+    "set this up" prompt. Idempotent; demo-only (COMPLIANCE.md)."""
+    if not g.user:
+        return
+    if not (_demo_mode_enabled() or _is_demo_account(g.user)
+            or _site_demo_enabled()):
+        return
+    try:
+        ncts = db.user_claimed_ncts(g.user["id"])
+    except Exception:
+        return
+    for nct in ncts:
+        key = _recruit_targets_key(nct)
+        try:
+            if json.loads(db.get_kv(key, "") or "{}").get("total_target"):
+                continue
+        except (ValueError, TypeError):
+            pass
+        db.set_kv(key, json.dumps({"boundaries": "18,30,45,65",
+                                   "total_target": 30}))
+
+
 def _save_recruitment_targets(nct):
     """Persist enrollment target + age boundaries for a study (shared by owner
     and coordinator save routes). Target is per-NCT (a protocol's own goal)."""
@@ -6358,17 +6439,15 @@ def study_home():
     # ?nct= param (from the switcher) sets the choice; anything invalid clears it.
     team_studies = db.list_team_studies(g.user["id"])
     valid_ncts = {s["nct"] for s in team_studies}
+    # Back-compat: a ?nct= deep-link still sets scope ("" / unknown = All studies).
     _p = request.args.get("nct")
-    if _p is not None and _p in valid_ncts:
-        session["active_nct"] = _p
-    active_nct = session.get("active_nct", "")
-    if active_nct not in valid_ncts:
-        active_nct = team_studies[0]["nct"] if team_studies else ""
-        if active_nct:
-            session["active_nct"] = active_nct
-    active_study_label = next((s["title"] or s["nct"]
-                               for s in team_studies if s["nct"] == active_nct),
-                              "") if active_nct else ""
+    if _p is not None:
+        session["active_nct"] = _p if _p in valid_ncts else ""
+    active_nct, team_studies = _active_scope()
+    active_study_label = _scope_label(
+        active_nct, [{"nct": s["nct"], "title": s["title"] or s["nct"]}
+                     for s in team_studies])
+    _seed_demo_targets_if_demo()
     rows = db.list_leads_for_user(g.user["id"])
     recon = db.latest_reconciliation_for_leads([r["id"] for r in rows])
     items = [_decode_lead(r, recon.get(r["id"])) for r in rows]
@@ -6473,30 +6552,106 @@ def study_home():
     followups = followups[:8]
     has_calendar = bool(db.get_site_calendar_url(g.user["id"]))
 
-    # ── Right rail 1: upcoming visits (next 14 days), soonest first. ──
-    _seed_demo_visits_if_demo(items)
-    upcoming = []
-    for it in items:
-        if active_nct and it["lead"]["nct"] != active_nct:
+    # ── Right rail 1: the SCHEDULE. Same engine as the Calendar page, so it
+    # carries protocol-window / overdue / re-consent flags - not just a time.
+    # Shows overdue first (recoverable deviations), then today, then the week. ──
+    _seed_demo_calendar_if_demo(items)
+    _sw0 = (now - dt.timedelta(days=5)).strftime("%Y-%m-%d %H:%M")
+    _sw1 = (now + dt.timedelta(days=14)).strftime("%Y-%m-%d 23:59")
+    try:
+        _cvis = [_visit_view(v, now)
+                 for v in db.list_calendar_visits(g.user["id"], _sw0, _sw1)]
+    except Exception:
+        _cvis = []
+    # One overlay card per visit, shared by the rail + timeline (keyed by visit
+    # id) so any click opens the same in-place detail card.
+    visit_cards = {}
+    schedule, sched_today, sched_attn = [], 0, 0
+    for v in _cvis:
+        if active_nct and v["nct"] != active_nct:
             continue
-        for v in db.get_visits(it["lead"]["id"]):
-            when = _parse_ts(v["visit_at"])
-            if not when or not (0 <= (when - now).total_seconds() <= 14 * 86400):
-                continue
-            day = when.date()
-            if day == now.date():
-                dlabel = "Today"
-            elif day == (now + dt.timedelta(days=1)).date():
-                dlabel = "Tomorrow"
-            else:
-                dlabel = when.strftime("%a %b %-d")
-            upcoming.append({
-                "when": when, "day": dlabel, "time": when.strftime("%-I:%M %p"),
-                "name": it["lead"]["name"] if it["lead"]["revealed"] else it["code"],
-                "kind": (v["kind"] or "visit").replace("_", " ").title(),
-                "id": it["lead"]["id"]})
-    upcoming.sort(key=lambda x: x["when"])
-    upcoming = upcoming[:6]
+        if v["status"] in ("cancelled", "completed"):
+            continue
+        vd = _parse_ts(v["visit_at"])
+        if not vd:
+            continue
+        day = vd.date()
+        if day < now.date():
+            dlabel = "Overdue"
+        elif day == now.date():
+            dlabel, sched_today = "Today", sched_today + 1
+        elif day == (now + dt.timedelta(days=1)).date():
+            dlabel = "Tomorrow"
+        else:
+            dlabel = vd.strftime("%a %b %-d")
+        if v["flag"] in ("overdue", "deviation", "closing"):
+            sched_attn += 1
+        schedule.append({
+            "id": v["lead_id"], "visit_id": v["id"], "day": dlabel,
+            "time": v["time_label"], "name": v["lead_name"],
+            "kind": v["kind_label"], "flag": v["flag"],
+            "flag_label": v["flag_label"], "when": v["visit_at"]})
+    # Overdue first, then chronological.
+    schedule.sort(key=lambda x: (x["day"] != "Overdue", x["when"]))
+    schedule = schedule[:7]
+    for v in _cvis:
+        if any(s["visit_id"] == v["id"] for s in schedule):
+            visit_cards.setdefault(v["id"], _build_visit_card(v, now))
+
+    # ── "Today" timeline: today's visits laid on an hour track (Google/Metamate
+    # style) so the whole day is legible at a glance, with a live "now" line and
+    # a "next up" card. Shows the coordinator's WHOLE day across every trial (one
+    # place). The track window ADAPTS to the day's actual visits (+padding) so
+    # blocks stay wide/readable instead of squished into a fixed 7a-7p strip. ──
+    _today_raw = []
+    for v in _cvis:
+        if v["status"] in ("cancelled", "completed"):
+            continue
+        vd = _parse_ts(v["visit_at"])
+        if not vd or vd.date() != now.date():
+            continue
+        _today_raw.append((vd, v))
+    if _today_raw:
+        _starts = [vd.hour + vd.minute / 60.0 for vd, _ in _today_raw]
+        _ends = [vd.hour + vd.minute / 60.0 + max(20, int(v["duration_min"] or 30)) / 60.0
+                 for vd, v in _today_raw]
+        _now_h = now.hour + now.minute / 60.0
+        DAY_START = max(6, int(min(_starts + [_now_h])) - 1)
+        DAY_END = min(21, int(min(21, max(_ends + [_now_h]))) + 2)
+        if DAY_END - DAY_START < 6:  # keep a sane minimum span
+            DAY_END = min(21, DAY_START + 6)
+    else:
+        DAY_START, DAY_END = 8, 18
+    _span = max(1.0, (DAY_END - DAY_START) * 60.0)
+    today_track, next_up = [], None
+    for vd, v in _today_raw:
+        start_min = (vd.hour * 60 + vd.minute) - DAY_START * 60
+        dur = max(20, int(v["duration_min"] or 30))
+        left = max(0.0, min(97.0, 100.0 * start_min / _span))
+        width = max(9.0, min(100.0 - left, 100.0 * dur / _span))
+        visit_cards.setdefault(v["id"], _build_visit_card(v, now))
+        ev = {"left": round(left, 2), "width": round(width, 2),
+              "name": v["lead_name"], "kind": v["kind_label"],
+              "trial": (v["trial_title"] or v["nct"] or "")[:28],
+              "time": v["time_label"], "flag": v["flag"],
+              "flag_label": v["flag_label"], "visit_id": v["id"],
+              "recurrence": v["recurrence"], "past": vd < now,
+              "iso": vd.strftime("%Y-%m-%dT%H:%M:%S"),
+              "end_iso": (vd + dt.timedelta(minutes=dur)).strftime("%Y-%m-%dT%H:%M:%S")}
+        today_track.append(ev)
+        if vd >= now and next_up is None:
+            next_up = ev
+    today_track.sort(key=lambda x: x["left"])
+    now_min = (now.hour * 60 + now.minute) - DAY_START * 60
+    now_pct = round(100.0 * now_min / _span, 2) if 0 <= now_min <= _span else None
+    _step = 1 if (DAY_END - DAY_START) <= 8 else 2
+    hour_ticks = []
+    for _h in range(DAY_START, DAY_END + 1, _step):
+        hour_ticks.append({
+            "label": f"{((_h + 11) % 12) + 1}{'a' if _h < 12 else 'p'}",
+            "left": round(100.0 * (_h - DAY_START) * 60 / _span, 2)})
+    today_label = now.strftime("%A, %b %-d")
+    today_n = len(today_track)
 
     # ── New candidate matches from the clinic's own records (the hero: fresh,
     # pre-screened supply). Top few new ones surface here; the rest live on the
@@ -6570,11 +6725,1630 @@ def study_home():
     return render_template(
         "study_home.html", claims=claims, reply_queue=reply_queue, pending=pending,
         followups=followups, inbox=inbox, has_calendar=has_calendar,
-        upcoming=upcoming, new_matches=new_matches, match_counts=match_counts,
+        schedule=schedule, sched_today=sched_today, sched_attn=sched_attn,
+        today_track=today_track, next_up=next_up, now_pct=now_pct,
+        visit_cards=list(visit_cards.values()),
+        hour_ticks=hour_ticks, today_label=today_label, today_n=today_n,
+        new_matches=new_matches, match_counts=match_counts,
         todo_total=todo_total, greeting=greeting,
         workspace=workspace, active_nct=active_nct,
         active_study_label=active_study_label,
         org=(db.get_site_profile(g.user["id"]) or {}))
+
+
+@app.route("/app/scope")
+@login_required
+def set_scope():
+    """The one place trial scope is set (from the top switcher). nct='' (or any
+    unknown value) selects 'All studies'; a valid nct scopes the whole app to it.
+    Redirects back to wherever the user was so scope applies in place."""
+    nct = (request.args.get("nct") or "").strip()
+    try:
+        valid = {s["nct"] for s in db.list_team_studies(g.user["id"])}
+    except Exception:
+        valid = set()
+    session["active_nct"] = nct if nct in valid else ""
+    nxt = request.args.get("next") or url_for("study_home")
+    if not (nxt.startswith("/") and not nxt.startswith("//")):
+        nxt = url_for("study_home")
+    return redirect(nxt)
+
+
+# --------------------------------------------------------------------------- #
+# Calendar: the trial-aware scheduling surface. Unlike a generic calendar it
+# understands PROTOCOL VISIT WINDOWS (e.g. "Day 28 +/-3"), so it can flag a
+# visit whose window is closing (a protocol deviation / dropout risk you can
+# still prevent) and one booked outside its window. It aggregates every visit
+# across the trials a team runs onto one month grid + agenda, with one-click
+# reschedule (which re-arms the patient reminder) and prep checklists that flow
+# into those reminders. KPI: Tier-2 Operational Efficiency -> fewer missed
+# visits (retained) and faster screening close (screened -> enrolled).
+# --------------------------------------------------------------------------- #
+_VISIT_KINDS = [
+    ("screening", "Screening"),
+    ("baseline", "Baseline / enrollment"),
+    ("treatment", "Treatment / dosing"),
+    ("followup", "Follow-up"),
+    ("reconsent", "Re-consent"),
+    ("phone", "Phone check-in"),
+    ("close", "Close-out"),
+]
+_VISIT_KIND_LABELS = dict(_VISIT_KINDS)
+
+
+def _cal_parse_dt(ts):
+    try:
+        return dt.datetime.strptime(str(ts)[:16], "%Y-%m-%d %H:%M")
+    except (ValueError, TypeError):
+        return None
+
+
+def _visit_flag(v, now_dt):
+    """Compute a calendar status flag for a visit row.
+    Returns (code, label). Codes: done|cancelled|deviation|overdue|closing|ok."""
+    status = (v["status"] or "scheduled")
+    if status == "completed":
+        return "done", "Completed"
+    if status == "cancelled":
+        return "cancelled", "Cancelled"
+    if status == "missed":
+        return "overdue", "Missed"
+    va = _cal_parse_dt(v["visit_at"])
+    we = _cal_parse_dt(v["window_end"]) if v["window_end"] else None
+    if va and va < now_dt:
+        return "overdue", "Past due - mark done or reschedule"
+    if we and va and va > we:
+        return "deviation", "Booked outside protocol window"
+    if we:
+        days = (we.date() - now_dt.date()).days
+        if 0 <= days <= 3:
+            return "closing", ("Window closes today" if days == 0
+                               else f"Window closes in {days}d")
+    return "ok", ""
+
+
+def _visit_view(v, now_dt):
+    code, label = _visit_flag(v, now_dt)
+    va = _cal_parse_dt(v["visit_at"])
+    prep = [p.strip() for p in (v["prep"] or "").splitlines() if p.strip()]
+    agenda = [a.strip() for a in ((v["agenda"] if "agenda" in v.keys() else "") or "").splitlines() if a.strip()]
+    return {
+        "id": v["id"], "lead_id": v["lead_id"],
+        "agenda": agenda,
+        "series_id": (v["series_id"] if "series_id" in v.keys() else "") or "",
+        "recurrence": (v["recurrence"] if "recurrence" in v.keys() else "") or "",
+        "lead_name": (v["lead_name"] if "lead_name" in v.keys() else "") or "Applicant",
+        "nct": (v["nct"] if "nct" in v.keys() else "") or "",
+        "trial_title": (v["trial_title"] if "trial_title" in v.keys() else "") or "",
+        "lead_token": (v["lead_token"] if "lead_token" in v.keys() else "") or "",
+        "kind": v["kind"] or "screening",
+        "kind_label": _VISIT_KIND_LABELS.get(v["kind"] or "screening",
+                                             (v["kind"] or "Visit").title()),
+        "title": (v["title"] or "").strip(),
+        "location": v["location"] or "",
+        "note": v["note"] or "",
+        "prep": prep,
+        "visit_at": v["visit_at"] or "",
+        "date": va.strftime("%Y-%m-%d") if va else "",
+        "time": va.strftime("%H:%M") if va else "",
+        "time_label": va.strftime("%-I:%M %p") if va else "",
+        "duration_min": v["duration_min"] or 30,
+        "window_start": v["window_start"] or "",
+        "window_end": v["window_end"] or "",
+        "status": v["status"] or "scheduled",
+        "flag": code, "flag_label": label,
+    }
+
+
+_VISIT_STATUS_TONE = {"completed": "ok", "missed": "danger",
+                      "cancelled": "neutral", "scheduled": "info"}
+
+
+def _lead_case_context(lead_id, current_visit_id, series_id=""):
+    """Assemble a participant's case context for the visit overlay: prior visits
+    (with outcome/notes), team notes anyone added, and recurring-series position.
+    Read-only; used so the coordinator walks in knowing the history."""
+    now = dt.datetime.now()
+    history = []
+    for r in db.get_visits(lead_id):
+        if r["id"] == current_visit_id:
+            continue
+        va = _cal_parse_dt(r["visit_at"])
+        st = (r["status"] or "scheduled")
+        if not ((va and va < now) or st in ("completed", "missed", "cancelled")):
+            continue  # only finished / past visits are "history"
+        history.append({
+            "date": va.strftime("%b %-d, %Y") if va else "",
+            "kind": _VISIT_KIND_LABELS.get(r["kind"] or "screening",
+                                           (r["kind"] or "Visit").title()),
+            "status": st, "tone": _VISIT_STATUS_TONE.get(st, "neutral"),
+            "note": (r["note"] or "").strip(),
+        })
+    history = history[-6:][::-1]  # most-recent first
+    notes = [{"body": n["body"], "author": n["author"] or "Team",
+              "when": (n["created_at"] or "")[:10]}
+             for n in db.list_notes(lead_id)[:6]]
+    series = None
+    if series_id:
+        sv = db.get_series_visits(series_id)
+        idx = next((k for k, r in enumerate(sv, start=1)
+                    if r["id"] == current_visit_id), 0)
+        remaining = sum(1 for r in sv
+                        if (_cal_parse_dt(r["visit_at"]) or now) >= now
+                        and (r["status"] or "scheduled") not in ("completed", "cancelled"))
+        series = {"total": len(sv), "index": idx, "remaining": remaining}
+    return {"history": history, "notes": notes, "series": series}
+
+
+def _build_visit_card(v, now):
+    """Full data for a visit-detail overlay (shared by the Today timeline and the
+    Schedule rail so a click anywhere opens the SAME in-place card - no page
+    bounce). `v` is a _visit_view dict."""
+    vd = _cal_parse_dt(v["visit_at"]) or now
+    dur = max(20, int(v["duration_min"] or 30))
+    end = vd + dt.timedelta(minutes=dur)
+    ws, we = _cal_parse_dt(v["window_start"]), _cal_parse_dt(v["window_end"])
+    win = (f"{ws.strftime('%b %-d')} – {we.strftime('%b %-d')}"
+           if ws and we else "")
+    ctx = _lead_case_context(v["lead_id"], v["id"], v["series_id"])
+    return {
+        "visit_id": v["id"], "id": v["lead_id"], "name": v["lead_name"],
+        "kind": v["kind_label"], "trial_full": v["trial_title"] or v["nct"] or "",
+        "time": v["time_label"], "flag": v["flag"], "flag_label": v["flag_label"],
+        "location": v["location"], "note": v["note"], "prep": v["prep"],
+        "agenda": v["agenda"], "recurrence": v["recurrence"],
+        "series_id": v["series_id"], "duration": dur, "status": v["status"],
+        "date_long": vd.strftime("%A, %b %-d"),
+        "end_time": end.strftime("%-I:%M %p"),
+        "date_iso": vd.strftime("%Y-%m-%d"), "time_iso": vd.strftime("%H:%M"),
+        "window": win, "history": ctx["history"], "notes": ctx["notes"],
+        "series": ctx["series"],
+    }
+
+
+def _visit_owned(visit_id):
+    """Return (visit_row, lead_row) if the visit belongs to a trial this user's
+    team runs, else (None, None). Authorization guard for calendar actions."""
+    v = db.get_visit(visit_id)
+    if not v:
+        return None, None
+    lead = db.get_lead(v["lead_id"])
+    if not lead:
+        return None, None
+    try:
+        if lead["nct"] not in db.user_claimed_ncts(g.user["id"]):
+            return None, None
+    except Exception:
+        return None, None
+    return v, lead
+
+
+@app.route("/app/calendar")
+@login_required
+def calendar_page():
+    rows = db.list_leads_for_user(g.user["id"])
+    items = [{"lead": r} for r in rows]
+    _seed_demo_calendar_if_demo(items)
+
+    now_dt = dt.datetime.now()
+    today = now_dt.date()
+    # Which month? ?m=YYYY-MM (default current). ?nct= scopes to one trial.
+    try:
+        y, m = (int(x) for x in (request.args.get("m") or "").split("-"))
+        anchor = dt.date(y, m, 1)
+    except Exception:
+        anchor = today.replace(day=1)
+    view = (request.args.get("view") or "month").lower()
+    if view not in ("month", "agenda"):
+        view = "month"
+    # Scope follows the single global switcher (no per-page chip row). "" = all.
+    nct_filter, _ = _active_scope()
+
+    import calendar as _pycal
+    cal = _pycal.Calendar(firstweekday=6)  # Sunday-first
+    weeks = cal.monthdatescalendar(anchor.year, anchor.month)
+    grid_start = weeks[0][0]
+    grid_end = weeks[-1][-1] + dt.timedelta(days=1)
+
+    # Pull a wide range so agenda (next 45 days) and the grid both have data.
+    range_start = min(grid_start, today)
+    range_end = max(grid_end, today + dt.timedelta(days=45))
+    raw = db.list_calendar_visits(
+        g.user["id"],
+        range_start.strftime("%Y-%m-%d %H:%M"),
+        range_end.strftime("%Y-%m-%d 23:59"))
+    visits = [_visit_view(v, now_dt) for v in raw]
+    if nct_filter:
+        visits = [v for v in visits if v["nct"] == nct_filter]
+
+    by_day = {}
+    for v in visits:
+        by_day.setdefault(v["date"], []).append(v)
+
+    # Month grid: list of weeks, each a list of day cells.
+    grid = []
+    for wk in weeks:
+        cells = []
+        for d in wk:
+            key = d.strftime("%Y-%m-%d")
+            cells.append({
+                "date": key, "day": d.day,
+                "in_month": d.month == anchor.month,
+                "is_today": d == today,
+                "visits": by_day.get(key, []),
+            })
+        grid.append(cells)
+
+    # Agenda: everything from today forward, soonest first.
+    agenda = sorted(
+        [v for v in visits if v["date"] >= today.strftime("%Y-%m-%d")],
+        key=lambda v: v["visit_at"])
+
+    # Attention rail: overdue / deviations / closing windows across the range.
+    attention = [v for v in visits
+                 if v["flag"] in ("overdue", "deviation", "closing")]
+    attention.sort(key=lambda v: (v["flag"] != "overdue", v["visit_at"]))
+
+    # Trials for the filter chips + the "new visit" applicant picker.
+    trials = []
+    seen = set()
+    for r in rows:
+        if r["nct"] and r["nct"] not in seen:
+            seen.add(r["nct"])
+            trials.append({"nct": r["nct"], "title": r["title"] or r["nct"]})
+    bookable = [{"id": r["id"], "name": r["name"] or "Applicant",
+                 "nct": r["nct"], "title": r["title"] or r["nct"]}
+                for r in rows if r["revealed"] and r["status"] not in db.LEAD_CLOSED]
+
+    prev_m = (anchor - dt.timedelta(days=1)).replace(day=1)
+    next_m = (anchor + dt.timedelta(days=32)).replace(day=1)
+
+    # Rich overlay card per visit (same component as the dashboard), keyed by
+    # visit id so any click on the grid/agenda/attention opens the same card.
+    visit_cards = [_build_visit_card(v, now_dt) for v in visits]
+
+    sync = _calendar_sync_view()
+
+    return render_template(
+        "calendar.html",
+        grid=grid, agenda=agenda, attention=attention, visit_cards=visit_cards,
+        view=view, nct_filter=nct_filter, trials=trials, bookable=bookable,
+        visit_kinds=_VISIT_KINDS, sync=sync,
+        month_label=anchor.strftime("%B %Y"),
+        month_key=anchor.strftime("%Y-%m"),
+        prev_month=prev_m.strftime("%Y-%m"),
+        next_month=next_m.strftime("%Y-%m"),
+        today_key=today.strftime("%Y-%m"),
+        weekday_labels=["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"])
+
+
+# --------------------------------------------------------------------------- #
+# Calendar sync: publish every study visit as a live iCalendar (.ics) feed the
+# coordinator subscribes to from Google/Outlook/Apple. One-way, read-only,
+# auto-refreshing - so visits land in the calendar they already use (frictionless
+# onboarding), with events DE-IDENTIFIED by default so no PHI leaves for a
+# non-BAA calendar vendor. KPI: Tier-2 efficiency + fewer missed visits.
+# --------------------------------------------------------------------------- #
+_PROVIDER_LABELS = {"google": "Google Calendar", "outlook": "Outlook",
+                    "apple": "Apple Calendar", "ics": "your calendar"}
+
+
+def _seed_demo_sync_if_demo(feed):
+    """In the demo, arrive already connected - never show setup as pending."""
+    if not _demo_mode_enabled():
+        return feed
+    if not feed["provider"] and not feed["connected_at"] and not feed["last_synced_at"]:
+        db.set_calendar_feed(g.user["id"], provider="google")
+        db.touch_calendar_feed_synced(g.user["id"])
+        feed = db.get_or_create_calendar_feed(g.user["id"])
+    return feed
+
+
+def _calendar_sync_view():
+    """Assemble the calendar-sync panel state: the secret feed URL plus one-click
+    subscribe deep-links for Google/Outlook and connection status."""
+    from urllib.parse import quote
+    feed = db.get_or_create_calendar_feed(g.user["id"])
+    feed = _seed_demo_sync_if_demo(feed)
+    feed_url = url_for("calendar_feed_ics", token=feed["token"], _external=True)
+    webcal_url = re.sub(r"^https?://", "webcal://", feed_url)
+    google_add = ("https://calendar.google.com/calendar/r?cid="
+                  + quote(webcal_url, safe=""))
+    outlook_add = ("https://outlook.live.com/calendar/0/addfromweb?url="
+                   + quote(feed_url, safe="") + "&name=" + quote("BridgeMD study visits"))
+    return {
+        "connected": bool(feed["provider"]),
+        "provider": feed["provider"],
+        "provider_label": _PROVIDER_LABELS.get(feed["provider"], ""),
+        "connected_at": (feed["connected_at"] or "")[:16],
+        "last_synced_at": (feed["last_synced_at"] or "")[:16],
+        "deidentify": bool(feed["deidentify"]),
+        "feed_url": feed_url, "webcal_url": webcal_url,
+        "google_add": google_add, "outlook_add": outlook_add,
+    }
+
+
+def _ics_escape(text):
+    return (str(text or "").replace("\\", "\\\\").replace(";", "\\;")
+            .replace(",", "\\,").replace("\r\n", "\\n").replace("\n", "\\n"))
+
+
+def _ics_fold(line):
+    """RFC 5545 line folding (keep lines <=75 octets; continuation starts w/ space)."""
+    if len(line) <= 73:
+        return line
+    out, rest = [], line
+    while len(rest) > 73:
+        out.append(rest[:73])
+        rest = " " + rest[73:]
+    out.append(rest)
+    return "\r\n".join(out)
+
+
+def _lead_code(name, lead_id):
+    """De-identified label: initials + record code (never the full name)."""
+    parts = [p for p in re.split(r"\s+", (name or "").strip()) if p]
+    initials = "".join(p[0].upper() for p in parts[:2]) or "PT"
+    return f"{initials} #{lead_id}"
+
+
+def _build_ics(user_id, feed):
+    now_dt = dt.datetime.now()
+    start = (now_dt - dt.timedelta(days=45)).strftime("%Y-%m-%d %H:%M")
+    end = (now_dt + dt.timedelta(days=365)).strftime("%Y-%m-%d %H:%M")
+    rows = db.list_calendar_visits(user_id, start, end)
+    deident = bool(feed["deidentify"])
+    stamp = now_dt.strftime("%Y%m%dT%H%M%S")
+    lines = ["BEGIN:VCALENDAR", "VERSION:2.0",
+             "PRODID:-//BridgeMD//Calendar Sync//EN", "CALSCALE:GREGORIAN",
+             "METHOD:PUBLISH", "X-WR-CALNAME:BridgeMD study visits",
+             "X-WR-TIMEZONE:America/Toronto",
+             "X-PUBLISHED-TTL:PT30M", "REFRESH-INTERVAL;VALUE=DURATION:PT30M"]
+    for r in rows:
+        va = _cal_parse_dt(r["visit_at"])
+        if not va:
+            continue
+        dur = max(10, int(r["duration_min"] or 30))
+        end_dt = va + dt.timedelta(minutes=dur)
+        kind_label = _VISIT_KIND_LABELS.get(r["kind"] or "screening",
+                                            (r["kind"] or "Visit").title())
+        who = (_lead_code(r["lead_name"], r["lead_id"]) if deident
+               else (r["lead_name"] or "Participant"))
+        summary = f"{kind_label} \u00b7 {who}"
+        trial = r["trial_title"] or r["nct"] or ""
+        desc = [f"Study: {trial}"] if trial else []
+        agenda = [a.strip() for a in ((r["agenda"] or "")).splitlines() if a.strip()]
+        if agenda:
+            desc.append("Agenda: " + "; ".join(agenda))
+        desc.append("Full details in BridgeMD.")
+        if deident:
+            desc.append("(Patient de-identified for calendar sync.)")
+        status = (r["status"] or "scheduled")
+        ical_status = "CANCELLED" if status == "cancelled" else "CONFIRMED"
+        ev = ["BEGIN:VEVENT", f"UID:visit-{r['id']}@bridgemd",
+              f"DTSTAMP:{stamp}",
+              f"DTSTART:{va.strftime('%Y%m%dT%H%M%S')}",
+              f"DTEND:{end_dt.strftime('%Y%m%dT%H%M%S')}",
+              f"SUMMARY:{_ics_escape(summary)}",
+              f"DESCRIPTION:{_ics_escape(chr(10).join(desc))}",
+              f"STATUS:{ical_status}"]
+        if r["location"]:
+            ev.append(f"LOCATION:{_ics_escape(r['location'])}")
+        ev += ["BEGIN:VALARM", "TRIGGER:-PT1H", "ACTION:DISPLAY",
+               "DESCRIPTION:Study visit reminder", "END:VALARM", "END:VEVENT"]
+        lines.extend(ev)
+    lines.append("END:VCALENDAR")
+    return "\r\n".join(_ics_fold(ln) for ln in lines) + "\r\n"
+
+
+@app.route("/cal/feed/<token>.ics")
+def calendar_feed_ics(token):
+    """Public, secret-by-URL iCalendar feed. The token IS the credential, so this
+    is deliberately outside login (Google/Outlook fetch it server-side)."""
+    feed = db.get_calendar_feed_by_token(token)
+    if not feed:
+        abort(404)
+    ics = _build_ics(feed["user_id"], feed)
+    try:
+        db.touch_calendar_feed_synced(feed["user_id"])
+    except Exception:
+        pass
+    resp = make_response(ics)
+    resp.headers["Content-Type"] = "text/calendar; charset=utf-8"
+    resp.headers["Content-Disposition"] = "inline; filename=bridgemd.ics"
+    resp.headers["Cache-Control"] = "no-cache"
+    return resp
+
+
+@app.route("/app/calendar/sync/connect", methods=["POST"])
+@login_required
+def calendar_sync_connect():
+    provider = (request.form.get("provider") or "ics").strip().lower()
+    if provider not in ("google", "outlook", "apple", "ics"):
+        provider = "ics"
+    view = _calendar_sync_view()          # feed URLs + deep-links (also seeds demo)
+    db.set_calendar_feed(g.user["id"], provider=provider)
+    flash(f"Connected to {_PROVIDER_LABELS[provider]}. New and changed visits "
+          "sync automatically - no re-import.", "ok")
+    dest = {"google": view["google_add"], "outlook": view["outlook_add"],
+            "apple": view["webcal_url"]}.get(provider)
+    return redirect(dest or url_for("calendar_page"))
+
+
+@app.route("/app/calendar/sync/disconnect", methods=["POST"])
+@login_required
+def calendar_sync_disconnect():
+    db.set_calendar_feed(g.user["id"], provider="")
+    flash("Calendar sync turned off. Remove the BridgeMD calendar in your "
+          "calendar app to clear it there.", "info")
+    return redirect(url_for("calendar_page"))
+
+
+@app.route("/app/calendar/sync/deidentify", methods=["POST"])
+@login_required
+def calendar_sync_deidentify():
+    on = request.form.get("deidentify") == "1"
+    db.set_calendar_feed(g.user["id"], deidentify=on)
+    if on:
+        flash("Synced events now show patient initials only.", "ok")
+    else:
+        flash("Synced events will show full patient names. Only do this if a BAA "
+              "covers your calendar provider.", "warn")
+    return redirect(url_for("calendar_page"))
+
+
+@app.route("/app/calendar/sync/rotate", methods=["POST"])
+@login_required
+def calendar_sync_rotate():
+    db.rotate_calendar_feed_token(g.user["id"])
+    flash("New calendar link generated. Re-add it in your calendar app - the old "
+          "link no longer works.", "warn")
+    return redirect(url_for("calendar_page"))
+
+
+@app.route("/app/calendar/book", methods=["POST"])
+@login_required
+def calendar_book():
+    lead_id = request.form.get("lead_id", type=int)
+    lead = db.get_lead(lead_id) if lead_id else None
+    if not lead or lead["nct"] not in db.user_claimed_ncts(g.user["id"]):
+        flash("Pick a valid applicant to book.", "error")
+        return redirect(_cal_back())
+    when = _cal_form_dt("date", "time")
+    if not when:
+        flash("Enter a valid date and time.", "error")
+        return redirect(_cal_back())
+    db.add_visit(
+        lead_id, when, kind=request.form.get("kind") or "screening",
+        location=request.form.get("location", "").strip(),
+        note=request.form.get("note", "").strip(),
+        window_start=_cal_form_dt("window_start", None) or "",
+        window_end=_cal_form_dt("window_end", None) or "",
+        duration_min=request.form.get("duration_min", type=int) or 30,
+        prep=request.form.get("prep", "").strip())
+    flash("Visit booked. The patient reminder is queued.", "ok")
+    return redirect(_cal_back())
+
+
+@app.route("/app/calendar/visit/<int:visit_id>/reschedule", methods=["POST"])
+@login_required
+def calendar_reschedule(visit_id):
+    v, lead = _visit_owned(visit_id)
+    if not v:
+        abort(404)
+    old_at = v["visit_at"]
+    when = _cal_form_dt("date", "time")
+    if not when:
+        flash("Enter a valid date and time.", "error")
+        return redirect(_cal_back())
+    fields = {
+        "visit_at": when,
+        "kind": request.form.get("kind") or v["kind"],
+        "location": request.form.get("location", "").strip(),
+        "note": request.form.get("note", "").strip(),
+        "prep": request.form.get("prep", "").strip(),
+        "duration_min": request.form.get("duration_min", type=int) or (v["duration_min"] or 30),
+    }
+    ws = _cal_form_dt("window_start", None)
+    we = _cal_form_dt("window_end", None)
+    if ws is not None:
+        fields["window_start"] = ws
+    if we is not None:
+        fields["window_end"] = we
+    db.update_visit(visit_id, **fields)
+    # Optionally slide the rest of a recurring series by the same delta, so the
+    # whole cadence moves in one action instead of rescheduling each visit.
+    series_moved = 0
+    series_id = v["series_id"] if "series_id" in v.keys() else ""
+    if request.form.get("apply_series") and series_id:
+        new_dt0, old_dt0 = _cal_parse_dt(when), _cal_parse_dt(old_at)
+        if new_dt0 and old_dt0:
+            delta = int((new_dt0 - old_dt0).total_seconds())
+            series_moved = db.shift_series_after(
+                series_id, old_at, delta, exclude_id=visit_id)
+    # Warn (don't block) if the new time is outside the protocol window.
+    we_dt = _cal_parse_dt(fields.get("window_end") or v["window_end"])
+    ws_dt = _cal_parse_dt(fields.get("window_start") or v["window_start"])
+    new_dt = _cal_parse_dt(when)
+    tail = (f" {series_moved} later visit{'s' if series_moved != 1 else ''} in the "
+            "series moved to match." if series_moved else "")
+    if new_dt and ((we_dt and new_dt > we_dt) or (ws_dt and new_dt < ws_dt)):
+        flash("Saved - heads up: this time is outside the protocol window "
+              "(possible deviation)." + tail, "warn")
+    else:
+        flash("Visit updated. A fresh reminder is queued for the patient." + tail, "ok")
+    return redirect(_cal_back())
+
+
+@app.route("/app/calendar/visit/<int:visit_id>/status", methods=["POST"])
+@login_required
+def calendar_visit_status(visit_id):
+    v, lead = _visit_owned(visit_id)
+    if not v:
+        abort(404)
+    status = (request.form.get("status") or "").strip()
+    if status not in ("scheduled", "completed", "missed", "cancelled"):
+        flash("Unknown status.", "error")
+        return redirect(_cal_back())
+    db.set_visit_status(visit_id, status)
+    msg = {"completed": "Marked completed.", "missed": "Marked missed.",
+           "cancelled": "Visit cancelled.", "scheduled": "Reopened."}[status]
+    # Auto-queue the participant stipend for a completed visit, if the protocol
+    # has an IRB-approved payment rule for this visit kind (and one isn't already
+    # queued for this visit). Compliance: subjects only, fixed IRB amount.
+    if status == "completed":
+        queued = _auto_queue_visit_payment(v, lead)
+        if queued:
+            msg += (f" {payments_mod.format_cents(queued['amount_cents'], queued['currency'])}"
+                    " stipend queued for the participant.")
+    flash(msg, "ok")
+    return redirect(_cal_back())
+
+
+@app.route("/app/calendar/visit/<int:visit_id>/recur", methods=["POST"])
+@login_required
+def calendar_recur(visit_id):
+    """Turn a one-off visit into a recurring series (this visit becomes the
+    anchor; N-1 more are generated at the chosen cadence). KPI: Tier-2 - book a
+    whole schedule of visits once instead of one-at-a-time."""
+    v, lead = _visit_owned(visit_id)
+    if not v:
+        abort(404)
+    recurrence = (request.form.get("recurrence") or "weekly").strip()
+    if recurrence not in ("weekly", "biweekly", "monthly"):
+        recurrence = "weekly"
+    try:
+        count = max(2, min(24, int(request.form.get("count") or 4)))
+    except (ValueError, TypeError):
+        count = 4
+    import uuid as _uuid
+    sid = (v["series_id"] if "series_id" in v.keys() else "") or _uuid.uuid4().hex[:12]
+    db.update_visit(visit_id, series_id=sid, recurrence=recurrence)
+    base = _cal_parse_dt(v["visit_at"])
+    step = db._RECUR_DAYS.get(recurrence, 7)
+    made = 0
+    if base:
+        for k in range(1, count):
+            when = (base + dt.timedelta(days=step * k)).strftime("%Y-%m-%d %H:%M")
+            try:
+                db.add_visit(
+                    lead["id"], when, kind=v["kind"],
+                    location=v["location"], note="",
+                    duration_min=v["duration_min"],
+                    title=v["title"], prep=v["prep"],
+                    agenda=(v["agenda"] if "agenda" in v.keys() else ""),
+                    series_id=sid, recurrence=recurrence)
+                made += 1
+            except Exception:
+                app.logger.exception("recurring visit creation failed")
+    flash(f"Recurring set created - {made} more {recurrence} "
+          f"visit{'s' if made != 1 else ''} added. Reminders queued.", "ok")
+    return redirect(_cal_back())
+
+
+@app.route("/app/calendar/visit/<int:visit_id>/note", methods=["POST"])
+@login_required
+def calendar_visit_note(visit_id):
+    """Add a team note to the participant from the visit overlay (context anyone
+    on the team can see next time)."""
+    v, lead = _visit_owned(visit_id)
+    if not v:
+        abort(404)
+    body = (request.form.get("body") or "").strip()
+    if body:
+        db.add_note(lead["id"], body, author=(g.user["name"] or "You"))
+        flash("Note added.", "ok")
+    else:
+        flash("Nothing to save.", "warn")
+    return redirect(_cal_back())
+
+
+@app.route("/app/calendar/visit/<int:visit_id>/agenda", methods=["POST"])
+@login_required
+def calendar_visit_agenda(visit_id):
+    """Save the coordinator agenda ('what to go over') for a visit."""
+    v, lead = _visit_owned(visit_id)
+    if not v:
+        abort(404)
+    db.update_visit(visit_id, agenda=(request.form.get("agenda") or "").strip())
+    flash("Agenda saved.", "ok")
+    return redirect(_cal_back())
+
+
+def _auto_queue_visit_payment(visit, lead):
+    """If an active IRB-approved payment rule matches this completed visit's
+    trial + kind, queue a participant payment (idempotent per visit). Returns
+    the created payment row dict, or None."""
+    try:
+        if db.payment_for_visit(visit["id"]):
+            return None
+        rule = db.find_active_payment_rule(g.user["id"], lead["nct"], visit["kind"])
+        if not rule or not rule["irb_approved"] or (rule["amount_cents"] or 0) <= 0:
+            return None
+        pid = db.create_payment(
+            lead["id"], lead["nct"], rule["amount_cents"],
+            kind=visit["kind"], label=rule["label"] or "Visit stipend",
+            visit_id=visit["id"], rule_id=rule["id"],
+            currency=rule["currency"], method=rule["method"],
+            status="queued", created_by="system",
+            note="Auto-queued on completed visit")
+        return {"id": pid, "amount_cents": rule["amount_cents"],
+                "currency": rule["currency"]}
+    except Exception:
+        app.logger.exception("auto payment queue failed")
+        return None
+
+
+def _cal_back():
+    """Redirect target after a calendar action: back to the same month/view.
+    Honors a same-origin ?next= (e.g. actions fired from the dashboard overlay)."""
+    nxt = (request.form.get("next") or request.args.get("next") or "").strip()
+    if nxt.startswith("/") and not nxt.startswith("//"):
+        return nxt
+    m = request.form.get("m") or request.args.get("m") or ""
+    view = request.form.get("view") or request.args.get("view") or ""
+    nct = request.form.get("nct") or request.args.get("nct") or ""
+    q = {k: val for k, val in (("m", m), ("view", view), ("nct", nct)) if val}
+    return url_for("calendar_page", **q)
+
+
+def _cal_form_dt(date_field, time_field):
+    """Combine a date + optional time form field into a stored '%Y-%m-%d %H:%M'
+    string. Returns '' when a date field is present-but-empty, None when the
+    field is absent, and the combined string when valid."""
+    d = request.form.get(date_field)
+    if d is None:
+        return None
+    d = d.strip()
+    if not d:
+        return ""
+    t = (request.form.get(time_field) or "").strip() if time_field else ""
+    if not t:
+        t = "09:00"
+    try:
+        dt.datetime.strptime(f"{d} {t}", "%Y-%m-%d %H:%M")
+    except ValueError:
+        return ""
+    return f"{d} {t}"
+
+
+def _seed_demo_calendar_if_demo(items):
+    """Populate a realistic, protocol-shaped visit calendar for the demo account
+    so the calendar reads as a live schedule (screening + follow-ups with
+    windows, one closing window, one overdue). Idempotent: only fills when the
+    org has very few visits. Demo-only (see COMPLIANCE.md)."""
+    if not g.user:
+        return
+    if not (_demo_mode_enabled() or _is_demo_account(g.user)
+            or _site_demo_enabled()):
+        return
+    now_dt = dt.datetime.now()
+    cands = [it["lead"] for it in items
+             if it["lead"]["revealed"] and it["lead"]["status"] not in db.LEAD_CLOSED]
+    if not cands:
+        cands = [it["lead"] for it in items]
+    if not cands:
+        return
+
+    # Always keep at least one UPCOMING visit today, so the live "Today" timeline,
+    # the Next-up card and the "in X min" countdown never go blank as the demo DB
+    # ages past its seeded hours. Only tops up when nothing is still ahead today.
+    try:
+        eod = now_dt.replace(hour=23, minute=59, second=0, microsecond=0)
+        todays = db.list_calendar_visits(
+            g.user["id"], now_dt.strftime("%Y-%m-%d %H:%M"),
+            eod.strftime("%Y-%m-%d %H:%M"))
+        if not any((v["status"] or "scheduled") == "scheduled" for v in todays):
+            soon = (now_dt + dt.timedelta(minutes=25)).replace(second=0, microsecond=0)
+            db.add_visit(
+                cands[0]["id"], soon.strftime("%Y-%m-%d %H:%M"), kind="followup",
+                location=cands[0]["site"] or "Study site",
+                prep="Bring your symptom diary",
+                agenda="Review symptom diary\nAssess adverse events since last visit\nConfirm next visit",
+                duration_min=30)
+    except Exception:
+        pass
+
+    try:
+        # Big protocol-shaped seed only when few future visits exist, so the
+        # calendar stays alive relative to today even after the demo DB ages.
+        future = db.list_calendar_visits(
+            g.user["id"],
+            now_dt.strftime("%Y-%m-%d %H:%M"),
+            (now_dt + dt.timedelta(days=60)).strftime("%Y-%m-%d %H:%M"))
+        if sum(1 for v in future if (v["status"] or "scheduled") == "scheduled") >= 4:
+            return
+    except Exception:
+        return
+
+    def _at(days, hour):
+        return (now_dt + dt.timedelta(days=days)).replace(
+            hour=hour, minute=0, second=0, microsecond=0).strftime("%Y-%m-%d %H:%M")
+
+    # A few TODAY, placed relative to the current hour so the home "Today"
+    # timeline always reads as a live day (some done, one happening, one ahead)
+    # regardless of when the demo is opened. Clamped to the 7am–7pm track.
+    # Spread + distinct by construction so blocks never collide, and skewed so at
+    # least one sits after "now" (populates Next up) at typical work hours.
+    _h_past = min(14, max(8, now_dt.hour - 2))
+    _h_soon = min(16, max(_h_past + 2, now_dt.hour + 1))
+    _h_late = min(18, max(_h_soon + 2, now_dt.hour + 3))
+    # Coordinator-facing "what to go over" agendas per visit kind (distinct from
+    # the patient-facing prep). These populate the overlay's context checklist.
+    _AGENDA = {
+        "screening": "Confirm inclusion/exclusion criteria\nReview medical & med history\nCollect baseline vitals + weight",
+        "baseline": "Verify signed consent on file\nBaseline labs, ECG, and vitals\nDispense study diary + first kit",
+        "treatment": "Administer study drug + record dose\nPre/post vitals\nLog any adverse events",
+        "followup": "Review symptom diary\nAssess adverse events since last visit\nConfirm next visit + drug accountability",
+        "reconsent": "Walk through the amended consent\nAnswer questions\nCollect signature + file to source",
+    }
+    # (days_ahead, hour, kind, window +/- days, prep, recurring?). One overdue,
+    # one closing, one recurring (weekly treatment series).
+    specs = [
+        (0, _h_past, "screening", 0,
+         "Bring a photo ID and insurance card\nAllow ~90 minutes", False),
+        (0, _h_soon, "treatment", 2, "Arrive 15 minutes early for vitals", True),
+        (0, _h_late, "followup", 3, "Bring your symptom diary", False),
+        (-2, 10, "screening", 0,
+         "Bring a photo ID and insurance card\nAllow ~90 minutes", False),
+        (1, 9, "screening", 0,
+         "Fast 8 hours before the visit\nBring your current medication list", False),
+        (2, 14, "baseline", 3,
+         "Bring completed consent packet\nWear loose sleeves for a blood draw", False),
+        (3, 11, "treatment", 2, "Arrive 15 minutes early for vitals", False),
+        (9, 10, "followup", 3, "Bring your symptom diary", False),
+        (16, 13, "followup", 3, "Bring your symptom diary", False),
+    ]
+    i = 0
+    for days, hour, kind, win, prep, recurring in specs:
+        lead = cands[i % len(cands)]
+        i += 1
+        when = _at(days, hour)
+        ws = we = ""
+        if win:
+            base = _cal_parse_dt(when)
+            ws = (base - dt.timedelta(days=win)).strftime("%Y-%m-%d %H:%M")
+            we = (base + dt.timedelta(days=win)).strftime("%Y-%m-%d %H:%M")
+        _dur = 60 if kind in ("baseline", "treatment") else 30
+        try:
+            if recurring:
+                # A live weekly treatment series (this + 3 more) so the overlay
+                # shows recurrence + "move the rest of the series" behaviour.
+                db.add_visit_series(
+                    lead["id"], when, 4, recurrence="weekly", kind=kind,
+                    location=lead["site"] or "Study site", prep=prep,
+                    agenda=_AGENDA.get(kind, ""), duration_min=_dur)
+            else:
+                db.add_visit(lead["id"], when, kind=kind,
+                             location=lead["site"] or "Study site",
+                             window_start=ws, window_end=we, prep=prep,
+                             agenda=_AGENDA.get(kind, ""), duration_min=_dur)
+        except Exception:
+            app.logger.exception("demo calendar seeding failed")
+
+    # ── Case context: a couple of PAST visits (with outcomes) + team notes per
+    # participant, so the overlay reads like a real chart, not a blank slate. ──
+    _hist = [
+        (-28, "screening", "completed",
+         "Eligible - BMI 31, A1c 7.8. Consented. Labs drawn."),
+        (-14, "baseline", "completed",
+         "Baseline vitals normal. First kit dispensed. Tolerated well."),
+        (-7, "treatment", "missed",
+         "No-show; reached by phone, rebooked. Watch adherence."),
+    ]
+    _notes = [
+        "Prefers morning visits; works afternoons.",
+        "Daughter (caregiver) usually attends - add to reminders.",
+        "Mild nausea reported week 1; resolved. Monitor at next dose.",
+    ]
+    for lead in cands[:3]:
+        try:
+            if db.list_notes(lead["id"]):
+                continue  # already has context; keep idempotent
+            for days, kind, status, note in _hist:
+                vid = db.add_visit(
+                    lead["id"], _at(days, 10), kind=kind,
+                    location=lead["site"] or "Study site", note=note,
+                    agenda=_AGENDA.get(kind, ""),
+                    duration_min=60 if kind in ("baseline", "treatment") else 30)
+                db.set_visit_status(vid, status)
+            for body in _notes[:2]:
+                db.add_note(lead["id"], body, author="Coordinator")
+        except Exception:
+            app.logger.exception("demo context seeding failed")
+
+
+# --------------------------------------------------------------------------- #
+# Participant payments (stipends / reimbursement). Subjects only, IRB-approved
+# amounts, auto-queued from completed visits, one-click issue through a pluggable
+# provider, with a 1099/W-9 tax gate and an audit trail. See COMPLIANCE.md §5.
+# KPI: Tier-2 efficiency (kills the gift-card spreadsheet) + retention (prompt,
+# reliable stipends keep enrolled participants from dropping out).
+# --------------------------------------------------------------------------- #
+def _dollars_to_cents(raw):
+    try:
+        return int(round(float(str(raw).replace("$", "").replace(",", "").strip()) * 100))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _payment_owned(payment_id):
+    p = db.get_payment(payment_id)
+    if not p:
+        return None, None
+    lead = db.get_lead(p["lead_id"])
+    if not lead:
+        return None, None
+    try:
+        if lead["nct"] not in db.user_claimed_ncts(g.user["id"]):
+            return None, None
+    except Exception:
+        return None, None
+    return p, lead
+
+
+@app.route("/app/payments")
+@login_required
+def payments_page():
+    _seed_demo_payments_if_demo()
+    # Scope follows the single global switcher (no per-page chip row). "" = all.
+    nct_filter, _ = _active_scope()
+    year = dt.datetime.now().year
+    thr = payments_mod.IRS_1099_THRESHOLD_CENTS
+    rows = db.list_payments(g.user["id"], nct_filter or None)
+
+    # Per-participant YTD totals (tax basis) + W-9 state, computed once per lead.
+    lead_ids = {r["lead_id"] for r in rows}
+    ytd = {lid: db.participant_year_total_cents(lid, year) for lid in lead_ids}
+    w9 = {lid: db.get_payment_recipient(lid) for lid in lead_ids}
+
+    payments, queued_cents, issued_month_cents = [], 0, 0
+    month_prefix = dt.datetime.now().strftime("%Y-%m")
+    paid_leads, w9_needed = set(), set()
+    for r in rows:
+        lid = r["lead_id"]
+        total = ytd.get(lid, 0)
+        rec = w9.get(lid, {})
+        over = total >= thr
+        near = (not over) and total >= int(thr * 0.8)
+        needs_w9 = (over or near) and rec.get("w9_status") != "collected"
+        if needs_w9:
+            w9_needed.add(lid)
+        if r["status"] == "queued":
+            queued_cents += r["amount_cents"] or 0
+        if r["status"] in ("issued", "paid"):
+            paid_leads.add(lid)
+            if str(r["created_at"])[:7] == month_prefix:
+                issued_month_cents += r["amount_cents"] or 0
+        payments.append({
+            "id": r["id"], "lead_id": lid,
+            "lead_name": r["lead_name"] or "Participant",
+            "lead_token": r["lead_token"] or "",
+            "nct": r["nct"], "trial_title": r["trial_title"] or r["nct"],
+            "kind": r["kind"], "label": r["label"] or "Visit stipend",
+            "amount": payments_mod.format_cents(r["amount_cents"], r["currency"]),
+            "amount_cents": r["amount_cents"] or 0, "currency": r["currency"],
+            "status": r["status"], "method": r["method"],
+            "provider_ref": r["provider_ref"] or "",
+            "date": str(r["created_at"])[:10],
+            "ytd": payments_mod.format_cents(total, r["currency"]),
+            "over_1099": over, "near_1099": near,
+            "w9_status": rec.get("w9_status", "not_needed"),
+            "needs_w9": needs_w9,
+            "undue": (r["amount_cents"] or 0) > payments_mod.UNDUE_INDUCEMENT_CENTS,
+        })
+
+    needs_action = [p for p in payments
+                    if p["status"] in ("queued", "failed") or p["needs_w9"]]
+    rules = [dict(x) for x in db.list_payment_rules(g.user["id"], nct_filter or None)]
+    for rl in rules:
+        rl["amount"] = payments_mod.format_cents(rl["amount_cents"], rl["currency"])
+
+    team_studies = db.list_team_studies(g.user["id"])
+    trials = [{"nct": s["nct"], "title": s["title"] or s["nct"]} for s in team_studies]
+
+    return render_template(
+        "payments.html",
+        payments=payments, needs_action=needs_action, rules=rules,
+        trials=trials, nct_filter=nct_filter, visit_kinds=_VISIT_KINDS,
+        provider_label=payments_mod.provider_label(),
+        provider_live=payments_mod.provider_is_live(),
+        threshold=payments_mod.format_cents(thr),
+        summary={
+            "queued": payments_mod.format_cents(queued_cents),
+            "queued_n": sum(1 for p in payments if p["status"] == "queued"),
+            "issued_month": payments_mod.format_cents(issued_month_cents),
+            "participants": len(paid_leads),
+            "w9_needed": len(w9_needed),
+        })
+
+
+@app.route("/app/payments/rule", methods=["POST"])
+@login_required
+def payments_rule_save():
+    rule_id = request.form.get("rule_id", type=int)
+    nct = (request.form.get("nct") or "").strip()
+    if nct and nct not in db.user_claimed_ncts(g.user["id"]):
+        flash("Pick a study you run.", "error")
+        return redirect(url_for("payments_page"))
+    kind = request.form.get("kind") or "screening"
+    label = (request.form.get("label") or "").strip() or \
+        f"{_VISIT_KIND_LABELS.get(kind, kind).title()} - time & travel"
+    amount_cents = _dollars_to_cents(request.form.get("amount"))
+    currency = request.form.get("currency") or "USD"
+    method = request.form.get("method") or "gift_card"
+    irb = 1 if request.form.get("irb_approved") else 0
+    irb_note = (request.form.get("irb_note") or "").strip()
+    if amount_cents <= 0:
+        flash("Enter an amount greater than zero.", "error")
+        return redirect(url_for("payments_page"))
+    if rule_id:
+        rl = db.get_payment_rule(rule_id)
+        if not rl or rl["user_id"] != g.user["id"]:
+            abort(404)
+        db.update_payment_rule(rule_id, kind=kind, label=label,
+                               amount_cents=amount_cents, currency=currency,
+                               method=method, irb_approved=irb, irb_note=irb_note)
+        flash("Payment rule updated.", "ok")
+    else:
+        db.add_payment_rule(g.user["id"], nct, kind, label, amount_cents,
+                            currency=currency, method=method, irb_approved=irb,
+                            irb_note=irb_note)
+        flash("Payment rule added." + ("" if irb else
+              " Attest IRB approval before it can auto-issue."), "ok")
+    return redirect(url_for("payments_page", nct=nct or None))
+
+
+@app.route("/app/payments/rule/<int:rule_id>/delete", methods=["POST"])
+@login_required
+def payments_rule_delete(rule_id):
+    rl = db.get_payment_rule(rule_id)
+    if not rl or rl["user_id"] != g.user["id"]:
+        abort(404)
+    db.update_payment_rule(rule_id, active=0)
+    flash("Payment rule deactivated.", "ok")
+    return redirect(url_for("payments_page"))
+
+
+@app.route("/app/payments/<int:payment_id>/issue", methods=["POST"])
+@login_required
+def payments_issue(payment_id):
+    p, lead = _payment_owned(payment_id)
+    if not p:
+        abort(404)
+    if p["status"] not in ("queued", "failed"):
+        flash("This payment isn't queued.", "error")
+        return redirect(url_for("payments_page"))
+    year = dt.datetime.now().year
+    thr = payments_mod.IRS_1099_THRESHOLD_CENTS
+    prior = db.participant_year_total_cents(lead["id"], year, exclude_payment_id=payment_id)
+    projected = prior + (p["amount_cents"] or 0)
+    rec = db.get_payment_recipient(lead["id"])
+    # Tax gate: don't disburse across the 1099 threshold without a W-9 on file.
+    if projected >= thr and rec.get("w9_status") != "collected":
+        db.set_w9_status(lead["id"], "requested")
+        flash("Held: this payment reaches the $600 1099 threshold for the year. "
+              "Collect a W-9 from the participant first, then issue.", "error")
+        return redirect(url_for("payments_page"))
+    res = payments_mod.issue_payment(p)
+    if res.get("ok"):
+        db.update_payment_status(payment_id, res["status"], actor="you",
+                                 provider=res["provider"],
+                                 provider_ref=res["provider_ref"])
+        flash(f"Issued {payments_mod.format_cents(p['amount_cents'], p['currency'])} "
+              f"to {lead['name'] or 'the participant'} "
+              f"({payments_mod.provider_label()}).", "ok")
+    else:
+        db.update_payment_status(payment_id, "failed", actor="you",
+                                 note=res.get("error", ""))
+        flash("Payment failed: " + (res.get("error") or "provider error"), "error")
+    return redirect(url_for("payments_page"))
+
+
+@app.route("/app/payments/<int:payment_id>/void", methods=["POST"])
+@login_required
+def payments_void(payment_id):
+    p, lead = _payment_owned(payment_id)
+    if not p:
+        abort(404)
+    db.update_payment_status(payment_id, "void", actor="you",
+                             note=request.form.get("note", ""))
+    flash("Payment voided.", "ok")
+    return redirect(url_for("payments_page"))
+
+
+@app.route("/app/payments/recipient/<int:lead_id>/w9", methods=["POST"])
+@login_required
+def payments_w9(lead_id):
+    lead = db.get_lead(lead_id)
+    if not lead or lead["nct"] not in db.user_claimed_ncts(g.user["id"]):
+        abort(404)
+    status = request.form.get("status") or "collected"
+    if status not in ("not_needed", "requested", "collected"):
+        status = "collected"
+    db.set_w9_status(lead_id, status)
+    flash({"collected": "W-9 marked on file.", "requested": "W-9 requested.",
+           "not_needed": "W-9 cleared."}[status], "ok")
+    return redirect(url_for("payments_page"))
+
+
+def _seed_demo_payments_if_demo():
+    """Seed IRB-approved payment rules + a realistic ledger (queued, issued, one
+    participant near the 1099 threshold) so Payments reads as a live workflow.
+    Idempotent; demo-only (COMPLIANCE.md)."""
+    if not g.user:
+        return
+    if not (_demo_mode_enabled() or _is_demo_account(g.user)
+            or _site_demo_enabled()):
+        return
+    try:
+        if db.list_payment_rules(g.user["id"]):
+            return
+    except Exception:
+        return
+    ncts = sorted(db.user_claimed_ncts(g.user["id"]))
+    if not ncts:
+        return
+    # Rules: a screening + follow-up stipend per trial (IRB-approved).
+    rule_specs = [("screening", "Screening visit - time & travel", 7500),
+                  ("followup", "Follow-up visit - time & travel", 5000),
+                  ("baseline", "Baseline visit - time & travel", 7500)]
+    for nct in ncts[:3]:
+        for kind, label, cents in rule_specs:
+            try:
+                db.add_payment_rule(g.user["id"], nct, kind, label, cents,
+                                    irb_approved=1,
+                                    irb_note="Amount per IRB-approved consent, sec. 12")
+            except Exception:
+                app.logger.exception("demo payment rule seeding failed")
+    # A few ledger rows across revealed participants.
+    rows = db.list_leads_for_user(g.user["id"])
+    cands = [r for r in rows if r["revealed"] and r["status"] not in db.LEAD_CLOSED]
+    if not cands:
+        cands = rows
+    if not cands:
+        return
+    # (participant index, kind, cents, status) — mix of owed + already issued;
+    # stack the first participant so they sit just under $600 for the tax demo.
+    specs = [
+        (0, "screening", 7500, "queued"),
+        (1, "screening", 7500, "queued"),
+        (0, "followup", 5000, "issued"),
+        (0, "followup", 5000, "issued"),
+        (0, "baseline", 7500, "issued"),
+        (0, "followup", 5000, "issued"),  # first participant -> ~$300 issued + queued
+        (2, "screening", 7500, "issued"),
+    ]
+    for idx, kind, cents, status in specs:
+        if idx >= len(cands):
+            continue
+        lead = cands[idx]
+        try:
+            db.create_payment(lead["id"], lead["nct"], cents, kind=kind,
+                              label=f"{_VISIT_KIND_LABELS.get(kind, kind)} - time & travel",
+                              currency="USD", method="gift_card", status=status,
+                              created_by="system")
+        except Exception:
+            app.logger.exception("demo payment seeding failed")
+
+
+# --------------------------------------------------------------------------- #
+# Sponsor -> site UPDATES (amendments, safety letters, doc requests, bulletins).
+# The heaviest recurring site burden is a protocol amendment: one sponsor change
+# forces every site to acknowledge, take it to the IRB, update the consent form,
+# RE-CONSENT already-enrolled participants, and retrain staff - and any missed
+# step is a finding/deviation and a retention risk. This turns that into one
+# tracked checklist per update, with the re-consent step booking real visits on
+# the calendar so nothing is lost between "sponsor emailed us" and "everyone
+# re-signed". KPI: Tier-2 efficiency (cuts amendment cycle time) feeding
+# retention (staying compliant avoids dropouts/holds mid-study).
+# --------------------------------------------------------------------------- #
+_UPDATE_TYPES = [
+    ("amendment", "Protocol amendment"),
+    ("safety", "Safety letter / IB update"),
+    ("doc_request", "Document request"),
+    ("bulletin", "Sponsor bulletin"),
+]
+_UPDATE_TYPE_LABELS = dict(_UPDATE_TYPES)
+
+# Which checklist steps apply to each update type, in the order a site works them.
+_UPDATE_STEPS = {
+    "amendment": ["ack", "irb", "icf", "reconsent", "retrain"],
+    "safety": ["ack", "irb", "retrain"],
+    "doc_request": ["ack"],
+    "bulletin": ["ack"],
+}
+_STEP_LABELS = {
+    "ack": "Acknowledge receipt",
+    "irb": "Submit to IRB / REB",
+    "icf": "Update consent form (ICF)",
+    "reconsent": "Re-consent participants",
+    "retrain": "Retrain study staff",
+}
+
+
+def _step_state(u, key):
+    """Return (state, detail) for a checklist step. state in
+    done|partial|todo|na. detail is a short human string (dates/counts)."""
+    if key == "ack":
+        if u["ack_status"] == "done":
+            return "done", ("Acknowledged " + str(u["ack_at"])[:10]) if u["ack_at"] else "Acknowledged"
+        return "todo", ""
+    if key == "irb":
+        s = u["irb_status"]
+        if s == "not_required":
+            return "na", "Not required"
+        if s == "approved":
+            return "done", ("Approved " + str(u["irb_approved_at"])[:10]) if u["irb_approved_at"] else "Approved"
+        if s == "submitted":
+            return "partial", ("Submitted " + str(u["irb_submitted_at"])[:10]) if u["irb_submitted_at"] else "Submitted - awaiting approval"
+        return "todo", ""
+    if key == "icf":
+        if u["icf_status"] == "not_required":
+            return "na", "Not required"
+        if u["icf_status"] == "done":
+            return "done", (u["icf_note"] or "Consent form updated")
+        return "todo", ""
+    if key == "reconsent":
+        s = u["reconsent_status"]
+        if s == "not_required":
+            return "na", "Not required"
+        if s == "complete":
+            return "done", "All participants re-consented"
+        if s == "in_progress":
+            return "partial", "In progress"
+        return "todo", ""
+    if key == "retrain":
+        if u["retrain_status"] == "not_required":
+            return "na", "Not required"
+        if u["retrain_status"] == "done":
+            return "done", "Staff retrained"
+        return "todo", ""
+    return "todo", ""
+
+
+def _update_view(u, recon=None):
+    """Flatten a sponsor_updates row for templates: checklist steps + progress.
+    Pass `recon` = {"booked":n,"done":n,"candidates":n} to fill re-consent counts."""
+    typ = u["type"] or "amendment"
+    keys = _UPDATE_STEPS.get(typ, ["ack"])
+    steps, done_n, total_n, next_action = [], 0, 0, ""
+    for k in keys:
+        state, detail = _step_state(u, k)
+        if state == "na":
+            continue
+        total_n += 1
+        if state == "done":
+            done_n += 1
+        elif not next_action:
+            next_action = _STEP_LABELS[k]
+        steps.append({"key": k, "label": _STEP_LABELS[k],
+                      "state": state, "detail": detail})
+    due = str(u["due_at"] or "")[:10]
+    overdue = False
+    if due:
+        try:
+            overdue = (dt.datetime.strptime(due, "%Y-%m-%d").date()
+                       < dt.date.today()) and done_n < total_n
+        except ValueError:
+            overdue = False
+    return {
+        "id": u["id"], "nct": u["nct"] or "",
+        "type": typ, "type_label": _UPDATE_TYPE_LABELS.get(typ, typ.title()),
+        "version": u["version"] or "", "title": u["title"] or "",
+        "summary": u["summary"] or "", "source": u["source"] or "",
+        "received": str(u["received_at"] or "")[:10],
+        "due": due, "overdue": overdue,
+        "ack_status": u["ack_status"], "irb_status": u["irb_status"],
+        "icf_status": u["icf_status"], "reconsent_status": u["reconsent_status"],
+        "retrain_status": u["retrain_status"],
+        "steps": steps, "done_n": done_n, "total_n": total_n,
+        "complete": total_n > 0 and done_n >= total_n,
+        "next_action": next_action or "Done",
+        "recon": recon or {},
+    }
+
+
+def _reconsent_counts(update_id):
+    visits = db.reconsent_visits_for_update(update_id)
+    booked = {v["lead_id"] for v in visits}
+    done = {v["lead_id"] for v in visits if (v["status"] or "") == "completed"}
+    return visits, booked, done
+
+
+def _update_owned(update_id):
+    u = db.get_sponsor_update(update_id)
+    if not u or u["user_id"] != g.user["id"]:
+        return None
+    return u
+
+
+# Controlled-document types shown in the "Documents & versions" panel, in the
+# order a site cares about them.
+_DOC_LABELS = {
+    "protocol": "Protocol",
+    "icf": "Consent form (ICF)",
+    "ib": "Investigator brochure",
+    "other": "Document",
+}
+_DOC_ICONS = {"protocol": "file", "icf": "file", "ib": "file", "other": "file"}
+_DOC_STATUS_TONE = {"current": "ok", "pending": "warn", "superseded": "neutral"}
+
+
+def _doc_versions_view(user_id, nct, update_id=None):
+    """Group a study's controlled-document versions by type (Protocol/ICF/IB),
+    newest first, flagging the version this amendment introduces. Read-only view
+    for templates."""
+    if not nct:
+        return []
+    rows = db.list_doc_versions(user_id, nct)
+    groups = {}
+    for r in rows:
+        groups.setdefault(r["doc_type"], []).append({
+            "version": r["version"] or "-",
+            "status": r["status"] or "current",
+            "status_tone": _DOC_STATUS_TONE.get(r["status"] or "current", "neutral"),
+            "effective": str(r["effective_at"] or "")[:10],
+            "is_new": update_id is not None and r["update_id"] == update_id,
+            "note": r["note"] or "",
+        })
+    out = []
+    for t in ("protocol", "icf", "ib", "other"):
+        if groups.get(t):
+            current = next((v for v in groups[t] if v["status"] == "current"), None)
+            pending = next((v for v in groups[t] if v["status"] == "pending"), None)
+            out.append({
+                "type": t, "label": _DOC_LABELS.get(t, t.title()),
+                "icon": _DOC_ICONS.get(t, "file"),
+                "current": current, "pending": pending,
+                "versions": groups[t],
+            })
+    return out
+
+
+@app.route("/app/updates")
+@login_required
+def updates_page():
+    _seed_demo_updates_if_demo()
+    # Scope follows the single global switcher. "" = all studies.
+    nct_filter, _ = _active_scope()
+    rows = db.list_sponsor_updates(g.user["id"], nct_filter or None)
+    updates = []
+    for u in rows:
+        recon = {}
+        if (u["type"] or "") == "amendment":
+            _, booked, done = _reconsent_counts(u["id"])
+            cands = db.reconsent_candidates(u["user_id"], u["nct"])
+            recon = {"booked": len(booked), "done": len(done),
+                     "candidates": len(cands)}
+        updates.append(_update_view(u, recon))
+
+    open_updates = [u for u in updates if not u["complete"]]
+    done_updates = [u for u in updates if u["complete"]]
+
+    team_studies = db.list_team_studies(g.user["id"])
+    trials = [{"nct": s["nct"], "title": s["title"] or s["nct"]}
+              for s in team_studies]
+    return render_template(
+        "updates.html", open_updates=open_updates, done_updates=done_updates,
+        trials=trials, nct_filter=nct_filter, update_types=_UPDATE_TYPES)
+
+
+@app.route("/app/updates/<int:update_id>")
+@login_required
+def update_detail(update_id):
+    u = _update_owned(update_id)
+    if not u:
+        abort(404)
+    recon = {}
+    cands = []
+    booked_visits = []
+    if (u["type"] or "") == "amendment":
+        visits, booked, done = _reconsent_counts(update_id)
+        booked_visits = [_visit_view(v, dt.datetime.now()) for v in visits]
+        raw_cands = db.reconsent_candidates(u["user_id"], u["nct"])
+        for c in raw_cands:
+            cands.append({
+                "id": c["id"], "name": c["name"] or "Participant",
+                "status": c["status"], "booked": c["id"] in booked,
+                "done": c["id"] in done})
+        recon = {"booked": len(booked), "done": len(done),
+                 "candidates": len(raw_cands),
+                 "remaining": len(raw_cands) - len(booked)}
+    view = _update_view(u, recon)
+    events = db.list_update_events(update_id)
+    trial_title = ""
+    for s in db.list_team_studies(g.user["id"]):
+        if s["nct"] == u["nct"]:
+            trial_title = s["title"] or s["nct"]
+    visit_cards = [_build_visit_card(v, dt.datetime.now()) for v in booked_visits]
+    doc_groups = _doc_versions_view(u["user_id"], u["nct"], update_id)
+    return render_template(
+        "update_detail.html", u=view, nct=u["nct"], trial_title=trial_title,
+        candidates=cands, booked_visits=booked_visits, visit_cards=visit_cards,
+        events=events, visit_kinds=_VISIT_KINDS, doc_groups=doc_groups)
+
+
+@app.route("/app/updates/new", methods=["POST"])
+@login_required
+def updates_new():
+    nct = (request.form.get("nct") or "").strip()
+    if nct and nct not in db.user_claimed_ncts(g.user["id"]):
+        flash("Pick a study you run.", "error")
+        return redirect(url_for("updates_page"))
+    typ = request.form.get("type") or "amendment"
+    if typ not in _UPDATE_TYPE_LABELS:
+        typ = "amendment"
+    title = (request.form.get("title") or "").strip()
+    if not title:
+        flash("Give the update a short title.", "error")
+        return redirect(url_for("updates_page"))
+    version = (request.form.get("version") or "").strip()
+    uid = db.add_sponsor_update(
+        g.user["id"], nct, type=typ, version=version,
+        title=title, summary=(request.form.get("summary") or "").strip(),
+        source=(request.form.get("source") or "").strip(),
+        due_at=_cal_form_dt("due_at", None) or "")
+    # An amendment ships a new controlled-document version. Log it as PENDING; it
+    # becomes the current version once IRB approves (see update_irb).
+    if typ == "amendment" and version and nct:
+        try:
+            db.add_doc_version(
+                g.user["id"], nct, doc_type="protocol", version=version,
+                status="pending", update_id=uid,
+                note="Introduced by " + title)
+        except Exception:
+            app.logger.exception("doc version create failed")
+    flash("Update logged. Work the checklist so nothing slips.", "ok")
+    return redirect(url_for("update_detail", update_id=uid))
+
+
+@app.route("/app/updates/<int:update_id>/ack", methods=["POST"])
+@login_required
+def update_ack(update_id):
+    if not _update_owned(update_id):
+        abort(404)
+    db.update_sponsor_update(update_id, ack_status="done", ack_at=db.now(),
+                             event="acknowledged", note="Receipt acknowledged")
+    flash("Acknowledged. The sponsor's record shows this site received it.", "ok")
+    return redirect(url_for("update_detail", update_id=update_id))
+
+
+@app.route("/app/updates/<int:update_id>/irb", methods=["POST"])
+@login_required
+def update_irb(update_id):
+    if not _update_owned(update_id):
+        abort(404)
+    status = request.form.get("status") or ""
+    if status not in ("submitted", "approved", "not_required"):
+        flash("Unknown IRB status.", "error")
+        return redirect(url_for("update_detail", update_id=update_id))
+    fields = {"irb_status": status}
+    when = _cal_form_dt("date", None) or db.now()[:10]
+    if status == "submitted":
+        fields["irb_submitted_at"] = when
+        ev, note = "irb_submitted", f"Submitted to IRB {when}"
+    elif status == "approved":
+        fields["irb_approved_at"] = when
+        if not db.get_sponsor_update(update_id)["irb_submitted_at"]:
+            fields["irb_submitted_at"] = when
+        # On approval the amendment's pending document versions become current
+        # and supersede the prior ones - so the site always sees the in-effect
+        # version. Fold the result into the IRB event note (a bare event with no
+        # field change isn't logged).
+        promoted = 0
+        try:
+            promoted = db.promote_doc_versions_for_update(
+                g.user["id"], update_id, when)
+        except Exception:
+            app.logger.exception("doc version promote failed")
+        ev = "irb_approved"
+        note = f"IRB approved {when}" + (
+            f" - {promoted} document version(s) now current" if promoted else "")
+    else:
+        ev, note = "irb_waived", "IRB review marked not required"
+    db.update_sponsor_update(update_id, event=ev, note=note, **fields)
+    flash("IRB status updated.", "ok")
+    return redirect(url_for("update_detail", update_id=update_id))
+
+
+@app.route("/app/updates/<int:update_id>/icf", methods=["POST"])
+@login_required
+def update_icf(update_id):
+    if not _update_owned(update_id):
+        abort(404)
+    done = request.form.get("done") == "1"
+    note = (request.form.get("icf_note") or "").strip()
+    db.update_sponsor_update(
+        update_id, icf_status=("done" if done else "pending"), icf_note=note,
+        event="icf_updated" if done else "icf_reopened",
+        note=note or ("Consent form updated" if done else "Reopened"))
+    flash("Consent form step updated." if done else "Reopened consent step.", "ok")
+    return redirect(url_for("update_detail", update_id=update_id))
+
+
+@app.route("/app/updates/<int:update_id>/retrain", methods=["POST"])
+@login_required
+def update_retrain(update_id):
+    if not _update_owned(update_id):
+        abort(404)
+    done = request.form.get("done") == "1"
+    db.update_sponsor_update(
+        update_id, retrain_status=("done" if done else "pending"),
+        event="retrain_done" if done else "retrain_reopened",
+        note="Staff retrained on the change" if done else "Reopened")
+    flash("Staff training updated.", "ok")
+    return redirect(url_for("update_detail", update_id=update_id))
+
+
+@app.route("/app/updates/<int:update_id>/reconsent/book", methods=["POST"])
+@login_required
+def update_reconsent_book(update_id):
+    u = _update_owned(update_id)
+    if not u:
+        abort(404)
+    lead_ids = request.form.getlist("lead_ids", type=int)
+    when = _cal_form_dt("date", "time")
+    if not when:
+        flash("Pick a date and time for the re-consent visits.", "error")
+        return redirect(url_for("update_detail", update_id=update_id))
+    if not lead_ids:
+        flash("Select at least one participant to re-consent.", "error")
+        return redirect(url_for("update_detail", update_id=update_id))
+    # Only book participants who are genuinely re-consent candidates on this
+    # trial and don't already have a re-consent visit for this amendment.
+    valid = {c["id"] for c in db.reconsent_candidates(u["user_id"], u["nct"])}
+    _, already, _ = _reconsent_counts(update_id)
+    ver = u["version"] or u["title"] or "amendment"
+    prep = ("Review the updated consent form before your visit\n"
+            "Bring any questions about what changed")
+    n = 0
+    for lid in lead_ids:
+        if lid not in valid or lid in already:
+            continue
+        db.add_visit(lid, when, kind="reconsent",
+                     location=request.form.get("location", "").strip(),
+                     note=f"Re-consent for {ver}",
+                     title=f"Re-consent - {ver}",
+                     duration_min=request.form.get("duration_min", type=int) or 20,
+                     prep=prep, update_id=update_id)
+        n += 1
+    if n:
+        db.update_sponsor_update(
+            update_id, reconsent_status="in_progress",
+            event="reconsent_booked",
+            note=f"Booked {n} re-consent visit(s) for {when[:10]}")
+        flash(f"Booked {n} re-consent visit{'s' if n != 1 else ''}. "
+              "They're on the calendar and patient reminders are queued.", "ok")
+    else:
+        flash("Nothing to book - those participants already have a re-consent "
+              "visit.", "warn")
+    return redirect(url_for("update_detail", update_id=update_id))
+
+
+@app.route("/app/updates/<int:update_id>/reconsent/complete", methods=["POST"])
+@login_required
+def update_reconsent_complete(update_id):
+    if not _update_owned(update_id):
+        abort(404)
+    done = request.form.get("done") == "1"
+    db.update_sponsor_update(
+        update_id, reconsent_status=("complete" if done else "in_progress"),
+        event="reconsent_complete" if done else "reconsent_reopened",
+        note="All participants re-consented" if done else "Reopened re-consent")
+    flash("Re-consent marked complete." if done else "Re-consent reopened.", "ok")
+    return redirect(url_for("update_detail", update_id=update_id))
+
+
+def _seed_demo_updates_if_demo():
+    """Seed a couple of realistic sponsor updates (one live amendment mid-flight,
+    one safety letter) so the Updates hub reads as a live workflow. Idempotent;
+    demo-only (COMPLIANCE.md)."""
+    if not g.user:
+        return
+    if not (_demo_mode_enabled() or _is_demo_account(g.user)
+            or _site_demo_enabled()):
+        return
+    try:
+        if db.list_sponsor_updates(g.user["id"]):
+            return
+    except Exception:
+        return
+    ncts = sorted(db.user_claimed_ncts(g.user["id"]))
+    if not ncts:
+        return
+    today = dt.date.today()
+
+    def _d(days):
+        return (today + dt.timedelta(days=days)).strftime("%Y-%m-%d")
+
+    # Land the amendment on the trial with the most enrolled/active participants
+    # so the re-consent queue actually has people in it (that's the demo's point).
+    nct = max(ncts, key=lambda n: len(db.reconsent_candidates(g.user["id"], n)))
+    # A live amendment mid-flight: acknowledged + IRB submitted, ICF/re-consent/
+    # retrain still open, due in ~10 days. This is the money demo.
+    try:
+        uid = db.add_sponsor_update(
+            g.user["id"], nct, type="amendment", version="Protocol v4.0",
+            title="Amendment 3 - new safety labs at every visit",
+            summary=("Adds a fasting lipid panel and ECG at all treatment "
+                     "visits, updates the risk section, and revises the "
+                     "consent form. All currently-enrolled participants must "
+                     "re-consent to the updated ICF before their next visit."),
+            source="Sponsor - Clinical Ops", received_at=_d(-4), due_at=_d(10))
+        db.update_sponsor_update(
+            uid, ack_status="done", ack_at=_d(-4),
+            irb_status="submitted", irb_submitted_at=_d(-2))
+        # Document-version trail so the site sees exactly which Protocol/ICF is in
+        # effect and its history. v4.0 is PENDING (this amendment, awaiting IRB);
+        # v3.0 is current; earlier ones superseded.
+        for doc in ("protocol", "icf"):
+            db.add_doc_version(g.user["id"], nct, doc_type=doc, version="v1.0",
+                               status="superseded", effective_at=_d(-430))
+            db.add_doc_version(g.user["id"], nct, doc_type=doc, version="v2.0",
+                               status="superseded", effective_at=_d(-250))
+            db.add_doc_version(g.user["id"], nct, doc_type=doc, version="v3.0",
+                               status="current", effective_at=_d(-95))
+            db.add_doc_version(g.user["id"], nct, doc_type=doc, version="v4.0",
+                               status="pending", update_id=uid,
+                               note="Introduced by Amendment 3")
+        db.add_doc_version(g.user["id"], nct, doc_type="ib", version="Edition 6",
+                           status="current", effective_at=_d(-140))
+    except Exception:
+        app.logger.exception("demo update seeding failed")
+    # A safety letter that only needs acknowledgement + a quick retrain.
+    try:
+        db.add_sponsor_update(
+            g.user["id"], nct, type="safety",
+            title="Urgent safety letter - updated dosing caution",
+            summary=("New safety signal: hold dosing and call the medical "
+                     "monitor if ALT/AST exceeds 3x ULN. File in the ISF and "
+                     "brief the team."),
+            source="Sponsor - Pharmacovigilance",
+            received_at=_d(-1), due_at=_d(3))
+    except Exception:
+        app.logger.exception("demo safety letter seeding failed")
+
+    # Every OTHER claimed trial gets at least one light sponsor update, so the
+    # hub is never empty no matter which study is in scope (a common demo miss).
+    _other = [
+        ("bulletin", "Q3 enrollment newsletter",
+         "Site ranking, upcoming monitoring visit windows, and a reminder to "
+         "keep the delegation log current. No action beyond acknowledgement.",
+         "Sponsor - Clinical Ops", 0),
+        ("doc_request", "Updated CV + GCP certificate requested",
+         "Annual refresh: please upload the current PI CV and GCP training "
+         "certificate for the regulatory binder.",
+         "CRO - Site Management", 7),
+    ]
+    for i, n in enumerate(x for x in ncts if x != nct):
+        typ, ttl, summ, src, due = _other[i % len(_other)]
+        try:
+            db.add_sponsor_update(
+                g.user["id"], n, type=typ, title=ttl, summary=summ,
+                source=src, received_at=_d(-2), due_at=_d(due) if due else "")
+        except Exception:
+            app.logger.exception("demo per-trial update seeding failed")
 
 
 # --------------------------------------------------------------------------- #

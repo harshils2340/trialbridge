@@ -1,0 +1,268 @@
+{% extends "base.html" %}
+{% import "_icons.html" as ic %}
+{% import "_ui.html" as ui %}
+{% block title %}{{ u.title }} · Updates · BridgeMD{% endblock %}
+
+{% set type_tone = {'amendment':'violet','safety':'danger','doc_request':'info','bulletin':'neutral'} %}
+
+{% macro step_head(state, label, detail) %}
+<div class="upd-row-head">
+  <span class="upd-row-ic is-{{ state }}">{% if state == 'done' %}{{ ic.icon('check') }}{% elif state == 'partial' %}{{ ic.icon('clock') }}{% else %}<span class="upd-dot"></span>{% endif %}</span>
+  <span class="upd-row-label"><b>{{ label }}</b>{% if detail %}<em>{{ detail }}</em>{% endif %}</span>
+</div>
+{% endmacro %}
+
+{% block body %}
+<div class="cal-back"><a href="{{ url_for('updates_page') }}">{{ ic.icon('arrow-left') }} All updates</a></div>
+
+<div class="app-head">
+  <div>
+    <div class="upd-detail-badges">
+      {{ ui.badge(u.type_label, type_tone.get(u.type,'neutral')) }}
+      {% if u.version %}<span class="upd-ver">{{ u.version }}</span>{% endif %}
+      {% if u.complete %}{{ ui.badge('Complete', 'ok', icon='check') }}
+      {% elif u.overdue %}{{ ui.badge('Overdue', 'danger', icon='alert') }}{% endif %}
+    </div>
+    <h1>{{ u.title }}</h1>
+    <p>{% if u.source %}{{ u.source }} · {% endif %}{{ trial_title or u.nct or 'No trial' }}{% if u.received %} · received {{ u.received }}{% endif %}{% if u.due %} · <b>due {{ u.due }}</b>{% endif %}</p>
+  </div>
+  <div class="upd-detail-prog">
+    <div class="upd-prog-n">{{ u.done_n }}<span>/{{ u.total_n }}</span></div>
+    <div class="upd-prog-l">steps done</div>
+  </div>
+</div>
+
+{% if u.summary %}
+<div class="app-card pad upd-summary">
+  <div class="app-card-title" style="margin-bottom:6px;">{{ ic.icon('info') }} <b>What changed</b></div>
+  <p>{{ u.summary }}</p>
+</div>
+{% endif %}
+
+{# --- Documents & versions: which Protocol/ICF/IB is in effect + its trail --- #}
+{% if doc_groups %}
+{% set docstat_tone = {'current':'ok','pending':'warn','superseded':'neutral'} %}
+<div class="app-card" style="margin-bottom:18px;">
+  <div class="app-card-title" style="padding:14px 18px 6px;">{{ ic.icon('file') }} <b>Documents &amp; versions</b> <span class="app-sub" style="font-weight:400;color:var(--faint);">what the sponsor has issued for this study</span></div>
+  <div class="docv-groups">
+    {% for grp in doc_groups %}
+    <div class="docv-group">
+      <div class="docv-head">
+        <span class="docv-title">{{ ic.icon(grp.icon) }} {{ grp.label }}</span>
+        <span class="docv-now">
+          {% if grp.current %}<b>{{ grp.current.version }}</b> in effect{% if grp.pending %} · {{ grp.pending.version }} pending IRB{% endif %}
+          {% elif grp.pending %}<b>{{ grp.pending.version }}</b> pending IRB{% endif %}
+        </span>
+      </div>
+      <div class="docv-list">
+        {% for v in grp.versions %}
+        <div class="docv-row is-{{ v.status }}">
+          <span class="docv-ver">{{ v.version }}</span>
+          {{ ui.badge(v.status|capitalize, docstat_tone.get(v.status,'neutral')) }}
+          {% if v.is_new %}<span class="docv-new">{{ ic.icon('sparkle') }} New with this amendment</span>{% endif %}
+          {% if v.effective %}<span class="docv-meta">effective {{ v.effective }}</span>{% endif %}
+          {% if v.status in ('current','pending') %}
+          <a class="docv-review" href="{{ url_for('site_setup') }}" title="Access-controlled: visible to your site team only">{{ ic.icon('file') }} Review</a>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  <div class="docv-foot">{{ ic.icon('shield') }} Review links are access-controlled - visible to your site team only, never public.</div>
+</div>
+{% endif %}
+
+<div class="app-card" style="margin-bottom:18px;">
+  <div class="app-card-title" style="padding:14px 18px 6px;">{{ ic.icon('list') }} <b>Compliance checklist</b> <span class="app-sub" style="font-weight:400;color:var(--faint);">work top to bottom</span></div>
+  <div class="upd-rows">
+
+    {# --- Acknowledge --- #}
+    <div class="upd-row">
+      {{ step_head('done' if u.ack_status=='done' else 'todo', 'Acknowledge receipt', 'Confirms to the sponsor this site received the update') }}
+      <div class="upd-row-act">
+        {% if u.ack_status != 'done' %}
+        <form method="post" action="{{ url_for('update_ack', update_id=u.id) }}">{{ ui.btn('Acknowledge', 'primary', size='sm', type='submit', icon='check') }}</form>
+        {% else %}<span class="upd-done-tag">{{ ic.icon('check') }} Done</span>{% endif %}
+      </div>
+    </div>
+
+    {# --- IRB / REB --- #}
+    {% if u.irb_status != 'not_required' %}
+    <div class="upd-row">
+      {% set irbstate = 'done' if u.irb_status=='approved' else ('partial' if u.irb_status=='submitted' else 'todo') %}
+      {{ step_head(irbstate, 'Submit to IRB / REB', ('IRB approved' if u.irb_status=='approved' else ('Submitted - awaiting approval' if u.irb_status=='submitted' else 'Local review required before the change takes effect'))) }}
+      <div class="upd-row-act">
+        <form method="post" action="{{ url_for('update_irb', update_id=u.id) }}" class="upd-inline">
+          <input type="date" name="date" title="Date">
+          {% if u.irb_status != 'submitted' and u.irb_status != 'approved' %}
+          {{ ui.btn('Mark submitted', 'ghost', size='sm', type='submit', name='status', value='submitted') }}
+          {% endif %}
+          {% if u.irb_status != 'approved' %}
+          {{ ui.btn('Mark approved', 'primary', size='sm', type='submit', name='status', value='approved', icon='check') }}
+          {% endif %}
+          {% if u.irb_status == 'approved' %}<span class="upd-done-tag">{{ ic.icon('check') }} Approved</span>{% endif %}
+        </form>
+      </div>
+    </div>
+    {% endif %}
+
+    {# --- ICF --- #}
+    {% if u.icf_status != 'not_required' %}
+    <div class="upd-row">
+      {{ step_head('done' if u.icf_status=='done' else 'todo', 'Update consent form (ICF)', 'Load the new consent version so it is used going forward') }}
+      <div class="upd-row-act">
+        {% if u.icf_status != 'done' %}
+        <form method="post" action="{{ url_for('update_icf', update_id=u.id) }}" class="upd-inline">
+          <input type="hidden" name="done" value="1">
+          <input type="text" name="icf_note" placeholder="e.g. ICF v4.0 filed" style="max-width:200px;">
+          {{ ui.btn('Mark updated', 'primary', size='sm', type='submit', icon='check') }}
+        </form>
+        <a class="upd-link" href="{{ url_for('site_setup') }}">{{ ic.icon('upload') }} Documents</a>
+        {% else %}
+        <span class="upd-done-tag">{{ ic.icon('check') }} Done</span>
+        <form method="post" action="{{ url_for('update_icf', update_id=u.id) }}"><input type="hidden" name="done" value="0">{{ ui.btn('Reopen', 'ghost', size='sm', type='submit') }}</form>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+
+    {# --- Re-consent --- #}
+    {% if u.reconsent_status != 'not_required' %}
+    <div class="upd-row">
+      {% set rcstate = 'done' if u.reconsent_status=='complete' else ('partial' if u.reconsent_status=='in_progress' else 'todo') %}
+      {{ step_head(rcstate, 'Re-consent participants', (u.recon.done ~ ' of ' ~ u.recon.candidates ~ ' re-consented' if u.recon.candidates else 'Every enrolled participant must sign the new consent')) }}
+      <div class="upd-row-act">
+        <a class="upd-link" href="#reconsent">Manage below {{ ic.icon('arrow-right') }}</a>
+      </div>
+    </div>
+    {% endif %}
+
+    {# --- Retrain --- #}
+    {% if u.retrain_status != 'not_required' %}
+    <div class="upd-row">
+      {{ step_head('done' if u.retrain_status=='done' else 'todo', 'Retrain study staff', 'Brief the team on the change and file it in the ISF') }}
+      <div class="upd-row-act">
+        {% if u.retrain_status != 'done' %}
+        <form method="post" action="{{ url_for('update_retrain', update_id=u.id) }}"><input type="hidden" name="done" value="1">{{ ui.btn('Mark trained', 'primary', size='sm', type='submit', icon='check') }}</form>
+        {% else %}
+        <span class="upd-done-tag">{{ ic.icon('check') }} Done</span>
+        <form method="post" action="{{ url_for('update_retrain', update_id=u.id) }}"><input type="hidden" name="done" value="0">{{ ui.btn('Reopen', 'ghost', size='sm', type='submit') }}</form>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+{# --- Re-consent panel (amendments) --- #}
+{% if u.reconsent_status != 'not_required' %}
+<div class="app-card" id="reconsent" style="margin-bottom:18px;">
+  <div class="app-card-title" style="padding:14px 18px 6px;">{{ ic.icon('users') }} <b>Re-consent queue</b> <span class="app-sub" style="font-weight:400;color:var(--faint);">enrolled participants who must sign the new consent</span></div>
+
+  <div class="app-stats" style="padding:6px 18px 0;">
+    <div class="app-stat"><div class="l">To re-consent</div><div class="n">{{ u.recon.candidates or 0 }}</div></div>
+    <div class="app-stat"><div class="l">Visits booked</div><div class="n">{{ u.recon.booked or 0 }}</div></div>
+    <div class="app-stat"><div class="l">Re-consented</div><div class="n">{{ u.recon.done or 0 }}</div></div>
+    <div class="app-stat{{ ' warn' if u.recon.remaining }}"><div class="l">Not yet booked</div><div class="n">{{ u.recon.remaining or 0 }}</div></div>
+  </div>
+
+  {% if not candidates %}
+  <div style="padding:0 18px 18px;">
+    {{ ui.empty('No one to re-consent', 'No currently-enrolled participants on this trial, so re-consent is not needed. Mark it complete.', 'check') }}
+  </div>
+  {% else %}
+  <form method="post" action="{{ url_for('update_reconsent_book', update_id=u.id) }}" id="rc-form">
+    <div class="upd-cands">
+      <div class="upd-cand upd-cand-head">
+        <span><label class="upd-check"><input type="checkbox" id="rc-all"> Participant</label></span>
+        <span>Status</span><span></span>
+      </div>
+      {% for c in candidates %}
+      <div class="upd-cand">
+        <span>
+          {% if not c.booked %}
+          <label class="upd-check"><input type="checkbox" class="rc-box" name="lead_ids" value="{{ c.id }}"> {{ c.name }}</label>
+          {% else %}
+          <span class="upd-cand-name">{{ c.name }}</span>
+          {% endif %}
+        </span>
+        <span>{{ ui.badge(c.status|capitalize, 'neutral') }}</span>
+        <span class="upd-cand-state">
+          {% if c.done %}{{ ui.badge('Re-consented', 'ok', icon='check') }}
+          {% elif c.booked %}{{ ui.badge('Visit booked', 'info', icon='calendar') }}
+          {% else %}<em class="upd-faint">not booked</em>{% endif %}
+        </span>
+      </div>
+      {% endfor %}
+    </div>
+
+    <div class="upd-book">
+      <div class="row">
+        <div class="field"><label>Date</label><input type="date" name="date" required></div>
+        <div class="field"><label>Time</label><input type="time" name="time" value="09:00"></div>
+        <div class="field"><label>Minutes</label><input type="number" name="duration_min" value="20" min="5" step="5"></div>
+      </div>
+      <div class="field"><label>Location <span class="cal-hint">optional</span></label><input type="text" name="location" placeholder="Study site"></div>
+      <div class="cal-form-foot">
+        <span class="cal-hint">Books a re-consent visit for each selected participant and queues their reminder. Refine individual times on the Calendar.</span>
+        {{ ui.btn('Book re-consent visits', 'primary', type='submit', icon='calendar') }}
+      </div>
+    </div>
+  </form>
+  {% endif %}
+
+  {% if booked_visits %}
+  <div class="upd-booked">
+    <div class="upd-booked-h">{{ ic.icon('calendar') }} Booked re-consent visits</div>
+    {% for v in booked_visits %}
+    <button type="button" class="upd-booked-row" data-ui-open="visit-{{ v.id }}">
+      <span><b>{{ v.lead_name }}</b> · {{ v.date }} {{ v.time_label }}</span>
+      <span>{% if v.status == 'completed' %}{{ ui.badge('Re-consented', 'ok', icon='check') }}{% elif v.status == 'missed' %}{{ ui.badge('Missed', 'danger') }}{% elif v.status == 'cancelled' %}{{ ui.badge('Cancelled', 'neutral') }}{% else %}{{ ui.badge('Scheduled', 'info') }}{% endif %}</span>
+    </button>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <div class="upd-rc-foot">
+    {% if u.reconsent_status != 'complete' %}
+    <form method="post" action="{{ url_for('update_reconsent_complete', update_id=u.id) }}"><input type="hidden" name="done" value="1">{{ ui.btn('Mark re-consent complete', 'ghost', size='sm', type='submit', icon='check') }}</form>
+    {% else %}
+    <form method="post" action="{{ url_for('update_reconsent_complete', update_id=u.id) }}"><input type="hidden" name="done" value="0">{{ ui.btn('Reopen re-consent', 'ghost', size='sm', type='submit') }}</form>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+{# --- Activity --- #}
+{% if events %}
+<div class="app-card pad">
+  <div class="app-card-title" style="margin-bottom:8px;">{{ ic.icon('activity') }} <b>Activity</b></div>
+  <div class="upd-timeline">
+    {% for e in events %}
+    <div class="upd-tl-row">
+      <span class="upd-tl-dot"></span>
+      <span class="upd-tl-main"><b>{{ e.note or e.action }}</b><em>{{ e.actor }} · {{ e.created_at|string|truncate(16, True, '') }}</em></span>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<script>
+(function () {
+  var all = document.getElementById('rc-all');
+  if (!all) return;
+  all.addEventListener('change', function () {
+    document.querySelectorAll('.rc-box').forEach(function (b) { b.checked = all.checked; });
+  });
+})();
+</script>
+
+{# ---- Shared visit-detail overlay (same as the dashboard/calendar) ---- #}
+{% if visit_cards %}
+{% set overlay_next = url_for('update_detail', update_id=u.id) %}
+{% include "_visit_overlay.html" %}
+{% endif %}
+{% endblock %}

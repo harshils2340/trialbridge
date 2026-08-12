@@ -41,15 +41,16 @@
       <input type="hidden" name="status" value="enrolled">
       <input type="hidden" name="note" value="Marked enrolled">
       <input type="hidden" name="next" value="{{ url_for('applicant_detail', lead_id=l['id']) }}">
-      {{ ui.btn('Mark enrolled', 'primary', 'sm', type='submit', icon='check') }}
+      {{ ui.btn('Mark enrolled', 'ghost', 'sm', type='submit', icon='check') }}
     </form>
     {% endif %}
     {% if l['status'] not in ['closed','withdrawn'] %}
-    <form method="post" action="{{ url_for('update_lead', lead_id=l['id']) }}">
+    <form method="post" action="{{ url_for('update_lead', lead_id=l['id']) }}"
+          onsubmit="return confirm('Withdraw {{ first }} from the study? This stops their reminders and moves them out of the active pipeline.');">
       <input type="hidden" name="status" value="withdrawn">
       <input type="hidden" name="note" value="Withdrawn by coordinator">
       <input type="hidden" name="next" value="{{ url_for('applicant_detail', lead_id=l['id']) }}">
-      {{ ui.btn('Withdraw', 'ghost', 'sm', type='submit') }}
+      {{ ui.btn('Withdraw', 'danger', 'sm', type='submit') }}
     </form>
     {% endif %}
   </div>

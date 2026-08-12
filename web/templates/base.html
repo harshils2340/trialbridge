@@ -52,6 +52,9 @@
       <a href="{{ url_for('leads') }}" class="{{ 'active' if request.endpoint in ['leads','applicant_detail'] }}">{{ ic.icon('user-plus') }}Applicants</a>
       <a href="{{ url_for('campaign_list') }}" class="{{ 'active' if request.endpoint in ['campaign_list','campaign_detail'] }}">{{ ic.icon('megaphone') }}Campaigns</a>
       <a href="{{ url_for('recruitment_dashboard') }}" class="{{ 'active' if request.endpoint in ['recruitment_dashboard','recruitment_balance','recruitment_balance_targets'] }}">{{ ic.icon('activity') }}Recruitment</a>
+      <a href="{{ url_for('updates_page') }}" class="{{ 'active' if request.endpoint in ['updates_page','update_detail'] }}">{{ ic.icon('refresh') }}Updates{% if upd_due %}<span class="appnav-count">{{ upd_due }}</span>{% endif %}</a>
+      <a href="{{ url_for('calendar_page') }}" class="{{ 'active' if request.endpoint == 'calendar_page' }}">{{ ic.icon('calendar') }}Calendar{% if cal_due %}<span class="appnav-count">{{ cal_due }}</span>{% endif %}</a>
+      <a href="{{ url_for('payments_page') }}" class="{{ 'active' if request.endpoint == 'payments_page' }}">{{ ic.icon('dollar') }}Payments{% if pay_due %}<span class="appnav-count">{{ pay_due }}</span>{% endif %}</a>
       <a href="{{ url_for('site_setup') }}" class="{{ 'active' if request.endpoint in ['site_setup','add_study_claim','remove_study_claim','team_page','team_invite','team_set_role','team_remove','intake_page','intake_import'] }}">{{ ic.icon('gear') }}Settings</a>
       {% if is_owner %}
       <a href="{{ url_for('internal_hub') }}" class="appnav-internal {{ 'active' if request.endpoint in ['internal_hub','operator_inbox','internal_registry','internal_registry_opt_out','internal_recruitment','internal_recruitment_targets','owner_analytics'] }}">{{ ic.icon('shield') }}Internal</a>
@@ -76,10 +79,16 @@
           {{ ic.icon('chevron-down') }}
         </summary>
         <div class="appswitch-menu" role="menu">
+          {% if nav_studies %}
+          <a href="{{ url_for('set_scope', nct='', next=request.full_path) }}" class="{{ 'active' if not active_nct }}" role="menuitem">
+            <span class="ss-main">All studies</span>
+            <span class="ss-sub">Every trial on one view</span>
+          </a>
+          {% endif %}
           {% for s in nav_studies %}
-          <a href="{{ url_for('study_home', nct=s.nct) }}" class="{{ 'active' if active_nct == s.nct }}" role="menuitem">
+          <a href="{{ url_for('set_scope', nct=s.nct, next=request.full_path) }}" class="{{ 'active' if active_nct == s.nct }}" role="menuitem">
             <span class="ss-main">{{ s.title[:40] or s.nct }}</span>
-            <span class="ss-sub">{{ s.nct }} · open workspace</span>
+            <span class="ss-sub">{{ s.nct }}</span>
           </a>
           {% else %}
           <span class="appswitch-empty">No studies claimed yet</span>
@@ -164,9 +173,11 @@
 {% endif %}
     <div class="toast-stack">
       {% with messages = get_flashed_messages(with_categories=true) %}
+        {% set toast_ic = {'ok':'check','success':'check','error':'alert','warn':'alert','info':'info'} %}
         {% for cat, msg in messages %}
           <div class="flash flash-toast {{ cat }}">
-            <span>{{ msg }}</span>
+            <span class="toast-ic">{{ ic.icon(toast_ic.get(cat, 'info')) }}</span>
+            <span class="toast-msg">{{ msg }}</span>
             <button type="button" class="toast-close" aria-label="Dismiss">×</button>
           </div>
         {% endfor %}
@@ -185,9 +196,11 @@
 <div class="{% block container %}wrap{% endblock %}" id="main" role="main">
   <div class="toast-stack">
     {% with messages = get_flashed_messages(with_categories=true) %}
+      {% set toast_ic = {'ok':'check','success':'check','error':'alert','warn':'alert','info':'info'} %}
       {% for cat, msg in messages %}
         <div class="flash flash-toast {{ cat }}">
-          <span>{{ msg }}</span>
+          <span class="toast-ic">{{ ic.icon(toast_ic.get(cat, 'info')) }}</span>
+          <span class="toast-msg">{{ msg }}</span>
           <button type="button" class="toast-close" aria-label="Dismiss">×</button>
         </div>
       {% endfor %}

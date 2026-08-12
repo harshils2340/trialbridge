@@ -19,23 +19,19 @@
     <div>
       <span class="ws-eyebrow">{{ ic.icon('crosshair') }} Trial workspace</span>
       <h1>{{ workspace.title }}</h1>
-      <p class="ws-nct">{{ workspace.nct }} · <span class="ws-switch-hint">switch trials from the top bar</span></p>
     </div>
-    <div class="ws-stats">
-      <div class="ws-stat"><div class="n">{{ workspace.applicants }}</div><div class="l">Applicants</div></div>
-      <div class="ws-stat"><div class="n">{{ workspace.screened }}</div><div class="l">Screened</div></div>
-      <div class="ws-stat"><div class="n">{{ workspace.enrolled }}</div><div class="l">Enrolled</div></div>
-      <div class="ws-stat"><div class="n">{{ workspace.active_campaigns }}</div><div class="l">Live campaigns</div></div>
+    {% if workspace.target %}
+    {# The one status number worth a daily glance: the North Star (enrolled vs
+       target). Full funnel + campaign totals live on Recruitment. #}
+    <div class="ws-goal">
+      <div class="ws-goal-top"><b>{{ workspace.enrolled }}</b> / {{ workspace.target }} enrolled</div>
+      <div class="quota-track"><div class="quota-fill" style="width:{{ workspace.progress }}%"></div></div>
+      <a class="ws-goal-link" href="{{ url_for('recruitment_dashboard') }}">Recruitment {{ ic.icon('arrow-right') }}</a>
     </div>
+    {% else %}
+    <a class="ws-goal-set" href="{{ url_for('recruitment_dashboard') }}">Set an enrollment target {{ ic.icon('arrow-right') }}</a>
+    {% endif %}
   </div>
-  {% if workspace.target %}
-  <div class="ws-progress">
-    <div class="ws-progress-top"><span>Enrollment target</span><span><b>{{ workspace.enrolled }}</b> / {{ workspace.target }}</span></div>
-    <div class="quota-track"><div class="quota-fill" style="width:{{ workspace.progress }}%"></div></div>
-  </div>
-  {% else %}
-  <p class="ws-nudge">No enrollment target set yet. <a href="{{ url_for('recruitment_dashboard') }}">Set one on Recruitment</a> to track progress here.</p>
-  {% endif %}
 </div>
 {% else %}
 <div class="home-hero">
@@ -50,34 +46,97 @@
 </div>
 {% endif %}
 
-{# ── Control panel: a clean deep link into each full area ── #}
-<div class="ctrl-panel">
-  <a class="ctrl-card" href="{{ url_for('leads') }}">
-    <span class="ctrl-ico">{{ ic.icon('user-plus') }}</span>
-    <span class="ctrl-l">Applicants</span>
-    <span class="ctrl-go">{{ ic.icon('arrow-right') }}</span>
-  </a>
-  <a class="ctrl-card" href="{{ url_for('matching_page') }}">
-    <span class="ctrl-ico">{{ ic.icon('crosshair') }}</span>
-    <span class="ctrl-l">Matches</span>
-    <span class="ctrl-go">{{ ic.icon('arrow-right') }}</span>
-  </a>
-  <a class="ctrl-card" href="{{ url_for('campaign_list') }}">
-    <span class="ctrl-ico">{{ ic.icon('megaphone') }}</span>
-    <span class="ctrl-l">Campaigns</span>
-    <span class="ctrl-go">{{ ic.icon('arrow-right') }}</span>
-  </a>
-  <a class="ctrl-card" href="{{ url_for('recruitment_dashboard') }}">
-    <span class="ctrl-ico">{{ ic.icon('activity') }}</span>
-    <span class="ctrl-l">Recruitment</span>
-    <span class="ctrl-go">{{ ic.icon('arrow-right') }}</span>
-  </a>
-  <a class="ctrl-card" href="{{ url_for('team_page') }}">
-    <span class="ctrl-ico">{{ ic.icon('users') }}</span>
-    <span class="ctrl-l">Team</span>
-    <span class="ctrl-go">{{ ic.icon('arrow-right') }}</span>
-  </a>
+{# ── "Today" timeline: the whole day on one hour track (Google/Metamate-style),
+   with a live "now" line and a next-up card. All visits, one place. ── #}
+<div class="app-card today-card">
+  <div class="today-h">
+    <div class="today-h-l">
+      <span class="today-title">Today</span>
+      <span class="today-date">{{ today_label }}</span>
+      {% if today_n %}<span class="today-count">{{ today_n }} visit{{ 's' if today_n != 1 }} · all trials</span>{% endif %}
+    </div>
+    <a class="today-open" href="{{ url_for('calendar_page') }}">Open calendar {{ ic.icon('arrow-right') }}</a>
+  </div>
+  <div class="today-body">
+    <div class="today-track">
+      <div class="today-hours">
+        {% for h in hour_ticks %}<span class="today-hour" style="left:{{ h.left }}%">{{ h.label }}</span>{% endfor %}
+      </div>
+      <div class="today-lane">
+        {% for h in hour_ticks %}<span class="today-grid" style="left:{{ h.left }}%"></span>{% endfor %}
+        {% if now_pct is not none %}<span class="today-now" style="left:{{ now_pct }}%"><span class="today-now-dot"></span></span>{% endif %}
+        {% for e in today_track %}
+        <button type="button" class="today-ev flag-{{ e.flag }}{{ ' is-past' if e.past }}" style="left:{{ e.left }}%;width:{{ e.width }}%"
+           data-ui-open="visit-{{ e.visit_id }}" data-rel data-start="{{ e.iso }}" data-end="{{ e.end_iso }}"
+           title="{{ e.time }} · {{ e.name }} · {{ e.kind }} · {{ e.trial }}{% if e.flag in ('overdue','deviation','closing') %} · {{ e.flag_label }}{% endif %}">
+          <b>{{ e.name }}</b><em>{{ e.time }} · {{ e.kind }}</em>
+        </button>
+        {% endfor %}
+        {% if not today_track %}<div class="today-empty">Nothing scheduled today.</div>{% endif %}
+      </div>
+    </div>
+    <div class="today-next">
+      {% if next_up %}
+      <div class="today-next-lbl">Next up</div>
+      <button type="button" class="today-next-card flag-{{ next_up.flag }}" data-ui-open="visit-{{ next_up.visit_id }}"
+              data-rel data-start="{{ next_up.iso }}" data-end="{{ next_up.end_iso }}">
+        <div class="today-next-time">{{ ic.icon('clock') }} {{ next_up.time }} <span class="today-rel" data-rel-out>·</span></div>
+        <div class="today-next-name">{{ next_up.name }}</div>
+        <div class="today-next-kind">{{ next_up.kind }} · {{ next_up.trial }}{% if next_up.flag in ('overdue','deviation','closing') %} · <span class="today-next-flag">{{ next_up.flag_label }}</span>{% endif %}</div>
+      </button>
+      {% else %}
+      <div class="today-next-lbl">Next up</div>
+      <div class="today-next-empty">{{ ic.icon('check') }} You're clear for today.</div>
+      {% endif %}
+    </div>
+  </div>
 </div>
+
+<script>
+(function () {
+  // Live "in X min" relative time - so you can read at a glance how soon the
+  // next visit is, without doing the math. Ticks every 30s.
+  function rel(startMs, endMs, nowMs) {
+    if (nowMs >= startMs && nowMs <= endMs) return { text: 'Now', state: 'now' };
+    if (nowMs > endMs) {
+      var am = Math.round((nowMs - endMs) / 60000);
+      if (am < 60) return { text: am + 'm ago', state: 'past' };
+      return { text: Math.round(am / 60) + 'h ago', state: 'past' };
+    }
+    var mins = Math.round((startMs - nowMs) / 60000);
+    if (mins < 1) return { text: 'in <1 min', state: 'soon' };
+    if (mins < 60) return { text: 'in ' + mins + ' min', state: mins <= 30 ? 'soon' : 'ok' };
+    var h = Math.floor(mins / 60), m = mins % 60;
+    if (h < 24) return { text: 'in ' + h + 'h' + (m ? ' ' + m + 'm' : ''), state: 'ok' };
+    return { text: 'in ' + Math.round(h / 24) + 'd', state: 'ok' };
+  }
+  function tick() {
+    var now = Date.now();
+    document.querySelectorAll('[data-rel]').forEach(function (el) {
+      var s = Date.parse(el.getAttribute('data-start'));
+      var e = Date.parse(el.getAttribute('data-end'));
+      if (isNaN(s)) return;
+      if (isNaN(e)) e = s + 30 * 60000;
+      var r = rel(s, e, now);
+      var out = el.querySelector('[data-rel-out]');
+      if (out) {
+        out.textContent = r.text;
+        out.className = 'today-rel today-rel--' + r.state;
+      } else {
+        if (!el.dataset.baseTitle) el.dataset.baseTitle = el.getAttribute('title') || '';
+        el.setAttribute('title', el.dataset.baseTitle + ' · ' + r.text);
+      }
+    });
+  }
+  tick();
+  setInterval(tick, 30000);
+})();
+</script>
+
+{# ── Visit detail overlays (shared partial): any timeline/rail item opens the
+   same rich in-place card. ── #}
+{% set overlay_next = url_for('study_home') %}
+{% include "_visit_overlay.html" %}
 
 <div class="app-split">
   <div>
@@ -173,20 +232,27 @@
   {# ── Right rail ── #}
   <div>
     <div class="app-card pad" id="upcoming" style="margin-bottom:16px;">
-      <div class="rail-h">{{ ic.icon('calendar') }} Upcoming visits</div>
-      {% if not upcoming %}
-      <div class="app-sub" style="font-size:13px;color:var(--faint);">No visits booked in the next two weeks.</div>
+      <div class="rail-h rail-h-link">
+        <a href="{{ url_for('calendar_page') }}">{{ ic.icon('calendar') }} Schedule</a>
+        <span class="rail-h-meta">
+          {% if sched_today %}<b>{{ sched_today }}</b> today{% endif %}
+          {% if sched_attn %}<span class="rail-attn">{{ ic.icon('alert') }} {{ sched_attn }}</span>{% endif %}
+        </span>
+      </div>
+      {% if not schedule %}
+      <div class="app-sub" style="font-size:13px;color:var(--faint);">No visits booked in the next two weeks. <a href="{{ url_for('calendar_page') }}">Open calendar</a> to book one.</div>
       {% else %}
-      {% for c in upcoming %}
-      <a class="rail-item rail-link" href="{{ url_for('applicant_detail', lead_id=c.id) }}">
-        <span class="accent-bar"></span>
+      {% for c in schedule %}
+      <button type="button" class="rail-item rail-link" data-ui-open="visit-{{ c.visit_id }}">
+        <span class="accent-bar accent-{{ c.flag }}"></span>
         <div>
-          <div class="t">{{ c.day }} · {{ c.time }}</div>
+          <div class="t">{{ c.day }} · {{ c.time }}{% if c.flag in ('overdue','deviation','closing') %} <span class="rail-flag rail-flag-{{ c.flag }}">{{ c.flag_label }}</span>{% endif %}</div>
           <div class="p">{{ c.name }}</div>
           <div class="s">{{ c.kind }}</div>
         </div>
-      </a>
+      </button>
       {% endfor %}
+      <a href="{{ url_for('calendar_page') }}" class="rail-more">Open calendar →</a>
       {% endif %}
     </div>
 

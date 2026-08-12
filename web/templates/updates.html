@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% import "_icons.html" as ic %}
+{% import "_ui.html" as ui %}
+{% block title %}Sponsor updates · BridgeMD for sites{% endblock %}
+
+{% set type_tone = {'amendment':'violet','safety':'danger','doc_request':'info','bulletin':'neutral'} %}
+
+{% macro upd_card(u) %}
+<a class="upd-card{{ ' is-overdue' if u.overdue }}" href="{{ url_for('update_detail', update_id=u.id) }}">
+  <div class="upd-card-top">
+    {{ ui.badge(u.type_label, type_tone.get(u.type,'neutral')) }}
+    {% if u.version %}<span class="upd-ver">{{ u.version }}</span>{% endif %}
+    {% if u.complete %}{{ ui.badge('Complete', 'ok', icon='check') }}
+    {% elif u.overdue %}{{ ui.badge('Overdue', 'danger', icon='alert') }}
+    {% elif u.due %}<span class="upd-due">Due {{ u.due }}</span>{% endif %}
+  </div>
+  <div class="upd-card-title">{{ u.title }}</div>
+  <div class="upd-card-meta">
+    {% if u.source %}{{ u.source }} · {% endif %}{{ u.nct or 'No trial' }}{% if u.received %} · received {{ u.received }}{% endif %}
+  </div>
+  <div class="upd-steps">
+    {% for s in u.steps %}
+    <span class="upd-step is-{{ s.state }}" title="{{ s.label }}{% if s.detail %} — {{ s.detail }}{% endif %}">
+      {% if s.state == 'done' %}{{ ic.icon('check') }}{% elif s.state == 'partial' %}{{ ic.icon('clock') }}{% else %}<span class="upd-dot"></span>{% endif %}
+      {{ s.label }}
+    </span>
+    {% endfor %}
+  </div>
+  <div class="upd-card-foot">
+    <span class="upd-prog">{{ u.done_n }}/{{ u.total_n }} steps done</span>
+    {% if u.type == 'amendment' and u.recon.candidates %}
+    <span class="upd-recon">{{ ic.icon('users') }} {{ u.recon.done }}/{{ u.recon.candidates }} re-consented</span>
+    {% endif %}
+    {% if not u.complete %}<span class="upd-next">Next: {{ u.next_action }} {{ ic.icon('arrow-right') }}</span>{% endif %}
+  </div>
+</a>
+{% endmacro %}
+
+{% block body %}
+<div class="app-head">
+  <div>
+    <h1>Sponsor updates</h1>
+    <p>Everything the sponsor sends - amendments, new document versions, safety letters, doc requests - with the exact steps this site owes, so nothing slips.</p>
+  </div>
+  <div style="display:flex;gap:8px;">
+    {{ ui.btn('Log update', 'primary', icon='plus', extra='data-ui-open="upd-new"') }}
+  </div>
+</div>
+
+{% if not trials %}
+<div class="app-card pad">
+  {{ ui.empty('Claim a study to track sponsor updates', 'Once you run a trial, log the amendments and safety letters here and work the compliance checklist in one place.', 'refresh', action=ui.btn('Go to Settings', variant='primary', icon='gear', href=url_for('site_setup'))) }}
+</div>
+{% else %}
+
+<div class="app-card-title" style="margin:6px 0 10px;">{{ ic.icon('alert') }} <b>Needs work</b> <span class="app-sub" style="font-weight:400;color:var(--faint);">{{ open_updates|length }} open</span></div>
+{% if not open_updates %}
+<div class="app-card pad">
+  {{ ui.empty('Nothing open', 'No amendments or letters need action right now. New sponsor updates show up here.', 'check') }}
+</div>
+{% else %}
+<div class="upd-list">
+  {% for u in open_updates %}{{ upd_card(u) }}{% endfor %}
+</div>
+{% endif %}
+
+{% if done_updates %}
+<div class="app-card-title" style="margin:20px 0 10px;">{{ ic.icon('check') }} <b>Completed</b> <span class="app-sub" style="font-weight:400;color:var(--faint);">{{ done_updates|length }}</span></div>
+<div class="upd-list">
+  {% for u in done_updates %}{{ upd_card(u) }}{% endfor %}
+</div>
+{% endif %}
+{% endif %}
+
+{# ---- Log update modal ---- #}
+{% call ui.modal('upd-new', 'Log a sponsor update', icon='refresh') %}
+<form method="post" action="{{ url_for('updates_new') }}" class="cal-form">
+  <div class="row">
+    <div class="field"><label>Type</label>
+      <select name="type">{% for k, lbl in update_types %}<option value="{{ k }}">{{ lbl }}</option>{% endfor %}</select>
+    </div>
+    <div class="field"><label>Study</label>
+      <select name="nct">{% for t in trials %}<option value="{{ t.nct }}">{{ t.title }}</option>{% endfor %}</select>
+    </div>
+  </div>
+  <div class="field"><label>Title</label><input type="text" name="title" placeholder="Amendment 3 - new safety labs at every visit" required></div>
+  <div class="row">
+    <div class="field"><label>Version <span class="cal-hint">optional</span></label><input type="text" name="version" placeholder="Protocol v4.0"></div>
+    <div class="field"><label>Due date <span class="cal-hint">sponsor deadline</span></label><input type="date" name="due_at"></div>
+  </div>
+  <div class="field"><label>From <span class="cal-hint">sponsor / CRO contact</span></label><input type="text" name="source" placeholder="Sponsor - Clinical Ops"></div>
+  <div class="field"><label>What changed <span class="cal-hint">plain language - shows on the detail page</span></label><textarea name="summary" rows="4" placeholder="Adds a fasting lipid panel at all treatment visits and revises the consent form. Enrolled participants must re-consent."></textarea></div>
+  <div class="cal-form-foot"><span></span>{{ ui.btn('Log update', 'primary', type='submit', icon='check') }}</div>
+</form>
+{% endcall %}
+{% endblock %}

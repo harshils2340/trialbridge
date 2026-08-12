@@ -79,7 +79,7 @@
     <tbody>
       {% for q in queue %}
       {% set sf = 'hi' if q.verdict.score >= 75 else ('mid' if q.verdict.score >= 50 else 'lo') %}
-      <tr class="link" onclick="location.href='{{ url_for('applicant_detail', lead_id=q.id) }}'"
+      <tr class="link"
           data-verdict="{{ q.verdict.verdict }}" data-status="{{ q.status }}"
           data-unread="{{ q.unread }}"
           data-awaiting="{{ '1' if q.status == 'prescreen' else '0' }}"
@@ -90,7 +90,7 @@
           <div class="who">
             <span class="app-av{{ ' neutral' if not q.revealed }}">{{ q.initials }}</span>
             <div>
-              <b>{{ q.name }}</b>
+              <a class="rowlink" href="{{ url_for('applicant_detail', lead_id=q.id) }}"><b>{{ q.name }}</b></a>
               <span>{{ q.email or q.title[:38] }}</span>
             </div>
             {% if q.unread %}{{ ui.count(q.unread, 'brand') }}{% endif %}

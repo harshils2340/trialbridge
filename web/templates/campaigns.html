@@ -28,8 +28,8 @@
     <tbody>
       {% for c in camps %}
       {% set p = perf.get(c['id']) %}
-      <tr class="link" onclick="location.href='{{ url_for('campaign_detail', cid=c['id']) }}'">
-        <td><b style="color:var(--ink);">{{ c['name'] or 'Untitled' }}</b></td>
+      <tr class="link">
+        <td><a class="rowlink" href="{{ url_for('campaign_detail', cid=c['id']) }}"><b style="color:var(--ink);">{{ c['name'] or 'Untitled' }}</b></a></td>
         <td>{{ c['nct'] }}</td>
         <td>{{ ui.badge(c['channel']|capitalize, 'brand') }}</td>
         <td>{{ ui.badge(c['status']|capitalize, 'ok' if c['status']=='active' else ('warn' if c['status']=='paused' else 'neutral')) }}</td>

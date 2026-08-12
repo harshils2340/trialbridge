@@ -4,13 +4,15 @@
 {% block title %}Site setup · BridgeMD{% endblock %}
 
 {% block body %}
-<div class="page-head">
-  <h1>Site setup</h1>
-  <p>Claim your active ClinicalTrials.gov studies so applicants for those NCTs route to your board.</p>
+<div class="app-head">
+  <div>
+    <h1>Site setup</h1>
+    <p>Claim your active ClinicalTrials.gov studies so applicants for those NCTs route to your board.</p>
+  </div>
 </div>
 
-<div class="card">
-    <div class="section-title"><h2>Organization profile</h2></div>
+<div class="app-card pad">
+    <div class="app-card-title">Organization profile</div>
     <form method="post" class="site-form site-form-2col">
       <label>Organization name
         <input type="text" name="org_name" value="{{ profile['org_name'] if profile else '' }}" placeholder="e.g. Johns Hopkins Diabetes Center">
@@ -46,13 +48,13 @@
     </p>
   </div>
 
-<div class="card">
-  <div class="section-title redcap-title">
+<div class="app-card pad">
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
     <div>
-      <h2>REDCap intake &amp; screening</h2>
+      <div class="app-card-title" style="margin-bottom:4px;">REDCap intake &amp; screening</div>
       <p class="redcap-sub">Connect once, pick your screening form, and patients fill <b>your</b> form right inside BridgeMD - no re-typing, less drop-off.</p>
     </div>
-    <button type="button" class="btn btn-ghost btn-sm redcap-guide-btn" data-redcap-guide-open>{{ ic.icon('help') }} How to connect</button>
+    {{ ui.btn('How to connect', 'ghost', 'sm', icon='help', extra='data-ui-open="redcapGuide"') }}
   </div>
 
   <div class="rec-banner {{ 'ok' if redcap_on else 'connect' }} wide">
@@ -120,14 +122,7 @@
   {% endif %}
 
   {# Full walkthrough lives here, opened on demand so the panel stays fast to use. #}
-  <div class="redcap-modal" id="redcapGuide" hidden>
-    <div class="redcap-modal-backdrop" data-redcap-guide-close></div>
-    <div class="redcap-modal-dialog" role="dialog" aria-modal="true" aria-label="How to connect REDCap">
-      <div class="redcap-modal-head">
-        <h3>{{ ic.icon('activity') }} Connect REDCap &middot; about 10 minutes</h3>
-        <button type="button" class="redcap-modal-x" data-redcap-guide-close aria-label="Close">{{ ic.icon('x') }}</button>
-      </div>
-      <div class="redcap-modal-body">
+  {% call ui.modal('redcapGuide', 'Connect REDCap · about 10 minutes', icon='activity', size='lg') %}
         <p class="redcap-help-intro">
           REDCap is the tool you already use to keep track of patients. Do this once and
           your patients can fill out your form right here in BridgeMD. You don't need to be
@@ -169,13 +164,11 @@
             stored securely and never shown again. For completion callbacks, point a REDCap
             survey / Data-Entry-Trigger at <span class="mono">{{ url_for('redcap_webhook', _external=True) }}</span>.</p>
         </details>
-      </div>
-    </div>
-  </div>
+  {% endcall %}
 </div>
 
-<div class="card">
-  <div class="section-title"><h2>Claim a study</h2></div>
+<div class="app-card pad">
+  <div class="app-card-title">Claim a study</div>
   <form method="post" action="{{ url_for('add_study_claim') }}" class="site-form">
     <label>NCT number
       <input type="text" name="nct" placeholder="NCT05869903" required>
@@ -191,8 +184,8 @@
   <p class="site-hint">No trial recreation needed. Claim by NCT. Leave notification email blank to use org profile contact email.</p>
 </div>
 
-<div class="card">
-  <div class="section-title"><h2>Post a site study</h2></div>
+<div class="app-card pad">
+  <div class="app-card-title">Post a site study</div>
   <p class="site-hint">Use this when a study is actively enrolling at your site but not published on ClinicalTrials.gov yet.</p>
   <form method="post" action="{{ url_for('post_site_study') }}" class="site-form site-form-2col">
     <label>Study title
@@ -232,8 +225,8 @@
     </form>
 </div>
 
-<div class="card">
-  <div class="section-title"><h2>Your claimed studies</h2></div>
+<div class="app-card pad">
+  <div class="app-card-title">Your claimed studies</div>
   {% if not claims %}
   {{ ui.empty('No claimed NCTs yet', 'Claim one above to start receiving applicants.', icon='list') }}
   {% else %}
@@ -272,8 +265,8 @@
   {% endif %}
 </div>
 
-<div class="card">
-  <div class="section-title"><h2>Your site-posted studies</h2></div>
+<div class="app-card pad">
+  <div class="app-card-title">Your site-posted studies</div>
   {% if not posted %}
   {{ ui.empty('No site-posted studies yet', icon='activity') }}
   {% else %}
@@ -300,14 +293,14 @@
   {% endif %}
 </div>
 
-<div class="card">
-  <div class="section-title"><h2>Applicant intake</h2></div>
+<div class="app-card pad">
+  <div class="app-card-title">Applicant intake</div>
   <p class="site-hint">Get a forwarding email address per study (route applicants from any source into one queue) and bulk-import an existing applicant list by CSV.</p>
   <a href="{{ url_for('intake_page') }}" class="btn btn-ghost btn-sm">{{ ic.icon('file') }} Set up intake &amp; import</a>
 </div>
 
-<div class="card">
-  <div class="section-title"><h2>Team</h2></div>
+<div class="app-card pad">
+  <div class="app-card-title">Team</div>
   <p class="site-hint">Invite coordinators, PIs, and research students, and manage their roles and access.</p>
   <a href="{{ url_for('team_page') }}" class="btn btn-ghost btn-sm">{{ ic.icon('users') }} Manage team</a>
 </div>
@@ -315,32 +308,12 @@
 {% if is_owner %}
 {# Internal, owner-only: kept out of the main nav - it's our traffic dashboard,
    not a customer feature. #}
-<div class="card">
-  <div class="section-title"><h2>Internal</h2></div>
+<div class="app-card pad">
+  <div class="app-card-title">Internal</div>
   <p class="site-hint">Owner-only tools. Not shown to trial-site users.</p>
   <a href="{{ url_for('owner_analytics') }}" class="btn btn-ghost btn-sm">{{ ic.icon('activity') }} Visitor analytics</a>
 </div>
 {% endif %}
 
-<script>
-(function () {
-  // REDCap "How to connect" walkthrough - kept in a modal so the page stays fast.
-  var guide = document.getElementById('redcapGuide');
-  function setGuide(open) {
-    if (!guide) return;
-    guide.hidden = !open;
-    document.body.style.overflow = open ? 'hidden' : '';
-  }
-  document.querySelectorAll('[data-redcap-guide-open]').forEach(function (b) {
-    b.addEventListener('click', function () { setGuide(true); });
-  });
-  document.querySelectorAll('[data-redcap-guide-close]').forEach(function (b) {
-    b.addEventListener('click', function () { setGuide(false); });
-  });
-  document.addEventListener('keydown', function (e) {
-    if (e.key === 'Escape' && guide && !guide.hidden) setGuide(false);
-  });
-})();
-</script>
 {% endblock %}
 
