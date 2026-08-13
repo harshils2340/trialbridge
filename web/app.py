@@ -523,6 +523,10 @@ def _seed_demo_surfaces(user_id=None):
     except Exception:
         app.logger.exception("demo campaign seeding failed")
     try:
+        db.seed_demo_lead_attribution(user_id)
+    except Exception:
+        app.logger.exception("demo lead attribution seeding failed")
+    try:
         db.seed_demo_engagement(user_id)
     except Exception:
         app.logger.exception("demo engagement seeding failed")
@@ -6173,6 +6177,18 @@ def _recruitment_balance_ctx(all_leads, nct):
         cfg = {}
     boundaries = _parse_boundaries(cfg.get("boundaries", "18,30,45,65"))
     total_target = int(cfg.get("total_target") or 0)
+    # "All studies" has no target of its own - roll up each study's target so the
+    # combined view shows real progress vs goal instead of a blank "–".
+    if not nct and not total_target:
+        agg = 0
+        for sid, _t in studies:
+            try:
+                agg += int((json.loads(
+                    db.get_kv(_recruit_targets_key(sid), "") or "{}")
+                ).get("total_target") or 0)
+            except (ValueError, TypeError):
+                pass
+        total_target = agg
     bands = _age_bands(boundaries)
     n_bands = len(bands)
 
@@ -6319,6 +6335,7 @@ def recruitment_balance():
     """Coordinator enrollment-balance page: demographic + source mix vs target,
     SCOPED to the account's claimed studies (not global). Same math as the owner
     tracker; lets a coordinator keep the cohort balanced per protocol."""
+    _seed_demo_targets_if_demo()
     claims = _site_claims()
     leads = analytics._scoped_leads(sorted(claims)) if claims else []
     ctx = _recruitment_balance_ctx(leads, request.args.get("nct"))

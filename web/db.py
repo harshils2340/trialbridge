@@ -5176,6 +5176,40 @@ def seed_demo_campaigns(user_id):
         create_placement(cid, label=place, channel=place_ch)
 
 
+def seed_demo_lead_attribution(user_id):
+    """Tie demo applicants that arrived from a paid channel (meta/google/reddit)
+    back to the matching campaign, so the recruitment tracker shows real
+    campaign attribution instead of '0 campaign-tracked'. Honest by construction:
+    only leads whose source IS that channel get attributed. No-op once any lead
+    is already attributed."""
+    if not user_id:
+        return
+    db = get_db()
+    if db.execute(
+            "SELECT 1 FROM leads WHERE campaign_id IS NOT NULL LIMIT 1").fetchone():
+        return
+    camps = db.execute(
+        "SELECT id, nct, channel FROM campaigns WHERE user_id = ?",
+        (user_id,)).fetchall()
+    if not camps:
+        return
+    by_channel = {}
+    for c in camps:
+        by_channel.setdefault((c["channel"] or "").lower(), []).append(c)
+    paid = {"meta", "google", "reddit"}
+    n = 0
+    for l in db.execute("SELECT id, nct, source FROM leads").fetchall():
+        ch = (l["source"] or "").strip().lower()
+        if ch not in paid or ch not in by_channel:
+            continue
+        opts = by_channel[ch]
+        cid = next((c["id"] for c in opts if c["nct"] == l["nct"]), opts[0]["id"])
+        db.execute("UPDATE leads SET campaign_id = ? WHERE id = ?", (cid, l["id"]))
+        n += 1
+    if n:
+        db.commit()
+
+
 def seed_demo_leads():
     """Populate clearly-labelled DEMO candidates so the study-team review board
     shows a full end-to-end picture before any real applicants arrive.
@@ -5189,8 +5223,17 @@ def seed_demo_leads():
         def at(days_ago):
             return (base - dt.timedelta(days=days_ago)).strftime("%Y-%m-%d %H:%M")
 
-        for s in _demo_lead_specs():
+        # Spread applicants across realistic acquisition channels so the source
+        # mix + campaign attribution on the tracker read like a live site, not a
+        # single "demo" bucket. Organic channels dominate; paid channels (meta/
+        # google/reddit) are the ones later tied to a campaign (campaign-tracked).
+        sources = ["ctgov", "referral", "web", "meta", "ctgov", "google",
+                   "web", "referral", "reddit", "ctgov", "emr", "meta",
+                   "web", "google", "ctgov", "referral", "web", "reddit"]
+
+        for i, s in enumerate(_demo_lead_specs()):
             created = at(s["days"])
+            source = s.get("source") or sources[i % len(sources)]
             decided = at(s.get("accepted_days") or s.get("declined_days") or 0) \
                 if (s.get("accepted_days") or s.get("declined_days")) else ""
             rec = _demo_record(s["condition"], s["age"], s["sex"]) \
@@ -5207,7 +5250,7 @@ def seed_demo_leads():
                 (gen_token(), gen_token(), _site_token_expiry(), 0,
                  "demo-" + gen_token(), s["nct"], s["title"],
                  s["condition"], s["location"], s["site"], s["name"], s["email"],
-                 s["phone"], s["age"], s["sex"], "", 1, "demo", s["status"],
+                 s["phone"], s["age"], s["sex"], "", 1, source, s["status"],
                  s.get("records", 0), rec, json.dumps(s["screener"]),
                  json.dumps(s["elig"]), s.get("decision", ""),
                  s.get("reason", ""), decided, s.get("revealed", 0),
@@ -5495,6 +5538,8 @@ def ensure_demo_claim_volume(user_id, minimum_rows=18):
         }
         rec = _demo_record(cond, str(30 + (idx % 35)), "female" if idx % 2 else "male") \
             if records_connected else ""
+        vol_source = ["ctgov", "web", "referral", "google", "web", "meta",
+                      "ctgov", "reddit", "referral", "web"][idx % 10]
         db.execute(
             """INSERT INTO leads
                (token, site_token, site_token_expires_at, site_token_revoked,
@@ -5507,7 +5552,7 @@ def ensure_demo_claim_volume(user_id, minimum_rows=18):
              f"seeded-volume-{idx}", nct, title_for.get(nct, nct), cond, city,
              "Trial Site", f"Candidate {idx}", f"candidate.queue.{idx}@example.com",
              f"+1 416 555 {2000 + idx:04d}", str(30 + (idx % 35)),
-             "female" if idx % 2 else "male", "", 1, "demo", status,
+             "female" if idx % 2 else "male", "", 1, vol_source, status,
              json.dumps({"travel": "yes", "other_trial": "no",
                          "pregnancy": "no", "consent_capable": "yes"}),
              json.dumps(elig), records_connected, rec, decision,
@@ -5597,7 +5642,7 @@ def seed_demo_patient_apps(applicant_token):
             (gen_token(), gen_token(), _site_token_expiry(), 0, applicant_token,
              s["nct"], s["title"], s["condition"], s["location"], s["site"],
              "Jordan Blake", "jordan.blake@bridgemd.local", "+1 416 555 0110",
-             "31", "female", "", 1, "demo", s["status"],
+             "31", "female", "", 1, "web", s["status"],
              json.dumps({"travel": "yes", "other_trial": "no",
                          "pregnancy": "na", "consent_capable": "yes"}),
              json.dumps({
