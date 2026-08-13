@@ -9,16 +9,11 @@
 <div class="app-head">
   <div>
     <h1>Payments</h1>
-    <p>Participant stipends for time &amp; travel - auto-queued from completed visits, issued in one click, tracked for tax.</p>
+    <p>Stipends to participants for their time and travel.</p>
   </div>
   <div style="display:flex;gap:8px;">
     {{ ui.btn('Add payment rule', 'primary', icon='plus', extra='data-ui-open="pay-rule" onclick="payRuleReset()"') }}
   </div>
-</div>
-
-<div class="pay-note">
-  {{ ic.icon('shield') }}
-  <span><b>Compliant by design.</b> These pay <b>study participants</b> a reasonable, IRB/REB-approved amount for time &amp; travel - never a referral source, never tied to enrolling. Disbursing via <b>{{ provider_label }}</b>{% if not provider_live %} (record-only until a live gift-card rail is connected){% endif %}. Payments reaching {{ threshold }}/yr require a W-9 on file (1099).</span>
 </div>
 
 {% if not trials %}
@@ -43,7 +38,7 @@
       <span class="pay-who"><b>{{ p.lead_name }}</b> · {{ p.label }} · {{ p.amount }}</span>
       <span class="pay-action-btns">
         {% if p.needs_w9 %}
-        <span class="pay-w9-flag">{{ ic.icon('alert') }} {{ 'Over' if p.over_1099 else 'Near' }} {{ threshold }} · W-9 {{ p.w9_status }}</span>
+        <span class="pay-w9-flag">{{ ic.icon('alert') }} {{ 'Over' if p.over_1099 else 'Near' }} {{ threshold }} this year · W-9 needed</span>
         <form method="post" action="{{ url_for('payments_w9', lead_id=p.lead_id) }}" style="display:inline">
           <input type="hidden" name="status" value="collected">
           {{ ui.btn('W-9 on file', 'ghost', size='sm', type='submit', icon='check') }}

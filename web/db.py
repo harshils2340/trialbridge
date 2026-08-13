@@ -3909,9 +3909,9 @@ def _log_payment_event(db, payment_id, action, actor="system", note=""):
 
 def create_payment(lead_id, nct, amount_cents, kind="", label="", visit_id=None,
                    rule_id=None, currency="USD", method="gift_card",
-                   status="queued", created_by="system", note=""):
+                   status="queued", created_by="system", note="", created_at=None):
     db = get_db()
-    ts = now()
+    ts = created_at or now()
     db.execute(
         "INSERT INTO participant_payments (lead_id, nct, visit_id, rule_id, kind, "
         "label, amount_cents, currency, method, status, created_by, note, "
@@ -4708,7 +4708,7 @@ def _demo_lead_specs():
             "condition": cond,
             "location": loc,
             "site": site,
-            "name": f"{first} {last}.",
+            "name": f"{first} {last[0]}.",
             "email": f"candidate.{first.lower()}.{last.lower()}@example.com",
             "phone": f"+1 416 555 {1200 + idx:04d}",
             "age": age,

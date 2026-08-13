@@ -6479,29 +6479,139 @@ body.fs-page { background:
 
 /* Comparison as a card grid: one box per capability, the win up top with its
    mechanism tag, the old way below. Competitor-neutral and truthful. */
-.fs-caps { max-width: 1000px; margin: 0 auto; display: grid;
-  grid-template-columns: repeat(2, 1fr); gap: 16px; }
-.fs-cap { display: flex; flex-direction: column; gap: 12px; padding: 22px;
+.fs-caps { max-width: 1200px; margin: 0 auto; display: grid;
+  grid-template-columns: repeat(4, 1fr); gap: 14px; }
+.fs-cap { display: flex; flex-direction: column; padding: 0; overflow: hidden;
   background: var(--surface); border: 1px solid var(--border);
   border-radius: var(--radius-lg); box-shadow: var(--shadow);
   transition: box-shadow .15s, transform .15s, border-color .15s; }
 .fs-cap:hover { box-shadow: var(--shadow-lift); transform: translateY(-2px);
   border-color: var(--border-strong); }
-.fs-cap-h { display: flex; align-items: center; gap: 12px; }
-.fs-cap-ic { flex: none; display: grid; place-items: center; width: 40px; height: 40px;
+.fs-cap-b { display: flex; flex-direction: column; gap: 10px; padding: 18px 20px 20px;
+  flex: 1; }
+.fs-cap-h { display: flex; align-items: center; gap: 10px; }
+.fs-cap-ic { flex: none; display: grid; place-items: center; width: 34px; height: 34px;
   border-radius: var(--radius); background: var(--accent-soft); }
-.fs-cap-ic svg { width: 20px; height: 20px; color: var(--accent); }
-.fs-cap-task { font-size: 12px; font-weight: 700; letter-spacing: .05em;
+.fs-cap-ic svg { width: 18px; height: 18px; color: var(--accent); }
+.fs-cap-task { font-size: 11.5px; font-weight: 700; letter-spacing: .05em;
   text-transform: uppercase; color: var(--muted); }
 .fs-cap-new { margin: 0; font-size: 16px; line-height: 1.45; font-weight: 700;
   letter-spacing: -.01em; color: var(--ink); }
-.fs-cap-proof { align-self: flex-start; display: inline-flex; align-items: center;
-  gap: 6px; font-size: 12px; font-weight: 700; color: var(--accent);
+.fs-cap-proof { align-self: flex-start; margin-top: auto; display: inline-flex;
+  align-items: center; gap: 6px; font-size: 12px; font-weight: 700; color: var(--accent);
   background: var(--accent-soft); border-radius: var(--radius-pill); padding: 4px 11px; }
 .fs-cap-proof svg { width: 13px; height: 13px; }
 .fs-cap-old { margin-top: auto; padding-top: 13px; border-top: 1px solid var(--border);
   font-size: 13px; line-height: 1.5; color: var(--muted); }
 .fs-cap-old-l { font-weight: 700; color: var(--faint); }
+
+/* ---- Animated mini-visual per card (the "gif on the card"), pure CSS ---- */
+.fs-viz { position: relative; height: 88px; display: grid; place-items: center;
+  overflow: hidden; border-bottom: 1px solid var(--border);
+  background:
+    radial-gradient(120% 90% at 50% -10%, var(--accent-soft), transparent 70%),
+    var(--surface); }
+.fsv { position: relative; }
+
+/* intake -> one inbox card, many sources, count ticks up */
+.fsv-inbox { display: grid; place-items: center; }
+.fsv-in-card { position: relative; display: flex; align-items: center; gap: 8px;
+  padding: 12px 16px; background: var(--surface); border: 1px solid var(--border-strong);
+  border-radius: 12px; box-shadow: var(--shadow); }
+.fsv-in-card i { width: 15px; height: 15px; border-radius: 50%; }
+.fsv-in-card i:nth-child(1) { background: var(--accent); }
+.fsv-in-card i:nth-child(2) { background: #4f9d8b; }
+.fsv-in-card i:nth-child(3) { background: #b98a6a; }
+.fsv-in-card b { position: absolute; top: -8px; right: -8px; min-width: 20px; height: 20px;
+  padding: 0 5px; display: grid; place-items: center; font-size: 11px; font-weight: 800;
+  color: #fff; background: var(--accent); border-radius: var(--radius-pill);
+  box-shadow: 0 0 0 3px var(--surface); animation: fsvBadge 2.6s ease-in-out infinite; }
+@keyframes fsvBadge { 0%, 60% { transform: scale(1); } 72% { transform: scale(1.28); }
+  100% { transform: scale(1); } }
+
+/* eligibility -> score bar fills */
+.fsv-score { width: 168px; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.fsv-pct { font-size: 24px; font-weight: 800; color: var(--accent); letter-spacing: -.02em; }
+.fsv-bar { width: 100%; height: 9px; border-radius: var(--radius-pill);
+  background: var(--border); overflow: hidden; }
+.fsv-bar i { display: block; height: 100%; width: 86%; border-radius: var(--radius-pill);
+  background: var(--accent); transform-origin: left; animation: fsvFill 2.8s ease-in-out infinite; }
+@keyframes fsvFill { 0% { transform: scaleX(0); } 55%, 100% { transform: scaleX(1); } }
+
+/* scheduling -> a day gets booked + a reminder pings */
+.fsv-book { display: grid; place-items: center; }
+.fsv-cal { display: grid; grid-template-columns: repeat(3, 22px); grid-auto-rows: 22px; gap: 6px; }
+.fsv-cal i { border-radius: 5px; background: var(--border); }
+.fsv-cal i.on { animation: fsvPop 2.6s ease-in-out infinite; }
+@keyframes fsvPop { 0%, 20% { background: var(--border); transform: scale(1); }
+  42% { background: var(--accent); transform: scale(1.14); }
+  80%, 100% { background: var(--accent); transform: scale(1); } }
+.fsv-ping { position: absolute; right: -6px; top: -6px; width: 10px; height: 10px;
+  border-radius: 50%; background: var(--green); }
+.fsv-ping::after { content: ""; position: absolute; inset: -4px; border-radius: 50%;
+  border: 2px solid var(--green); opacity: .5; animation: fsvRing 2.6s ease-out infinite; }
+@keyframes fsvRing { 0% { transform: scale(.6); opacity: .6; }
+  80% { transform: scale(2); opacity: 0; } 100% { opacity: 0; } }
+
+/* calendar -> real app logos gently bob (syncing) */
+.fsv-sync { display: flex; align-items: center; gap: 12px; }
+.fsv-app { display: grid; place-items: center; width: 46px; height: 46px; border-radius: 13px;
+  background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow);
+  animation: fsvBob 2.8s ease-in-out infinite; }
+.fsv-app:nth-child(2) { animation-delay: .16s; }
+.fsv-app:nth-child(3) { animation-delay: .32s; }
+.fsv-app svg, .fsv-app img { display: block; }
+.fsv-app img { object-fit: contain; }
+@keyframes fsvBob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+
+/* amendments -> version advances to the current one */
+.fsv-ver { display: flex; align-items: center; gap: 8px; }
+.fsv-ver .v { font-size: 12px; font-weight: 800; padding: 6px 10px; border-radius: 8px;
+  background: var(--surface); border: 1px solid var(--border); color: var(--faint); }
+.fsv-ver .v3 { animation: fsvActive 2.8s ease-in-out infinite; }
+@keyframes fsvActive { 0%, 30% { background: var(--surface); color: var(--faint); border-color: var(--border); }
+  55%, 100% { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); } }
+
+/* payments -> a real (Mastercard) gift card gets sent */
+.fsv-pay { display: flex; align-items: center; gap: 10px; }
+.fsv-gc { display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px;
+  border-radius: 9px; background: linear-gradient(135deg, var(--accent), #0e6b57);
+  color: #fff; box-shadow: var(--shadow); }
+.fsv-gc b { font-size: 14px; font-weight: 800; letter-spacing: -.01em; }
+.fsv-gc svg { display: block; }
+.fsv-chip { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px;
+  font-weight: 800; padding: 7px 12px; border-radius: var(--radius-pill);
+  background: var(--ok-bg); color: var(--green); }
+.fsv-chip svg { width: 13px; height: 13px; }
+.fsv-arrow { color: var(--faint); display: inline-flex; }
+.fsv-arrow svg { width: 16px; height: 16px; }
+.fsv-chip.paid { animation: fsvPaid 2.6s ease-in-out infinite; }
+@keyframes fsvPaid { 0%, 30% { opacity: .35; transform: scale(.96); }
+  55%, 100% { opacity: 1; transform: scale(1); } }
+
+/* reporting -> funnel bars grow */
+.fsv-bars { display: flex; align-items: flex-end; gap: 9px; height: 64px; }
+.fsv-bars i { width: 16px; border-radius: 5px 5px 0 0; background: var(--accent);
+  transform-origin: bottom; animation: fsvGrow 2.8s ease-in-out infinite; }
+.fsv-bars i:nth-child(1) { height: 62px; }
+.fsv-bars i:nth-child(2) { height: 46px; opacity: .82; animation-delay: .12s; }
+.fsv-bars i:nth-child(3) { height: 32px; opacity: .66; animation-delay: .24s; }
+.fsv-bars i:nth-child(4) { height: 20px; opacity: .5;  animation-delay: .36s; }
+@keyframes fsvGrow { 0% { transform: scaleY(0); } 48%, 100% { transform: scaleY(1); } }
+
+/* compliance -> shield pulses */
+.fsv-shield { display: grid; place-items: center; width: 58px; height: 58px; border-radius: 50%;
+  background: var(--accent-soft); }
+.fsv-shield svg { width: 26px; height: 26px; color: var(--accent); }
+.fsv-shield::after { content: ""; position: absolute; inset: 0; border-radius: 50%;
+  border: 2px solid var(--accent); opacity: .5; animation: fsvRing 2.8s ease-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .fsv i, .fsv b, .fsv .v3, .fsv-bar i, .fsv-app, .fsv-chip.paid, .fsv-ping::after,
+  .fsv-shield::after { animation: none !important; }
+  .fsv-bar i { transform: scaleX(1); }
+  .fsv-chip.paid { opacity: 1; transform: none; }
+}
 /* Credibility strip: real trial artifacts, so the section reads as domain
    expertise rather than a marketing table. */
 .fs-cmp-ground { max-width: 1000px; margin: 24px auto 0; display: flex; flex-wrap: wrap;
@@ -6513,7 +6623,8 @@ body.fs-page { background:
   border-radius: var(--radius-pill); padding: 5px 12px; }
 .fs-cmp-chips span svg { width: 13px; height: 13px; color: var(--accent); }
 
-@media (max-width: 720px) { .fs-caps { grid-template-columns: 1fr; } }
+@media (max-width: 1000px) { .fs-caps { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 560px) { .fs-caps { grid-template-columns: 1fr; } }
 
 /* Short, light security block (replaces the old dark status breakdown). */
 .fs-secure-chips { max-width: 860px; margin: 0 auto; display: flex; flex-wrap: wrap;
@@ -6989,10 +7100,22 @@ body.fs-page { background:
 .app-stat.warn .n { color: var(--amber); }
 .app-stat.danger .n { color: var(--red); }
 
-.pay-note { display:flex; gap:10px; align-items:flex-start; padding:12px 14px;
-  margin-bottom:16px; background:var(--accent-soft); border:1px solid var(--brand-border);
-  border-radius:var(--radius-sm); font-size:13px; color:var(--ink-soft); line-height:1.5; }
-.pay-note .ico { width:18px; height:18px; color:var(--accent); flex:none; margin-top:1px; }
+/* Compliance note: compact by default (one scannable line) and expandable, so the
+   required guardrail is always present without a wall of text hogging the top. */
+.pay-note { display:block; margin-bottom:16px; background:var(--accent-soft);
+  border:1px solid var(--brand-border); border-radius:var(--radius-sm);
+  font-size:13px; color:var(--ink-soft); line-height:1.5; }
+.pay-note > summary { display:flex; gap:9px; align-items:center; padding:11px 14px;
+  cursor:pointer; list-style:none; }
+.pay-note > summary::-webkit-details-marker { display:none; }
+.pay-note > summary > span:first-of-type { min-width:0; }
+.pay-note .ico { width:17px; height:17px; color:var(--accent); flex:none; }
+.pay-note-cue { margin-left:auto; flex:none; font-size:12px; font-weight:700;
+  color:var(--accent); display:inline-flex; align-items:center; gap:6px; white-space:nowrap; }
+.pay-note-cue::after { content:""; width:6px; height:6px; border-right:2px solid currentColor;
+  border-bottom:2px solid currentColor; transform:rotate(45deg); transition:transform .15s; }
+.pay-note[open] .pay-note-cue::after { transform:rotate(-135deg); }
+.pay-note-body { padding:2px 14px 12px 40px; color:var(--muted); }
 
 .pay-action-row { display:flex; align-items:center; justify-content:space-between;
   gap:12px; flex-wrap:wrap; padding:10px 12px; background:var(--surface-2);

@@ -7658,8 +7658,17 @@ def payments_page():
             "undue": (r["amount_cents"] or 0) > payments_mod.UNDUE_INDUCEMENT_CENTS,
         })
 
-    needs_action = [p for p in payments
-                    if p["status"] in ("queued", "failed") or p["needs_w9"]]
+    # Needs action = every queued/failed payment, plus one W-9 prompt per flagged
+    # participant (not one per payment row, or a long-term participant floods it).
+    needs_action, _w9_shown = [], set()
+    for p in payments:
+        if p["status"] in ("queued", "failed"):
+            needs_action.append(p)
+            if p["needs_w9"]:
+                _w9_shown.add(p["lead_id"])
+        elif p["needs_w9"] and p["lead_id"] not in _w9_shown:
+            _w9_shown.add(p["lead_id"])
+            needs_action.append(p)
     rules = [dict(x) for x in db.list_payment_rules(g.user["id"], nct_filter or None)]
     for rl in rules:
         rl["amount"] = payments_mod.format_cents(rl["amount_cents"], rl["currency"])
@@ -7821,33 +7830,63 @@ def _seed_demo_payments_if_demo():
                                     irb_note="Amount per IRB-approved consent, sec. 12")
             except Exception:
                 app.logger.exception("demo payment rule seeding failed")
-    # A few ledger rows across revealed participants.
+    # A realistic, live ledger: a site several months into multiple trials.
+    # Mostly paid history, some issued this month, a few queued (owed now), one
+    # void (corrected duplicate), and one long-term participant near the $600/yr
+    # 1099 line so the W-9 flag is real - not a two-row demo.
     rows = db.list_leads_for_user(g.user["id"])
-    cands = [r for r in rows if r["revealed"] and r["status"] not in db.LEAD_CLOSED]
+    _placeholder = ("patient profile", "participant", "")
+
+    def _real_name(r):
+        return (r["name"] or "").strip().lower() not in _placeholder
+
+    cands = [r for r in rows if r["revealed"]
+             and r["status"] not in db.LEAD_CLOSED and _real_name(r)]
     if not cands:
-        cands = rows
+        cands = [r for r in rows if _real_name(r)] or rows
     if not cands:
         return
-    # (participant index, kind, cents, status) — mix of owed + already issued;
-    # stack the first participant so they sit just under $600 for the tax demo.
-    specs = [
-        (0, "screening", 7500, "queued"),
-        (1, "screening", 7500, "queued"),
-        (0, "followup", 5000, "issued"),
-        (0, "followup", 5000, "issued"),
-        (0, "baseline", 7500, "issued"),
-        (0, "followup", 5000, "issued"),  # first participant -> ~$300 issued + queued
-        (2, "screening", 7500, "issued"),
+
+    def _pdt(days):
+        return (dt.datetime.now() - dt.timedelta(days=days)).strftime("%Y-%m-%d %H:%M")
+
+    amt = {"screening": 7500, "baseline": 7500, "followup": 5000, "travel": 2500}
+    lbl = {"screening": "Screening visit - time & travel",
+           "baseline": "Baseline visit - time & travel",
+           "followup": "Follow-up visit - time & travel",
+           "travel": "Travel reimbursement"}
+    # (participant idx, kind, status, days_ago)
+    ledger = [
+        # idx 0 - long-term participant, ~6 months in, near the 1099 threshold
+        (0, "screening", "paid", 132), (0, "baseline", "paid", 118),
+        (0, "followup", "paid", 104), (0, "followup", "paid", 90),
+        (0, "followup", "paid", 76), (0, "followup", "paid", 62),
+        (0, "followup", "paid", 48), (0, "followup", "paid", 34),
+        (0, "followup", "issued", 11), (0, "followup", "queued", 0),
+        # active participants with real, varied histories
+        (1, "screening", "paid", 88), (1, "baseline", "paid", 74),
+        (1, "followup", "paid", 32), (1, "followup", "void", 32),
+        (2, "screening", "paid", 70), (2, "followup", "issued", 8),
+        (3, "screening", "paid", 45), (3, "followup", "queued", 0),
+        (4, "screening", "paid", 60), (4, "baseline", "issued", 6),
+        (5, "screening", "issued", 10),
+        (6, "screening", "paid", 52), (6, "travel", "paid", 52),
+        (7, "screening", "issued", 4),
+        (8, "screening", "queued", 0),
+        (9, "screening", "queued", 0),
+        (10, "screening", "paid", 38),
+        (11, "followup", "issued", 3),
+        (12, "screening", "paid", 22),
     ]
-    for idx, kind, cents, status in specs:
+    for idx, kind, status, days in ledger:
         if idx >= len(cands):
             continue
         lead = cands[idx]
         try:
-            db.create_payment(lead["id"], lead["nct"], cents, kind=kind,
-                              label=f"{_VISIT_KIND_LABELS.get(kind, kind)} - time & travel",
-                              currency="USD", method="gift_card", status=status,
-                              created_by="system")
+            db.create_payment(
+                lead["id"], lead["nct"], amt[kind], kind=kind, label=lbl[kind],
+                currency="USD", method="gift_card", status=status,
+                created_by="system", created_at=_pdt(days))
         except Exception:
             app.logger.exception("demo payment seeding failed")
 

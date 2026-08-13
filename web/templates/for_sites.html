@@ -301,8 +301,7 @@
 <section id="demo" class="fs-section fs-section-wide">
   <div class="fs-head">
     <h2>See it for yourself.</h2>
-    <p class="fs-lead">Real screens from the product, with demo data. Click through the tabs:
-      homepage, pre-screening, scheduling, the calendar, sponsor amendments, payments and reporting.</p>
+    <p class="fs-lead">Real screens from the product, with demo data. Click through the tabs.</p>
   </div>
 
   <div class="fs-switch">
@@ -343,72 +342,70 @@
    per-sponsor portals. Every row maps to a real screen shown in the tour. #}
 {# icon, task, the usual setup, BridgeMD, mechanism/proof tag. Copy is
    domain-specific on purpose - credibility comes from precision, not stats. #}
+{# viz, icon, task, plain-English headline, plain proof tag. Real logos where
+   they apply (calendar apps, card brand); simple CSS motion otherwise. #}
 {% set compare = [
-  ('users', 'Applicant intake',
-   'Email, a shared spreadsheet, and a separate login for each sponsor portal',
-   'One inbox across every source and trial, deduped with source attribution',
-   'Dedupe + UTM/source attribution'),
-  ('crosshair', 'Eligibility',
-   'Read every application by hand against the inclusion/exclusion criteria',
-   'Each applicant scored against your protocol\'s I/E criteria before you open it',
-   'Protocol I/E, human-in-the-loop'),
-  ('clock', 'Scheduling',
-   'Phone tag, then reminder emails someone has to remember to send',
-   'Patients self-schedule on your link; visit reminders send automatically',
-   'Booking link + auto-reminders'),
-  ('calendar', 'Visit tracking',
-   'A generic calendar with no protocol windows and no deviation flags',
-   'Schedule of Assessments with visit windows, deviations flagged, iCal sync',
-   'SoA windows · Google/Outlook sync'),
-  ('refresh', 'Sponsor amendments',
-   'Email threads; hunt for the current protocol and ICF version',
-   'Amendment hub with Protocol/ICF version control and the exact steps you owe',
-   'Version trail · IRB → consent → re-consent'),
-  ('dollar', 'Participant payments',
-   'Gift cards bought and reconciled by hand, tracked in a spreadsheet',
-   'Stipends auto-queued from completed visits, issued in a click, tax-tracked',
-   'W-9 / 1099 · never per referral'),
-  ('activity', 'Reporting',
-   'Funnel and cost per enrolled pieced together in a spreadsheet',
-   'Live funnel, median time in stage and cost per enrolled from your own timestamps',
-   'From your lead + stage events'),
-  ('shield', 'Cost to your site',
-   'Per-seat SaaS, and sometimes per-referral fees',
-   'Free for sites and physicians; sponsors license it, never per referral',
-   'Anti-kickback compliant (AKS/EKRA)'),
+  ('merge',    'users',     'Applications', 'All applicants in one inbox',    'No duplicates'),
+  ('score',    'crosshair', 'Screening',    'See who fits your study',        'Checked against your criteria'),
+  ('book',     'clock',     'Booking',      'Patients pick their own time',   'Reminders sent for you'),
+  ('sync',     'calendar',  'Calendar',     'Syncs with your calendar',       'Google, Outlook, Apple'),
+  ('versions', 'refresh',   'Amendments',   'Keep up with sponsor changes',   'Consent + re-consent tracked'),
+  ('pay',      'dollar',    'Payments',     'Pay participants in one click',  'Gift cards, tax-tracked'),
+  ('bars',     'activity',  'Reporting',    'See where people drop off',      'Full funnel, one view'),
+  ('shield',   'shield',    'Pricing',      'Free for your site',             'No per-referral fees'),
 ] %}
+{% macro fsviz(v) %}
+<div class="fs-viz" aria-hidden="true">
+  {% if v == 'merge' %}
+  <div class="fsv fsv-inbox"><span class="fsv-in-card"><i></i><i></i><i></i><b>3</b></span></div>
+  {% elif v == 'score' %}
+  <div class="fsv fsv-score"><span class="fsv-pct">86%</span><span class="fsv-bar"><i></i></span></div>
+  {% elif v == 'book' %}
+  <div class="fsv fsv-book"><span class="fsv-cal"><i></i><i></i><i class="on"></i><i></i><i></i><i></i></span><span class="fsv-ping"></span></div>
+  {% elif v == 'sync' %}
+  <div class="fsv fsv-sync">
+    <span class="fsv-app" title="Google Calendar"><img src="{{ static_url('logos/google-calendar.svg') }}" alt="Google Calendar" width="26" height="26"></span>
+    <span class="fsv-app" title="Outlook"><img src="{{ static_url('logos/microsoft-outlook.svg') }}" alt="Outlook" width="26" height="26"></span>
+    <span class="fsv-app" title="Apple Calendar"><img src="{{ static_url('logos/apple.svg') }}" alt="Apple" width="22" height="26"></span>
+  </div>
+  {% elif v == 'versions' %}
+  <div class="fsv fsv-ver"><span class="v">v2.0</span><span class="v">v3.0</span><span class="v v3">v4.0</span></div>
+  {% elif v == 'pay' %}
+  <div class="fsv fsv-pay">
+    <span class="fsv-gc">
+      <svg viewBox="0 0 36 24" width="30" height="20"><circle cx="15" cy="12" r="7" fill="#EB001B"/><circle cx="21" cy="12" r="7" fill="#F79E1B" fill-opacity=".9"/></svg>
+      <b>$75</b>
+    </span>
+    <span class="fsv-arrow">{{ ic.icon('arrow-right') }}</span>
+    <span class="fsv-chip paid">{{ ic.icon('check') }} Sent</span>
+  </div>
+  {% elif v == 'bars' %}
+  <div class="fsv fsv-bars"><i></i><i></i><i></i><i></i></div>
+  {% elif v == 'shield' %}
+  <div class="fsv fsv-shield">{{ ic.icon('shield') }}</div>
+  {% endif %}
+</div>
+{% endmacro %}
 <section class="fs-section fs-cmp" id="why">
   <div class="fs-head">
     <p class="fs-kicker">Why sites switch</p>
     <h2>One system beats ten tabs.</h2>
-    <p class="fs-lead">Built by working through how trials actually run - not a feature checklist.
-      Here's the day to day, and the mechanism behind each line. Every row is a screen you just saw.</p>
+    <p class="fs-lead">Ten tabs of email, spreadsheets and portals - replaced by one system.</p>
   </div>
   <div class="fs-caps">
-    {% for icon, task, old, new, proof in compare %}
+    {% for viz, icon, task, new, proof in compare %}
     <div class="fs-cap">
-      <div class="fs-cap-h">
-        <span class="fs-cap-ic">{{ ic.icon(icon) }}</span>
-        <span class="fs-cap-task">{{ task }}</span>
+      {{ fsviz(viz) }}
+      <div class="fs-cap-b">
+        <div class="fs-cap-h">
+          <span class="fs-cap-ic">{{ ic.icon(icon) }}</span>
+          <span class="fs-cap-task">{{ task }}</span>
+        </div>
+        <p class="fs-cap-new">{{ new }}</p>
+        <span class="fs-cap-proof">{{ ic.icon('check') }} {{ proof }}</span>
       </div>
-      <p class="fs-cap-new">{{ new }}</p>
-      <span class="fs-cap-proof">{{ ic.icon('check') }} {{ proof }}</span>
-      <div class="fs-cap-old"><span class="fs-cap-old-l">Instead of</span> {{ old }}</div>
     </div>
     {% endfor %}
-  </div>
-  {# Credibility strip: the real artifacts a coordinator/PI recognizes. Signals
-     domain depth without inventing metrics. #}
-  <div class="fs-cmp-ground">
-    <span class="fs-cmp-ground-l">Grounded in how trials actually run</span>
-    <div class="fs-cmp-chips">
-      <span>{{ ic.icon('calendar') }} Schedule of Assessments &amp; visit windows</span>
-      <span>{{ ic.icon('shield') }} IRB/REB workflow</span>
-      <span>{{ ic.icon('file') }} ICF version control</span>
-      <span>{{ ic.icon('users') }} Delegation log &amp; ISF</span>
-      <span>{{ ic.icon('dollar') }} W-9 / 1099 thresholds</span>
-      <span>{{ ic.icon('activity') }} Live from ClinicalTrials.gov</span>
-    </div>
   </div>
 </section>
 
@@ -463,7 +460,7 @@
         <li>{{ ic.icon('check') }} Works across every study you run, not just one</li>
         <li>{{ ic.icon('check') }} Custom setups for sites, CROs and sponsors</li>
         <li>{{ ic.icon('check') }} Fits alongside REDCap, your CTMS and calendar</li>
-        <li>{{ ic.icon('check') }} Free for physicians &amp; sites, no per-referral fees</li>
+        <li>{{ ic.icon('check') }} Free for your site, no per-referral fees</li>
       </ul>
     </div>
     <form method="post" action="{{ url_for('demo_request') }}" class="fs-form js-pending-submit" data-pending-text="Sending…">
@@ -482,7 +479,6 @@
             <option value="Research site / coordinator">Research site / coordinator</option>
             <option value="Sponsor / CRO">Sponsor / CRO</option>
             <option value="Clinic / health system">Clinic / health system</option>
-            <option value="Physician">Physician</option>
             <option value="Other">Other</option>
           </select></label>
       </div>
