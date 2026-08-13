@@ -9,7 +9,7 @@
 {% set _onext = overlay_next if overlay_next is defined and overlay_next else url_for('study_home') %}
 {% set flag_tone = {'overdue':'danger','deviation':'warn','closing':'warn','window':'info','soon':'brand'} %}
 {% for c in visit_cards %}
-{% call ui.modal('visit-' ~ c.visit_id, c.kind ~ ' · ' ~ c.name, icon='calendar') %}
+{% call ui.modal('visit-' ~ c.visit_id, c.kind ~ ' · ' ~ c.name, icon='calendar', size='lg') %}
 <div class="tev">
   {% if c.flag in ('overdue','deviation','closing','window','soon') or c.status == 'completed' or c.status == 'cancelled' or c.recurrence %}
   <div class="tev-top">
@@ -21,31 +21,35 @@
   </div>
   {% endif %}
 
-  <div class="tev-line">
-    <span class="tev-ic">{{ ic.icon('clock') }}</span>
-    <div><b>{{ c.date_long }}</b> · {{ c.time }} – {{ c.end_time }} <span class="tev-sub">({{ c.duration }} min)</span></div>
-  </div>
-  {% if c.location %}
-  <div class="tev-line">
-    <span class="tev-ic">{{ ic.icon('pin') }}</span>
-    <div class="tev-addr">{{ c.location }}</div>
-  </div>
-  {% endif %}
-  <div class="tev-line">
-    <span class="tev-ic">{{ ic.icon('crosshair') }}</span>
-    <div>{{ c.trial_full }}</div>
-  </div>
-  {% if c.note %}
-  <div class="tev-line">
-    <span class="tev-ic">{{ ic.icon('list') }}</span>
-    <div>{{ c.note }}</div>
-  </div>
-  {% endif %}
+  <div class="tev-grid">
+    <div class="tev-info">
+      <div class="tev-line">
+        <span class="tev-ic">{{ ic.icon('clock') }}</span>
+        <div><b>{{ c.date_long }}</b> · {{ c.time }} – {{ c.end_time }} <span class="tev-sub">({{ c.duration }} min)</span></div>
+      </div>
+      {% if c.location %}
+      <div class="tev-line">
+        <span class="tev-ic">{{ ic.icon('pin') }}</span>
+        <div class="tev-addr">{{ c.location }}</div>
+      </div>
+      {% endif %}
+      <div class="tev-line">
+        <span class="tev-ic">{{ ic.icon('crosshair') }}</span>
+        <div>{{ c.trial_full }}</div>
+      </div>
+      {% if c.note %}
+      <div class="tev-line">
+        <span class="tev-ic">{{ ic.icon('list') }}</span>
+        <div>{{ c.note }}</div>
+      </div>
+      {% endif %}
+    </div>
 
-  <div class="tev-people">
-    <div class="tev-people-h">{{ ic.icon('users') }} Attendees</div>
-    <div class="tev-person"><span class="app-av">{{ c.name[:1]|upper }}</span><span><b>{{ c.name }}</b><em>Participant</em></span></div>
-    <div class="tev-person"><span class="app-av neutral">{{ (user['name'] or 'You')[:1]|upper }}</span><span><b>{{ user['name'] or 'You' }}</b><em>Site coordinator · organizer</em></span></div>
+    <div class="tev-people">
+      <div class="tev-people-h">{{ ic.icon('users') }} Attendees</div>
+      <div class="tev-person"><span class="app-av">{{ c.name[:1]|upper }}</span><span><b>{{ c.name }}</b><em>Participant</em></span></div>
+      <div class="tev-person"><span class="app-av neutral">{{ (user['name'] or 'You')[:1]|upper }}</span><span><b>{{ user['name'] or 'You' }}</b><em>Site coordinator · organizer</em></span></div>
+    </div>
   </div>
 
   {# ── What to go over this visit (coordinator agenda), editable inline ── #}
@@ -114,25 +118,26 @@
     </form>
   </div>
 
-  {# ── Real calendar actions, RSVP-style (act without leaving the page) ── #}
+  {# ── Real calendar actions, RSVP-style (act without leaving the page). One
+     tidy toolbar row: primary + secondary grouped left, destructive right. ── #}
   <div class="tev-acts">
     {% if c.status != 'completed' %}
     <form method="post" action="{{ url_for('calendar_visit_status', visit_id=c.visit_id) }}">
       <input type="hidden" name="status" value="completed">
       <input type="hidden" name="next" value="{{ _onext }}">
-      {{ ui.btn('Mark done', 'primary', icon='check', type='submit') }}
+      {{ ui.btn('Mark done', 'primary', 'sm', icon='check', type='submit') }}
     </form>
     {% endif %}
-    <button type="button" class="btn btn-ghost" data-tev-resched="{{ c.visit_id }}">{{ ic.icon('calendar') }} Reschedule</button>
+    <button type="button" class="btn btn-ghost btn-sm" data-tev-resched="{{ c.visit_id }}">{{ ic.icon('calendar') }} Reschedule</button>
     {% if not c.recurrence %}
-    <button type="button" class="btn btn-ghost" data-tev-recur="{{ c.visit_id }}">{{ ic.icon('refresh') }} Make recurring</button>
+    <button type="button" class="btn btn-ghost btn-sm" data-tev-recur="{{ c.visit_id }}">{{ ic.icon('refresh') }} Make recurring</button>
     {% endif %}
-    {{ ui.btn('Open applicant', 'ghost', icon='user', href=url_for('applicant_detail', lead_id=c.id)) }}
+    {{ ui.btn('Open applicant', 'ghost', 'sm', icon='user', href=url_for('applicant_detail', lead_id=c.id)) }}
     {% if c.status != 'cancelled' %}
-    <form method="post" action="{{ url_for('calendar_visit_status', visit_id=c.visit_id) }}" onsubmit="return confirm('Cancel this visit? The patient reminder is stopped.');">
+    <form class="tev-cancel" method="post" action="{{ url_for('calendar_visit_status', visit_id=c.visit_id) }}" onsubmit="return confirm('Cancel this visit? The patient reminder is stopped.');">
       <input type="hidden" name="status" value="cancelled">
       <input type="hidden" name="next" value="{{ _onext }}">
-      {{ ui.btn('Cancel', 'danger', type='submit') }}
+      {{ ui.btn('Cancel', 'danger', 'sm', type='submit') }}
     </form>
     {% endif %}
   </div>
