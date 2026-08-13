@@ -5368,6 +5368,13 @@ body.fs-page { background:
   -webkit-background-clip: text; background-clip: text;
   -webkit-text-fill-color: transparent; color: transparent;
 }
+/* keep gradient text visible when selected (transparent fill would hide it) */
+.fs-grad::selection, .hero-grad::selection {
+  -webkit-text-fill-color: var(--accent); color: var(--accent);
+}
+.fs-grad ::selection, .hero-grad ::selection {
+  -webkit-text-fill-color: var(--accent); color: var(--accent);
+}
 .fs-sub { font-size: 18px; line-height: 1.55; color: var(--muted); max-width: 54ch; margin: 18px 0 0; }
 .fs-sub b { color: var(--ink); font-weight: 700; }
 .fs-trust { display: flex; flex-wrap: wrap; gap: 8px; margin: 22px 0 0; justify-content: flex-start; }
