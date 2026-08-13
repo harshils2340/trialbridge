@@ -7811,25 +7811,37 @@ def _seed_demo_payments_if_demo():
             or _site_demo_enabled()):
         return
     try:
-        if db.list_payment_rules(g.user["id"]):
-            return
+        ncts = sorted(db.user_claimed_ncts(g.user["id"]))
     except Exception:
         return
-    ncts = sorted(db.user_claimed_ncts(g.user["id"]))
     if not ncts:
         return
-    # Rules: a screening + follow-up stipend per trial (IRB-approved).
+    # Rules: a stipend schedule per trial (IRB-approved). Seed for EVERY claimed
+    # trial (not just the first few) and only for kinds a trial is missing, so the
+    # schedule is never empty when the page is scoped to a single study.
     rule_specs = [("screening", "Screening visit - time & travel", 7500),
-                  ("followup", "Follow-up visit - time & travel", 5000),
-                  ("baseline", "Baseline visit - time & travel", 7500)]
-    for nct in ncts[:3]:
+                  ("baseline", "Baseline visit - time & travel", 7500),
+                  ("followup", "Follow-up visit - time & travel", 5000)]
+    for nct in ncts:
+        try:
+            have = {r["kind"] for r in db.list_payment_rules(g.user["id"], nct)}
+        except Exception:
+            have = set()
         for kind, label, cents in rule_specs:
+            if kind in have:
+                continue
             try:
                 db.add_payment_rule(g.user["id"], nct, kind, label, cents,
                                     irb_approved=1,
                                     irb_note="Amount per IRB-approved consent, sec. 12")
             except Exception:
                 app.logger.exception("demo payment rule seeding failed")
+    # The ledger below is seeded once; if payments already exist, we're done.
+    try:
+        if db.list_payments(g.user["id"]):
+            return
+    except Exception:
+        return
     # A realistic, live ledger: a site several months into multiple trials.
     # Mostly paid history, some issued this month, a few queued (owed now), one
     # void (corrected duplicate), and one long-term participant near the $600/yr

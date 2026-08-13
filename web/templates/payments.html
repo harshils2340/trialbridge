@@ -16,6 +16,17 @@
   </div>
 </div>
 
+<details class="pay-note">
+  <summary>
+    {{ ic.icon('shield') }}
+    <span><b>Compliant by design.</b> IRB/REB-approved amounts for time &amp; travel only. Never a referral fee, never tied to enrolling.</span>
+    <span class="pay-note-cue">How it works</span>
+  </summary>
+  <div class="pay-note-body">
+    Stipends go to <b>study participants</b> for their time and travel, at the amount set in the IRB/REB-approved consent. Nothing is paid to a referral source, and nothing is tied to enrolling. Disbursed via <b>{{ provider_label }}</b>{% if not provider_live %} (record-only until a live gift-card rail is connected){% endif %}. Anyone reaching {{ threshold }}/yr needs a W-9 on file (1099).
+  </div>
+</details>
+
 {% if not trials %}
 <div class="app-card pad">
   {{ ui.empty('Claim a study to set up payments', 'Add an IRB-approved stipend per visit type, then payments auto-queue when you mark a visit completed.', 'dollar', action=ui.btn('Go to Settings', variant='primary', icon='gear', href=url_for('site_setup'))) }}
