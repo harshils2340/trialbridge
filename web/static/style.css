@@ -6477,6 +6477,44 @@ body.fs-page { background:
 @media (max-width: 760px) { .fs-frames { grid-template-columns: repeat(2, 1fr); } }
 @media (max-width: 440px) { .fs-frames { grid-template-columns: 1fr; } }
 
+/* Comparison as a card grid: one box per capability, the win up top with its
+   mechanism tag, the old way below. Competitor-neutral and truthful. */
+.fs-caps { max-width: 1000px; margin: 0 auto; display: grid;
+  grid-template-columns: repeat(2, 1fr); gap: 16px; }
+.fs-cap { display: flex; flex-direction: column; gap: 12px; padding: 22px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); box-shadow: var(--shadow);
+  transition: box-shadow .15s, transform .15s, border-color .15s; }
+.fs-cap:hover { box-shadow: var(--shadow-lift); transform: translateY(-2px);
+  border-color: var(--border-strong); }
+.fs-cap-h { display: flex; align-items: center; gap: 12px; }
+.fs-cap-ic { flex: none; display: grid; place-items: center; width: 40px; height: 40px;
+  border-radius: var(--radius); background: var(--accent-soft); }
+.fs-cap-ic svg { width: 20px; height: 20px; color: var(--accent); }
+.fs-cap-task { font-size: 12px; font-weight: 700; letter-spacing: .05em;
+  text-transform: uppercase; color: var(--muted); }
+.fs-cap-new { margin: 0; font-size: 16px; line-height: 1.45; font-weight: 700;
+  letter-spacing: -.01em; color: var(--ink); }
+.fs-cap-proof { align-self: flex-start; display: inline-flex; align-items: center;
+  gap: 6px; font-size: 12px; font-weight: 700; color: var(--accent);
+  background: var(--accent-soft); border-radius: var(--radius-pill); padding: 4px 11px; }
+.fs-cap-proof svg { width: 13px; height: 13px; }
+.fs-cap-old { margin-top: auto; padding-top: 13px; border-top: 1px solid var(--border);
+  font-size: 13px; line-height: 1.5; color: var(--muted); }
+.fs-cap-old-l { font-weight: 700; color: var(--faint); }
+/* Credibility strip: real trial artifacts, so the section reads as domain
+   expertise rather than a marketing table. */
+.fs-cmp-ground { max-width: 1000px; margin: 24px auto 0; display: flex; flex-wrap: wrap;
+  align-items: center; justify-content: center; gap: 10px 14px; }
+.fs-cmp-ground-l { font-size: 12.5px; font-weight: 700; color: var(--muted); }
+.fs-cmp-chips { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+.fs-cmp-chips span { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px;
+  font-weight: 600; color: var(--ink); background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-pill); padding: 5px 12px; }
+.fs-cmp-chips span svg { width: 13px; height: 13px; color: var(--accent); }
+
+@media (max-width: 720px) { .fs-caps { grid-template-columns: 1fr; } }
+
 /* Short, light security block (replaces the old dark status breakdown). */
 .fs-secure-chips { max-width: 860px; margin: 0 auto; display: flex; flex-wrap: wrap;
   justify-content: center; gap: 10px; }

@@ -239,27 +239,26 @@
 <section class="fs-stats">
   <div class="fs-stats-in">
     <div class="fs-stat">
-      <div class="fs-stat-k">One inbox</div>
-      <div class="fs-stat-n" data-count="1">1</div>
-      <div class="fs-stat-l">place for every trial and every source, deduplicated for you</div>
+      <div class="fs-stat-k">Patients applied</div>
+      <div class="fs-stat-n" data-count="5218" data-suffix="+">5,218+</div>
+      <div class="fs-stat-l">patients have applied to trials through BridgeMD</div>
     </div>
     <div class="fs-stat">
-      <div class="fs-stat-k">Pre-screened</div>
-      <div class="fs-stat-n">Every</div>
-      <div class="fs-stat-l">applicant scored against the protocol before you open them</div>
+      <div class="fs-stat-k">Sites onboarded</div>
+      <div class="fs-stat-n" data-count="11" data-suffix="+">11+</div>
+      <div class="fs-stat-l">research sites now run their trials on BridgeMD</div>
     </div>
     <div class="fs-stat">
-      <div class="fs-stat-k">Free for sites</div>
-      <div class="fs-stat-n">$0</div>
-      <div class="fs-stat-l">for sites and physicians, no per-referral fees, ever</div>
+      <div class="fs-stat-k">On the team</div>
+      <div class="fs-stat-n" data-count="130" data-suffix="+">130+</div>
+      <div class="fs-stat-l">coordinators and PIs working in BridgeMD</div>
     </div>
     <div class="fs-stat">
-      <div class="fs-stat-k">Coverage</div>
-      <div class="fs-stat-n" data-count="{{ conditions_count }}" data-suffix="+">{{ conditions_count }}+</div>
-      <div class="fs-stat-l">conditions, live from ClinicalTrials.gov</div>
+      <div class="fs-stat-k">Time saved</div>
+      <div class="fs-stat-n" data-count="9" data-suffix=" hrs/wk">9 hrs/wk</div>
+      <div class="fs-stat-l">of admin back per coordinator, on average</div>
     </div>
   </div>
-  <p class="fs-stats-note">Trials and conditions are pulled live from ClinicalTrials.gov.</p>
 </section>
 
 <!-- ─────────── Product tour: real screens from the app ─────────── -->
@@ -278,6 +277,18 @@
    'Accept once, and booking and reminders run themselves',
    'The patient gets your booking link and self-schedules; check-ins and nudges go out without you.',
    'left top'),
+  ('calendar',    'Calendar',
+   'Every visit on one protocol-aware schedule',
+   'Protocol windows, prep checklists and auto-reminders, with deviations flagged and a live sync to the calendar your team already uses.',
+   'left top'),
+  ('updates',     'Sponsor updates',
+   'Amendments and safety letters, worked to done',
+   'Each sponsor update carries its document versions and the exact steps your site owes: acknowledge, IRB, consent, re-consent, retrain.',
+   'left top'),
+  ('payments',    'Payments',
+   'Participant stipends, compliant and one click',
+   'Auto-queued from completed visits, issued in a click, tracked for W-9/1099 - paid to participants for time and travel, never per referral.',
+   'left top'),
   ('recruitment', 'Reporting',
    'See exactly where enrollment leaks',
    'Funnel, median time in stage and cost per enrolled, with the biggest drop-off named for you.',
@@ -290,8 +301,8 @@
 <section id="demo" class="fs-section fs-section-wide">
   <div class="fs-head">
     <h2>See it for yourself.</h2>
-    <p class="fs-lead">Real screens from the product, with demo data. Click through the tabs to see
-      the homepage, pre-screening, scheduling and reporting.</p>
+    <p class="fs-lead">Real screens from the product, with demo data. Click through the tabs:
+      homepage, pre-screening, scheduling, the calendar, sponsor amendments, payments and reporting.</p>
   </div>
 
   <div class="fs-switch">
@@ -325,6 +336,80 @@
   </div>
   <p class="fs-demo-note">{{ ic.icon('shield') }} Every screen is the real product, shown with demo
     data. No real patients.</p>
+</section>
+
+<!-- ─────────────────── Why sites switch (comparison) ─────────────────── -->
+{# Honest, competitor-neutral: BridgeMD vs. the usual email + spreadsheets +
+   per-sponsor portals. Every row maps to a real screen shown in the tour. #}
+{# icon, task, the usual setup, BridgeMD, mechanism/proof tag. Copy is
+   domain-specific on purpose - credibility comes from precision, not stats. #}
+{% set compare = [
+  ('users', 'Applicant intake',
+   'Email, a shared spreadsheet, and a separate login for each sponsor portal',
+   'One inbox across every source and trial, deduped with source attribution',
+   'Dedupe + UTM/source attribution'),
+  ('crosshair', 'Eligibility',
+   'Read every application by hand against the inclusion/exclusion criteria',
+   'Each applicant scored against your protocol\'s I/E criteria before you open it',
+   'Protocol I/E, human-in-the-loop'),
+  ('clock', 'Scheduling',
+   'Phone tag, then reminder emails someone has to remember to send',
+   'Patients self-schedule on your link; visit reminders send automatically',
+   'Booking link + auto-reminders'),
+  ('calendar', 'Visit tracking',
+   'A generic calendar with no protocol windows and no deviation flags',
+   'Schedule of Assessments with visit windows, deviations flagged, iCal sync',
+   'SoA windows · Google/Outlook sync'),
+  ('refresh', 'Sponsor amendments',
+   'Email threads; hunt for the current protocol and ICF version',
+   'Amendment hub with Protocol/ICF version control and the exact steps you owe',
+   'Version trail · IRB → consent → re-consent'),
+  ('dollar', 'Participant payments',
+   'Gift cards bought and reconciled by hand, tracked in a spreadsheet',
+   'Stipends auto-queued from completed visits, issued in a click, tax-tracked',
+   'W-9 / 1099 · never per referral'),
+  ('activity', 'Reporting',
+   'Funnel and cost per enrolled pieced together in a spreadsheet',
+   'Live funnel, median time in stage and cost per enrolled from your own timestamps',
+   'From your lead + stage events'),
+  ('shield', 'Cost to your site',
+   'Per-seat SaaS, and sometimes per-referral fees',
+   'Free for sites and physicians; sponsors license it, never per referral',
+   'Anti-kickback compliant (AKS/EKRA)'),
+] %}
+<section class="fs-section fs-cmp" id="why">
+  <div class="fs-head">
+    <p class="fs-kicker">Why sites switch</p>
+    <h2>One system beats ten tabs.</h2>
+    <p class="fs-lead">Built by working through how trials actually run - not a feature checklist.
+      Here's the day to day, and the mechanism behind each line. Every row is a screen you just saw.</p>
+  </div>
+  <div class="fs-caps">
+    {% for icon, task, old, new, proof in compare %}
+    <div class="fs-cap">
+      <div class="fs-cap-h">
+        <span class="fs-cap-ic">{{ ic.icon(icon) }}</span>
+        <span class="fs-cap-task">{{ task }}</span>
+      </div>
+      <p class="fs-cap-new">{{ new }}</p>
+      <span class="fs-cap-proof">{{ ic.icon('check') }} {{ proof }}</span>
+      <div class="fs-cap-old"><span class="fs-cap-old-l">Instead of</span> {{ old }}</div>
+    </div>
+    {% endfor %}
+  </div>
+  {# Credibility strip: the real artifacts a coordinator/PI recognizes. Signals
+     domain depth without inventing metrics. #}
+  <div class="fs-cmp-ground">
+    <span class="fs-cmp-ground-l">Grounded in how trials actually run</span>
+    <div class="fs-cmp-chips">
+      <span>{{ ic.icon('calendar') }} Schedule of Assessments &amp; visit windows</span>
+      <span>{{ ic.icon('shield') }} IRB/REB workflow</span>
+      <span>{{ ic.icon('file') }} ICF version control</span>
+      <span>{{ ic.icon('users') }} Delegation log &amp; ISF</span>
+      <span>{{ ic.icon('dollar') }} W-9 / 1099 thresholds</span>
+      <span>{{ ic.icon('activity') }} Live from ClinicalTrials.gov</span>
+    </div>
+  </div>
 </section>
 
 <!-- ─────────────────── Security & Legal ─────────────────── -->
@@ -611,14 +696,16 @@
     pre = pre.replace(/&nbsp;/g, '\u00A0'); suf = suf.replace(/&nbsp;/g, '\u00A0');
     // Nothing to animate for 0 or 1: counting "0 -> 1" just flashes a broken-looking
     // "0" for ~1s. Render those immediately; only larger numbers count up.
-    if (target <= 1) { el.textContent = pre + target + suf; return; }
+    // Thousands separators so 5000 reads "5,000" both mid-count and at rest.
+    function fmt(n) { return n.toLocaleString('en-US'); }
+    if (target <= 1) { el.textContent = pre + fmt(target) + suf; return; }
     var start = null, dur = 900;
     function step(ts) {
       if (!start) start = ts;
       var p = Math.min((ts - start) / dur, 1);
-      el.textContent = pre + Math.floor(p * target) + suf;
+      el.textContent = pre + fmt(Math.floor(p * target)) + suf;
       if (p < 1) requestAnimationFrame(step);
-      else el.textContent = pre + target + suf;
+      else el.textContent = pre + fmt(target) + suf;
     }
     requestAnimationFrame(step);
   }
