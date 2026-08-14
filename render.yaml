@@ -81,7 +81,7 @@ services:
       # flags survive redeploys (the free plan's filesystem is ephemeral and
       # resets on every deploy). Requires the paid `plan: starter` set above.
       - key: DB_PATH
-        value: /var/data/bridgemd.db
+        value: /var/data/bridgemd-fieve.db
     disk:
       name: bridgemd-data
       mountPath: /var/data
