@@ -42,7 +42,6 @@ From `matcher/web`:
 ```
 
 This verifies signup/verify/onboarding/apply + site intake/accept/message/schedule/status/reconcile.
-See `DISTRIBUTION_READY.md` for production launch order and checklist.
 
 ## Live staging smoke (deployed URL)
 
