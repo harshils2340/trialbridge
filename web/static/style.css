@@ -1725,6 +1725,10 @@ body.home-screen .landing-legal-links { margin: 0; flex: 0 0 auto; font-size: 12
   .pub-foot-tools .demo-lane-form { width: 100%; }
   .pub-foot-tools .demo-lane-select { width: 100%; border-radius: 10px; min-width: 0; }
   .pub-foot-tools .demo-lane-go { border-radius: 10px; }
+  .fs-browser-bar { align-items: flex-start; }
+  .fs-browser-bar b { margin-left: 0; width: 100%; }
+  .fs-browser-action { margin-left: 0; width: 100%; }
+  .fs-browser-open { width: 100%; justify-content: center; }
   .hero h1 { font-size: 36px; }
   .cond-search { flex-direction: column; }
   .hero-search .btn { width: 100%; justify-content: center; }
@@ -6278,11 +6282,21 @@ body.fs-page { background:
   border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-lift);
   overflow: hidden; }
 .fs-browser-bar { display: flex; align-items: center; gap: 6px; padding: 11px 15px;
-  border-bottom: 1px solid var(--border); background: var(--bg); }
+  border-bottom: 1px solid var(--border); background: var(--bg); flex-wrap: wrap; }
 .fs-browser-bar > span { width: 10px; height: 10px; border-radius: 50%; background: var(--border-strong); }
 .fs-browser-bar b { margin-left: 10px; font-size: 12.5px; color: var(--muted); font-weight: 600; }
-.fs-browser-open { margin-left: auto; font-size: 12.5px; font-weight: 700; color: var(--accent);
-  display: inline-flex; align-items: center; gap: 5px; }
+.fs-browser-action { margin-left: auto; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.fs-browser-chip { display: inline-flex; align-items: center; border-radius: var(--radius-pill);
+  padding: 4px 9px; font-size: 11px; font-weight: 800; letter-spacing: .03em;
+  text-transform: uppercase; color: #2563eb; background: #eff6ff;
+  border: 1px solid #bfdbfe; }
+.fs-browser-open { display: inline-flex; align-items: center; gap: 6px; min-height: 34px;
+  padding: 7px 12px; border-radius: var(--radius-pill); border: 1px solid #93c5fd;
+  background: linear-gradient(180deg, #ffffff, #eff6ff); color: #1d4ed8; font-size: 12.5px; font-weight: 800;
+  text-decoration: none; box-shadow: 0 6px 16px rgba(24, 38, 77, .08);
+  transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease, background .15s ease; }
+.fs-browser-open:hover { transform: translateY(-1px); border-color: #60a5fa; background: linear-gradient(180deg, #f8fbff, #dbeafe);
+  box-shadow: 0 10px 20px rgba(24, 38, 77, .12); }
 .fs-browser-open svg { width: 13px; height: 13px; }
 
 /* Moving logo / stack marquee */

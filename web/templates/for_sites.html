@@ -319,7 +319,12 @@
           <div class="fs-browser-bar">
             <span></span><span></span><span></span>
             <b>app.bridgemd.health · {{ tab|lower }}</b>
-            <a class="fs-browser-open" href="{{ url_for('study_home') }}">Open it yourself {{ ic.icon('arrow-right') }}</a>
+            <div class="fs-browser-action">
+              <span class="fs-browser-chip">Live app</span>
+              <a class="fs-browser-open" href="{{ url_for('study_home') }}">
+                Open it yourself {{ ic.icon('arrow-right') }}
+              </a>
+            </div>
           </div>
           <div class="fs-stage">
             <img src="{{ static_url('shots/' ~ key ~ '.png') }}" width="1180" height="780"
