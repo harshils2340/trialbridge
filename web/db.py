@@ -4831,13 +4831,38 @@ def _demo_lead_specs():
             "screening_days": screening_days,
             "enrolled_days": enrolled_days,
             "elig": {
-                "met": ["Age within range", "Condition aligns with protocol"],
-                "unknown": ["One lab panel pending site confirmation"],
+                "met": ["Age within the protocol range",
+                        f"Reported diagnosis of {cond} aligns with inclusion",
+                        "No exclusionary condition reported on the screener"],
+                "unknown": _demo_elig_unknowns(cond, idx),
                 "not_met": not_met,
-                "rationale": "Candidate seeded for realistic queue volume.",
+                "rationale": (
+                    "Coordinator marked a protocol mismatch after review."
+                    if not_met else
+                    "Meets the core inclusion criteria; a couple of items to "
+                    "confirm at the screening visit."),
             },
         })
     return specs
+
+
+def _demo_elig_unknowns(condition, idx):
+    """A couple of plausible, condition-appropriate 'confirm at screening' items
+    so the demo queue reads like real pre-screens instead of filler."""
+    cond = (condition or "").lower()
+    if "migraine" in cond:
+        pool = ["Confirm 2-10 moderate/severe attacks per month (headache diary)",
+                "Confirm migraine onset before age 50",
+                "Rule out medication-overuse headache"]
+    elif "resistant" in cond:
+        pool = ["Confirm 2-4 adequate antidepressant trials (MGH-ATRQ)",
+                "Confirm MADRS severity at screening",
+                "Washout / taper plan for current antidepressant"]
+    else:  # MDD and general
+        pool = ["Confirm MADRS severity at screening",
+                "Confirm current episode duration is in range",
+                "Verify prior antidepressant response history"]
+    return [pool[idx % len(pool)], pool[(idx + 1) % len(pool)]]
 
 
 # --------------------------------------------------------------------------- #

@@ -16,6 +16,24 @@
       document.documentElement.setAttribute('data-theme', t);
     } catch (e) {}
   })();
+  /* Tell the server the visitor's timezone so calendars/day boundaries render in
+     THEIR local time, not the server's. We write the IANA zone to a cookie; on
+     the very first visit (no cookie yet) we reload once so the first paint is
+     already correct. A sessionStorage guard prevents a reload loop if cookies
+     are blocked. */
+  (function () {
+    try {
+      var tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      if (!tz) return;
+      var had = document.cookie.indexOf('tz=') !== -1;
+      document.cookie = 'tz=' + encodeURIComponent(tz) +
+        ';path=/;max-age=31536000;samesite=Lax';
+      if (!had && !sessionStorage.getItem('bm_tz_reloaded')) {
+        sessionStorage.setItem('bm_tz_reloaded', '1');
+        location.reload();
+      }
+    } catch (e) {}
+  })();
   </script>
   <title>{% block title %}BridgeMD{% endblock %}</title>
   <link rel="icon" type="image/svg+xml" href="{{ static_url('logo.svg') }}">

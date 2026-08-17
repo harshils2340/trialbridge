@@ -5081,6 +5081,12 @@ a.rail-attn:hover { text-decoration: underline; }
   border: 1px solid var(--border); }
 .copilot-msg.me { align-self: flex-end; }
 .copilot-msg.me p { background: var(--accent); color: #fff; }
+/* Intro second line ("Pick a starting point:") reads as a quiet label, not a
+   second chat bubble, so the assistant intro looks composed. */
+.copilot-msg p + p { margin-top: 8px; }
+.copilot-msg .copilot-msg-cta { background: none; border: 0; padding: 2px 2px 0;
+  font-size: 11.5px; font-weight: 700; letter-spacing: .02em; color: var(--faint);
+  text-transform: uppercase; }
 .copilot-suggest, .copilot-cites { display: flex; flex-wrap: wrap; gap: 6px;
   margin-top: 8px; }
 .copilot-chip {
@@ -7278,7 +7284,7 @@ body.fs-page { background:
 .cal-tl-day .cal-tl-head { display:none; }
 
 .cal-tl-body { display:grid; position:relative; overflow-y:auto; overflow-x:hidden;
-  max-height:calc(100vh - 210px); min-height:460px; scroll-behavior:smooth; }
+  max-height:calc(100vh - 168px); min-height:520px; scroll-behavior:smooth; }
 .cal-tl-gutter { border-right:1px solid var(--border); }
 .cal-tl-hr { position:relative; }
 .cal-tl-hr span { position:absolute; top:-7px; right:8px; font-size:11px;

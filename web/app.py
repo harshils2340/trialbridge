@@ -30,6 +30,10 @@ import sys
 import threading
 import time
 import datetime as dt
+try:
+    from zoneinfo import ZoneInfo  # py3.9+
+except Exception:  # pragma: no cover
+    ZoneInfo = None
 import csv
 import mimetypes
 import urllib.parse
@@ -1326,7 +1330,14 @@ def _active_scope():
             studies = []
     valid = {s["nct"] for s in studies}
     if "active_nct" not in session:
-        nct = studies[0]["nct"] if studies else ""
+        # Demo builds open on the whole book of business (all trials) so the home
+        # shows the full product at a glance; a real single-site user defaults to
+        # their first study as a focused workspace.
+        if studies and (_demo_mode_enabled() or _site_demo_enabled()
+                        or _is_demo_account(g.user)):
+            nct = ""
+        else:
+            nct = studies[0]["nct"] if studies else ""
     else:
         nct = session.get("active_nct") or ""   # "" == All studies (explicit)
         if nct and nct not in valid:
@@ -1381,7 +1392,8 @@ def inject_globals():
             or path.startswith("/app/documents")
             or path.startswith("/app/team") or path.startswith("/app/calendar")
             or path.startswith("/app/payments") or path.startswith("/app/updates")
-            or path.startswith("/app/campaign") or path.startswith("/app/intake")):
+            or path.startswith("/app/campaign") or path.startswith("/app/intake")
+            or path.startswith("/app/soe")):
         pov = "study"
     elif path.startswith("/app") or path.startswith("/referral"):
         pov = "clinician"
@@ -7088,6 +7100,23 @@ def _visit_owned(visit_id):
     return v, lead
 
 
+def _user_now():
+    """Current wall-clock time in the *visitor's* timezone.
+
+    The browser writes its IANA zone (e.g. "America/New_York") to the `tz`
+    cookie, so day boundaries, "today" and the now-line are correct for every
+    user no matter what timezone the server runs in. Returns a naive datetime in
+    that local zone; falls back to server-local time if the cookie is missing or
+    invalid."""
+    try:
+        tzname = request.cookies.get("tz") if request else None
+        if tzname and ZoneInfo is not None:
+            return dt.datetime.now(ZoneInfo(tzname)).replace(tzinfo=None)
+    except Exception:
+        pass
+    return dt.datetime.now()
+
+
 @app.route("/app/calendar")
 @login_required
 def calendar_page():
@@ -7095,7 +7124,7 @@ def calendar_page():
     items = [{"lead": r} for r in rows]
     _seed_demo_calendar_if_demo(items)
 
-    now_dt = dt.datetime.now()
+    now_dt = _user_now()
     today = now_dt.date()
     # Which month? ?m=YYYY-MM (default current). ?nct= scopes to one trial.
     try:
@@ -7159,7 +7188,7 @@ def calendar_page():
     tl_dates = ([week_start + dt.timedelta(days=i) for i in range(7)]
                 if view == "week" else [day_anchor])
     hour_lo, hour_hi = 0, 24
-    PX_PER_HOUR = 46
+    PX_PER_HOUR = 54
     day_start_min = hour_lo * 60
     cal_hours = [{"h": h, "label": _cal_fmt_hour(h)}
                  for h in range(hour_lo, hour_hi)]

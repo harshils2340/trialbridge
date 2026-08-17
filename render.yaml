@@ -80,8 +80,12 @@ services:
       # Persist the SQLite DB on a Render disk so real applicants + the SEO warm
       # flags survive redeploys (the free plan's filesystem is ephemeral and
       # resets on every deploy). Requires the paid `plan: starter` set above.
+      # Bump this filename to force a clean reseed of the public demo on the
+      # persistent disk (the old file is left in place, untouched). Do this when
+      # the demo dataset changes materially — otherwise seed_demo_* no-ops
+      # forever because the disk already has rows from the first boot.
       - key: DB_PATH
-        value: /var/data/bridgemd-fieve.db
+        value: /var/data/bridgemd-fieve2.db
     disk:
       name: bridgemd-data
       mountPath: /var/data
