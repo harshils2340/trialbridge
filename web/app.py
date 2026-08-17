@@ -1460,7 +1460,12 @@ def inject_globals():
             "records_ui": RECORDS_UI,
             "alerts_new_count": alerts_new, "messages_unread": msgs_unread,
             "site_unread": site_unread, "patient_user": g.patient_user,
-            "site_demo": _site_demo_enabled(), "nav_study_ncts": nav_study_ncts,
+            "site_demo": _site_demo_enabled(),
+            # Expose the guide only for the isolated seeded account. A signed-in
+            # site should keep its normal, production-style workspace.
+            "active_site_demo": bool(g.user and _site_demo_enabled()
+                                     and _is_demo_account(g.user)),
+            "nav_study_ncts": nav_study_ncts,
             "nav_studies": nav_studies, "active_nct": active_nct,
             "active_study_label": active_study_label,
             "matches_new": matches_new, "cal_due": cal_due,
@@ -5841,7 +5846,20 @@ def _rel_time(ts_str):
         return f"{days}d ago"
     if days < 30:
         return f"{max(1, days // 7)}w ago"
-    return t.strftime("%b %-d")
+    return _short_date(t)
+
+
+def _short_date(value, with_year=False, with_weekday=False):
+    """Render a portable human date (Windows does not support strftime %-d)."""
+    prefix = value.strftime("%A, ") if with_weekday else ""
+    suffix = f", {value.year}" if with_year else ""
+    return f"{prefix}{value.strftime('%b')} {value.day}{suffix}"
+
+
+def _clock_time(value):
+    """Render a portable 12-hour time (Windows does not support strftime %-I)."""
+    hour = value.hour % 12 or 12
+    return f"{hour}:{value.strftime('%M %p')}"
 
 
 def _queue_item(it):
@@ -6670,7 +6688,7 @@ def study_home():
         elif day == (now + dt.timedelta(days=1)).date():
             dlabel = "Tomorrow"
         else:
-            dlabel = vd.strftime("%a %b %-d")
+            dlabel = f"{vd.strftime('%a %b')} {vd.day}"
         if v["flag"] in ("overdue", "deviation", "closing"):
             sched_attn += 1
         schedule.append({
@@ -6737,7 +6755,7 @@ def study_home():
         hour_ticks.append({
             "label": f"{((_h + 11) % 12) + 1}{'a' if _h < 12 else 'p'}",
             "left": round(100.0 * (_h - DAY_START) * 60 / _span, 2)})
-    today_label = now.strftime("%A, %b %-d")
+    today_label = _short_date(now, with_weekday=True)
     today_n = len(today_track)
 
     # ── New candidate matches from the clinic's own records (the hero: fresh,
@@ -6996,10 +7014,10 @@ def _visit_view(v, now_dt):
         "prep": prep,
         "visit_at": v["visit_at"] or "",
         "date": va.strftime("%Y-%m-%d") if va else "",
-        "date_label": va.strftime("%b %-d") if va else "",
+        "date_label": _short_date(va) if va else "",
         "rel": _cal_rel_day(va, now_dt) if va else "",
         "time": va.strftime("%H:%M") if va else "",
-        "time_label": va.strftime("%-I:%M %p") if va else "",
+        "time_label": _clock_time(va) if va else "",
         "duration_min": v["duration_min"] or 30,
         "window_start": v["window_start"] or "",
         "window_end": v["window_end"] or "",
@@ -7026,7 +7044,7 @@ def _lead_case_context(lead_id, current_visit_id, series_id=""):
         if not ((va and va < now) or st in ("completed", "missed", "cancelled")):
             continue  # only finished / past visits are "history"
         history.append({
-            "date": va.strftime("%b %-d, %Y") if va else "",
+            "date": _short_date(va, with_year=True) if va else "",
             "kind": _VISIT_KIND_LABELS.get(r["kind"] or "screening",
                                            (r["kind"] or "Visit").title()),
             "status": st, "tone": _VISIT_STATUS_TONE.get(st, "neutral"),
@@ -7056,7 +7074,7 @@ def _build_visit_card(v, now):
     dur = max(20, int(v["duration_min"] or 30))
     end = vd + dt.timedelta(minutes=dur)
     ws, we = _cal_parse_dt(v["window_start"]), _cal_parse_dt(v["window_end"])
-    win = (f"{ws.strftime('%b %-d')} – {we.strftime('%b %-d')}"
+    win = (f"{_short_date(ws)} – {_short_date(we)}"
            if ws and we else "")
     ctx = _lead_case_context(v["lead_id"], v["id"], v["series_id"])
     # Per-visit calendar invite link (add-to-calendar / send), like a real
@@ -7076,8 +7094,8 @@ def _build_visit_card(v, now):
         "location": v["location"], "note": v["note"], "prep": v["prep"],
         "agenda": v["agenda"], "recurrence": v["recurrence"],
         "series_id": v["series_id"], "duration": dur, "status": v["status"],
-        "date_long": vd.strftime("%A, %b %-d"),
-        "end_time": end.strftime("%-I:%M %p"),
+        "date_long": _short_date(vd, with_weekday=True),
+        "end_time": _clock_time(end),
         "date_iso": vd.strftime("%Y-%m-%d"), "time_iso": vd.strftime("%H:%M"),
         "window": win, "history": ctx["history"], "notes": ctx["notes"],
         "series": ctx["series"],
@@ -7271,9 +7289,9 @@ def calendar_page():
                            d=(week_start + dt.timedelta(days=7)).strftime("%Y-%m-%d"), view="week")
         cal_today = url_for("calendar_page", view="week")
         if week_start.month == week_end.month:
-            range_label = f"{week_start.strftime('%b %-d')}\u2013{week_end.strftime('%-d, %Y')}"
+            range_label = f"{_short_date(week_start)}\u2013{week_end.day}, {week_end.year}"
         else:
-            range_label = f"{week_start.strftime('%b %-d')} \u2013 {week_end.strftime('%b %-d, %Y')}"
+            range_label = f"{_short_date(week_start)} \u2013 {_short_date(week_end, with_year=True)}"
         show_today = not (week_start <= today <= week_end)
     elif view == "day":
         cal_prev = url_for("calendar_page",
@@ -7281,7 +7299,7 @@ def calendar_page():
         cal_next = url_for("calendar_page",
                            d=(day_anchor + dt.timedelta(days=1)).strftime("%Y-%m-%d"), view="day")
         cal_today = url_for("calendar_page", view="day")
-        range_label = day_anchor.strftime("%A, %b %-d")
+        range_label = _short_date(day_anchor, with_weekday=True)
         show_today = day_anchor != today
     else:  # agenda
         cal_prev = url_for("calendar_page", m=prev_m.strftime("%Y-%m"), view="agenda")
@@ -10429,12 +10447,12 @@ def _inbox_time_label(ts):
         return ts
     now = dt.datetime.now()
     if when.date() == now.date():
-        return when.strftime("%-I:%M %p")
+        return _clock_time(when)
     if (now.date() - when.date()).days < 7:
         return when.strftime("%a")
     if when.year == now.year:
-        return when.strftime("%b %-d")
-    return when.strftime("%b %-d, %Y")
+        return _short_date(when)
+    return _short_date(when, with_year=True)
 
 
 @app.route("/app/messages")

@@ -365,7 +365,10 @@ def _visit_rows(user_id, back_days=14, ahead_days=45):
 
 def _visit_when(row):
     va = _parse_ts(_row_get(row, "visit_at"))
-    return va.strftime("%a %b %-d, %-I:%M %p") if va else ""
+    if not va:
+        return ""
+    hour = va.hour % 12 or 12
+    return f"{va.strftime('%a %b')} {va.day}, {hour}:{va.strftime('%M %p')}"
 
 
 def _visit_item(row):

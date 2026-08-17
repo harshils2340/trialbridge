@@ -942,7 +942,7 @@ body.demo-home .hero-search { max-width: 680px; margin-top: 14px; }
    so no other page is affected. The Figma is set in Inter on a flat #f8fafc bg.
    ========================================================================== */
 body.home-screen { display: flex; flex-direction: column; min-height: 100vh;
-  background: var(--bg);
+  background: radial-gradient(900px 420px at 50% 16%, #e8f3ff 0%, #f8fafc 62%, var(--bg) 100%);
   font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
 /* Grow to fill tall screens (pins the footer to the bottom) but never shrink
    below the hero's natural height - otherwise short viewports clip the footer
@@ -951,17 +951,25 @@ body.home-screen .pub-main { flex: 1 0 auto; display: flex; flex-direction: colu
 body.home-screen .landing-legal { flex-shrink: 0; }
 body.home-screen .hero { flex: 1 1 auto; display: flex; align-items: center; justify-content: center;
   max-width: none; margin: 0; padding: 10px 24px 12px; }
-body.home-screen .hero::before { display: none; }          /* flat background, no halo */
+body.home-screen .hero::before { display: none; }
 body.home-screen .hero-in { max-width: 820px; width: 100%; margin: 0 auto; }
 body.home-screen .hero h1 { font-family: inherit; max-width: none; margin: 0 auto;
-  font-size: 42px; line-height: 1.05; letter-spacing: -.03em; font-weight: 800; white-space: nowrap; }
-body.home-screen .hero-sub { font-size: 15.5px; margin-top: 8px; }
+  font-size: 44px; line-height: 1.03; letter-spacing: -.04em; font-weight: 800; }
+body.home-screen .hero-eyebrow { margin-bottom: 12px; border-color: #c9ddf4; color: #31577f;
+  background: rgba(255,255,255,.72); box-shadow: none; }
+body.home-screen .hero-sub { font-size: 16px; max-width: 630px; margin-top: 10px; }
 body.home-screen .hero-hint { display: none; }             /* Figma has no hint line */
 body.home-screen .hero-stats { margin-top: 10px; }
 body.home-screen .hero-stat { padding: 6px 16px; }
-body.home-screen .hero-card { margin-top: 10px; padding: 14px; }
+body.home-screen .hero-card { margin-top: 14px; padding: 14px; border-color: #cbd9e8;
+  box-shadow: 0 18px 42px rgba(32, 76, 125, .12), 0 2px 8px rgba(32, 76, 125, .06); }
+body.home-screen .hero-card-head { display: flex; align-items: center; justify-content: space-between;
+  margin: 0 2px 8px; color: #263d55; font-size: 12px; font-weight: 800; letter-spacing: .04em;
+  text-transform: uppercase; }
+body.home-screen .hero-card-head small { color: #278254; font-size: 11px; letter-spacing: 0; text-transform: none; }
 body.home-screen .hero-card .search-modes { margin-bottom: 8px; }
 body.home-screen .hero-trust { margin-top: 8px; }
+body.home-screen .hero-reassurance { margin-top: 12px; }
 
 /* Trending: sentence-case inline label + chips (not the uppercase pill label).
    Keep it to a single row on the home screen so it never adds variable height
@@ -973,6 +981,13 @@ body.home-screen .chip-cluster { flex-wrap: nowrap; overflow: hidden; }
 body.home-screen .chip-label { text-transform: none; letter-spacing: 0; font-size: 14px;
   font-weight: 500; color: var(--faint); padding: 0; gap: 0; justify-content: flex-start; }
 body.home-screen .chip-label::after { content: ":"; }
+
+.hero-card-head { display: none; }
+.hero-reassurance { display: flex; align-items: center; justify-content: center; flex-wrap: wrap;
+  gap: 7px 20px; margin: 14px auto 0; color: var(--muted); font-size: 12px; font-weight: 600; }
+.hero-reassurance span { display: inline-flex; align-items: center; gap: 5px; }
+.hero-reassurance svg { width: 14px; height: 14px; color: #278254; }
+.hero-reassurance span:last-child svg { color: #3774af; }
 
 /* Legal line becomes the pinned full-width footer bar (matches the Figma footer). */
 body.home-screen .landing-legal { margin: 0; max-width: none; width: 100%;
@@ -986,8 +1001,10 @@ body.home-screen .landing-legal-links { margin: 0; flex: 0 0 auto; font-size: 12
 
 @media (max-width: 760px) {
   body.home-screen .hero { padding: 22px 16px; }
-  body.home-screen .hero h1 { font-size: 32px; white-space: normal; }
+  body.home-screen .hero h1 { font-size: 34px; }
   body.home-screen .hero-sub { font-size: 15.5px; }
+  body.home-screen .hero-card-head { margin-bottom: 10px; }
+  body.home-screen .hero-reassurance { justify-content: flex-start; gap: 8px 14px; }
   body.home-screen .landing-legal { padding: 14px 16px; }
   /* On phones the page scrolls anyway, so let chips wrap instead of clipping. */
   body.home-screen .chip-row, body.home-screen .chip-cluster {
@@ -3903,6 +3920,24 @@ main:focus { outline: none; }
   letter-spacing: .07em; text-transform: uppercase; }
 .appnav { flex: 1; padding: 12px; overflow-y: auto; display: flex;
   flex-direction: column; gap: 2px; }
+
+/* The public workspace is intentionally dense. This small route map makes the
+   strongest demo workflows discoverable without changing the real site shell. */
+.app-demo-guide { margin: 0 12px 12px; padding: 12px; border: 1px solid #bfdbfe;
+  border-radius: 13px; background: linear-gradient(145deg, #f8fbff, #eff6ff); }
+.app-demo-guide-kicker { display: flex; align-items: center; gap: 6px; color: #1d4ed8;
+  font-size: 10px; font-weight: 800; letter-spacing: .09em; text-transform: uppercase; }
+.app-demo-guide-kicker span { width: 7px; height: 7px; border-radius: 50%; background: #2563eb;
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, .13); }
+.app-demo-guide > b { display: block; margin-top: 6px; color: #172554; font-size: 13px; letter-spacing: -.01em; }
+.app-demo-guide > p { margin: 3px 0 9px; color: #475569; font-size: 11px; line-height: 1.4; }
+.app-demo-guide a { display: flex; align-items: center; gap: 7px; padding: 5px 3px;
+  color: #334155; font-size: 11.5px; font-weight: 700; border-radius: 7px; }
+.app-demo-guide a:hover, .app-demo-guide a.is-current { color: #1d4ed8; text-decoration: none; }
+.app-demo-guide a.is-current { background: rgba(255,255,255,.8); padding-left: 6px; }
+.app-demo-guide em { width: 17px; height: 17px; display: inline-flex; align-items: center;
+  justify-content: center; border-radius: 50%; background: #dbeafe; color: #1d4ed8;
+  font-size: 10px; font-style: normal; }
 .appnav a { display: flex; align-items: center; gap: 10px; padding: 9px 12px;
   border-radius: 8px; color: var(--muted); font-weight: 500; font-size: 14px;
   transition: background .12s, color .12s; }
@@ -4003,6 +4038,17 @@ main:focus { outline: none; }
   background: var(--accent-soft); text-decoration: none; }
 .home-quick .ico { width: 16px; height: 16px; }
 .home-hero-hint { display: block; color: var(--faint); font-size: 12.5px; margin-top: 2px; }
+.demo-welcome { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center;
+  gap: 16px; padding: 19px 20px; margin: 0 0 var(--space-5); border: 1px solid #bfdbfe;
+  border-radius: var(--radius); background: linear-gradient(112deg, #eff6ff 0%, #f8fbff 58%, #fff 100%); }
+.demo-welcome-icon { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 12px;
+  color: #1d4ed8; background: #dbeafe; }
+.demo-welcome-icon svg { width: 21px; height: 21px; }
+.demo-welcome span { display: block; color: #2563eb; font-size: 10px; font-weight: 800; letter-spacing: .1em; }
+.demo-welcome h2 { margin: 2px 0 3px; color: #172554; font-size: 17px; letter-spacing: -.025em; }
+.demo-welcome p { margin: 0; max-width: 700px; color: #475569; font-size: 12.5px; line-height: 1.45; }
+.demo-welcome .btn { background: #1769d2; white-space: nowrap; }
+.demo-welcome .btn:hover { background: #0d52ad; }
 
 /* ── Control panel: calm, name-only module cards that deep-link into an area ── */
 .ctrl-panel { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
@@ -5059,6 +5105,8 @@ a.rail-attn:hover { text-decoration: underline; }
   .app-split { grid-template-columns: 1fr; }
   .verdict-grid { grid-template-columns: 1fr; }
   .appbody { padding: 20px 16px; }
+  .demo-welcome { grid-template-columns: auto minmax(0, 1fr); }
+  .demo-welcome .btn { grid-column: 1 / -1; width: 100%; }
 }
 
 /* Dark mode: keep the app shell legible ---------------------------- */
@@ -6021,13 +6069,20 @@ body.fs-page { background:
 .fs-btn-sm { padding: 9px 16px; font-size: 14px; }
 /* Hero CTA: the primary conversion button, made long and given an accent-tinted
    glow so it clearly pops off the page. */
-.fs-cta .fs-btn { font-size: 17px; font-weight: 800; padding: 18px 60px; letter-spacing: -.01em; }
+.fs-cta .fs-btn { font-size: 17px; font-weight: 800; padding: 18px 34px; letter-spacing: -.01em; }
 .fs-cta .fs-btn svg { width: 20px; height: 20px; }
 .fs-cta .fs-btn-primary { box-shadow: 0 12px 28px -10px color-mix(in srgb, var(--accent) 65%, transparent),
   0 2px 6px color-mix(in srgb, var(--accent) 22%, transparent); }
 .fs-cta .fs-btn-primary:hover { transform: translateY(-2px);
   box-shadow: 0 18px 38px -10px color-mix(in srgb, var(--accent) 72%, transparent),
   0 3px 8px color-mix(in srgb, var(--accent) 26%, transparent); }
+.fs-btn-live { color: #fff; background: #1769d2; border-color: #1769d2;
+  box-shadow: 0 12px 28px -10px rgba(23, 105, 210, .68), 0 2px 6px rgba(23, 105, 210, .22); }
+.fs-btn-live:hover { color: #fff; background: #0d52ad; border-color: #0d52ad;
+  transform: translateY(-2px); box-shadow: 0 18px 38px -10px rgba(23, 105, 210, .68), 0 3px 8px rgba(23, 105, 210, .25); }
+.fs-live-cue { display: flex; align-items: center; gap: 7px; margin: 13px 0 0;
+  color: var(--muted); font-size: 13px; font-weight: 600; }
+.fs-live-cue svg { width: 15px; height: 15px; color: #1769d2; }
 
 /* Dedicated marketing nav (distinct from the plain patient site). At the top of
    the page it is fully transparent so it sits IN the hero with no seam; once the
