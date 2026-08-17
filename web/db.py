@@ -5694,9 +5694,23 @@ def seed_demo_engagement(clinician_id):
     # A visit on the screening/enrolled candidates (drives reminders + patient
     # view). Seed this BEFORE the chat so the real conversation keeps the last
     # (highest-id) slot and drives the inbox preview / unread / awaiting cues.
+    # Place on clean, spread working-day slots (never now-relative minutes) so the
+    # schedule reads like a real clinic day, not a wall of identical timestamps.
+    def at_hour(days, hour):
+        return (base + dt.timedelta(days=days)).replace(
+            hour=hour, minute=0, second=0, microsecond=0).strftime("%Y-%m-%d %H:%M")
+
+    _slot_hours = [9, 10, 11, 13, 14, 15, 16]
+    _sched_days = [1, 2, 3, 4, 7]  # upcoming screening visits, spread out
+    _si = 0
     for ld in revealed:
         if ld["status"] in ("screening", "enrolled"):
-            when = ts(days=2, hours=3) if ld["status"] == "screening" else ts(days=-2)
+            if ld["status"] == "screening":
+                when = at_hour(_sched_days[_si % len(_sched_days)],
+                               _slot_hours[_si % len(_slot_hours)])
+            else:
+                when = at_hour(-2, _slot_hours[_si % len(_slot_hours)])
+            _si += 1
             db.execute("INSERT INTO lead_visits (lead_id, kind, visit_at, location, "
                        "note, reminded_at, created_at) VALUES (?,?,?,?,?,?,?)",
                        (ld["id"], "screening", when, ld["site"] or "Study site",
@@ -5851,7 +5865,79 @@ def ensure_demo_claim_volume(user_id, minimum_rows=18):
         return 0
     need = minimum_rows - have
     title_for = {c["nct"]: (c["title"] or f"Claimed study {c['nct']}") for c in claims}
-    statuses = ["prescreen", "prescreen", "eligible", "screening", "enrolled", "closed"]
+    # Pull each study's real context (condition/location/site) from an existing lead
+    # so filler applicants match the actual trial instead of a generic placeholder.
+    meta_for = {}
+    for _nct in ncts:
+        r = db.execute(
+            "SELECT condition, location, site FROM leads WHERE nct = ? AND "
+            "TRIM(COALESCE(condition,'')) != '' ORDER BY id LIMIT 1", (_nct,)).fetchone()
+        meta_for[_nct] = {
+            "condition": (r["condition"] if r else "") or "Major Depressive Disorder",
+            "location": (r["location"] if r else "") or "New York, NY",
+            "site": (r["site"] if r else "") or "Fieve Clinical Research",
+        }
+    # Real-sounding identities (first + last pools). Applicants are de-identified on
+    # the board until revealed, but real names make the ones you accept read right.
+    _firsts = ["Aiden", "Amara", "Andre", "Bianca", "Caleb", "Carmen", "Damon",
+               "Elena", "Felix", "Grace", "Hugo", "Imani", "Jonah", "Kayla",
+               "Liam", "Maya", "Nadia", "Omar", "Priya", "Quinn", "Rosa", "Sean",
+               "Tara", "Uma", "Victor", "Wendy", "Xavier", "Yara", "Zane", "Cole",
+               "Nina", "Reza", "Tessa", "Devon", "Gina", "Hassan"]
+    _lasts = ["Alvarez", "Bennett", "Chen", "Diaz", "Ellis", "Foster", "Gomez",
+              "Harris", "Ibrahim", "Jensen", "Khan", "Lopez", "Mensah", "Novak",
+              "Owens", "Patel", "Quinn", "Reyes", "Silva", "Tran", "Ueda",
+              "Vasquez", "Walsh", "Yousef", "Zimmer", "Brooks", "Nguyen", "Park",
+              "Cohen", "Adams", "Ford", "Rivera", "Hale", "Ortiz"]
+
+    def _elig_for(cond, status, idx):
+        c = (cond or "").lower()
+        if "migraine" in c:
+            met = ["Over 1-year migraine history (IHS criteria)", "Age within 18-75"]
+            unknown = ["Confirm 2-10 moderate/severe attacks per month"]
+            excl = "Currently in another interventional trial (washout needed)"
+        elif "insomnia" in c:
+            met = ["DSM-5 MDD with insomnia symptoms", "On a stable antidepressant"]
+            unknown = ["Confirm clinically significant insomnia (ISI)"]
+            excl = "Untreated obstructive sleep apnea on record"
+        elif "resistant" in c or "trd" in c:
+            met = ["MDD without psychotic features",
+                   "Two prior antidepressant failures on record"]
+            unknown = ["Confirm adequate trials via MGH-ATRQ"]
+            excl = "History of psychosis - protocol exclusion"
+        else:
+            met = ["Meets DSM-5-TR criteria for current MDD", "Age within 18-74"]
+            unknown = ["MADRS severity to confirm at screening"]
+            excl = "History of bipolar disorder - protocol exclusion"
+        # Vary the read so the board shows a real spread (strong fits, maybes, and a
+        # few clear no's) instead of every applicant reading the same.
+        if status == "closed":
+            return {"verdict": "unlikely", "met": met[:1], "unknown": [],
+                    "not_met": [excl],
+                    "rationale": "Not eligible - " + excl.lower() + "."}
+        strong = {"verdict": "likely_eligible", "met": met, "unknown": [],
+                  "not_met": [],
+                  "rationale": "Meets the core inclusion criteria on record."}
+        possible = {"verdict": "possible", "met": met, "unknown": unknown,
+                    "not_met": [],
+                    "rationale": "Meets core inclusion criteria; a few items to "
+                                 "confirm at the screening visit."}
+        # Accepted applicants should never read as a clear no; only the awaiting-
+        # review pool carries the borderline/unlikely reads.
+        if status in ("eligible", "screening", "enrolled"):
+            return strong if (idx % 2 == 0) else possible
+        bucket = idx % 5
+        if bucket in (0, 1):
+            return strong
+        if bucket == 4:
+            return {"verdict": "unlikely", "met": met[:1], "unknown": unknown,
+                    "not_met": [excl],
+                    "rationale": "Possible exclusion flagged - confirm before review."}
+        return possible
+    # Weighted funnel: most applicants still await review, fewer reach enrolled - a
+    # realistic recruitment shape rather than an even split across stages.
+    statuses = ["prescreen", "prescreen", "prescreen", "prescreen", "eligible",
+                "eligible", "screening", "enrolled", "closed", "prescreen"]
     ts = now()
     added = 0
     for i in range(need):
@@ -5869,19 +5955,25 @@ def ensure_demo_claim_volume(user_id, minimum_rows=18):
         elif status == "closed":
             decision = "declined"
             decision_reason = "Protocol mismatch after coordinator review"
+        meta = meta_for.get(nct, {})
+        cond = meta.get("condition") or "Major Depressive Disorder"
+        city = meta.get("location") or "New York, NY"
+        site_name = meta.get("site") or "Fieve Clinical Research"
+        sex = "female" if idx % 2 else "male"
+        age = str(24 + (idx * 7) % 50)
+        first = _firsts[(idx * 5) % len(_firsts)]
+        last = _lasts[(idx * 3) % len(_lasts)]
+        full = f"{first} {last[0]}."
         records_connected = 1 if (idx % 2 == 0) else 0
-        cond = "Type 2 Diabetes" if idx % 3 else "Obesity"
-        city = ["Toronto, ON", "Mississauga, ON", "Hamilton, ON", "Ottawa, ON"][idx % 4]
-        elig = {
-            "met": ["Age within protocol range", "Condition aligned with protocol intent"],
-            "unknown": ["One lab panel pending confirmation"],
-            "not_met": ["Potential protocol mismatch noted"] if status == "closed" else [],
-            "rationale": "Initial pre-screen completed; candidate queued for coordinator review.",
-        }
-        rec = _demo_record(cond, str(30 + (idx % 35)), "female" if idx % 2 else "male") \
-            if records_connected else ""
+        elig = _elig_for(cond, status, idx)
+        rec = _demo_record(cond, age, sex) if records_connected else ""
         vol_source = ["ctgov", "web", "referral", "google", "web", "meta",
                       "ctgov", "reddit", "referral", "web"][idx % 10]
+        # Spread creation across the past ~6 weeks so "last activity" reads naturally
+        # instead of every filler applicant landing at the same instant.
+        created = (dt.datetime.now()
+                   - dt.timedelta(days=(idx * 3) % 42, hours=(idx * 5) % 12)
+                   ).strftime("%Y-%m-%d %H:%M")
         db.execute(
             """INSERT INTO leads
                (token, site_token, site_token_expires_at, site_token_revoked,
@@ -5892,40 +5984,40 @@ def ensure_demo_claim_volume(user_id, minimum_rows=18):
                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (token, site_token, _site_token_expiry(), 0,
              f"seeded-volume-{idx}", nct, title_for.get(nct, nct), cond, city,
-             "Trial Site", f"Candidate {idx}", f"candidate.queue.{idx}@example.com",
-             f"+1 416 555 {2000 + idx:04d}", str(30 + (idx % 35)),
-             "female" if idx % 2 else "male", "", 1, vol_source, status,
+             site_name, full,
+             f"{first.lower()}.{last.lower()}{idx}@example.com",
+             f"+1 212 555 {2000 + idx:04d}", age, sex, "", 1, vol_source, status,
              json.dumps({"travel": "yes", "other_trial": "no",
                          "pregnancy": "no", "consent_capable": "yes"}),
              json.dumps(elig), records_connected, rec, decision,
-             decision_reason, ts if decision else "", revealed, ts, ts))
+             decision_reason, created if decision else "", revealed, created, created))
         lid = db.execute("SELECT last_insert_rowid() id").fetchone()["id"]
         db.execute(
             "INSERT INTO lead_events (lead_id, status, note, actor, created_at) "
-            "VALUES (?,?,?,?,?)", (lid, "submitted", "application received", "you", ts))
+            "VALUES (?,?,?,?,?)", (lid, "submitted", "application received", "you", created))
         db.execute(
             "INSERT INTO lead_events (lead_id, status, note, actor, created_at) "
-            "VALUES (?,?,?,?,?)", (lid, "prescreen", "ready for study-team review", "you", ts))
+            "VALUES (?,?,?,?,?)", (lid, "prescreen", "ready for study-team review", "you", created))
         if decision == "accepted":
             db.execute(
                 "INSERT INTO lead_events (lead_id, status, note, actor, created_at) "
                 "VALUES (?,?,?,?,?)",
-                (lid, "eligible", "accepted - likely eligible", "you", ts))
+                (lid, "eligible", "accepted - likely eligible", "you", created))
         if status == "screening":
             db.execute(
                 "INSERT INTO lead_events (lead_id, status, note, actor, created_at) "
                 "VALUES (?,?,?,?,?)",
-                (lid, "screening", "invited to screening visit", "site", ts))
+                (lid, "screening", "invited to screening visit", "site", created))
         if status == "enrolled":
             db.execute(
                 "INSERT INTO lead_events (lead_id, status, note, actor, created_at) "
                 "VALUES (?,?,?,?,?)",
-                (lid, "enrolled", "enrolled in study", "site", ts))
+                (lid, "enrolled", "enrolled in study", "site", created))
         if status == "closed":
             db.execute(
                 "INSERT INTO lead_events (lead_id, status, note, actor, created_at) "
                 "VALUES (?,?,?,?,?)",
-                (lid, "closed", decision_reason, "you", ts))
+                (lid, "closed", decision_reason, "you", created))
         added += 1
     if added:
         db.commit()
@@ -5947,6 +6039,10 @@ def seed_demo_patient_apps(applicant_token):
     if has_any and has_any["n"]:
         return
     ts = now()
+    # Clean upcoming clinic slot for the seeded screening visit (never now-relative
+    # minutes, which read as a fake wall of identical odd times on the schedule).
+    visit_when = (dt.datetime.now() + dt.timedelta(days=2)).replace(
+        hour=10, minute=0, second=0, microsecond=0).strftime("%Y-%m-%d %H:%M")
     demo_specs = [
         {
             "nct": "NCT07645924",
@@ -6023,7 +6119,7 @@ def seed_demo_patient_apps(applicant_token):
             db.execute(
                 "INSERT INTO lead_visits (lead_id, kind, visit_at, location, note, "
                 "reminded_at, created_at) VALUES (?,?,?,?,?,?,?)",
-                (lead_id, "screening", ts, s["site"],
+                (lead_id, "screening", visit_when, s["site"],
                  "Bring a photo ID and medication list.", "", ts))
     db.commit()
 

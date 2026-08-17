@@ -520,7 +520,7 @@ def _seed_demo_surfaces(user_id=None):
     # without this they all show the "claim your studies" empty state.
     try:
         db.seed_demo_claims(user_id)
-        db.ensure_demo_claim_volume(user_id, minimum_rows=18)
+        db.ensure_demo_claim_volume(user_id, minimum_rows=108)
     except Exception:
         app.logger.exception("demo claim seeding failed")
     try:
@@ -5971,7 +5971,7 @@ def _decode_lead(row, recon=None):
 def leads():
     if _demo_mode_enabled():
         try:
-            db.ensure_demo_claim_volume(g.user["id"], minimum_rows=18)
+            db.ensure_demo_claim_volume(g.user["id"], minimum_rows=108)
         except Exception:
             app.logger.exception("demo claim volume seeding failed")
     rows = db.list_leads_for_user(g.user["id"])
