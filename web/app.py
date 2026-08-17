@@ -7108,12 +7108,24 @@ def _user_now():
     user no matter what timezone the server runs in. Returns a naive datetime in
     that local zone; falls back to server-local time if the cookie is missing or
     invalid."""
-    try:
-        tzname = request.cookies.get("tz") if request else None
-        if tzname and ZoneInfo is not None:
-            return dt.datetime.now(ZoneInfo(tzname)).replace(tzinfo=None)
-    except Exception:
-        pass
+    if request:
+        # Preferred: IANA zone name (handles DST correctly).
+        try:
+            tzname = request.cookies.get("tz")
+            if tzname and ZoneInfo is not None:
+                return dt.datetime.now(ZoneInfo(tzname)).replace(tzinfo=None)
+        except Exception:
+            pass
+        # Fallback: raw UTC offset in minutes (east of UTC). Works even if the
+        # server image has no IANA tz database, so the day never silently
+        # reverts to UTC.
+        try:
+            off = int(request.cookies.get("tzoff"))
+            if -900 <= off <= 900:
+                return (dt.datetime.now(dt.timezone.utc)
+                        + dt.timedelta(minutes=off)).replace(tzinfo=None)
+        except (TypeError, ValueError):
+            pass
     return dt.datetime.now()
 
 

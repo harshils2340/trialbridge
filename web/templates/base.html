@@ -24,10 +24,14 @@
   (function () {
     try {
       var tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-      if (!tz) return;
-      var had = document.cookie.indexOf('tz=') !== -1;
-      document.cookie = 'tz=' + encodeURIComponent(tz) +
-        ';path=/;max-age=31536000;samesite=Lax';
+      // Raw offset in minutes east of UTC (getTimezoneOffset is minutes WEST).
+      var off = -new Date().getTimezoneOffset();
+      var had = document.cookie.indexOf('tzoff=') !== -1;
+      if (tz) {
+        document.cookie = 'tz=' + encodeURIComponent(tz) +
+          ';path=/;max-age=31536000;samesite=Lax';
+      }
+      document.cookie = 'tzoff=' + off + ';path=/;max-age=31536000;samesite=Lax';
       if (!had && !sessionStorage.getItem('bm_tz_reloaded')) {
         sessionStorage.setItem('bm_tz_reloaded', '1');
         location.reload();
