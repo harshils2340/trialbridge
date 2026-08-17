@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+{% import "_icons.html" as ic %}
+{% import "_ui.html" as ui %}
+{% block title %}Schedule of events · BridgeMD for sites{% endblock %}
+
+{% block body %}
+<div class="app-head">
+  <div>
+    <h1>Schedule of events</h1>
+    <p>The protocol visit schedule you run every participant against — visits, windows and the procedures due. Apply it to a participant and every visit lands on the calendar with its window.</p>
+  </div>
+</div>
+
+{% if not trials %}
+<div class="app-card pad">
+  {{ ui.empty('Claim a study to build its schedule', 'Once you run a trial, draft its schedule of events here — from the protocol — then apply it to each enrolled participant in one click.', 'list', action=ui.btn('Go to Settings', variant='primary', icon='gear', href=url_for('site_setup'))) }}
+</div>
+{% elif not nct %}
+<div class="app-card pad">
+  {{ ui.empty('Pick a study', 'Choose a study in the switcher at the top to view or build its schedule of events.', 'list') }}
+</div>
+{% else %}
+
+<div class="app-card-title" style="margin:2px 0 10px;">{{ ic.icon('sparkle') }} <b>Draft from the protocol</b> <span class="app-sub" style="font-weight:400;color:var(--faint);">{{ active_title }}</span></div>
+<div class="app-card pad" style="margin-bottom:18px;">
+  <form method="post" action="{{ url_for('soe_generate') }}" class="cal-form">
+    <input type="hidden" name="nct" value="{{ nct }}">
+    <div class="field">
+      <label>Paste the protocol's schedule of assessments <span class="cal-hint">{% if has_llm %}AI reads it and drafts the visits + windows{% else %}no AI key set — we'll insert a standard template you can edit{% endif %}</span></label>
+      <textarea name="protocol_text" rows="5" placeholder="e.g. Screening (Day -14 to -1): consent, labs, ECG. Baseline/Day 1: randomize, dose. Week 4 (±3d): labs, PRO. Week 12 / EOT (±5d): ECG, final PRO..."></textarea>
+    </div>
+    <div class="cal-form-foot">
+      <span class="cal-hint">This replaces the current schedule for {{ active_title }}.</span>
+      {{ ui.btn('Generate schedule', 'primary', type='submit', icon='sparkle') }}
+    </div>
+  </form>
+</div>
+
+<div class="app-card-title" style="margin:2px 0 10px;">{{ ic.icon('list') }} <b>Schedule</b> <span class="app-sub" style="font-weight:400;color:var(--faint);">{{ visits|length }} visit{{ '' if visits|length == 1 else 's' }}</span>
+  <span style="flex:1"></span>
+  {% if visits %}{{ ui.btn('Apply to participant', 'primary', size='sm', icon='user-plus', extra='data-ui-open="soe-apply"') }}{% endif %}
+</div>
+
+{% if not visits %}
+<div class="app-card pad">
+  {{ ui.empty('No schedule yet', 'Paste the protocol above to draft it, or add visits by hand.', 'list') }}
+</div>
+{% endif %}
+
+<div class="app-card pad">
+  <form method="post" action="{{ url_for('soe_save') }}">
+    <input type="hidden" name="nct" value="{{ nct }}">
+    <div class="soe-scroll">
+    <table class="soe-tbl">
+      <thead>
+        <tr>
+          <th style="width:22%">Visit</th>
+          <th style="width:9%">Day</th>
+          <th style="width:9%">Early (−d)</th>
+          <th style="width:9%">Late (+d)</th>
+          <th style="width:9%">Mins</th>
+          <th>Procedures <span class="cal-hint">one per line</span></th>
+          <th style="width:34px"></th>
+        </tr>
+      </thead>
+      <tbody id="soeRows">
+        {% for v in visits %}
+        <tr class="soe-row">
+          <td><input type="text" name="name" value="{{ v['name'] }}" placeholder="Week 4"></td>
+          <td><input type="number" name="day_offset" value="{{ v['day_offset'] }}"></td>
+          <td><input type="number" name="window_before" min="0" value="{{ v['window_before'] }}"></td>
+          <td><input type="number" name="window_after" min="0" value="{{ v['window_after'] }}"></td>
+          <td><input type="number" name="duration_min" min="0" value="{{ v['duration_min'] }}"></td>
+          <td><textarea name="procedures" rows="2" placeholder="Vitals&#10;Labs&#10;AE review">{{ v['procedures'] }}</textarea></td>
+          <td><button type="button" class="soe-del" aria-label="Remove visit" title="Remove">{{ ic.icon('trash') }}</button></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    <div class="cal-form-foot" style="margin-top:12px;">
+      {{ ui.btn('Add visit', 'ghost', size='sm', type='button', icon='plus', extra='id="soeAdd"') }}
+      {{ ui.btn('Save schedule', 'primary', type='submit', icon='check') }}
+    </div>
+  </form>
+</div>
+
+{# Hidden template row for "Add visit" #}
+<template id="soeRowTpl">
+  <tr class="soe-row">
+    <td><input type="text" name="name" placeholder="Week 4"></td>
+    <td><input type="number" name="day_offset" value="0"></td>
+    <td><input type="number" name="window_before" min="0" value="0"></td>
+    <td><input type="number" name="window_after" min="0" value="0"></td>
+    <td><input type="number" name="duration_min" min="0" value="30"></td>
+    <td><textarea name="procedures" rows="2" placeholder="Vitals&#10;Labs&#10;AE review"></textarea></td>
+    <td><button type="button" class="soe-del" aria-label="Remove visit" title="Remove">{{ ic.icon('trash') }}</button></td>
+  </tr>
+</template>
+
+{# ---- Apply-to-participant modal ---- #}
+{% call ui.modal('soe-apply', 'Apply schedule to a participant', icon='user-plus') %}
+{% if apply_leads %}
+<form method="post" action="{{ url_for('soe_apply') }}" class="cal-form">
+  <input type="hidden" name="nct" value="{{ nct }}">
+  <div class="field"><label>Participant</label>
+    <select name="lead_id" required>
+      {% for l in apply_leads %}<option value="{{ l.id }}">{{ l.name }}</option>{% endfor %}
+    </select>
+  </div>
+  <div class="field"><label>Baseline / Day 1 date <span class="cal-hint">every visit is scheduled relative to this</span></label>
+    <input type="date" name="anchor" value="{{ today }}" required>
+  </div>
+  <div class="cal-form-foot">
+    <span class="cal-hint">Books all {{ visits|length }} visits on the calendar with their protocol windows.</span>
+    {{ ui.btn('Book visits', 'primary', type='submit', icon='calendar') }}
+  </div>
+</form>
+{% else %}
+{{ ui.empty('No participants to schedule yet', 'Once a participant is in screening or enrolled on this study, apply the schedule to book their whole visit series at once.', 'user-plus') }}
+{% endif %}
+{% endcall %}
+
+<script>
+(function () {
+  var add = document.getElementById('soeAdd');
+  var tpl = document.getElementById('soeRowTpl');
+  var body = document.getElementById('soeRows');
+  if (add && tpl && body) {
+    add.addEventListener('click', function () {
+      body.appendChild(tpl.content.cloneNode(true));
+    });
+  }
+  document.addEventListener('click', function (e) {
+    var del = e.target.closest && e.target.closest('.soe-del');
+    if (del) { var row = del.closest('.soe-row'); if (row) row.remove(); }
+  });
+})();
+</script>
+{% endif %}
+{% endblock %}

@@ -179,9 +179,27 @@
     </p>
   </section>
 
+  <section class="home-proof" aria-label="Why BridgeMD is credible">
+    <div class="home-proof-item">
+      <span>{{ ic.icon('database') }}</span>
+      <b>ClinicalTrials.gov</b>
+      <em>Live public trial data</em>
+    </div>
+    <div class="home-proof-item">
+      <span>{{ ic.icon('shield') }}</span>
+      <b>IRB / REB reviewed</b>
+      <em>Trials follow approved protocols</em>
+    </div>
+    <div class="home-proof-item">
+      <span>{{ ic.icon('lock') }}</span>
+      <b>You control your info</b>
+      <em>Shared only when you apply</em>
+    </div>
+  </section>
+
   {# How it works: kills the "what even is this / what happens after I apply"
      uncertainty that stalls patients before they apply. #}
-  <section class="lx-section" aria-label="How it works">
+  <section class="lx-section hiw-section" aria-label="How it works">
     <h2 class="lx-h2 lx-center">How it works</h2>
     <div class="hiw-grid">
       <div class="hiw-step">
@@ -242,6 +260,28 @@
     </div>
   </section>
 
+  <section class="lx-section home-learn" aria-label="Clinical trial guides">
+    <div class="home-learn-head">
+      <div>
+        <span class="eyebrow-mini">Learn before you apply</span>
+        <h2 class="lx-h2">Simple guides, no enrollment promises.</h2>
+        <p>Understand eligibility, safety, privacy, payment, and what happens after
+          you apply. The study team still makes the final decision.</p>
+      </div>
+      <a class="link-btn home-learn-all" href="{{ url_for('blog_index') }}">See all guides {{ ic.icon('arrow-right') }}</a>
+    </div>
+    <div class="home-learn-grid">
+      {% for p in learn_posts %}
+      <a class="home-learn-card" href="{{ url_for('blog_post', slug=p.slug) }}">
+        <span>{{ p.tag }}</span>
+        <h3>{{ p.title }}</h3>
+        <p>{{ p.dek }}</p>
+        <b>BridgeMD guide · {{ p.date_h }} · {{ p.read }} min read</b>
+      </a>
+      {% endfor %}
+    </div>
+  </section>
+
   <section class="trust-strip" aria-label="Why you can trust BridgeMD">
     <span class="trust-pill">{{ ic.icon('check') }} Free for patients</span>
     <span class="trust-pill">{{ ic.icon('check') }} No account to search</span>
@@ -255,7 +295,7 @@
 <footer class="landing-legal">
   <p class="landing-legal-disc">BridgeMD is an information and trial-matching tool - not medical advice,
     and not the study sponsor. Trial details come from ClinicalTrials.gov; the study team decides eligibility.</p>
-  <p class="landing-legal-links"><a href="{{ url_for('privacy') }}">Privacy</a> · <a href="{{ url_for('terms') }}">Terms</a> · <a href="{{ url_for('how_it_works') }}">How it works</a></p>
+  <p class="landing-legal-links"><a href="{{ url_for('blog_index') }}">Learn</a> · <a href="{{ url_for('privacy') }}">Privacy</a> · <a href="{{ url_for('terms') }}">Terms</a> · <a href="{{ url_for('how_it_works') }}">How it works</a></p>
 </footer>
 
 <div class="loading-overlay" id="loadingOverlay" aria-hidden="true">

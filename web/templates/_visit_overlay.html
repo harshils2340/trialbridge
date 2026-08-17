@@ -33,6 +33,15 @@
         <div class="tev-addr">{{ c.location }}</div>
       </div>
       {% endif %}
+      {% if c.invite_url %}
+      <div class="tev-line">
+        <span class="tev-ic">{{ ic.icon('calendar') }}</span>
+        <div class="tev-cal">
+          <a class="btn btn-ghost btn-sm" href="{{ c.invite_url }}">{{ ic.icon('download') }} Add to calendar</a>
+          <button type="button" class="btn btn-ghost btn-sm tev-copy" data-copy="{{ c.invite_url }}">{{ ic.icon('copy') }} Copy invite link</button>
+        </div>
+      </div>
+      {% endif %}
       <div class="tev-line">
         <span class="tev-ic">{{ ic.icon('crosshair') }}</span>
         <div>{{ c.trial_full }}</div>
@@ -64,7 +73,8 @@
     <div class="tev-muted" id="tev-agenda-view-{{ c.visit_id }}">No agenda yet.</div>
     {% endif %}
     <form class="tev-agenda-edit" id="tev-agenda-edit-{{ c.visit_id }}" method="post" hidden
-          action="{{ url_for('calendar_visit_agenda', visit_id=c.visit_id) }}">
+          action="{{ url_for('calendar_visit_agenda', visit_id=c.visit_id) }}"
+          data-ajax data-ajax-refresh="#visit-{{ c.visit_id }}">
       <input type="hidden" name="next" value="{{ _onext }}">
       <textarea name="agenda" rows="4" placeholder="One item per line — e.g. Review symptom diary">{{ c.agenda|join('\n') }}</textarea>
       <div class="tev-resched-acts">
@@ -83,8 +93,11 @@
 
   {# ── Case context: prior visits + what happened, so history walks in with you ── #}
   {% if c.history %}
-  <div class="tev-sec">
-    <div class="tev-sec-h"><span>{{ ic.icon('clock') }} Previous visits</span></div>
+  <details class="tev-sec tev-hist-wrap">
+    <summary class="tev-sec-h tev-hist-sum">
+      <span>{{ ic.icon('clock') }} Previous visits <span class="tev-hist-n">{{ c.history|length }}</span></span>
+      <span class="tev-hist-caret">{{ ic.icon('chevron-down') }}</span>
+    </summary>
     <ol class="tev-hist">
       {% for h in c.history %}
       <li class="tev-hist-row">
@@ -96,7 +109,7 @@
       </li>
       {% endfor %}
     </ol>
-  </div>
+  </details>
   {% endif %}
 
   {# ── Team notes: anything anyone added; add one right here ── #}
@@ -111,9 +124,10 @@
     {% else %}
     <div class="tev-muted">No notes yet.</div>
     {% endif %}
-    <form class="tev-note-add" method="post" action="{{ url_for('calendar_visit_note', visit_id=c.visit_id) }}">
+    <form class="tev-note-add" method="post" action="{{ url_for('calendar_visit_note', visit_id=c.visit_id) }}"
+          data-ajax data-ajax-refresh="#visit-{{ c.visit_id }}">
       <input type="hidden" name="next" value="{{ _onext }}">
-      <input type="text" name="body" placeholder="Add a note the whole team sees…" required>
+      <input type="text" name="body" placeholder="Add a note the whole team sees…" required data-ajax-clear>
       {{ ui.btn('Add', 'ghost', 'sm', icon='send', type='submit') }}
     </form>
   </div>
@@ -234,6 +248,18 @@ document.querySelectorAll('[data-tev-agenda-cancel]').forEach(function(btn){
     if (f) f.hidden = true;
     if (view) view.hidden = false;
     if (opener) opener.hidden = false;
+  });
+});
+document.querySelectorAll('.tev-copy').forEach(function(btn){
+  btn.addEventListener('click', function(){
+    var url = btn.getAttribute('data-copy') || '';
+    var done = function(){ var t = btn.innerHTML; btn.textContent = 'Copied'; setTimeout(function(){ btn.innerHTML = t; }, 1400); };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(url).then(done).catch(function(){});
+    } else {
+      var ta = document.createElement('textarea'); ta.value = url; document.body.appendChild(ta);
+      ta.select(); try { document.execCommand('copy'); done(); } catch (e) {} document.body.removeChild(ta);
+    }
   });
 });
 </script>

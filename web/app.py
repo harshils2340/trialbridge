@@ -37,8 +37,9 @@ import urllib.request
 from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from flask import (Flask, abort, flash, g, jsonify, make_response, redirect,
-                   render_template, request, send_file, session, url_for)
+from flask import (Flask, abort, flash, g, get_flashed_messages, jsonify,
+                   make_response, redirect, render_template, request, send_file,
+                   session, url_for)
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 
@@ -67,6 +68,7 @@ import records as records_mod  # noqa: E402
 import redcap  # noqa: E402
 import reminders as reminders_mod  # noqa: E402
 import sites_features  # noqa: E402
+import blog_posts  # noqa: E402
 import summarize  # noqa: E402
 import trends  # noqa: E402
 import ctis  # noqa: E402
@@ -191,7 +193,7 @@ _STUDY_TEAM_DEMO_PREFIXES = (
     "/app/leads", "/app/messages", "/app/site", "/app/dashboard",
     "/app/balance", "/app/campaign", "/app/intake", "/app/home",
     "/app/applicant", "/app/matching", "/app/documents", "/app/copilot",
-    "/app/team", "/app/calendar", "/app/payments", "/app/updates",
+    "/app/team", "/app/calendar", "/app/soe", "/app/payments", "/app/updates",
     "/files/lead", "/files/team")
 
 # Health-records / EHR sync (SMART Health IT) is hidden for now — the connector
@@ -1021,6 +1023,35 @@ def _web_analytics_cookies(resp):
     except Exception:
         pass
     return resp
+
+
+@app.after_request
+def _ajax_stay_json(resp):
+    """In-place ("stay in the box") form submits: when a form is posted with the
+    X-BridgeMD-Ajax header, turn the normal post->redirect->flash into a small
+    JSON payload the client uses to show the toast and refresh just the box/modal
+    - so texting or adding a note never kicks you out to the full page. Only
+    redirects are transformed; 200 re-renders (validation errors) pass through so
+    the client can fall back to a normal submit. Non-AJAX requests are untouched."""
+    try:
+        if request.headers.get("X-BridgeMD-Ajax") != "1":
+            return resp
+        if request.method != "POST":
+            return resp
+        if resp.status_code not in (301, 302, 303, 307, 308):
+            return resp
+        location = resp.headers.get("Location", "") or ""
+        msgs = get_flashed_messages(with_categories=True)
+        toast, category = ("", "info")
+        if msgs:
+            category, toast = msgs[-1]
+        payload = json.dumps({
+            "ok": True, "toast": toast, "category": category,
+            "redirect": location,
+        })
+        return app.response_class(payload, mimetype="application/json")
+    except Exception:
+        return resp
 
 
 def _log_event(name, detail=None):
@@ -3330,6 +3361,7 @@ def _render_landing():
                            location_value=location_prefill,
                            patient_ctx=patient_ctx,
                            home_stats=HOME_STATS,
+                           learn_posts=blog_posts.list_patient_posts(3),
                            landing_page=True)
 
 
@@ -4152,6 +4184,31 @@ def for_sites_feature(slug):
     return render_template(
         "for_sites_feature.html", feature=feature, legal_contact=LEGAL_CONTACT,
         cal_link=CAL_LINK)
+
+
+@app.route("/blog")
+def blog_index():
+    """Site-side blog / resources: plain-English, source-cited writing for research
+    sites and coordinators. Content lives in blog_posts.py. Marketing/credibility
+    surface (top of the B2B funnel); makes no claims about BridgeMD's own results."""
+    _log_event("view_blog")
+    return render_template(
+        "blog_index.html", blog_posts=blog_posts.list_posts(), cal_link=CAL_LINK)
+
+
+@app.route("/blog/<slug>")
+def blog_post(slug):
+    """One blog post. 404 on an unknown slug rather than an empty shell. The
+    {demo} token in the body is resolved to the product tour at render time so the
+    soft CTA points somewhere real."""
+    post = blog_posts.get(slug)
+    if post is None:
+        abort(404)
+    post = dict(post)
+    post["body"] = (post.get("body") or "").replace(
+        "{demo}", url_for("for_sites") + "#demo")
+    _log_event("view_blog_post", slug)
+    return render_template("blog_post.html", post=post, cal_link=CAL_LINK)
 
 
 @app.route("/for-clinicians/demo", methods=["POST"])
@@ -6781,6 +6838,10 @@ def set_scope():
 # into those reminders. KPI: Tier-2 Operational Efficiency -> fewer missed
 # visits (retained) and faster screening close (screened -> enrolled).
 # --------------------------------------------------------------------------- #
+# Distinct, token-based colours cycled per trial for the calendar (no raw hex).
+_TRIAL_PALETTE = ["var(--accent)", "var(--violet)", "var(--info)", "var(--green)",
+                  "var(--amber)", "var(--red)", "var(--brand-2, var(--accent))"]
+
 _VISIT_KINDS = [
     ("screening", "Screening"),
     ("baseline", "Baseline / enrollment"),
@@ -6798,6 +6859,67 @@ def _cal_parse_dt(ts):
         return dt.datetime.strptime(str(ts)[:16], "%Y-%m-%d %H:%M")
     except (ValueError, TypeError):
         return None
+
+
+def _cal_fmt_hour(h):
+    """'7 AM', '12 PM', '5 PM' for the week/day time-grid gutter."""
+    ap = "AM" if h < 12 else "PM"
+    hh = h % 12 or 12
+    return f"{hh} {ap}"
+
+
+def _cal_visit_min(v):
+    """Minutes-since-midnight for a visit's start time (defaults to 9:00)."""
+    try:
+        hh, mm = (int(x) for x in (v["time"] or "09:00").split(":")[:2])
+        return hh * 60 + mm
+    except Exception:
+        return 9 * 60
+
+
+def _cal_layout(visits, day_start_min, px_per_hour):
+    """Position timed visits in a day column with overlap lanes.
+    Returns [{v, top, height, left, width}] (top/height px, left/width %)."""
+    ev = []
+    for v in visits:
+        s = _cal_visit_min(v)
+        e = s + max(15, int(v["duration_min"] or 30))
+        ev.append({"v": v, "s": s, "e": e, "lane": 0, "lanes": 1})
+    ev.sort(key=lambda x: (x["s"], x["e"]))
+    # Cluster overlapping events, then pack each cluster into lanes.
+    i, n = 0, len(ev)
+    while i < n:
+        cluster_end, k = ev[i]["e"], i + 1
+        while k < n and ev[k]["s"] < cluster_end:
+            cluster_end = max(cluster_end, ev[k]["e"])
+            k += 1
+        cluster = ev[i:k]
+        lane_ends = []
+        for it in cluster:
+            placed = False
+            for li, lend in enumerate(lane_ends):
+                if it["s"] >= lend:
+                    lane_ends[li] = it["e"]
+                    it["lane"] = li
+                    placed = True
+                    break
+            if not placed:
+                it["lane"] = len(lane_ends)
+                lane_ends.append(it["e"])
+        for it in cluster:
+            it["lanes"] = len(lane_ends)
+        i = k
+    out = []
+    for it in ev:
+        w = 100.0 / it["lanes"]
+        out.append({
+            "v": it["v"],
+            "top": round((it["s"] - day_start_min) / 60.0 * px_per_hour, 1),
+            "height": round(max(24.0, (it["e"] - it["s"]) / 60.0 * px_per_hour), 1),
+            "left": round(it["lane"] * w, 3),
+            "width": round(w, 3),
+        })
+    return out
 
 
 def _visit_flag(v, now_dt):
@@ -6824,6 +6946,20 @@ def _visit_flag(v, now_dt):
     return "ok", ""
 
 
+def _cal_rel_day(va, now_dt):
+    """Human relative day label, e.g. 'Today', 'Yesterday', '3 days ago', 'in 2 days'."""
+    days = (va.date() - now_dt.date()).days
+    if days == 0:
+        return "Today"
+    if days == -1:
+        return "Yesterday"
+    if days == 1:
+        return "Tomorrow"
+    if days < 0:
+        return f"{-days} days ago"
+    return f"in {days} days"
+
+
 def _visit_view(v, now_dt):
     code, label = _visit_flag(v, now_dt)
     va = _cal_parse_dt(v["visit_at"])
@@ -6847,6 +6983,8 @@ def _visit_view(v, now_dt):
         "prep": prep,
         "visit_at": v["visit_at"] or "",
         "date": va.strftime("%Y-%m-%d") if va else "",
+        "date_label": va.strftime("%b %-d") if va else "",
+        "rel": _cal_rel_day(va, now_dt) if va else "",
         "time": va.strftime("%H:%M") if va else "",
         "time_label": va.strftime("%-I:%M %p") if va else "",
         "duration_min": v["duration_min"] or 30,
@@ -6908,8 +7046,18 @@ def _build_visit_card(v, now):
     win = (f"{ws.strftime('%b %-d')} – {we.strftime('%b %-d')}"
            if ws and we else "")
     ctx = _lead_case_context(v["lead_id"], v["id"], v["series_id"])
+    # Per-visit calendar invite link (add-to-calendar / send), like a real
+    # calendar. Uses the patient's private token; empty if we can't resolve it.
+    invite_url = ""
+    try:
+        _lead = db.get_lead(v["lead_id"])
+        if _lead and _lead["token"]:
+            invite_url = _abs_url("visit_ics", token=_lead["token"], visit_id=v["id"])
+    except Exception:
+        invite_url = ""
     return {
         "visit_id": v["id"], "id": v["lead_id"], "name": v["lead_name"],
+        "invite_url": invite_url,
         "kind": v["kind_label"], "trial_full": v["trial_title"] or v["nct"] or "",
         "time": v["time_label"], "flag": v["flag"], "flag_label": v["flag_label"],
         "location": v["location"], "note": v["note"], "prep": v["prep"],
@@ -6955,9 +7103,9 @@ def calendar_page():
         anchor = dt.date(y, m, 1)
     except Exception:
         anchor = today.replace(day=1)
-    view = (request.args.get("view") or "month").lower()
-    if view not in ("month", "agenda"):
-        view = "month"
+    view = (request.args.get("view") or "week").lower()
+    if view not in ("month", "week", "day", "agenda"):
+        view = "week"
     # Scope follows the single global switcher (no per-page chip row). "" = all.
     nct_filter, _ = _active_scope()
 
@@ -6967,9 +7115,19 @@ def calendar_page():
     grid_start = weeks[0][0]
     grid_end = weeks[-1][-1] + dt.timedelta(days=1)
 
-    # Pull a wide range so agenda (next 45 days) and the grid both have data.
-    range_start = min(grid_start, today)
-    range_end = max(grid_end, today + dt.timedelta(days=45))
+    # Day anchor for week/day views (?d=YYYY-MM-DD; default today). Week = Sun-Sat.
+    try:
+        dp = (request.args.get("d") or "").split("-")
+        day_anchor = dt.date(int(dp[0]), int(dp[1]), int(dp[2]))
+    except Exception:
+        day_anchor = today
+    week_start = day_anchor - dt.timedelta(days=(day_anchor.weekday() + 1) % 7)
+    week_end = week_start + dt.timedelta(days=6)
+
+    # Pull a wide range so every view + agenda have data.
+    range_start = min(grid_start, week_start, day_anchor, today)
+    range_end = max(grid_end, week_end + dt.timedelta(days=1),
+                    day_anchor + dt.timedelta(days=1), today + dt.timedelta(days=45))
     raw = db.list_calendar_visits(
         g.user["id"],
         range_start.strftime("%Y-%m-%d %H:%M"),
@@ -6996,6 +7154,29 @@ def calendar_page():
             })
         grid.append(cells)
 
+    # Week / Day time-grid: full 24h (12 AM -> 12 AM) like Google Calendar, so the
+    # grid always scrolls the whole day rather than cropping to a dynamic window.
+    tl_dates = ([week_start + dt.timedelta(days=i) for i in range(7)]
+                if view == "week" else [day_anchor])
+    hour_lo, hour_hi = 0, 24
+    PX_PER_HOUR = 46
+    day_start_min = hour_lo * 60
+    cal_hours = [{"h": h, "label": _cal_fmt_hour(h)}
+                 for h in range(hour_lo, hour_hi)]
+    grid_px = (hour_hi - hour_lo) * PX_PER_HOUR
+    tl_days = []
+    for d in tl_dates:
+        key = d.strftime("%Y-%m-%d")
+        tl_days.append({
+            "date": key, "dow": d.strftime("%a"), "day": d.day,
+            "full": d.strftime("%A"), "is_today": d == today,
+            "count": len(by_day.get(key, [])),
+            "events": _cal_layout(by_day.get(key, []), day_start_min, PX_PER_HOUR),
+        })
+    now_min = now_dt.hour * 60 + now_dt.minute
+    now_top = (round((now_min - day_start_min) / 60.0 * PX_PER_HOUR, 1)
+               if hour_lo * 60 <= now_min <= hour_hi * 60 else None)
+
     # Agenda: everything from today forward, soonest first.
     agenda = sorted(
         [v for v in visits if v["date"] >= today.strftime("%Y-%m-%d")],
@@ -7006,19 +7187,72 @@ def calendar_page():
                  if v["flag"] in ("overdue", "deviation", "closing")]
     attention.sort(key=lambda v: (v["flag"] != "overdue", v["visit_at"]))
 
-    # Trials for the filter chips + the "new visit" applicant picker.
+    # One stable colour per trial so an all-trials calendar stays legible.
+    all_ncts = sorted({r["nct"] for r in rows if r["nct"]})
+    trial_color = {n: _TRIAL_PALETTE[i % len(_TRIAL_PALETTE)]
+                   for i, n in enumerate(all_ncts)}
+
+    # Trials for the legend + the "new visit" applicant picker.
     trials = []
     seen = set()
     for r in rows:
         if r["nct"] and r["nct"] not in seen:
             seen.add(r["nct"])
-            trials.append({"nct": r["nct"], "title": r["title"] or r["nct"]})
+            trials.append({"nct": r["nct"], "title": r["title"] or r["nct"],
+                           "color": trial_color.get(r["nct"], "var(--accent)")})
+    # Applicants bookable for a visit. When the page is scoped to one trial, the
+    # picker shows only that trial's people; unscoped, it searches across all.
     bookable = [{"id": r["id"], "name": r["name"] or "Applicant",
-                 "nct": r["nct"], "title": r["title"] or r["nct"]}
-                for r in rows if r["revealed"] and r["status"] not in db.LEAD_CLOSED]
+                 "nct": r["nct"], "title": r["title"] or r["nct"],
+                 "phone": (r["phone"] if "phone" in r.keys() else "") or "",
+                 "color": trial_color.get(r["nct"], "var(--accent)")}
+                for r in rows if r["revealed"] and r["status"] not in db.LEAD_CLOSED
+                and (not nct_filter or r["nct"] == nct_filter)]
 
     prev_m = (anchor - dt.timedelta(days=1)).replace(day=1)
     next_m = (anchor + dt.timedelta(days=32)).replace(day=1)
+    month_key = anchor.strftime("%Y-%m")
+    day_key = day_anchor.strftime("%Y-%m-%d")
+
+    # Prev/next + "Today" + view-switcher URLs, per current view.
+    if view == "month":
+        cal_prev = url_for("calendar_page", m=prev_m.strftime("%Y-%m"), view="month")
+        cal_next = url_for("calendar_page", m=next_m.strftime("%Y-%m"), view="month")
+        cal_today = url_for("calendar_page", view="month")
+        range_label = anchor.strftime("%B %Y")
+        show_today = month_key != today.strftime("%Y-%m")
+    elif view == "week":
+        cal_prev = url_for("calendar_page",
+                           d=(week_start - dt.timedelta(days=7)).strftime("%Y-%m-%d"), view="week")
+        cal_next = url_for("calendar_page",
+                           d=(week_start + dt.timedelta(days=7)).strftime("%Y-%m-%d"), view="week")
+        cal_today = url_for("calendar_page", view="week")
+        if week_start.month == week_end.month:
+            range_label = f"{week_start.strftime('%b %-d')}\u2013{week_end.strftime('%-d, %Y')}"
+        else:
+            range_label = f"{week_start.strftime('%b %-d')} \u2013 {week_end.strftime('%b %-d, %Y')}"
+        show_today = not (week_start <= today <= week_end)
+    elif view == "day":
+        cal_prev = url_for("calendar_page",
+                           d=(day_anchor - dt.timedelta(days=1)).strftime("%Y-%m-%d"), view="day")
+        cal_next = url_for("calendar_page",
+                           d=(day_anchor + dt.timedelta(days=1)).strftime("%Y-%m-%d"), view="day")
+        cal_today = url_for("calendar_page", view="day")
+        range_label = day_anchor.strftime("%A, %b %-d")
+        show_today = day_anchor != today
+    else:  # agenda
+        cal_prev = url_for("calendar_page", m=prev_m.strftime("%Y-%m"), view="agenda")
+        cal_next = url_for("calendar_page", m=next_m.strftime("%Y-%m"), view="agenda")
+        cal_today = url_for("calendar_page", view="agenda")
+        range_label = anchor.strftime("%B %Y")
+        show_today = month_key != today.strftime("%Y-%m")
+
+    switch_urls = {
+        "day": url_for("calendar_page", d=day_key, view="day"),
+        "week": url_for("calendar_page", d=day_key, view="week"),
+        "month": url_for("calendar_page", m=month_key, view="month"),
+        "agenda": url_for("calendar_page", m=month_key, view="agenda"),
+    }
 
     # Rich overlay card per visit (same component as the dashboard), keyed by
     # visit id so any click on the grid/agenda/attention opens the same card.
@@ -7031,8 +7265,13 @@ def calendar_page():
         grid=grid, agenda=agenda, attention=attention, visit_cards=visit_cards,
         view=view, nct_filter=nct_filter, trials=trials, bookable=bookable,
         visit_kinds=_VISIT_KINDS, sync=sync,
+        tl_days=tl_days, cal_hours=cal_hours, grid_px=grid_px,
+        px_per_hour=PX_PER_HOUR, now_top=now_top, trial_color=trial_color,
+        range_label=range_label, show_today=show_today,
+        cal_prev=cal_prev, cal_next=cal_next, cal_today=cal_today,
+        switch_urls=switch_urls,
         month_label=anchor.strftime("%B %Y"),
-        month_key=anchor.strftime("%Y-%m"),
+        month_key=month_key, day_key=day_key,
         prev_month=prev_m.strftime("%Y-%m"),
         next_month=next_m.strftime("%Y-%m"),
         today_key=today.strftime("%Y-%m"),
@@ -7235,16 +7474,42 @@ def calendar_book():
     if not when:
         flash("Enter a valid date and time.", "error")
         return redirect(_cal_back())
-    db.add_visit(
-        lead_id, when, kind=request.form.get("kind") or "screening",
-        location=request.form.get("location", "").strip(),
+    kind = request.form.get("kind") or "screening"
+    location = request.form.get("location", "").strip()
+    visit_id = db.add_visit(
+        lead_id, when, kind=kind, location=location,
         note=request.form.get("note", "").strip(),
         window_start=_cal_form_dt("window_start", None) or "",
         window_end=_cal_form_dt("window_end", None) or "",
         duration_min=request.form.get("duration_min", type=int) or 30,
         prep=request.form.get("prep", "").strip())
-    flash("Visit booked. The patient reminder is queued.", "ok")
+    # Auto-create the calendar invite and send it to the patient - like a real
+    # calendar: an .ics they can add in one tap, plus a Google Calendar sync when
+    # the site has it connected. KPI: Tier-2 efficiency + retention (fewer no-shows
+    # when the visit is actually on the patient's calendar with a reminder).
+    _share_visit_invite(lead, visit_id, when, kind, location)
+    flash("Visit booked. Calendar invite created and sent to the patient.", "ok")
     return redirect(_cal_back())
+
+
+def _share_visit_invite(lead, visit_id, when, kind, location):
+    """Create the per-visit ICS invite link, message it to the patient, and sync
+    to the site's connected Google Calendar. Best-effort - booking still succeeds
+    if messaging/sync is unavailable."""
+    try:
+        visit = db.get_visit(visit_id)
+        invite_url = _abs_url("visit_ics", token=lead["token"], visit_id=visit_id)
+        sysmsg = f"Your {kind} visit is booked for {when}"
+        sysmsg += f" at {location}." if location else "."
+        sysmsg += f" Add it to your calendar: {invite_url} We'll remind you beforehand."
+        db.add_message(lead["id"], "system", sysmsg)
+        _notify_applicant_visit(lead, when, location, invite_url=invite_url)
+        sync = calendar_invites.maybe_sync_google_event(lead, visit, invite_url)
+        if sync.get("attempted") and not sync.get("ok"):
+            app.logger.warning("google calendar sync failed: %s",
+                               sync.get("detail", "unknown"))
+    except Exception:
+        app.logger.exception("visit invite share failed")
 
 
 @app.route("/app/calendar/visit/<int:visit_id>/reschedule", methods=["POST"])
@@ -8092,6 +8357,203 @@ def _doc_versions_view(user_id, nct, update_id=None):
                 "versions": groups[t],
             })
     return out
+
+
+_SOE_SYS = ("You are a clinical research coordinator building a study Schedule of "
+            "Events (the visit schedule / schedule of assessments) from a protocol. "
+            "Return STRICT JSON only, no prose.")
+
+
+def _soe_template():
+    """Sensible generic Phase-2 skeleton used when there's no LLM key or protocol
+    text - so the feature is always usable and the coordinator just edits it."""
+    return [
+        {"name": "Screening", "day_offset": -14, "window_before": 7,
+         "window_after": 0, "duration_min": 90,
+         "procedures": "Informed consent\nEligibility review\nMedical history\n"
+                       "Vitals\nLabs (CBC, chemistry)\nECG"},
+        {"name": "Baseline / Day 1", "day_offset": 0, "window_before": 0,
+         "window_after": 0, "duration_min": 90,
+         "procedures": "Confirm eligibility\nRandomize\nDispense study drug\n"
+                       "Vitals\nPRO questionnaires"},
+        {"name": "Week 2", "day_offset": 14, "window_before": 3, "window_after": 3,
+         "duration_min": 45,
+         "procedures": "Vitals\nAdverse event review\nCon-meds review\n"
+                       "Drug accountability"},
+        {"name": "Week 4", "day_offset": 28, "window_before": 3, "window_after": 3,
+         "duration_min": 60,
+         "procedures": "Vitals\nLabs\nAE review\nPRO questionnaires\n"
+                       "Dispense study drug"},
+        {"name": "Week 8", "day_offset": 56, "window_before": 5, "window_after": 5,
+         "duration_min": 60, "procedures": "Vitals\nLabs\nAE review\nPRO questionnaires"},
+        {"name": "End of Treatment / Week 12", "day_offset": 84, "window_before": 5,
+         "window_after": 5, "duration_min": 90,
+         "procedures": "Vitals\nLabs\nECG\nAE review\nFinal PRO\nDrug accountability"},
+        {"name": "Safety Follow-up", "day_offset": 112, "window_before": 7,
+         "window_after": 7, "duration_min": 30,
+         "procedures": "AE review\nCon-meds review"},
+    ]
+
+
+def _soe_normalize(v):
+    procs = v.get("procedures")
+    if isinstance(procs, list):
+        procs = "\n".join(str(p).strip() for p in procs if str(p).strip())
+
+    def _int(x):
+        try:
+            return int(x)
+        except (TypeError, ValueError):
+            return 0
+    return {
+        "name": str(v.get("name") or "").strip()[:80],
+        "day_offset": _int(v.get("day_offset")),
+        "window_before": abs(_int(v.get("window_before"))),
+        "window_after": abs(_int(v.get("window_after"))),
+        "duration_min": _int(v.get("duration_min")) or 30,
+        "procedures": (procs or "").strip(),
+    }
+
+
+def _soe_from_protocol(text, title=""):
+    """Draft a Schedule of Events from protocol text via the LLM. Falls back to a
+    generic editable template when there's no key or no usable text."""
+    text = (text or "").strip()
+    if mt.LLM_API_KEY and text:
+        prompt = (
+            f"STUDY: {title}\n\nPROTOCOL TEXT (may be partial):\n{text[:8000]}\n\n"
+            "Extract the visit schedule as JSON exactly:\n"
+            '{"visits":[{"name":str,"day_offset":int,"window_before":int,'
+            '"window_after":int,"duration_min":int,"procedures":[str,...]}]}\n'
+            "Rules: day_offset is days relative to Day 1 (baseline = 0, screening "
+            "negative). If a window isn't stated use 0. procedures are short visit "
+            "activities (assessments, labs, dosing). Order visits chronologically.")
+        try:
+            obj = mt._extract_json(mt.llm_chat(_SOE_SYS, prompt))
+            rows = [_soe_normalize(v) for v in (obj.get("visits") or [])[:40]]
+            rows = [r for r in rows if r["name"]]
+            if rows:
+                return rows
+        except Exception:
+            app.logger.exception("SoE LLM generation failed")
+    return _soe_template()
+
+
+def _seed_demo_soe_if_demo():
+    """Seed a standard schedule of events for each demo study so the Schedule
+    page reads as a live workflow. Idempotent; demo-only (COMPLIANCE.md)."""
+    if not g.user:
+        return
+    if not (_demo_mode_enabled() or _is_demo_account(g.user)
+            or _site_demo_enabled()):
+        return
+    try:
+        ncts = sorted(db.user_claimed_ncts(g.user["id"]))
+    except Exception:
+        return
+    for nct in ncts:
+        try:
+            if not db.soe_visit_count(g.user["id"], nct):
+                db.replace_soe_visits(g.user["id"], nct, _soe_template())
+        except Exception:
+            app.logger.exception("demo SoE seeding failed")
+
+
+@app.route("/app/soe")
+@login_required
+def soe_page():
+    _seed_demo_soe_if_demo()
+    nct_filter, studies = _active_scope()
+    trials = [{"nct": s["nct"], "title": s["title"] or s["nct"]} for s in studies]
+    # A schedule belongs to one study: use the active scope, or the only study.
+    active = nct_filter or (trials[0]["nct"] if len(trials) == 1 else "")
+    active_title = next((t["title"] for t in trials if t["nct"] == active), active)
+    visits = db.list_soe_visits(g.user["id"], active) if active else []
+    # Enrolled/in-progress participants we can apply the schedule to.
+    apply_leads = []
+    if active:
+        for r in db.list_leads_for_user(g.user["id"]):
+            if (r["nct"] or "") == active and (r["status"] or "") in (
+                    "enrolled", "screening", "eligible", "accepted"):
+                apply_leads.append(
+                    {"id": r["id"], "name": r["name"] or f"Applicant #{r['id']}"})
+    return render_template(
+        "soe.html", trials=trials, nct=active, active_title=active_title,
+        visits=visits, apply_leads=apply_leads, has_llm=bool(mt.LLM_API_KEY),
+        today=dt.date.today().strftime("%Y-%m-%d"))
+
+
+@app.route("/app/soe/generate", methods=["POST"])
+@login_required
+def soe_generate():
+    nct = (request.form.get("nct") or "").strip()
+    if not nct:
+        flash("Pick a study first.", "error")
+        return redirect(url_for("soe_page"))
+    if nct not in _site_claims():
+        abort(403)
+    title = next((s["title"] for s in db.list_team_studies(g.user["id"])
+                  if s["nct"] == nct), nct)
+    rows = _soe_from_protocol(request.form.get("protocol_text") or "", title)
+    db.replace_soe_visits(g.user["id"], nct, rows)
+    session["active_nct"] = nct
+    ai = " with AI" if (mt.LLM_API_KEY and (request.form.get("protocol_text") or "").strip()) else ""
+    flash(f"Drafted a {len(rows)}-visit schedule{ai}. Review and edit below.",
+          "success")
+    return redirect(url_for("soe_page"))
+
+
+@app.route("/app/soe/save", methods=["POST"])
+@login_required
+def soe_save():
+    nct = (request.form.get("nct") or "").strip()
+    if not nct or nct not in _site_claims():
+        abort(403)
+    names = request.form.getlist("name")
+    days = request.form.getlist("day_offset")
+    wb = request.form.getlist("window_before")
+    wa = request.form.getlist("window_after")
+    dur = request.form.getlist("duration_min")
+    procs = request.form.getlist("procedures")
+
+    def gi(lst, j):
+        try:
+            return int(lst[j])
+        except (IndexError, ValueError, TypeError):
+            return 0
+    rows = []
+    for i, nm in enumerate(names):
+        if not (nm or "").strip():
+            continue
+        rows.append({
+            "name": nm.strip(), "day_offset": gi(days, i),
+            "window_before": abs(gi(wb, i)), "window_after": abs(gi(wa, i)),
+            "duration_min": gi(dur, i) or 30,
+            "procedures": (procs[i] if i < len(procs) else "").strip(),
+        })
+    db.replace_soe_visits(g.user["id"], nct, rows)
+    session["active_nct"] = nct
+    flash(f"Saved schedule ({len(rows)} visits).", "success")
+    return redirect(url_for("soe_page"))
+
+
+@app.route("/app/soe/apply", methods=["POST"])
+@login_required
+def soe_apply():
+    nct = (request.form.get("nct") or "").strip()
+    try:
+        lead_id = int(request.form.get("lead_id"))
+    except (TypeError, ValueError):
+        flash("Pick a participant.", "error")
+        return redirect(url_for("soe_page"))
+    _ensure_site_access_for_lead(lead_id)
+    n = db.materialize_soe_for_lead(
+        lead_id, g.user["id"], nct, request.form.get("anchor") or "")
+    if n:
+        flash(f"Booked {n} protocol visits on the calendar.", "success")
+        return redirect(url_for("calendar_page"))
+    flash("No schedule to apply yet - build it first.", "warn")
+    return redirect(url_for("soe_page"))
 
 
 @app.route("/app/updates")
@@ -9207,6 +9669,19 @@ def _copilot_act_deny(token):
                     "error": "That applicant isn't in your studies."}), 403
 
 
+@app.route("/app/copilot/digest")
+@login_required
+def copilot_digest():
+    """Bridget's start-of-day brief: only the things that need the coordinator
+    today, composed from the same grounded read tools. Read-only."""
+    try:
+        data = copilot.digest.daily_digest(g.user["id"])
+    except Exception:
+        app.logger.exception("copilot_digest failed")
+        return jsonify({"ok": False, "error": "Couldn't build your digest."}), 500
+    return jsonify({"ok": True, **data})
+
+
 @app.route("/app/copilot/act", methods=["POST"])
 @login_required
 def copilot_act():
@@ -9235,6 +9710,9 @@ def copilot_act():
             if not lead or not lead["revealed"]:
                 return jsonify({"ok": False,
                                 "error": "Accept the applicant first to message them."}), 400
+            if not db.lead_contactable(lead_id):
+                return jsonify({"ok": False,
+                                "error": "This applicant opted out of messages."}), 400
             text = ((edited if edited is not None else payload.get("text")) or "").strip()[:4000]
             if not text:
                 return jsonify({"ok": False, "error": "The message is empty."}), 400
@@ -9265,24 +9743,31 @@ def copilot_act():
                             "citations": [{"label": lbl,
                                            "url": payload.get("url_ref", "")}]})
 
-        if kind == "bulk_booking_reminder":
+        if kind in ("bulk_booking_reminder", "reconsent_reminder"):
             ids = payload.get("lead_ids") or []
             text = ((edited if edited is not None else payload.get("text")) or "").strip()[:4000]
             if not text:
                 return jsonify({"ok": False, "error": "The message is empty."}), 400
-            sent = 0
+            sent = skipped = 0
             for lid in ids:
                 if not db.lead_belongs_to_user(lid, g.user["id"]):
                     continue
                 lead = db.get_lead(lid)
                 if not lead or not lead["revealed"]:
                     continue
+                if not db.lead_contactable(lid):     # honor opt-out
+                    skipped += 1
+                    continue
                 db.add_message(lid, "site", text)
                 _notify_applicant_message(lead, text)
                 sent += 1
             db.mark_copilot_action(token, "confirmed")
-            return jsonify({"ok": True,
-                            "answer": f"Sent booking reminders to {sent} applicant(s)."})
+            noun = ("re-consent reminders" if kind == "reconsent_reminder"
+                    else "booking reminders")
+            msg = f"Sent {noun} to {sent} applicant(s)."
+            if skipped:
+                msg += f" Skipped {skipped} who opted out."
+            return jsonify({"ok": True, "answer": msg})
 
         return jsonify({"ok": False, "error": "Unknown action."}), 400
     except Exception:
@@ -9844,7 +10329,12 @@ def sitemap():
 def sitemap_static():
     wk = _week_lastmod()
     urls = [(_sitemap_loc(e), wk) for e in
-            ("home", "find", "trials_index", "how_it_works", "for_sites")]
+            ("home", "find", "trials_index", "how_it_works", "for_sites",
+             "blog_index")]
+    urls += [(_sitemap_loc("for_sites_feature", slug=f["slug"]), wk)
+             for f in sites_features.nav_items()]
+    urls += [(_sitemap_loc("blog_post", slug=p["slug"]), wk)
+             for p in blog_posts.list_posts()]
     return _sitemap_xml(urls)
 
 

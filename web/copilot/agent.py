@@ -13,7 +13,7 @@ import re
 
 import match_trials as mt
 
-from . import actions, tools
+from . import actions, registry, tools
 
 SYSTEM_PROMPT = (
     "You are BridgeMD Copilot, an assistant for a clinical-trial study team. "
@@ -37,19 +37,18 @@ STARTERS = [
     "Find my biggest funnel leak",
 ]
 
-# Honest, action-phrased trace of what Bridget actually did to answer - shown as
-# check-marked steps in the rail (like an agent narrating its tool use).
-_TRACE = {
-    "pending_decisions": ["Scanned your review queue across all studies"],
-    "stuck_in_screening": ["Checked your screening queue for stalled applicants"],
-    "funnel_overview": ["Pulled funnel metrics across all your studies"],
-    "search_messages": ["Searched your applicant message history"],
-    "applicant_summary": ["Read this applicant's record and activity"],
-    "explain_verdict": ["Reviewed this applicant's eligibility check"],
-    "send_message": ["Pulled this applicant's context", "Drafted a message for your review"],
-    "send_booking": ["Checked this applicant's booking status", "Prepared a booking link"],
-    "bulk_booking": ["Scanned your studies for applicants who haven't booked"],
-}
+# The trace ("what I actually did") now lives with each tool in registry.py.
+
+# The planner picks a tool. When an LLM key is set it reads the registry menu and
+# chooses; otherwise the deterministic keyword classifier below runs. Routing is
+# never left to guesswork - an unknown tool name falls back to keywords.
+PLANNER_SYSTEM = (
+    "You are the router for a clinical-trial study-team assistant. Given the "
+    "user's request and a menu of tools, choose the SINGLE best tool and extract "
+    "its parameters. You only route; you never answer, invent data, or decide "
+    "eligibility. Respond with ONLY a JSON object of the form "
+    '{"tool": "<tool_name>", "params": {}}. Use the exact tool names given. If '
+    'no tool fits, use {"tool": "help", "params": {}}.')
 
 
 _BULK_HINTS = ("everyone", "all of them", "each of", "each one", "stuck",
@@ -89,7 +88,44 @@ def _classify(query):
             intent = "thanks"
         return "send_message", {"intent": intent}
 
+    # Re-consent as an ACTION (send/remind) beats the read below.
+    _reconsent = ("reconsent" in q or "re-consent" in q or "re consent" in q)
+    if _reconsent and any(w in q for w in ("remind", "send", "nudge", "message",
+                                           "notify", "reach out")):
+        return "reconsent_reminder", {}
+
+    # --- Calendar / visit-prep intents ----------------------------------------
+    if (_reconsent
+            or ("consent" in q and any(w in q for w in
+                ("visit", "due", "upcoming", "who", "need", "soon")))):
+        return "reconsent_due", {}
+    if any(w in q for w in ("out of window", "outside the window", "outside their",
+                            "deviation", "protocol window", "overdue", "past due",
+                            "past-due", "missed visit", "behind on", "window clos")):
+        return "visits_out_of_window", {}
+    schedule_word = any(w in q for w in (
+        "visit", "prep", "prepare", "get ready", "calendar", "schedule",
+        "appointment", "this week", "coming up", "upcoming", "today", "tomorrow"))
+    if schedule_word:
+        when = "tomorrow" if "tomorrow" in q else ("today" if "today" in q else "week")
+        if when in ("today", "tomorrow") or any(
+                w in q for w in ("prep", "prepare", "get ready", "bring", "ready")):
+            return "visit_prep", {"when": when}
+        return "week_schedule", {}
+
     # --- Read intents ----------------------------------------------------------
+    if any(w in q for w in ("document", "paperwork", "consent form", "icf",
+                            "regulatory", "1572", "vault", "expir", "renew",
+                            "signature", "pending doc")):
+        return "documents_overview", {}
+    if any(w in q for w in ("campaign", "channel", "ad ", " ads", "advert",
+                            "spend", "cost per", "cost-per", "marketing",
+                            "best source", "which source")):
+        return "campaign_performance", {}
+    if (("match" in q or "matches" in q)
+            or ("record" in q and any(w in q for w in
+                ("candidate", "match", "ehr", "new")))):
+        return "record_matches", {}
     if any(w in q for w in ("stuck", "not booked", "no booking", "idle")):
         return "stuck_in_screening", {}
     if any(w in q for w in ("waiting on", "pending", "decide", "decision",
@@ -114,24 +150,60 @@ def _classify(query):
     return "help", {}
 
 
-_NEEDS_LEAD = {"applicant_summary", "explain_verdict", "send_message",
-               "send_booking"}
 _PROPOSAL_INTRO = {
     "send_message": "Here's a draft for {target} - review, edit if you like, then send:",
     "send_booking": "I'll send the booking link to {target}. Confirm to send:",
     "bulk_booking": "This will message {target}. Review and confirm:",
+    "reconsent_reminder": "This will send a re-consent reminder to {target}. Review and confirm:",
 }
 
 
 def _help_payload():
     return {
-        "summary": ("I can help with your studies. Try: \u201cwho's waiting on my "
-                    "decision?\u201d, \u201cwho's stuck in screening?\u201d, "
-                    "\u201chow's my funnel?\u201d, open an applicant and ask "
-                    "\u201csummarize this applicant\u201d or \u201cdraft a "
-                    "follow-up\u201d."),
+        "summary": ("I can help across your studies - the queue, calendar, "
+                    "documents, campaigns, and record matches. Try: \u201cwho's "
+                    "waiting on my decision?\u201d, \u201cwho's stuck in "
+                    "screening?\u201d, \u201chow's my funnel?\u201d, \u201cwhat "
+                    "documents are due?\u201d, \u201cwhich campaign enrolls "
+                    "cheapest?\u201d, \u201cwhat should I prep for tomorrow?\u201d, "
+                    "or open an applicant and ask \u201csummarize this "
+                    "applicant\u201d or \u201cdraft a follow-up\u201d."),
         "items": [], "citations": [],
     }
+
+
+_JSON_RE = re.compile(r"\{.*\}", re.DOTALL)
+
+
+def _extract_json(text):
+    """Pull the first JSON object out of a model response (handles code fences)."""
+    m = _JSON_RE.search(text or "")
+    return m.group(0) if m else "{}"
+
+
+def _plan_llm(query, ctx):
+    """LLM tool-calling router over the registry. Returns (tool, params) or None
+    (on no key / bad output) so the caller falls back to keyword rules."""
+    if not mt.LLM_API_KEY:
+        return None
+    try:
+        user = (f"TOOLS:\n{registry.catalog_for_prompt()}\n\n"
+                f"An applicant record is currently open: {bool(ctx.get('has_lead'))}\n"
+                f"USER REQUEST: {query}\n\n"
+                "Pick the single best tool and its params. JSON only.")
+        data = json.loads(_extract_json(mt.llm_chat(PLANNER_SYSTEM, user)))
+        name = (data.get("tool") or "").strip()
+        if name != "help" and name not in registry.REGISTRY:
+            return None
+        params = data.get("params")
+        return name, (params if isinstance(params, dict) else {})
+    except Exception:
+        return None
+
+
+def _plan(query, ctx):
+    """Choose a tool: LLM planner first (if configured), keyword rules otherwise."""
+    return _plan_llm(query, ctx) or _classify(query)
 
 
 def _ground_with_llm(query, payload):
@@ -152,48 +224,42 @@ def _ground_with_llm(query, payload):
 
 def answer(user_id, query, context=None):
     """Entry point. ``context`` may include {"lead_id": int} for the page the
-    user is on. Returns {answer, citations, action?, suggestions}."""
-    context = context or {}
-    intent, params = _classify(query)
+    user is on. Returns {answer, citations, action?, suggestions}.
 
+    Flow: plan a tool (LLM planner or keyword rules) -> dispatch through the
+    registry. Reads return a grounded answer; actions return a confirmable
+    proposal. The safe confirm/send path is never bypassed here."""
+    context = context or {}
     lead_id = context.get("lead_id")
-    if intent in _NEEDS_LEAD and not lead_id:
+    intent, params = _plan(query, {"has_lead": bool(lead_id)})
+
+    tool = registry.get(intent)
+    if tool is None:                       # "help" or an unknown name
+        p = _help_payload()
+        return {"answer": p["summary"], "citations": [], "trace": [],
+                "suggestions": STARTERS}
+
+    if tool.needs_lead and not lead_id:
         return {
             "answer": "Open an applicant first, then ask again - that lets me "
                       "pull their record.",
             "citations": [], "suggestions": STARTERS,
         }
 
-    # --- Action intents: build a confirmable proposal (never auto-send) --------
-    if intent in ("send_message", "send_booking", "bulk_booking"):
+    # --- Action tools: build a confirmable proposal (never auto-send) ----------
+    if tool.kind == "action":
         res = _propose(intent, user_id, lead_id, params)
-        res.setdefault("trace", _TRACE.get(intent, []))
+        res.setdefault("trace", tool.trace)
         return res
 
-    # --- Read intents: grounded answer -----------------------------------------
-    if intent == "pending_decisions":
-        payload = tools.pending_decisions(user_id)
-    elif intent == "stuck_in_screening":
-        payload = tools.stuck_in_screening(user_id)
-    elif intent == "funnel_overview":
-        payload = tools.funnel_overview(user_id)
-    elif intent == "search_messages":
-        payload = tools.search_messages(user_id, params.get("term", ""))
-    elif intent == "applicant_summary":
-        payload = tools.applicant_summary(user_id, lead_id)
-    elif intent == "explain_verdict":
-        payload = tools.explain_verdict(user_id, lead_id)
-    else:
-        payload = _help_payload()
-
-    text = payload.get("summary", "")
-    if intent != "help":
-        text = _ground_with_llm(query, payload) or text
+    # --- Read tools: grounded answer ------------------------------------------
+    payload = tool.run(user_id, lead_id, params)
+    text = _ground_with_llm(query, payload) or payload.get("summary", "")
     return {
         "answer": text,
         "citations": payload.get("citations", []),
-        "trace": _TRACE.get(intent, []),
-        "suggestions": STARTERS if intent == "help" else [],
+        "trace": tool.trace,
+        "suggestions": [],
     }
 
 
@@ -203,6 +269,8 @@ def _propose(intent, user_id, lead_id, params):
         prop = actions.build_message_proposal(user_id, lead_id, params.get("intent"))
     elif intent == "send_booking":
         prop = actions.build_booking_proposal(user_id, lead_id)
+    elif intent == "reconsent_reminder":
+        prop = actions.build_reconsent_reminder_proposal(user_id)
     else:  # bulk_booking
         prop = actions.build_bulk_reminder_proposal(user_id)
 

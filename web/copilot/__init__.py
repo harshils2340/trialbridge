@@ -22,7 +22,8 @@ Public surface:
 """
 
 from . import actions  # noqa: F401
+from . import digest  # noqa: F401
 from .agent import answer  # noqa: F401
 from .web import register  # noqa: F401
 
-__all__ = ["answer", "register", "actions"]
+__all__ = ["answer", "register", "actions", "digest"]

@@ -39,7 +39,9 @@
   var input = document.getElementById('copilotInput');
   var suggestWrap = document.getElementById('copilotSuggest');
   var sendBtn = form.querySelector('button[type="submit"]');
-  var STARTERS = ["Triage my review queue", "Send booking reminders to everyone stuck", "Find my biggest funnel leak"];
+  var STARTERS = (window.BRIDGET_STARTERS && window.BRIDGET_STARTERS.length)
+    ? window.BRIDGET_STARTERS
+    : ["Triage my review queue", "Send booking reminders to everyone stuck", "Find my biggest funnel leak"];
   var busy = false;
 
   function csrf() {
@@ -308,5 +310,9 @@
   // saved choice once the user has toggled it.
   var wide = window.matchMedia('(min-width: 1440px)').matches;
   setOpen(saved === null ? wide : saved === '1');
+
+  // Let any page open Bridget or ask it something (e.g. the Calendar's "Ask AI").
+  window.bridgetOpen = function () { setOpen(true); };
+  window.bridgetAsk = function (q) { setOpen(true); if (q) { setTimeout(function () { ask(q); }, 60); } };
 })();
 </script>

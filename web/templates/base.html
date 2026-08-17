@@ -48,12 +48,13 @@
     </a>
     <nav class="appnav">
       <a href="{{ url_for('study_home') }}" class="{{ 'active' if request.endpoint == 'study_home' }}">{{ ic.icon('grid') }}Dashboard</a>
+      <a href="{{ url_for('calendar_page') }}" class="{{ 'active' if request.endpoint == 'calendar_page' }}">{{ ic.icon('calendar') }}Calendar{% if cal_due %}<span class="appnav-count">{{ cal_due }}</span>{% endif %}</a>
       <a href="{{ url_for('matching_page') }}" class="{{ 'active' if request.endpoint in ['matching_page','match_detail'] }}">{{ ic.icon('crosshair') }}Matches{% if matches_new %}<span class="appnav-count">{{ matches_new }}</span>{% endif %}</a>
       <a href="{{ url_for('leads') }}" class="{{ 'active' if request.endpoint in ['leads','applicant_detail'] }}">{{ ic.icon('user-plus') }}Applicants</a>
       <a href="{{ url_for('campaign_list') }}" class="{{ 'active' if request.endpoint in ['campaign_list','campaign_detail'] }}">{{ ic.icon('megaphone') }}Campaigns</a>
       <a href="{{ url_for('recruitment_dashboard') }}" class="{{ 'active' if request.endpoint in ['recruitment_dashboard','recruitment_balance','recruitment_balance_targets'] }}">{{ ic.icon('activity') }}Recruitment</a>
       <a href="{{ url_for('updates_page') }}" class="{{ 'active' if request.endpoint in ['updates_page','update_detail'] }}">{{ ic.icon('refresh') }}Updates{% if upd_due %}<span class="appnav-count">{{ upd_due }}</span>{% endif %}</a>
-      <a href="{{ url_for('calendar_page') }}" class="{{ 'active' if request.endpoint == 'calendar_page' }}">{{ ic.icon('calendar') }}Calendar{% if cal_due %}<span class="appnav-count">{{ cal_due }}</span>{% endif %}</a>
+      <a href="{{ url_for('soe_page') }}" class="{{ 'active' if request.endpoint == 'soe_page' }}">{{ ic.icon('list') }}Protocol schedule</a>
       <a href="{{ url_for('payments_page') }}" class="{{ 'active' if request.endpoint == 'payments_page' }}">{{ ic.icon('dollar') }}Payments{% if pay_due %}<span class="appnav-count">{{ pay_due }}</span>{% endif %}</a>
       <a href="{{ url_for('site_setup') }}" class="{{ 'active' if request.endpoint in ['site_setup','add_study_claim','remove_study_claim','team_page','team_invite','team_set_role','team_remove','intake_page','intake_import'] }}">{{ ic.icon('gear') }}Settings</a>
       {% if is_owner %}
@@ -150,7 +151,6 @@
 <div class="layout">
   <aside class="sidebar">
     <a class="brand" href="{{ url_for('dashboard') }}">{{ ic.icon('mark', 'brand-glyph') }}BridgeMD</a>
-    {% if demo_available %}<div class="side-pov">{% include "_pov_bar.html" %}</div>{% endif %}
     <nav class="side-nav">
       {# Clinician = the referring physician. They refer their own patients; they
          do NOT see the trial site's incoming applicants. #}
@@ -227,6 +227,7 @@
       form.prepend(input);
     });
   }
+  window.__attachCsrf = attachCsrf;
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', attachCsrf);
   } else {
@@ -301,6 +302,89 @@ document.addEventListener('click', function (e) {
   window.uiCloseModal = function (id) {
     close(id ? document.getElementById(id) : document.querySelector('.ui-modal:not([hidden])'));
   };
+})();
+</script>
+<script>
+/* Stay-in-the-box submits. Any form marked [data-ajax] posts in place: it shows
+   the toast and refreshes ONLY its box/modal, instead of reloading the whole page
+   and dumping you back outside. Used for texting, notes, agendas - anywhere you
+   add to a box and want to keep working. Opt-in via data-ajax so create/navigate
+   flows keep their normal behavior.
+     data-ajax-refresh="<selector>" : element to swap from the fresh page (defaults
+                                      to the containing .ui-modal by id).
+     data-ajax-clear                : inputs to blank after a successful submit. */
+(function () {
+  function toast(msg, cat) {
+    if (!msg) return;
+    var stack = document.querySelector('.toast-stack');
+    if (!stack) { stack = document.createElement('div'); stack.className = 'toast-stack'; document.body.appendChild(stack); }
+    var el = document.createElement('div');
+    el.className = 'flash flash-toast ' + (cat || 'info');
+    var m = document.createElement('span'); m.className = 'toast-msg'; m.textContent = msg;
+    var b = document.createElement('button'); b.type = 'button'; b.className = 'toast-close'; b.setAttribute('aria-label', 'Dismiss'); b.textContent = '×';
+    el.appendChild(m); el.appendChild(b); stack.appendChild(el);
+    b.addEventListener('click', function () { el.remove(); });
+    setTimeout(function () { el.classList.add('toast-hide'); setTimeout(function () { el.remove(); }, 260); }, 4800);
+  }
+  window.uiToast = toast;
+
+  function refresh(form) {
+    var sel = form.getAttribute('data-ajax-refresh');
+    var modal = form.closest('.ui-modal');
+    if (!sel && !(modal && modal.id)) return;
+    // Re-fetch the CURRENT page (where the box lives) - not the server's redirect
+    // target - so the box updates in place and we stay put.
+    fetch(location.href, { credentials: 'same-origin' })
+      .then(function (r) { return r.text(); })
+      .then(function (html) {
+        var doc = new DOMParser().parseFromString(html, 'text/html');
+        if (sel) {
+          var cur = document.querySelector(sel), neu = doc.querySelector(sel);
+          if (cur && neu) cur.innerHTML = neu.innerHTML;
+        } else if (modal && modal.id) {
+          var m2 = doc.getElementById(modal.id);
+          if (m2) { modal.innerHTML = m2.innerHTML; modal.hidden = false; }
+        }
+        if (window.__attachCsrf) window.__attachCsrf();
+        document.querySelectorAll('.thread, .thread-list').forEach(function (t) { t.scrollTop = t.scrollHeight; });
+      }).catch(function () {});
+  }
+
+  document.addEventListener('submit', function (e) {
+    var form = e.target;
+    if (!(form instanceof HTMLFormElement) || !form.matches('[data-ajax]')) return;
+    if ((form.getAttribute('method') || 'get').toLowerCase() !== 'post') return;
+    e.preventDefault();
+    var action = form.getAttribute('action') || location.href;
+    var meta = document.querySelector('meta[name="csrf-token"]');
+    var csrf = meta ? meta.getAttribute('content') : '';
+    var btn = form.querySelector('[type="submit"]');
+    if (btn) btn.disabled = true;
+    fetch(action, {
+      method: 'POST', body: new FormData(form), credentials: 'same-origin',
+      headers: { 'X-BridgeMD-Ajax': '1', 'X-CSRF-Token': csrf }
+    }).then(function (r) {
+      var ct = r.headers.get('Content-Type') || '';
+      if (ct.indexOf('application/json') === -1) { form.removeAttribute('data-ajax'); form.submit(); return null; }
+      return r.json();
+    }).then(function (data) {
+      if (!data) return;
+      if (btn) btn.disabled = false;
+      if (data.ok === false) { toast(data.error || 'Something went wrong. Please retry.', 'error'); return; }
+      // Feedback belongs where the work happens. If the form lives inside an open
+      // overlay/modal, the in-place refresh below already shows the saved state,
+      // so a toast on the main screen (hidden behind the overlay) is just noise.
+      // Suppress it there; only toast for top-level submits. Errors always toast.
+      var inModal = form.closest('.ui-modal');
+      if (data.toast && !inModal) toast(data.toast, data.category);
+      form.querySelectorAll('[data-ajax-clear]').forEach(function (i) { i.value = ''; });
+      if (!form.querySelector('[data-ajax-clear]')) { try { form.reset(); } catch (e) {} }
+      refresh(form);
+    }).catch(function () {
+      if (btn) btn.disabled = false;
+      toast('Something went wrong. Please retry.', 'error');
+    });
+  });
 })();
 </script>
 </body>

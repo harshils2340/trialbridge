@@ -250,7 +250,7 @@
     {% if cur >= 1 or a.messages %}
     <div class="thread" data-thread>
       <div class="thread-head">{{ ic.icon('activity') }} Messages with the study team</div>
-      <ul class="thread-list" data-thread-list>
+      <ul class="thread-list" data-thread-list id="thread-list-{{ ld.id }}">
         {% for m in a.messages %}
         <li class="msg msg-{{ m.sender }}">
           <span class="msg-who">{% if m.sender == 'patient' %}You{% elif m.sender == 'system' %}BridgeMD{% else %}Study team{% endif %}</span>
@@ -262,8 +262,8 @@
       <p class="thread-empty" data-thread-empty {{ 'hidden' if a.messages }}>No messages yet. Ask the study team
         a question - what a visit involves, travel help, timing - anything that would help you decide.</p>
       {% if not is_closed %}
-      <form class="thread-form" method="post" action="{{ url_for('application_message', token=ld.token) }}" data-thread-form>
-        <input type="text" name="body" placeholder="Write a message..." required autocomplete="off" data-thread-input>
+      <form class="thread-form" method="post" action="{{ url_for('application_message', token=ld.token) }}" data-thread-form data-ajax data-ajax-refresh="#thread-list-{{ ld.id }}">
+        <input type="text" name="body" placeholder="Write a message..." required autocomplete="off" data-thread-input data-ajax-clear>
         {{ ui.btn('Send', 'primary', 'sm', type='submit') }}
       </form>
       {% endif %}

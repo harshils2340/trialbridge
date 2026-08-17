@@ -154,8 +154,8 @@
     <p class="thread-empty">No messages yet. A quick, warm first message ("Thanks for applying, here's what
       happens next") is the single biggest thing that keeps candidates from going quiet.</p>
     {% endif %}
-    <form class="thread-form" method="post" action="{{ url_for('candidate_message', token=lead['site_token']) }}">
-      <input type="text" name="body" placeholder="Message the applicant..." required autocomplete="off">
+    <form class="thread-form" method="post" action="{{ url_for('candidate_message', token=lead['site_token']) }}" data-ajax data-ajax-refresh=".thread-list">
+      <input type="text" name="body" placeholder="Message the applicant..." required autocomplete="off" data-ajax-clear>
       <button class="btn btn-primary btn-sm" type="submit">Send</button>
     </form>
   </div>

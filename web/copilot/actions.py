@@ -20,6 +20,13 @@ from . import tools
 BULK_REMINDER_TEXT = ("Friendly reminder to book your screening visit using the "
                       "link we sent - let me know if you need another time.")
 
+# Re-consent nudge. Never states what changed or pressures - just that an updated
+# form exists and will be reviewed together at the visit (IRB/ICF compliant).
+RECONSENT_REMINDER_TEXT = (
+    "Hi - there's an updated consent form for your study. At your next visit "
+    "we'll go through what changed together and re-sign. Reply here anytime if "
+    "you have questions before then.")
+
 
 def build_message_proposal(user_id, lead_id, intent="check_in"):
     """Propose sending a drafted follow-up to one applicant."""
@@ -29,6 +36,9 @@ def build_message_proposal(user_id, lead_id, intent="check_in"):
     if not d["revealed"]:
         return {"blocked": "You can message an applicant once they've been "
                            "accepted (revealed)."}
+    if d.get("opted_out"):
+        return {"blocked": "This applicant has opted out of messages, so I can't "
+                           "send to them."}
     token = db.create_copilot_action(
         user_id, "send_message", lead_id,
         {"text": d["text"], "label": d["label"], "url": d["url"]})
@@ -67,6 +77,22 @@ def build_bulk_reminder_proposal(user_id, days=5):
     return {"kind": "bulk_booking_reminder", "token": token,
             "target": f"{len(ids)} applicant(s) stuck in screening",
             "text": BULK_REMINDER_TEXT, "count": len(ids), "editable": True,
+            "confirm_label": f"Send to {len(ids)}"}
+
+
+def build_reconsent_reminder_proposal(user_id):
+    """Propose a neutral re-consent nudge to everyone with an upcoming re-consent
+    visit (revealed + not opted out). Grounded in the calendar."""
+    ids = tools.reconsent_lead_ids(user_id)
+    if not ids:
+        return {"blocked": "No one has an upcoming re-consent visit I can message "
+                           "right now."}
+    token = db.create_copilot_action(
+        user_id, "reconsent_reminder", None,
+        {"lead_ids": ids, "text": RECONSENT_REMINDER_TEXT, "count": len(ids)})
+    return {"kind": "reconsent_reminder", "token": token,
+            "target": f"{len(ids)} participant(s) due for re-consent",
+            "text": RECONSENT_REMINDER_TEXT, "count": len(ids), "editable": True,
             "confirm_label": f"Send to {len(ids)}"}
 
 

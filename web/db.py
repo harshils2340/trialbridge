@@ -1018,6 +1018,32 @@ CREATE TABLE IF NOT EXISTS patient_matches (
     FOREIGN KEY (user_id) REFERENCES users(id)
 );
 CREATE INDEX IF NOT EXISTS idx_patient_matches_user ON patient_matches(user_id, status);
+
+-- Protocol SCHEDULE OF EVENTS (per study). The visit template a coordinator runs
+-- every participant against: ordered visits, each with a target day relative to
+-- Day 1 (baseline), an allowable window (+/- days), duration, and the procedures
+-- due at that visit. When a participant is enrolled we MATERIALIZE these into real
+-- lead_visits with computed windows, so the calendar can flag out-of-window
+-- (protocol-deviation) risk - no double entry. This is PROTOCOL METADATA, not PHI;
+-- scoped to the site team by user_id + nct. AI can draft it from the protocol PDF.
+-- KPI: Tier-2 efficiency (book a whole schedule once) feeding retention (fewer
+-- missed/out-of-window visits = fewer deviations and dropouts).
+CREATE TABLE IF NOT EXISTS soe_visits (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id       INTEGER NOT NULL,
+    nct           TEXT DEFAULT '',
+    seq           INTEGER DEFAULT 0,          -- display / visit order
+    name          TEXT DEFAULT '',            -- "Screening", "Baseline / Day 1", "Week 4"
+    day_offset    INTEGER DEFAULT 0,          -- target day vs Day 1 (screening negative)
+    window_before INTEGER DEFAULT 0,          -- allowed days early
+    window_after  INTEGER DEFAULT 0,          -- allowed days late
+    duration_min  INTEGER DEFAULT 30,
+    procedures    TEXT DEFAULT '',            -- one procedure per line
+    created_at    TEXT NOT NULL,
+    updated_at    TEXT NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
+CREATE INDEX IF NOT EXISTS idx_soe_user ON soe_visits(user_id, nct, seq);
 """
 
 # Recognized team roles + display labels. 'coordinator' is the admin role.
@@ -1189,6 +1215,12 @@ _MIGRATIONS = {
         "redcap_record_id": "TEXT DEFAULT ''",
         "redcap_survey_status": "TEXT DEFAULT ''",
         "conv_tags": "TEXT DEFAULT ''",
+        # Messaging opt-out: the applicant asked not to be contacted. Honored by
+        # every send path (manual + copilot) before a message goes out. This is a
+        # hard compliance gate (TCPA/CAN-SPAM style); it is set, never cleared,
+        # by an unsubscribe/STOP, and is independent of per-trial consent.
+        "contact_opt_out": "INTEGER DEFAULT 0",
+        "contact_opt_out_at": "TEXT DEFAULT ''",
         # Attribution: which recruitment campaign produced this applicant (NULL
         # for organic/direct). Lets the campaign engine measure cost-per-enrolled.
         "campaign_id": "INTEGER",
@@ -1591,6 +1623,11 @@ def get_user_by_oauth(provider, oauth_sub):
 def get_user(user_id):
     return get_db().execute(
         "SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+
+
+def list_study_team_users():
+    """All study-team users (for scheduled jobs like the daily copilot digest)."""
+    return get_db().execute("SELECT * FROM users ORDER BY id").fetchall()
 
 
 def mark_user_verified(user_id):
@@ -3255,6 +3292,39 @@ def set_lead_schedule(lead_id, url, actor="site"):
     return get_lead(lead_id)
 
 
+def lead_contactable(lead_id):
+    """True if this applicant can be messaged: exists, revealed, not opted out."""
+    lead = get_lead(lead_id)
+    if not lead or not lead["revealed"]:
+        return False
+    try:
+        return not int(lead["contact_opt_out"] or 0)
+    except (KeyError, IndexError, TypeError):
+        return True
+
+
+def set_contact_opt_out(lead_id, opted_out=True, actor="patient"):
+    """Record a messaging opt-out (or clear it). Honored by every send path.
+    Logged on the timeline so the opt-out is auditable."""
+    lead = get_lead(lead_id)
+    if not lead:
+        return None
+    db = get_db()
+    ts = now()
+    db.execute(
+        "UPDATE leads SET contact_opt_out = ?, contact_opt_out_at = ?, "
+        "updated_at = ? WHERE id = ?",
+        (1 if opted_out else 0, ts if opted_out else "", ts, lead_id))
+    db.execute(
+        "INSERT INTO lead_events (lead_id, status, note, actor, created_at) "
+        "VALUES (?,?,?,?,?)",
+        (lead_id, lead["status"],
+         "opted out of messages" if opted_out else "opted back into messages",
+         actor, ts))
+    db.commit()
+    return get_lead(lead_id)
+
+
 def set_lead_video(lead_id, url, actor="site"):
     """Attach a video-call link (Zoom/Google Meet) to a candidate's screening
     visit and log it on the timeline. Returns the lead row (or None)."""
@@ -3642,6 +3712,69 @@ def add_visit(lead_id, visit_at, kind="screening", location="", note="",
          now()))
     db.commit()
     return db.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+
+
+# ---- Schedule of Events (protocol visit template per study) -----------------
+def list_soe_visits(user_id, nct):
+    db = get_db()
+    return db.execute(
+        "SELECT * FROM soe_visits WHERE user_id = ? AND nct = ? "
+        "ORDER BY seq ASC, day_offset ASC, id ASC", (user_id, nct or "")).fetchall()
+
+
+def soe_visit_count(user_id, nct):
+    db = get_db()
+    return db.execute(
+        "SELECT COUNT(*) AS n FROM soe_visits WHERE user_id = ? AND nct = ?",
+        (user_id, nct or "")).fetchone()["n"]
+
+
+def replace_soe_visits(user_id, nct, rows):
+    """Replace a study's whole Schedule of Events (simplest correct save)."""
+    db = get_db()
+    ts = now()
+    db.execute("DELETE FROM soe_visits WHERE user_id = ? AND nct = ?",
+               (user_id, nct or ""))
+    for i, r in enumerate(rows):
+        db.execute(
+            "INSERT INTO soe_visits (user_id, nct, seq, name, day_offset, "
+            "window_before, window_after, duration_min, procedures, created_at, "
+            "updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            (user_id, nct or "", i, (r.get("name") or "").strip(),
+             int(r.get("day_offset") or 0), int(r.get("window_before") or 0),
+             int(r.get("window_after") or 0), int(r.get("duration_min") or 30),
+             (r.get("procedures") or "").strip(), ts, ts))
+    db.commit()
+
+
+def materialize_soe_for_lead(lead_id, user_id, nct, anchor_date):
+    """Create real lead_visits for one participant from the study SoE, anchored at
+    anchor_date (the Day-1 / baseline date). Each visit carries its protocol
+    window so the calendar can flag out-of-window (deviation) risk. Returns the
+    number of visits booked."""
+    import datetime as _dt
+    soe = list_soe_visits(user_id, nct)
+    if not soe:
+        return 0
+    try:
+        base = _dt.datetime.strptime((anchor_date or "")[:10], "%Y-%m-%d").date()
+    except Exception:
+        base = _dt.date.today()
+    n = 0
+    for v in soe:
+        target = base + _dt.timedelta(days=int(v["day_offset"] or 0))
+        w0 = target - _dt.timedelta(days=int(v["window_before"] or 0))
+        w1 = target + _dt.timedelta(days=int(v["window_after"] or 0))
+        add_visit(
+            lead_id, kind="visit",
+            visit_at=f"{target.strftime('%Y-%m-%d')} 09:00",
+            window_start=w0.strftime("%Y-%m-%d"),
+            window_end=w1.strftime("%Y-%m-%d"),
+            duration_min=int(v["duration_min"] or 30),
+            title=v["name"] or "Study visit",
+            agenda=v["procedures"] or "")
+        n += 1
+    return n
 
 
 _RECUR_DAYS = {"weekly": 7, "biweekly": 14, "monthly": 28}

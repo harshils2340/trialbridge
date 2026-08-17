@@ -168,9 +168,10 @@ def _stuck_leads(user_id, days=5):
 
 
 def stuck_lead_ids(user_id, days=5):
-    """Lead ids stuck in screening that can actually be messaged (revealed)."""
+    """Lead ids stuck in screening that can actually be messaged (revealed and
+    not opted out)."""
     return [l["id"] for (l, _n, _i) in _stuck_leads(user_id, days)
-            if _row_get(l, "revealed")]
+            if contactable(l)]
 
 
 def stuck_in_screening(user_id, days=5, limit=8):
@@ -312,6 +313,330 @@ def search_messages(user_id, term, limit=8):
 
 
 # --------------------------------------------------------------------------- #
+# Calendar / visit-prep tools - read the study-visit schedule so Bridget can
+# answer "what do I need to prep?", "what's out of window?", "who needs
+# re-consent?". Grounded in the same visit rows the Calendar page shows; every
+# citation links back to /app/calendar so the human verifies and acts.
+# --------------------------------------------------------------------------- #
+_KIND_LABELS = {
+    "screening": "Screening", "baseline": "Baseline", "treatment": "Treatment",
+    "followup": "Follow-up", "reconsent": "Re-consent", "phone": "Phone check-in",
+    "close": "Close-out",
+}
+
+
+def _visit_flag(row):
+    """Mirror the Calendar page's status flag (overdue / out of window / closing)."""
+    status = (_row_get(row, "status") or "scheduled")
+    if status in ("completed", "cancelled"):
+        return status
+    if status == "missed":
+        return "overdue"
+    now = dt.datetime.now()
+    va = _parse_ts(_row_get(row, "visit_at"))
+    we = _parse_ts(_row_get(row, "window_end"))
+    if va and va < now:
+        return "overdue"
+    if we and va and va > we:
+        return "deviation"
+    if we and va:
+        days = (we.date() - now.date()).days
+        if 0 <= days <= 3:
+            return "closing"
+    return "ok"
+
+
+def _prep_items(row):
+    return [p.strip() for p in (_row_get(row, "prep") or "").splitlines() if p.strip()]
+
+
+def _visit_rows(user_id, back_days=14, ahead_days=45):
+    """All visits across the user's studies in a window (past 2wks .. next 45d)."""
+    if not user_ncts(user_id):
+        return []
+    today = dt.date.today()
+    lo = (today - dt.timedelta(days=back_days)).strftime("%Y-%m-%d %H:%M")
+    hi = (today + dt.timedelta(days=ahead_days)).strftime("%Y-%m-%d 23:59")
+    try:
+        return list(db.list_calendar_visits(user_id, lo, hi))
+    except Exception:
+        return []
+
+
+def _visit_when(row):
+    va = _parse_ts(_row_get(row, "visit_at"))
+    return va.strftime("%a %b %-d, %-I:%M %p") if va else ""
+
+
+def _visit_item(row):
+    return {
+        "who": _row_get(row, "lead_name") or "Participant",
+        "kind": _KIND_LABELS.get(_row_get(row, "kind"), "Visit"),
+        "when": _visit_when(row),
+        "study": _row_get(row, "trial_title") or _row_get(row, "nct") or "",
+        "prep": _prep_items(row),
+        "url": "/app/calendar",
+    }
+
+
+_FLAG_WORD = {"overdue": "past due", "deviation": "booked outside its window",
+              "closing": "window closing soon"}
+
+
+def _n(count, singular, plural=None):
+    """'1 visit' / '3 visits' - plain-English counting, no '(s)'."""
+    return f"{count} {singular if count == 1 else (plural or singular + 's')}"
+
+
+def visit_prep(user_id, when="week"):
+    """Visits with prep to get ready, for today / tomorrow / the next 7 days."""
+    today = dt.date.today()
+    rows = _visit_rows(user_id)
+    if when == "today":
+        keep = [r for r in rows if (_parse_ts(_row_get(r, "visit_at")) or dt.datetime.max).date() == today]
+        span = "today"
+    elif when == "tomorrow":
+        tom = today + dt.timedelta(days=1)
+        keep = [r for r in rows if (_parse_ts(_row_get(r, "visit_at")) or dt.datetime.max).date() == tom]
+        span = "tomorrow"
+    else:
+        end = today + dt.timedelta(days=7)
+        keep = [r for r in rows
+                if today <= (_parse_ts(_row_get(r, "visit_at")) or dt.datetime.max).date() <= end]
+        span = "in the next 7 days"
+    keep = [r for r in keep if _visit_flag(r) not in ("cancelled",)]
+    keep.sort(key=lambda r: _row_get(r, "visit_at"))
+    if not keep:
+        return {"summary": f"You have no visits scheduled {span}.",
+                "items": [], "citations": []}
+    with_prep = [r for r in keep if _prep_items(r)]
+    items = [_visit_item(r) for r in keep[:10]]
+    lines = [f"You have {_n(len(keep), 'visit')} {span}."]
+    if with_prep:
+        verb = "has" if len(with_prep) == 1 else "have"
+        lines.append(f"{_n(len(with_prep), 'visit')} {verb} a prep checklist to "
+                     "send or complete beforehand.")
+    return {
+        "summary": " ".join(lines),
+        "items": items,
+        "citations": [{"label": "Calendar", "url": "/app/calendar"}],
+    }
+
+
+def visits_out_of_window(user_id):
+    """Visits that are overdue, booked outside the protocol window, or closing."""
+    rows = _visit_rows(user_id)
+    flagged = [(r, _visit_flag(r)) for r in rows]
+    hits = [(r, f) for r, f in flagged if f in ("overdue", "deviation", "closing")]
+    order = {"deviation": 0, "overdue": 1, "closing": 2}
+    hits.sort(key=lambda t: (order.get(t[1], 9), _row_get(t[0], "visit_at")))
+    if not hits:
+        return {"summary": "Every visit is inside its protocol window - nothing "
+                "overdue or out of window right now.", "items": [], "citations": []}
+    items = []
+    for r, f in hits[:10]:
+        it = _visit_item(r)
+        it["issue"] = _FLAG_WORD.get(f, f)
+        items.append(it)
+    verb = "needs" if len(hits) == 1 else "need"
+    return {
+        "summary": (f"{_n(len(hits), 'visit')} {verb} attention: overdue, out of "
+                    "protocol window, or with a window closing in the next few days."),
+        "items": items,
+        "citations": [{"label": "Calendar", "url": "/app/calendar"}],
+    }
+
+
+def reconsent_due(user_id):
+    """Upcoming re-consent visits (e.g. after a protocol/ICF amendment)."""
+    today = dt.date.today()
+    rows = _visit_rows(user_id)
+    hits = [r for r in rows
+            if _row_get(r, "kind") == "reconsent"
+            and (_parse_ts(_row_get(r, "visit_at")) or dt.datetime.min).date() >= today]
+    hits.sort(key=lambda r: _row_get(r, "visit_at"))
+    if not hits:
+        return {"summary": "No re-consent visits are on the calendar right now.",
+                "items": [], "citations": []}
+    verb = "has" if len(hits) == 1 else "have"
+    return {
+        "summary": (f"{_n(len(hits), 'participant')} {verb} a re-consent visit "
+                    "coming up. Make sure the current ICF version is ready for "
+                    "each one."),
+        "items": [_visit_item(r) for r in hits[:10]],
+        "citations": [{"label": "Calendar", "url": "/app/calendar"}],
+    }
+
+
+def contactable(lead):
+    """A revealed lead who has not opted out of contact. The single gate every
+    copilot send path checks before messaging anyone (compliance)."""
+    if not _row_get(lead, "revealed"):
+        return False
+    return not int(_row_get(lead, "contact_opt_out", 0) or 0)
+
+
+def reconsent_lead_ids(user_id):
+    """Revealed, contactable participants with an upcoming re-consent visit."""
+    today = dt.date.today()
+    ids, seen = [], set()
+    for r in _visit_rows(user_id):
+        if _row_get(r, "kind") != "reconsent":
+            continue
+        va = _parse_ts(_row_get(r, "visit_at"))
+        if not va or va.date() < today:
+            continue
+        lid = _row_get(r, "lead_id")
+        if not lid or lid in seen:
+            continue
+        seen.add(lid)
+        lead = own_lead(user_id, lid)
+        if lead and contactable(lead):
+            ids.append(int(lid))
+    return ids
+
+
+def week_schedule(user_id):
+    """A plain summary of the next 7 days plus anything needing attention."""
+    prep = visit_prep(user_id, "week")
+    window = visits_out_of_window(user_id)
+    n_attn = len(window["items"])
+    summary = prep["summary"]
+    if n_attn:
+        summary += f" {n_attn} of them need attention (overdue or protocol window)."
+    return {"summary": summary, "items": prep["items"],
+            "citations": [{"label": "Calendar", "url": "/app/calendar"}]}
+
+
+# --------------------------------------------------------------------------- #
+# Paperwork tools - documents, campaigns, and record matches. These widen what
+# Bridget is "connected to" beyond the applicant queue and the calendar, so the
+# same grounded-answer contract covers the admin surfaces a coordinator lives in.
+# --------------------------------------------------------------------------- #
+_DOC_ACTIONABLE = ("pending", "in_review", "returned")
+
+
+def documents_overview(user_id, limit=8):
+    """Study documents that need action: pending review, returned, or due soon.
+    Grounded in the same document vault the Documents page shows."""
+    try:
+        docs = list(db.list_documents(user_id))
+    except Exception:
+        docs = []
+    if not docs:
+        return {"summary": "No study documents are on file yet.",
+                "items": [], "citations": []}
+    today = dt.date.today()
+    actionable = []
+    for d in docs:
+        status = _row_get(d, "status") or "pending"
+        due = _parse_ts(_row_get(d, "due_at"))
+        due_days = (due.date() - today).days if due else None
+        overdue = due_days is not None and due_days < 0
+        soon = due_days is not None and 0 <= due_days <= 7
+        if status in _DOC_ACTIONABLE or overdue or soon:
+            actionable.append((d, status, due_days, overdue))
+    # Overdue first, then soonest due, then pending.
+    actionable.sort(key=lambda t: (not t[3], t[2] if t[2] is not None else 999))
+    if not actionable:
+        return {"summary": f"All {len(docs)} documents are current - nothing "
+                "pending, returned, or due this week.", "items": [],
+                "citations": [{"label": "Documents", "url": "/app/documents"}]}
+    items = []
+    for d, status, due_days, overdue in actionable[:limit]:
+        if overdue:
+            why = f"overdue by {_n(abs(due_days), 'day')}"
+        elif due_days is not None:
+            why = "due today" if due_days == 0 else f"due in {_n(due_days, 'day')}"
+        else:
+            why = status.replace("_", " ")
+        items.append({
+            "title": _row_get(d, "title") or _row_get(d, "doc_type") or "Document",
+            "status": status, "version": _row_get(d, "version"),
+            "party": _row_get(d, "party_name") or _row_get(d, "party"),
+            "study": _row_get(d, "nct"), "why": why, "url": "/app/documents"})
+    n_over = sum(1 for _d, _s, _dd, ov in actionable if ov)
+    lead = f"{_n(len(actionable), 'document')} need attention"
+    if n_over:
+        lead += f", {n_over} overdue"
+    return {
+        "summary": lead + ". Clearing these keeps sponsor and IRB paperwork "
+                   "current so visits aren't held up.",
+        "items": items,
+        "citations": [{"label": "Documents", "url": "/app/documents"}],
+    }
+
+
+def campaign_performance(user_id, limit=6):
+    """Which recruitment channels actually produce enrolled patients, by
+    cost-per-enrolled. Read off the real attributed pipeline."""
+    try:
+        perf = db.campaign_performance(user_id, ncts=user_ncts(user_id))
+    except Exception:
+        perf = []
+    live = [c for c in perf if c.get("applicants")]
+    if not live:
+        return {"summary": "No campaigns have produced attributed applicants yet.",
+                "items": [], "citations": [{"label": "Campaigns",
+                                            "url": "/app/campaigns"}]}
+    # Best channel = lowest cost per enrolled (campaigns with enrollments first).
+    def _key(c):
+        cpe = c.get("cost_per_enrolled")
+        return (cpe is None, cpe if cpe is not None else 0)
+    ranked = sorted(live, key=_key)
+    items = []
+    for c in ranked[:limit]:
+        items.append({
+            "name": c.get("name"), "channel": c.get("channel"),
+            "applicants": c.get("applicants", 0), "enrolled": c.get("enrolled", 0),
+            "spend_usd": c.get("spend_usd", 0),
+            "cost_per_enrolled": c.get("cost_per_enrolled"),
+            "cost_per_applicant": c.get("cost_per_applicant"),
+            "url": "/app/campaigns"})
+    best = next((c for c in ranked if c.get("enrolled")), None)
+    total_app = sum(c.get("applicants", 0) for c in live)
+    total_enr = sum(c.get("enrolled", 0) for c in live)
+    parts = [f"{_n(len(live), 'campaign')} running: {total_app} applicants, "
+             f"{total_enr} enrolled."]
+    if best and best.get("cost_per_enrolled") is not None:
+        parts.append(f"Best value is {best['name']} at "
+                     f"${best['cost_per_enrolled']:,.0f} per enrolled - lean spend there.")
+    return {
+        "summary": " ".join(parts),
+        "items": items,
+        "citations": [{"label": "Campaigns", "url": "/app/campaigns"}],
+    }
+
+
+def record_matches(user_id, limit=8):
+    """New pre-screened candidates surfaced from the clinic's own records."""
+    try:
+        counts = db.patient_match_counts(user_id)
+        new = db.list_patient_matches(user_id, status="new")
+    except Exception:
+        counts, new = {"new": 0}, []
+    if not new:
+        return {"summary": "No new candidate matches from your records right now.",
+                "items": [], "citations": [{"label": "Matches",
+                                            "url": "/app/matches"}]}
+    items = []
+    for m in new[:limit]:
+        items.append({
+            "code": _row_get(m, "display_name") or _row_get(m, "label")
+                    or f"Record #{_row_get(m, 'id')}",
+            "score": _row_get(m, "score", 0),
+            "study": _row_get(m, "title") or _row_get(m, "nct"),
+            "url": "/app/matches"})
+    return {
+        "summary": (f"{_n(int(counts.get('new', len(new))), 'new candidate')} "
+                    "matched from your records and ready to review. Reviewing and "
+                    "reaching out is the top of your funnel."),
+        "items": items,
+        "citations": [{"label": "Matches", "url": "/app/matches"}],
+    }
+
+
+# --------------------------------------------------------------------------- #
 # Draft tool (proposes text; never sends - a human confirms in the thread)
 # --------------------------------------------------------------------------- #
 _DRAFT_TEMPLATES = {
@@ -343,4 +668,5 @@ def message_draft(user_id, lead_id, intent="check_in"):
             key = k
             break
     return {"text": _DRAFT_TEMPLATES[key].format(name=name),
-            "label": label(lead), "url": _url(lead), "revealed": revealed}
+            "label": label(lead), "url": _url(lead), "revealed": revealed,
+            "opted_out": bool(int(_row_get(lead, "contact_opt_out", 0) or 0))}

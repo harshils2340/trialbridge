@@ -1,0 +1,149 @@
+{% extends "public_base.html" %}
+{% import "_icons.html" as ic %}
+
+{% block title %}{{ post.title }}: BridgeMD{% endblock %}
+{% block description %}{{ post.dek|striptags|truncate(155, true) }}{% endblock %}
+{% block og_title %}{{ post.title }}{% endblock %}
+{% block og_description %}{{ post.dek|striptags|truncate(200, true) }}{% endblock %}
+
+{% block head_extra %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": {{ post.title|tojson }},
+  "description": {{ (post.dek|striptags)|tojson }},
+  "datePublished": {{ post.date|tojson }},
+  "author": {"@type": "Organization", "name": "BridgeMD"},
+  "publisher": {"@type": "Organization", "name": "BridgeMD"},
+  "mainEntityOfPage": {{ request.url|tojson }}
+}
+</script>
+{% endblock %}
+
+{% block body %}
+<div class="blog-wrap">
+  <article class="blog-article">
+    <header class="blog-art-head">
+      <a class="fp-back" href="{{ url_for('blog_index') }}">{{ ic.icon('arrow-left') }} Resources</a>
+      <span class="blog-tag">{{ post.tag }}</span>
+      <h1>{{ post.title }}</h1>
+      <p class="blog-art-dek">{{ post.dek }}</p>
+      <div class="blog-art-meta">
+        <span>{{ post.author }}</span>
+        <span aria-hidden="true">·</span>
+        <span>{{ post.date_h }}</span>
+        <span aria-hidden="true">·</span>
+        <span>{{ post.read }} min read</span>
+      </div>
+    </header>
+
+    <div class="blog-body">
+      {{ post.body|safe }}
+    </div>
+
+    {% if post.sources %}
+    <aside class="blog-sources">
+      <h2>{{ ic.icon('list') }} Sources</h2>
+      <ul>
+        {% for s in post.sources %}<li>{{ s }}</li>{% endfor %}
+      </ul>
+      <p class="blog-sources-note">These are third-party sources for context and
+        verification. BridgeMD is not the study sponsor and this is not medical advice.</p>
+    </aside>
+    {% endif %}
+
+    <div class="blog-postnav">
+      {% if post.prev_slug %}
+      <a class="blog-postnav-a" href="{{ url_for('blog_post', slug=post.prev_slug) }}">
+        <span>{{ ic.icon('arrow-left') }} Newer</span><b>{{ post.prev_title }}</b></a>
+      {% else %}<span></span>{% endif %}
+      {% if post.next_slug %}
+      <a class="blog-postnav-a is-next" href="{{ url_for('blog_post', slug=post.next_slug) }}">
+        <span>Older {{ ic.icon('arrow-right') }}</span><b>{{ post.next_title }}</b></a>
+      {% else %}<span></span>{% endif %}
+    </div>
+  </article>
+
+  {# Right rail: fills the horizontal space with a contents jump-list + a CTA
+     that converts a reader into a search/applicant (found -> contacted). #}
+  <aside class="blog-rail" aria-label="Article sidebar">
+    <nav class="blog-toc" id="blogToc" hidden>
+      <div class="blog-rail-h">On this page</div>
+      <ul></ul>
+    </nav>
+    <div class="blog-rail-cta">
+      {% if post.audience == 'patient' %}
+      <div class="blog-rail-h">Find a trial</div>
+      <p>Search recruiting trials near you. Free and private - you decide when a study team can contact you.</p>
+      <a class="fs-btn fs-btn-primary" href="{{ url_for('home') }}">Find trials {{ ic.icon('arrow-right') }}</a>
+      {% else %}
+      <div class="blog-rail-h">See BridgeMD</div>
+      <p>Run intake, scheduling, documents, sponsor updates and reporting in one place.</p>
+      <a class="fs-btn fs-btn-primary" href="{{ url_for('for_sites') }}#demo">See it work {{ ic.icon('arrow-right') }}</a>
+      {% endif %}
+    </div>
+  </aside>
+</div>
+
+<div class="blog-cta blog-cta-inline">
+    {% if post.audience == 'patient' %}
+    <div>
+      <h2>Search with this context.</h2>
+      <p>Find recruiting trials near you, read the study details, and apply only
+        when you want the site to contact you.</p>
+    </div>
+    <div class="fs-cta">
+      <a class="fs-btn fs-btn-primary" href="{{ url_for('home') }}">Find trials {{ ic.icon('arrow-right') }}</a>
+      <a class="fs-btn fs-btn-ghost" href="{{ url_for('trials_index') }}">Browse trials</a>
+    </div>
+    {% else %}
+    <div>
+      <h2>Run this in one place.</h2>
+      <p>BridgeMD helps sites manage intake, pre-screening, scheduling, documents,
+        sponsor updates, and reporting in one place.</p>
+    </div>
+    <div class="fs-cta">
+      <a class="fs-btn fs-btn-primary" href="{{ url_for('for_sites') }}#demo">See it work {{ ic.icon('arrow-right') }}</a>
+      <a class="fs-btn fs-btn-ghost" href="{{ cal_link }}" target="_blank" rel="noopener">Book a demo</a>
+    </div>
+    {% endif %}
+  </div>
+
+<script>
+(function () {
+  var body = document.querySelector('.blog-body');
+  var toc = document.getElementById('blogToc');
+  if (!body || !toc) return;
+  var hs = body.querySelectorAll('h2');
+  if (hs.length < 2) return;
+  var ul = toc.querySelector('ul');
+  var links = [];
+  hs.forEach(function (h, i) {
+    if (!h.id) {
+      h.id = 'sec-' + (h.textContent || ('s' + i)).toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) + '-' + i;
+    }
+    var li = document.createElement('li');
+    var a = document.createElement('a');
+    a.href = '#' + h.id; a.textContent = h.textContent;
+    li.appendChild(a); ul.appendChild(li); links.push(a);
+  });
+  toc.hidden = false;
+  // Scrollspy: highlight the section you're reading.
+  if ('IntersectionObserver' in window) {
+    var byId = {};
+    links.forEach(function (a) { byId[a.getAttribute('href').slice(1)] = a; });
+    var obs = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (e.isIntersecting) {
+          links.forEach(function (a) { a.classList.remove('is-active'); });
+          var a = byId[e.target.id]; if (a) a.classList.add('is-active');
+        }
+      });
+    }, { rootMargin: '0px 0px -75% 0px', threshold: 0 });
+    hs.forEach(function (h) { obs.observe(h); });
+  }
+})();
+</script>
+{% endblock %}

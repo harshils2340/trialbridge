@@ -30,6 +30,7 @@
         </div>
       </div>
       <a href="{{ hub }}#demo">See it work</a>
+      <a href="{{ url_for('blog_index') }}">Resources</a>
       <a href="{{ hub }}#security">Security</a>
       <a href="{{ hub }}#contact">Contact</a>
     </nav>
@@ -55,7 +56,7 @@
       {% endfor %}
       <p class="fs-sheet-l">More</p>
       <a class="fs-sheet-row" href="{{ hub }}#demo">See it work</a>
-      <a class="fs-sheet-row" href="{{ hub }}#demo">See it in the product</a>
+      <a class="fs-sheet-row" href="{{ url_for('blog_index') }}">Resources</a>
       <a class="fs-sheet-row" href="{{ hub }}#security">Security &amp; legal</a>
       <a class="fs-sheet-row" href="{{ hub }}#contact">Contact</a>
       <a class="fs-sheet-row" href="{{ url_for('login') }}">Sign in</a>
@@ -130,6 +131,7 @@
       {% for f in sites_nav_features %}
       <a href="{{ url_for('for_sites_feature', slug=f.slug) }}">{{ f.nav }}</a>
       {% endfor %}
+      <a href="{{ url_for('blog_index') }}">Resources</a>
       <a href="{{ hub }}#security">Security</a>
       <a href="{{ url_for('login') }}">Sign in</a>
       <a href="{{ url_for('privacy') }}">Privacy</a>

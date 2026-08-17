@@ -16,7 +16,6 @@
 <div class="app-head">
   <div>
     <h1>Calendar</h1>
-    <p>Your study visits, with protocol windows and reminders.</p>
   </div>
   <div style="display:flex;gap:8px;align-items:center;">
     {% if sync and sync.connected %}
@@ -36,37 +35,18 @@
 
 <div class="cal-toolbar">
   <div class="cal-nav">
-    <a class="cal-arrow" href="{{ url_for('calendar_page', m=prev_month, view=view) }}" aria-label="Previous month">{{ ic.icon('chevron-left') }}</a>
-    <b class="cal-month">{{ month_label }}</b>
-    <a class="cal-arrow" href="{{ url_for('calendar_page', m=next_month, view=view) }}" aria-label="Next month">{{ ic.icon('chevron-right') }}</a>
-    {% if month_key != today_key %}<a class="cal-today-link" href="{{ url_for('calendar_page', view=view) }}">Today</a>{% endif %}
+    <a class="cal-arrow" href="{{ cal_prev }}" aria-label="Previous">{{ ic.icon('chevron-left') }}</a>
+    <a class="cal-arrow" href="{{ cal_next }}" aria-label="Next">{{ ic.icon('chevron-right') }}</a>
+    {% if show_today %}<a class="cal-today-link" href="{{ cal_today }}">Today</a>{% endif %}
+    <b class="cal-month">{{ range_label }}</b>
   </div>
-  <div class="cal-toggle">
-    <a href="{{ url_for('calendar_page', m=month_key, view='month') }}">{{ ui.chip('Month', active=(view=='month'), icon='grid') }}</a>
-    <a href="{{ url_for('calendar_page', m=month_key, view='agenda') }}">{{ ui.chip('Agenda', active=(view=='agenda'), icon='list') }}</a>
+  <div class="cal-toggle cal-seg">
+    <a href="{{ switch_urls.day }}" class="cal-seg-i{{ ' is-on' if view=='day' }}">Day</a>
+    <a href="{{ switch_urls.week }}" class="cal-seg-i{{ ' is-on' if view=='week' }}">Week</a>
+    <a href="{{ switch_urls.month }}" class="cal-seg-i{{ ' is-on' if view=='month' }}">Month</a>
+    <a href="{{ switch_urls.agenda }}" class="cal-seg-i{{ ' is-on' if view=='agenda' }}">Agenda</a>
   </div>
 </div>
-
-{% if attention %}
-<details class="cal-attn">
-  <summary class="cal-attn-sum">
-    <span class="cal-attn-sum-l">{{ ic.icon('alert') }} <b>{{ attention|length }}</b> need attention</span>
-    <span class="cal-attn-sum-names">{{ attention[:3] | map(attribute='lead_name') | join(', ') }}{% if attention|length > 3 %} +{{ attention|length - 3 }} more{% endif %}</span>
-    <span class="cal-attn-sum-cta">Review {{ ic.icon('chevron-down') }}</span>
-  </summary>
-  <div class="cal-attn-rows">
-    {% for v in attention[:8] %}
-    <button type="button" class="cal-attn-row" data-ui-open="visit-{{ v.id }}">
-      <span class="cal-attn-flag cal-flag-{{ v.flag }}">
-        {% if v.flag == 'overdue' %}Overdue{% elif v.flag == 'deviation' %}Out of window{% else %}Window closing{% endif %}
-      </span>
-      <span class="cal-attn-who"><b>{{ v.lead_name }}</b> · {{ v.kind_label }}</span>
-      <span class="cal-attn-when">{{ v.date }} · {{ v.time_label }}{% if v.flag_label %} — {{ v.flag_label }}{% endif %}</span>
-    </button>
-    {% endfor %}
-  </div>
-</details>
-{% endif %}
 
 {% if view == 'month' %}
 <div class="app-card cal-wrap">
@@ -76,11 +56,11 @@
   {% for week in grid %}
   <div class="cal-grid">
     {% for cell in week %}
-    <div class="cal-cell{{ ' is-out' if not cell.in_month }}{{ ' is-today' if cell.is_today }}">
+    <div class="cal-cell{{ ' is-out' if not cell.in_month }}{{ ' is-today' if cell.is_today }}" data-date="{{ cell.date }}">
       <div class="cal-daynum">{{ cell.day }}</div>
       <div class="cal-events">
         {% for v in cell.visits[:3] %}
-        <button type="button" class="cal-ev cal-k-{{ v.kind }} cal-flag-{{ v.flag }}" data-ui-open="visit-{{ v.id }}" title="{{ v.time_label }} · {{ v.lead_name }} · {{ v.kind_label }}">
+        <button type="button" class="cal-ev cal-k-{{ v.kind }} cal-flag-{{ v.flag }}" data-ui-open="visit-{{ v.id }}" style="--tcolor:{{ trial_color.get(v.nct, 'var(--accent)') }};" title="{{ v.time_label }} · {{ v.lead_name }} · {{ v.kind_label }} · {{ v.trial_title }}">
           <span class="cal-ev-dot"></span>
           <span class="cal-ev-t">{{ v.time_label }}</span>
           <span class="cal-ev-n">{{ v.lead_name }}</span>
@@ -93,6 +73,49 @@
   </div>
   {% endfor %}
 </div>
+{% elif view in ('week', 'day') %}
+<div class="app-card cal-tl cal-tl-{{ view }}">
+  <div class="cal-tl-head" style="grid-template-columns:56px repeat({{ tl_days|length }}, 1fr);">
+    <div class="cal-tl-gutter-h"></div>
+    {% for d in tl_days %}
+    <a class="cal-tl-dh{{ ' is-today' if d.is_today }}" href="{{ url_for('calendar_page', d=d.date, view='day') }}">
+      <span class="cal-tl-dow">{{ d.dow }}</span>
+      <span class="cal-tl-dnum">{{ d.day }}</span>
+      {% if d.count %}<span class="cal-tl-dcount">{{ d.count }}</span>{% endif %}
+    </a>
+    {% endfor %}
+  </div>
+  <div class="cal-tl-body" style="grid-template-columns:56px repeat({{ tl_days|length }}, 1fr);height:{{ grid_px }}px;"
+       data-daystart="{{ cal_hours[0].h if cal_hours else 7 }}" data-px="{{ px_per_hour }}">
+    <div class="cal-tl-gutter">
+      {% for h in cal_hours %}
+      <div class="cal-tl-hr" style="height:{{ px_per_hour }}px;"><span>{{ h.label }}</span></div>
+      {% endfor %}
+    </div>
+    {% for d in tl_days %}
+    <div class="cal-tl-col{{ ' is-today' if d.is_today }}" data-date="{{ d.date }}" title="Click a time to book a visit">
+      {% for h in cal_hours %}<div class="cal-tl-line" style="height:{{ px_per_hour }}px;"></div>{% endfor %}
+      <div class="cal-tl-ghost" hidden></div>
+      {% if d.is_today and now_top is not none %}
+      <div class="cal-tl-now" style="top:{{ now_top }}px;"><span class="cal-tl-now-dot"></span></div>
+      {% endif %}
+      {% for e in d.events %}
+      {% set v = e.v %}
+      <button type="button" class="cal-tl-ev cal-k-{{ v.kind }} cal-flag-{{ v.flag }}"
+        data-ui-open="visit-{{ v.id }}"
+        style="top:{{ e.top }}px;height:{{ e.height }}px;left:calc({{ e.left }}% + 3px);width:calc({{ e.width }}% - 6px);--tcolor:{{ trial_color.get(v.nct, 'var(--accent)') }};"
+        title="{{ v.time_label }} · {{ v.lead_name }} · {{ v.kind_label }}">
+        <span class="cal-tl-ev-bar"></span>
+        <span class="cal-tl-ev-in">
+          <b class="cal-tl-ev-name">{{ v.lead_name }}</b>
+          <span class="cal-tl-ev-meta">{{ v.time_label }} · {{ v.kind_label }}{% if v.prep %} <span class="cal-tl-ev-prep">· {{ v.prep|length }} prep</span>{% endif %}</span>
+        </span>
+      </button>
+      {% endfor %}
+    </div>
+    {% endfor %}
+  </div>
+</div>
 {% else %}
 <div class="app-card">
   {% if not agenda %}
@@ -104,7 +127,7 @@
       <span class="cal-ag-date">
         <b>{{ v.date[8:10] }}</b><span>{{ v.date[5:7] }}</span>
       </span>
-      <span class="cal-ag-dot cal-k-{{ v.kind }}"></span>
+      <span class="cal-ag-dot" style="background:{{ trial_color.get(v.nct, 'var(--accent)') }}"></span>
       <span class="cal-ag-main">
         <span class="cal-ag-top"><b>{{ v.lead_name }}</b> · {{ v.kind_label }}
           {% if v.flag in ('overdue','deviation','closing') %}<em class="cal-flag-{{ v.flag }} cal-ag-flag">{{ v.flag_label }}</em>{% endif %}
@@ -123,18 +146,30 @@
 
 {# ---- New visit modal ---- #}
 {% call ui.modal('cal-new', 'New visit', icon='plus') %}
-<form method="post" action="{{ url_for('calendar_book') }}" class="cal-form">
+<form method="post" action="{{ url_for('calendar_book') }}" class="cal-form" autocomplete="off">
   <input type="hidden" name="m" value="{{ month_key }}">
   <input type="hidden" name="view" value="{{ view }}">
   <input type="hidden" name="nct" value="{{ nct_filter }}">
   {% if not bookable %}
   <p class="cal-hint">Reveal an applicant first (from Applicants) to book them a visit.</p>
   {% else %}
-  <div class="field"><label>Applicant</label>
-    <select name="lead_id" required>
-      <option value="">Choose an applicant…</option>
-      {% for b in bookable %}<option value="{{ b.id }}">{{ b.name }} — {{ b.title }}</option>{% endfor %}
-    </select>
+  <div class="field cal-combo" id="cal-combo">
+    <label>Applicant</label>
+    <input type="hidden" name="lead_id" id="cal-lead-id">
+    <input type="text" id="cal-combo-input" class="cal-combo-input" role="combobox"
+           aria-expanded="false" autocomplete="off"
+           placeholder="Type a name to search{% if nct_filter %} this trial{% endif %}…">
+    <div class="cal-combo-list" id="cal-combo-list" hidden>
+      {% for b in bookable %}
+      <button type="button" class="cal-combo-opt" data-id="{{ b.id }}"
+              data-name="{{ b.name }}" data-phone="{{ b.phone }}"
+              data-search="{{ (b.name ~ ' ' ~ b.title)|lower }}">
+        <span class="cal-combo-sw" style="background:{{ b.color }}"></span>
+        <span class="cal-combo-main"><b>{{ b.name }}</b><span>{{ b.title }}</span></span>
+      </button>
+      {% endfor %}
+    </div>
+    <p class="cal-combo-empty" id="cal-combo-empty" hidden>No matching applicants.</p>
   </div>
   <div class="row">
     <div class="field"><label>Date</label><input type="date" name="date" required></div>
@@ -150,7 +185,19 @@
     <div class="field"><label>Window opens <span class="cal-hint">optional</span></label><input type="date" name="window_start"></div>
     <div class="field"><label>Window closes</label><input type="date" name="window_end"></div>
   </div>
-  <div class="field"><label>Location</label><input type="text" name="location" placeholder="Study site, room, or video link"></div>
+  <div class="field cal-where">
+    <label>Where</label>
+    <div class="cal-mode" role="group" aria-label="Visit format">
+      <button type="button" class="cal-mode-i is-on" data-mode="inperson">{{ ic.icon('pin') }} In person</button>
+      <button type="button" class="cal-mode-i" data-mode="phone">{{ ic.icon('phone') }} Phone</button>
+      <button type="button" class="cal-mode-i" data-mode="zoom">{{ ic.icon('video') }} Zoom</button>
+      <button type="button" class="cal-mode-i" data-mode="meet">{{ ic.icon('video') }} Google Meet</button>
+    </div>
+    <input type="text" name="location" id="cal-loc" placeholder="Study site or room"
+           autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+           data-lpignore="true" data-form-type="other">
+    <p class="cal-where-hint" id="cal-where-hint" hidden></p>
+  </div>
   <div class="field"><label>Prep checklist <span class="cal-hint">one item per line — sent to the patient</span></label>
     <textarea name="prep" rows="3" placeholder="Fast 8 hours before&#10;Bring your medication list"></textarea>
   </div>
@@ -223,6 +270,204 @@
     else { try { document.execCommand('copy'); done(); } catch (e) {} }
   });
 })();
+</script>
+
+{# Calendar-flavoured starters for Bridget (the OS-wide agent in the right rail),
+   and wire the header "Ask AI" button to open it. Bridget answers visit-prep,
+   protocol-window and re-consent questions grounded in this schedule. #}
+<script>
+  window.BRIDGET_STARTERS = [
+    "What should I prep for tomorrow?",
+    "Which visits are outside their protocol window?",
+    "Who needs re-consent soon?",
+    "What's on my schedule this week?"
+  ];
+
+  // ---- Click a time slot (week/day) or a day (month) to book a visit ----
+  (function () {
+    function pad(n) { return (n < 10 ? '0' : '') + n; }
+    function openBooking(date, time) {
+      var f = document.querySelector('.cal-form');
+      if (!f) { if (window.uiOpenModal) window.uiOpenModal('cal-new'); return; }
+      var d = f.querySelector('input[name="date"]');
+      var t = f.querySelector('input[name="time"]');
+      if (d && date) d.value = date;
+      if (t && time) t.value = time;
+      if (window.uiOpenModal) window.uiOpenModal('cal-new');
+      var inp = document.getElementById('cal-combo-input');
+      setTimeout(function () { if (inp) inp.focus(); }, 120);
+    }
+
+    var body = document.querySelector('.cal-tl-body');
+    if (body) {
+      var dayStart = parseInt(body.getAttribute('data-daystart') || '7', 10);
+      var px = parseInt(body.getAttribute('data-px') || '46', 10);
+      var ghost = null;
+      function slotFromEvent(col, clientY) {
+        var rect = col.getBoundingClientRect();
+        var y = clientY - rect.top;
+        var mins = dayStart * 60 + (y / px) * 60;
+        mins = Math.round(mins / 15) * 15;               // snap to 15 min
+        mins = Math.max(dayStart * 60, Math.min(mins, 24 * 60 - 15));
+        return mins;
+      }
+      body.addEventListener('mousemove', function (e) {
+        var col = e.target.closest('.cal-tl-col');
+        if (!col || e.target.closest('.cal-tl-ev')) {
+          if (ghost) { ghost.hidden = true; ghost = null; }
+          return;
+        }
+        var g = col.querySelector('.cal-tl-ghost');
+        if (!g) return;
+        if (ghost && ghost !== g) ghost.hidden = true;
+        ghost = g;
+        var mins = slotFromEvent(col, e.clientY);
+        g.style.top = ((mins - dayStart * 60) / 60 * px) + 'px';
+        g.style.height = (px / 2 - 2) + 'px';            // 30-min preview
+        g.hidden = false;
+      });
+      body.addEventListener('mouseleave', function () {
+        if (ghost) { ghost.hidden = true; ghost = null; }
+      });
+      body.addEventListener('click', function (e) {
+        var col = e.target.closest('.cal-tl-col');
+        if (!col || e.target.closest('.cal-tl-ev')) return;
+        var mins = slotFromEvent(col, e.clientY);
+        openBooking(col.getAttribute('data-date'), pad(Math.floor(mins / 60)) + ':' + pad(mins % 60));
+      });
+    }
+
+    // Month: click empty part of a day cell to book that day at 9:00 AM.
+    document.querySelectorAll('.cal-cell[data-date]').forEach(function (cell) {
+      cell.addEventListener('click', function (e) {
+        if (e.target.closest('.cal-ev') || e.target.closest('.cal-more')) return;
+        openBooking(cell.getAttribute('data-date'), '09:00');
+      });
+    });
+
+    // Start the scroll near "now" (or the first visit); fall back to ~7 AM so an
+    // empty day opens on the working hours, not midnight (like Google Calendar).
+    if (body) {
+      var anchor = body.querySelector('.cal-tl-now') || body.querySelector('.cal-tl-ev');
+      var top = anchor ? (parseFloat(anchor.style.top) || 0) : (7 * px);
+      body.scrollTop = Math.max(0, top - 90);
+    }
+  })();
+
+  // ---- Searchable applicant picker in the New visit modal ----
+  (function () {
+    var wrap = document.getElementById('cal-combo');
+    if (!wrap) return;
+    var input = document.getElementById('cal-combo-input');
+    var hidden = document.getElementById('cal-lead-id');
+    var list = document.getElementById('cal-combo-list');
+    var empty = document.getElementById('cal-combo-empty');
+    var opts = Array.prototype.slice.call(list.querySelectorAll('.cal-combo-opt'));
+    var active = -1;
+
+    function open() { list.hidden = false; input.setAttribute('aria-expanded', 'true'); }
+    function close() { list.hidden = true; input.setAttribute('aria-expanded', 'false'); active = -1; setActive(); }
+    function visible() { return opts.filter(function (o) { return !o.hidden; }); }
+    function setActive() {
+      opts.forEach(function (o) { o.classList.remove('is-active'); });
+      var v = visible();
+      if (active >= 0 && active < v.length) {
+        v[active].classList.add('is-active');
+        v[active].scrollIntoView({ block: 'nearest' });
+      }
+    }
+    function filter() {
+      var q = input.value.trim().toLowerCase();
+      // Don't obstruct the form: keep the list closed until the user types.
+      if (!q) { empty.hidden = true; close(); return; }
+      var shown = 0;
+      opts.forEach(function (o) {
+        var hit = o.getAttribute('data-search').indexOf(q) >= 0;
+        o.hidden = !hit; if (hit) shown++;
+      });
+      empty.hidden = shown > 0;
+      active = -1; setActive(); open();
+    }
+    function pick(o) {
+      hidden.value = o.getAttribute('data-id');
+      hidden.dataset.phone = o.getAttribute('data-phone') || '';
+      input.value = o.getAttribute('data-name');
+      close();
+      if (window.calWhereOnApplicant) window.calWhereOnApplicant();
+    }
+
+    input.addEventListener('focus', function () { if (input.value.trim()) filter(); });
+    input.addEventListener('input', function () { hidden.value = ''; filter(); });
+    input.addEventListener('keydown', function (e) {
+      var v = visible();
+      if (e.key === 'ArrowDown') { if (!input.value.trim()) return; e.preventDefault(); active = Math.min(active + 1, v.length - 1); setActive(); open(); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); active = Math.max(active - 1, 0); setActive(); }
+      else if (e.key === 'Enter') { if (!list.hidden && active >= 0 && v[active]) { e.preventDefault(); pick(v[active]); } }
+      else if (e.key === 'Escape') { close(); }
+    });
+    list.addEventListener('click', function (e) {
+      var o = e.target.closest('.cal-combo-opt'); if (o) pick(o);
+    });
+    document.addEventListener('click', function (e) {
+      if (!wrap.contains(e.target)) close();
+    });
+    // Guard submit: hidden lead_id must be set (a real applicant chosen).
+    var form = wrap.closest('form');
+    if (form) form.addEventListener('submit', function (e) {
+      if (!hidden.value) {
+        e.preventDefault();
+        input.focus(); empty.hidden = false;
+        empty.textContent = 'Pick an applicant from the list.';
+      }
+    });
+  })();
+
+  // ---- Visit format: In person / Phone / Zoom / Google Meet ----
+  (function () {
+    var chips = Array.prototype.slice.call(document.querySelectorAll('.cal-mode-i'));
+    var loc = document.getElementById('cal-loc');
+    var hint = document.getElementById('cal-where-hint');
+    var lead = document.getElementById('cal-lead-id');
+    if (!chips.length || !loc) return;
+    var autofilled = '';  // last value we set, so we don't clobber typed text
+    var CFG = {
+      inperson: { type: 'text',  ph: 'Study site or room', hint: '' },
+      phone:    { type: 'tel',   ph: 'Patient phone number',
+                  hint: 'The patient will be called at this number.' },
+      zoom:     { type: 'url',   ph: 'Paste the Zoom meeting link',
+                  hint: 'Sent to the patient with their reminder.' },
+      meet:     { type: 'url',   ph: 'Paste the Google Meet link',
+                  hint: 'Sent to the patient with their reminder.' }
+    };
+    function mode() { var on = document.querySelector('.cal-mode-i.is-on'); return on ? on.getAttribute('data-mode') : 'inperson'; }
+    function apply(m, focusIt) {
+      var c = CFG[m] || CFG.inperson;
+      loc.type = c.type; loc.placeholder = c.ph;
+      hint.textContent = c.hint; hint.hidden = !c.hint;
+      // Only auto-fill / clear the field if the user hasn't typed their own value.
+      if (loc.value === '' || loc.value === autofilled) {
+        if (m === 'phone') {
+          var ph = (lead && lead.dataset.phone) || '';
+          loc.value = ph; autofilled = ph;
+          if (!ph) { hint.textContent = 'No phone on file — type one, or pick an applicant first.'; }
+        } else {
+          loc.value = ''; autofilled = '';
+        }
+      }
+      if (focusIt) loc.focus();
+    }
+    chips.forEach(function (ch) {
+      ch.addEventListener('click', function () {
+        chips.forEach(function (x) { x.classList.remove('is-on'); });
+        ch.classList.add('is-on');
+        apply(ch.getAttribute('data-mode'), true);
+      });
+    });
+    // When an applicant is chosen and Phone is the active mode, fill their number.
+    window.calWhereOnApplicant = function () {
+      if (mode() === 'phone') apply('phone', false);
+    };
+  })();
 </script>
 
 {# ---- Shared visit-detail overlay (same as the dashboard) ---- #}

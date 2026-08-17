@@ -220,8 +220,8 @@
         <button type="button" class="ui-chip" data-msg="Are you still available for your screening visit? If not, we can easily reschedule.">Reschedule</button>
         <button type="button" class="ui-chip" data-msg="Thanks so much - we've received everything we need for now and will follow up with next steps shortly.">Thanks</button>
       </div>
-      <form method="post" action="{{ url_for('message_lead', lead_id=l['id']) }}" class="composer">
-        <textarea name="body" id="composerBody" placeholder="Write a message…" required></textarea>
+      <form method="post" action="{{ url_for('message_lead', lead_id=l['id']) }}" class="composer" data-ajax data-ajax-refresh=".thread">
+        <textarea name="body" id="composerBody" placeholder="Write a message…" required data-ajax-clear></textarea>
         <div class="bar">
           <span class="bar-sp sp"></span>
           {{ ui.btn('Send', 'primary', 'sm', type='submit', icon='send') }}
@@ -288,8 +288,8 @@
         <div class="app-sub" style="font-size:13px;color:var(--faint);">No notes yet. Jot context only your team sees.</div>
         {% endfor %}
       </div>
-      <form method="post" action="{{ url_for('add_lead_note', lead_id=l['id']) }}" class="note-form">
-        <textarea name="body" placeholder="Add a private note…" required></textarea>
+      <form method="post" action="{{ url_for('add_lead_note', lead_id=l['id']) }}" class="note-form" data-ajax data-ajax-refresh=".note-list">
+        <textarea name="body" placeholder="Add a private note…" required data-ajax-clear></textarea>
         {{ ui.btn('Add note', 'ghost', 'sm', type='submit', icon='plus') }}
       </form>
     </div>

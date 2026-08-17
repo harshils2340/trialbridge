@@ -232,27 +232,24 @@
   {# ── Right rail ── #}
   <div>
     <div class="app-card pad" id="upcoming" style="margin-bottom:16px;">
-      <div class="rail-h rail-h-link">
-        <a href="{{ url_for('calendar_page') }}">{{ ic.icon('calendar') }} Schedule</a>
-        <span class="rail-h-meta">
-          {% if sched_today %}<b>{{ sched_today }}</b> today{% endif %}
-          {% if sched_attn %}<span class="rail-attn">{{ ic.icon('alert') }} {{ sched_attn }}</span>{% endif %}
-        </span>
+      {{ ui.btn('Open calendar', 'primary', size='block', icon='calendar', href=url_for('calendar_page')) }}
+      <div class="rail-glance">
+        {% if sched_today %}<span><b>{{ sched_today }}</b> today</span>{% else %}<span>Nothing today</span>{% endif %}
+        {% if sched_attn %}<a href="{{ url_for('calendar_page') }}" class="rail-attn">{{ ic.icon('alert') }} {{ sched_attn }} need attention</a>{% endif %}
       </div>
       {% if not schedule %}
-      <div class="app-sub" style="font-size:13px;color:var(--faint);">No visits booked in the next two weeks. <a href="{{ url_for('calendar_page') }}">Open calendar</a> to book one.</div>
+      <div class="app-sub" style="font-size:13px;color:var(--faint);margin-top:6px;">No visits booked in the next two weeks.</div>
       {% else %}
-      {% for c in schedule %}
+      {% for c in schedule[:4] %}
       <button type="button" class="rail-item rail-link" data-ui-open="visit-{{ c.visit_id }}">
         <span class="accent-bar accent-{{ c.flag }}"></span>
         <div>
-          <div class="t">{{ c.day }} · {{ c.time }}{% if c.flag in ('overdue','deviation','closing') %} <span class="rail-flag rail-flag-{{ c.flag }}">{{ c.flag_label }}</span>{% endif %}</div>
+          <div class="t">{{ c.day }} · {{ c.time }}</div>
           <div class="p">{{ c.name }}</div>
           <div class="s">{{ c.kind }}</div>
         </div>
       </button>
       {% endfor %}
-      <a href="{{ url_for('calendar_page') }}" class="rail-more">Open calendar →</a>
       {% endif %}
     </div>
 

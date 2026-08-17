@@ -102,6 +102,7 @@
     <a href="{{ url_for('find') }}">Find a trial</a>
     <a href="{{ url_for('trials_index') }}">Browse trials</a>
     <a href="{{ url_for('how_it_works') }}">How it works</a>
+    <a href="{{ url_for('blog_index') }}">Learn</a>
     <a href="{{ sites_home_url }}">For sites</a>
     <a href="{{ url_for('alerts') }}" class="pub-nav-alerts">{{ ic.icon('bell') }} Alerts{% if alerts_new_count %} <span class="nav-badge nav-badge-new">{{ alerts_new_count }}</span>{% endif %}</a>
   </nav>
@@ -130,11 +131,6 @@
   </div>
 </header>
 {% endblock %}
-{% if demo_available and request.endpoint not in ('for_sites', 'for_sites_feature') and (request.endpoint == 'home' or (not patient_user and not user)) %}
-<div class="pub-nav-tools">
-  {% include "_pov_bar.html" %}
-</div>
-{% endif %}
 <div class="toast-stack">
   {% with messages = get_flashed_messages(with_categories=true) %}
     {% for cat, msg in messages %}
@@ -156,16 +152,11 @@
       <span>{{ ic.icon('mark', 'brand-glyph brand-glyph-sm brand-blue') }}BridgeMD</span>
       <span class="pub-foot-note">Connecting people to the care that's looking for them.</span>
     </div>
-    <div class="pub-foot-tools">
-      {% if demo_available and request.endpoint != 'home' and (not patient_user and not user) %}
-      {% include "_pov_bar.html" %}
-      {% endif %}
-    </div>
   </div>
   <div class="pub-foot-legal">
     <p class="pub-foot-disc">Information and trial-matching tool - not medical advice, and not the study
       sponsor. Trial details come from ClinicalTrials.gov; the study team decides eligibility.</p>
-    <p class="pub-foot-links"><a href="{{ url_for('trials_index') }}">Browse trials</a> · <a href="{{ url_for('privacy') }}">Privacy</a> · <a href="{{ url_for('terms') }}">Terms</a></p>
+    <p class="pub-foot-links"><a href="{{ url_for('trials_index') }}">Browse trials</a> · <a href="{{ url_for('blog_index') }}">Learn</a> · <a href="{{ url_for('privacy') }}">Privacy</a> · <a href="{{ url_for('terms') }}">Terms</a></p>
   </div>
 </footer>
 {% endblock %}
