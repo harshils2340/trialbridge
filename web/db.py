@@ -4779,6 +4779,22 @@ def _demo_lead_specs():
         ("William", "Perry", "male", "51", "screening", 1, "aze"),
         ("Scarlett", "Klein", "female", "53", "eligible", 1, "sel"),
         ("Michael", "Torres", "male", "59", "enrolled", 1, "trd"),
+        # More fresh inbound requests (prescreen) so the "New" queue reads busy
+        # across every trial, not a couple of stragglers.
+        ("Nora", "Whitfield", "female", "34", "prescreen", 1, "aze"),
+        ("Elijah", "Barnes", "male", "45", "prescreen", 0, "sel"),
+        ("Priya", "Nair", "female", "29", "prescreen", 1, "mig"),
+        ("Caleb", "Fisher", "male", "57", "prescreen", 0, "trd"),
+        ("Maya", "Stein", "female", "42", "prescreen", 1, "aze"),
+        ("Oscar", "Delgado", "male", "39", "prescreen", 1, "mig"),
+        ("Ruth", "Abramson", "female", "61", "prescreen", 0, "sel"),
+        ("Simon", "Yang", "male", "47", "prescreen", 1, "trd"),
+        ("Talia", "Rosenthal", "female", "31", "prescreen", 1, "aze"),
+        ("Devon", "Pierce", "male", "53", "prescreen", 0, "mig"),
+        ("Hannah", "Blum", "female", "38", "prescreen", 1, "sel"),
+        ("Andre", "Costa", "male", "44", "prescreen", 1, "aze"),
+        ("Vera", "Lindqvist", "female", "50", "prescreen", 0, "trd"),
+        ("Marco", "Santos", "male", "36", "prescreen", 1, "mig"),
     ]
     extra = [(f, l, sx, ag, st, rc, _S[k][0], _S[k][1], _S[k][2], loc, site)
              for (f, l, sx, ag, st, rc, k) in _rows]

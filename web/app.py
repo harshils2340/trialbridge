@@ -6538,7 +6538,7 @@ def study_home():
     recon = db.latest_reconciliation_for_leads([r["id"] for r in rows])
     items = [_decode_lead(r, recon.get(r["id"])) for r in rows]
     _seed_demo_replies_if_demo(items)
-    now = dt.datetime.now()
+    now = _user_now()
     QUIET_DAYS = 3
 
     def _parse_ts(ts):
@@ -7765,7 +7765,19 @@ def _seed_demo_calendar_if_demo(items):
     if not (_demo_mode_enabled() or _is_demo_account(g.user)
             or _site_demo_enabled()):
         return
-    now_dt = dt.datetime.now()
+    # Wait until the browser has reported its timezone (set on first paint, then a
+    # one-time reload). Seeding before that would anchor "today" to the server's
+    # UTC day and leave the viewer's timeline empty. On a non-UTC dev host,
+    # server-local time already matches the viewer, so seed right away.
+    if request and not (request.cookies.get("tz") or request.cookies.get("tzoff")):
+        server_is_utc = abs(
+            (dt.datetime.now() - dt.datetime.utcnow()).total_seconds()) < 60
+        if server_is_utc:
+            return
+    # Seed relative to the VIEWER's clock so "today's" visits land on the day the
+    # viewer actually sees (a UTC server would otherwise seed onto the wrong day
+    # near midnight, leaving the home timeline empty).
+    now_dt = _user_now()
     cands = [it["lead"] for it in items
              if it["lead"]["revealed"] and it["lead"]["status"] not in db.LEAD_CLOSED]
     if not cands:
@@ -7777,20 +7789,64 @@ def _seed_demo_calendar_if_demo(items):
     # the Next-up card and the "in X min" countdown never go blank as the demo DB
     # ages past its seeded hours. Only tops up when nothing is still ahead today.
     try:
+        sod = now_dt.replace(hour=0, minute=0, second=0, microsecond=0)
         eod = now_dt.replace(hour=23, minute=59, second=0, microsecond=0)
-        todays = db.list_calendar_visits(
-            g.user["id"], now_dt.strftime("%Y-%m-%d %H:%M"),
+        todays = [v for v in db.list_calendar_visits(
+            g.user["id"], sod.strftime("%Y-%m-%d %H:%M"),
             eod.strftime("%Y-%m-%d %H:%M"))
-        if not any((v["status"] or "scheduled") == "scheduled" for v in todays):
-            soon = (now_dt + dt.timedelta(minutes=25)).replace(second=0, microsecond=0)
-            db.add_visit(
-                cands[0]["id"], soon.strftime("%Y-%m-%d %H:%M"), kind="followup",
-                location=cands[0]["site"] or "Study site",
-                prep="Bring your symptom diary",
-                agenda="Review symptom diary\nAssess adverse events since last visit\nConfirm next visit",
-                duration_min=30)
+            if (v["status"] or "scheduled") == "scheduled"]
+        # Fill TODAY with a believable spread (a few done, one imminent, a few
+        # ahead) so the home "Today" timeline reads like a live clinic day rather
+        # than one lonely block. Tops up only what's missing; idempotent once
+        # today already has enough. These are TODAY-only (no future rows) so they
+        # can't pile up over time. Relative to the viewer's clock.
+        TODAY_TARGET = 6
+        if len(todays) < TODAY_TARGET:
+            taken = set()
+            for v in todays:
+                d = _cal_parse_dt(v["visit_at"])
+                if d:
+                    taken.add(d.hour)
+            # Absolute working-day slots (9am-5pm) so the day is full regardless of
+            # when the viewer opens it: earlier ones read as done, later ones as
+            # upcoming. Not now-relative, so an evening viewer still sees a real
+            # clinic day rather than an empty track.
+            _fill = [
+                (9.0, "screening", "Bring a photo ID and insurance card"),
+                (10.5, "treatment", "Arrive 15 minutes early for vitals"),
+                (12.0, "followup", "Bring your symptom diary"),
+                (13.5, "screening", "Bring a photo ID and insurance card"),
+                (15.0, "baseline", "Wear loose sleeves for a blood draw"),
+                (16.5, "followup", "Bring your symptom diary"),
+                (17.5, "treatment", "Arrive 15 minutes early for vitals"),
+            ]
+            _ag = {
+                "screening": "Confirm inclusion/exclusion criteria\nReview medical & med history\nCollect baseline vitals",
+                "treatment": "Administer study drug + record dose\nPre/post vitals\nLog any adverse events",
+                "followup": "Review symptom diary\nAssess adverse events since last visit\nConfirm next visit",
+                "baseline": "Verify signed consent on file\nBaseline labs, ECG, and vitals\nDispense study diary",
+            }
+            ci = 0
+            for h, knd, prep in _fill:
+                if len(todays) >= TODAY_TARGET:
+                    break
+                hh = int(h)
+                mm = 30 if (h - hh) >= 0.5 else 0
+                if hh in taken:
+                    continue
+                taken.add(hh)
+                lead = cands[ci % len(cands)]
+                ci += 1
+                when = now_dt.replace(hour=hh, minute=mm, second=0, microsecond=0)
+                dur = 60 if knd in ("baseline", "treatment") else 30
+                db.add_visit(
+                    lead["id"], when.strftime("%Y-%m-%d %H:%M"), kind=knd,
+                    location=lead["site"] or "Study site", prep=prep,
+                    agenda=_ag.get(knd, ""), duration_min=dur)
+                todays.append({"visit_at": when.strftime("%Y-%m-%d %H:%M"),
+                               "status": "scheduled"})
     except Exception:
-        pass
+        app.logger.exception("demo today-fill failed")
 
     try:
         # Big protocol-shaped seed only when few future visits exist, so the
