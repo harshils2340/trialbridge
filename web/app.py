@@ -85,6 +85,9 @@ copilot.register(app)
 # Short, plain-English card teaser (deterministic) available in every template.
 app.jinja_env.globals["card_blurb"] = summarize.card_blurb
 app.jinja_env.globals["patient_card_title"] = summarize.patient_card_title
+# Display filter: normalizes "shouty acronym" CT.gov titles (e.g. "REducing
+# ouTcOmes") without touching the stored value. Use as {{ title|tidy_title }}.
+app.jinja_env.filters["tidy_title"] = summarize.tidy_title
 
 
 def _patient_why(text):
@@ -1440,7 +1443,8 @@ def inject_globals():
             upd_due = 0
         try:
             active_nct, _studies = _active_scope()
-            nav_studies = [{"nct": s["nct"], "title": s["title"] or s["nct"]}
+            nav_studies = [{"nct": s["nct"],
+                            "title": summarize.tidy_title(s["title"]) or s["nct"]}
                            for s in _studies]
             active_study_label = _scope_label(active_nct, nav_studies)
         except Exception:

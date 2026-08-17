@@ -117,6 +117,34 @@ def tidy(text):
     return t
 
 
+def tidy_title(text):
+    """Clean a study title for display.
+
+    ClinicalTrials.gov official titles often embed the trial ACRONYM by
+    SHOUTING the letters mid-word - e.g. "RESTORE: REducing Future fractureS and
+    Improving ouTcOmes of fRagility fracturE". That reads like typos. This
+    normalizes those "shouty" words to lowercase while PRESERVING genuine
+    acronyms (all-caps words like RESTORE, MDD, COPD), roman numerals, and normal
+    Title-case / lowercase words. Display-only: the stored title is untouched."""
+    if not text:
+        return ""
+    t = tidy(text)
+
+    def fix_word(w):
+        core = re.sub(r"[^A-Za-z]", "", w)
+        if len(core) <= 1:
+            return w                       # single letter / punctuation-only
+        if core.isupper():
+            return w                       # real acronym: RESTORE, MDD, EOS, II
+        # A capital letter anywhere after the first char = a mid-word shout
+        # (REducing, fractureS, ouTcOmes, fRagility). Lowercase the whole word.
+        if any(c.isupper() for c in core[1:]):
+            return w.lower()
+        return w                           # already Title-case or lowercase
+
+    return " ".join(fix_word(w) for w in t.split())
+
+
 def _sentences(text):
     return [s.strip() for s in re.split(r"(?<=[.!?])\s+", text) if s.strip()]
 
