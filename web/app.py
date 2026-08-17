@@ -7624,6 +7624,12 @@ def calendar_visit_status(visit_id):
         if queued:
             msg += (f" {payments_mod.format_cents(queued['amount_cents'], queued['currency'])}"
                     " stipend queued for the participant.")
+        # If this completes the whole protocol schedule, queue any completion
+        # lump sum too (idempotent per participant).
+        done = _maybe_queue_completion_payment(lead)
+        if done:
+            msg += (f" {payments_mod.format_cents(done['amount_cents'], done['currency'])}"
+                    " completion stipend queued.")
     flash(msg, "ok")
     return redirect(_cal_back())
 
@@ -7719,6 +7725,60 @@ def _auto_queue_visit_payment(visit, lead):
                 "currency": rule["currency"]}
     except Exception:
         app.logger.exception("auto payment queue failed")
+        return None
+
+
+def _completion_payment_exists(lead_id):
+    """A completion lump sum already logged for this participant (idempotency)."""
+    try:
+        for p in db.list_payments(g.user["id"]):
+            if p["lead_id"] == lead_id and p["kind"] == "completion" \
+                    and p["status"] != "void":
+                return True
+    except Exception:
+        pass
+    return False
+
+
+def _maybe_queue_completion_payment(lead, withdrawn=False):
+    """Queue a lump-sum completion stipend for a participant.
+
+    Fires when a participant has completed every protocol visit, or - if the rule
+    is set to prorate - a partial amount when they withdraw early (completed /
+    total protocol visits). Idempotent per participant. Requires an active,
+    IRB-approved completion rule for the trial. Returns the created payment dict
+    or None. Compliance: pays for participation actually completed, never a bonus
+    for enrolling (COMPLIANCE.md sec 5)."""
+    try:
+        rule = db.find_active_completion_rule(g.user["id"], lead["nct"])
+        if not rule or not rule["irb_approved"] or (rule["amount_cents"] or 0) <= 0:
+            return None
+        if _completion_payment_exists(lead["id"]):
+            return None
+        total = db.soe_visit_count(g.user["id"], lead["nct"])
+        done = db.completed_visit_count(lead["id"])
+        full = rule["amount_cents"] or 0
+        if withdrawn:
+            if not rule["prorate"] or total <= 0 or done <= 0:
+                return None  # no full payout on early withdrawal unless prorating
+            amount = int(round(full * min(done, total) / total))
+            label = f"{rule['label']} (prorated {done}/{total} visits)"
+        else:
+            # Full completion: only once the whole schedule is done.
+            if total <= 0 or done < total:
+                return None
+            amount, label = full, rule["label"]
+        if amount <= 0:
+            return None
+        pid = db.create_payment(
+            lead["id"], lead["nct"], amount, kind="completion", label=label,
+            rule_id=rule["id"], currency=rule["currency"], method=rule["method"],
+            status="queued", created_by="system",
+            note=("Auto-queued on early withdrawal (prorated)" if withdrawn
+                  else "Auto-queued on study completion"))
+        return {"id": pid, "amount_cents": amount, "currency": rule["currency"]}
+    except Exception:
+        app.logger.exception("completion payment queue failed")
         return None
 
 
@@ -8028,6 +8088,10 @@ def payments_page():
             "amount": payments_mod.format_cents(r["amount_cents"], r["currency"]),
             "amount_cents": r["amount_cents"] or 0, "currency": r["currency"],
             "status": r["status"], "method": r["method"],
+            "method_label": payments_mod.method_label(r["method"]),
+            "ptype": ("travel" if r["kind"] == "travel"
+                      else "completion" if r["kind"] == "completion"
+                      else "stipend"),
             "provider_ref": r["provider_ref"] or "",
             "date": str(r["created_at"])[:10],
             "ytd": payments_mod.format_cents(total, r["currency"]),
@@ -8051,14 +8115,35 @@ def payments_page():
     rules = [dict(x) for x in db.list_payment_rules(g.user["id"], nct_filter or None)]
     for rl in rules:
         rl["amount"] = payments_mod.format_cents(rl["amount_cents"], rl["currency"])
+        rl["rule_type"] = rl.get("rule_type") or "visit"
+        rl["type_label"] = payments_mod.payout_mode_label(rl["rule_type"])
+        rl["method_label"] = payments_mod.method_label(rl["method"])
 
     team_studies = db.list_team_studies(g.user["id"])
     trials = [{"nct": s["nct"], "title": s["title"] or s["nct"]} for s in team_studies]
+
+    # Participants for the ad-hoc reimbursement picker (open leads in the scoped
+    # study/studies).
+    participants = []
+    for lr in db.list_leads_for_user(g.user["id"]):
+        if lr["status"] in db.LEAD_CLOSED:
+            continue
+        if nct_filter and lr["nct"] != nct_filter:
+            continue
+        participants.append({"id": lr["id"],
+                             "name": lr["name"] or f"Participant #{lr['id']}",
+                             "nct": lr["nct"]})
+
+    # Whether the active study has a Schedule of Events (enables one-click setup).
+    soe_ready = bool(nct_filter) and db.soe_visit_count(g.user["id"], nct_filter) > 0
 
     return render_template(
         "payments.html",
         payments=payments, needs_action=needs_action, rules=rules,
         trials=trials, nct_filter=nct_filter, visit_kinds=_VISIT_KINDS,
+        methods=payments_mod.METHODS, payout_modes=payments_mod.PAYOUT_MODES,
+        phase_templates=PHASE_TEMPLATES, participants=participants,
+        soe_ready=soe_ready,
         provider_label=payments_mod.provider_label(),
         provider_live=payments_mod.provider_is_live(),
         threshold=payments_mod.format_cents(thr),
@@ -8079,12 +8164,25 @@ def payments_rule_save():
     if nct and nct not in db.user_claimed_ncts(g.user["id"]):
         flash("Pick a study you run.", "error")
         return redirect(url_for("payments_page"))
-    kind = request.form.get("kind") or "screening"
-    label = (request.form.get("label") or "").strip() or \
-        f"{_VISIT_KIND_LABELS.get(kind, kind).title()} - time & travel"
+    rule_type = request.form.get("rule_type") or "visit"
+    if rule_type not in ("visit", "completion", "travel"):
+        rule_type = "visit"
+    # Completion lump sums are not tied to a specific visit kind; tag them so they
+    # don't collide with per-visit auto-queue lookups.
+    kind = ("completion" if rule_type == "completion"
+            else "travel" if rule_type == "travel"
+            else (request.form.get("kind") or "screening"))
+    _default_label = {
+        "completion": "Study completion stipend",
+        "travel": "Travel & expense reimbursement",
+    }.get(rule_type, f"{_VISIT_KIND_LABELS.get(kind, kind).title()} - time & travel")
+    label = (request.form.get("label") or "").strip() or _default_label
     amount_cents = _dollars_to_cents(request.form.get("amount"))
     currency = request.form.get("currency") or "USD"
     method = request.form.get("method") or "gift_card"
+    if method not in payments_mod.METHOD_LABELS:
+        method = "gift_card"
+    prorate = 1 if (rule_type == "completion" and request.form.get("prorate")) else 0
     irb = 1 if request.form.get("irb_approved") else 0
     irb_note = (request.form.get("irb_note") or "").strip()
     if amount_cents <= 0:
@@ -8096,12 +8194,14 @@ def payments_rule_save():
             abort(404)
         db.update_payment_rule(rule_id, kind=kind, label=label,
                                amount_cents=amount_cents, currency=currency,
-                               method=method, irb_approved=irb, irb_note=irb_note)
+                               method=method, irb_approved=irb, irb_note=irb_note,
+                               rule_type=rule_type, prorate=prorate)
         flash("Payment rule updated.", "ok")
     else:
         db.add_payment_rule(g.user["id"], nct, kind, label, amount_cents,
                             currency=currency, method=method, irb_approved=irb,
-                            irb_note=irb_note)
+                            irb_note=irb_note, rule_type=rule_type,
+                            prorate=prorate)
         flash("Payment rule added." + ("" if irb else
               " Attest IRB approval before it can auto-issue."), "ok")
     return redirect(url_for("payments_page", nct=nct or None))
@@ -8180,6 +8280,82 @@ def payments_w9(lead_id):
     return redirect(url_for("payments_page"))
 
 
+# Starter per-visit amounts (USD) by trial phase, so a coordinator can one-click
+# a sensible baseline and then adjust to their IRB-approved schedule. These are
+# prefill suggestions only - the IRB-approved amount is always the source of
+# truth and must be attested before a rule can auto-issue.
+PHASE_TEMPLATES = [
+    {"id": "phase1", "label": "Phase 1 (healthy volunteer)",
+     "amounts": {"screening": 75, "baseline": 150, "treatment": 250,
+                 "followup": 100, "reconsent": 50, "phone": 25, "close": 100}},
+    {"id": "phase2", "label": "Phase 2 (patient)",
+     "amounts": {"screening": 75, "baseline": 100, "treatment": 125,
+                 "followup": 75, "reconsent": 50, "phone": 25, "close": 75}},
+    {"id": "phase3", "label": "Phase 3 (patient)",
+     "amounts": {"screening": 50, "baseline": 75, "treatment": 100,
+                 "followup": 60, "reconsent": 50, "phone": 20, "close": 60}},
+    {"id": "device", "label": "Device / observational",
+     "amounts": {"screening": 40, "baseline": 60, "treatment": 75,
+                 "followup": 50, "reconsent": 40, "phone": 20, "close": 50}},
+]
+
+
+@app.route("/app/payments/rules/from-soe", methods=["POST"])
+@login_required
+def payments_rules_from_soe():
+    """One-click: draft a per-visit stipend rule for every visit in the study's
+    Schedule of Events. Amounts start at 0 and IRB is unattested, so the
+    coordinator sets the approved amount and attests before anything auto-issues.
+    KPI: Tier-2 - stand up a whole payment schedule in one click instead of one
+    rule at a time (setup cycle time)."""
+    nct = (request.form.get("nct") or "").strip()
+    if not nct or nct not in db.user_claimed_ncts(g.user["id"]):
+        flash("Pick a study you run.", "error")
+        return redirect(url_for("payments_page"))
+    if db.soe_visit_count(g.user["id"], nct) == 0:
+        flash("Build the Schedule of Events for this study first, then generate "
+              "payment rules from it.", "error")
+        return redirect(url_for("payments_page", nct=nct or None))
+    n = db.generate_payment_rules_from_soe(g.user["id"], nct)
+    if n:
+        flash(f"Added {n} draft rule{'s' if n != 1 else ''} from the Schedule of "
+              "Events. Set each amount and attest IRB approval to activate.", "ok")
+    else:
+        flash("Every Schedule of Events visit already has a rule.", "ok")
+    return redirect(url_for("payments_page", nct=nct or None))
+
+
+@app.route("/app/payments/reimbursement", methods=["POST"])
+@login_required
+def payments_reimbursement():
+    """Log an ad-hoc travel/expense reimbursement for a participant (receipt
+    based). Goes through the same ledger + 1099/W-9 + issue path as a stipend, but
+    is tagged 'travel' so it is clearly a reimbursement, never a pay-to-enroll
+    incentive (COMPLIANCE.md sec 5)."""
+    lead_id = request.form.get("lead_id", type=int)
+    lead = db.get_lead(lead_id) if lead_id else None
+    if not lead or lead["nct"] not in db.user_claimed_ncts(g.user["id"]):
+        flash("Pick a participant in a study you run.", "error")
+        return redirect(url_for("payments_page"))
+    amount_cents = _dollars_to_cents(request.form.get("amount"))
+    if amount_cents <= 0:
+        flash("Enter a reimbursement amount greater than zero.", "error")
+        return redirect(url_for("payments_page"))
+    method = request.form.get("method") or "manual"
+    if method not in payments_mod.METHOD_LABELS:
+        method = "gift_card"
+    receipt = (request.form.get("receipt") or "").strip()
+    label = (request.form.get("label") or "").strip() or "Travel & expense reimbursement"
+    note = "Receipt: " + receipt if receipt else "Ad-hoc reimbursement"
+    db.create_payment(
+        lead["id"], lead["nct"], amount_cents, kind="travel", label=label,
+        currency=request.form.get("currency") or "USD", method=method,
+        status="queued", created_by="you", note=note)
+    flash(f"Reimbursement of {payments_mod.format_cents(amount_cents)} queued for "
+          f"{lead['name'] or 'the participant'}.", "ok")
+    return redirect(url_for("payments_page"))
+
+
 def _seed_demo_payments_if_demo():
     """Seed IRB-approved payment rules + a realistic ledger (queued, issued, one
     participant near the 1099 threshold) so Payments reads as a live workflow.
@@ -8198,21 +8374,30 @@ def _seed_demo_payments_if_demo():
     # Rules: a stipend schedule per trial (IRB-approved). Seed for EVERY claimed
     # trial (not just the first few) and only for kinds a trial is missing, so the
     # schedule is never empty when the page is scoped to a single study.
-    rule_specs = [("screening", "Screening visit - time & travel", 7500),
-                  ("baseline", "Baseline visit - time & travel", 7500),
-                  ("followup", "Follow-up visit - time & travel", 5000)]
+    # Show the range of payout structures + methods a real site uses: per-visit
+    # stipends on varied rails, plus a completion lump sum that prorates on early
+    # withdrawal. (kind, label, cents, method, rule_type, prorate)
+    rule_specs = [
+        ("screening", "Screening visit - time & travel", 7500, "gift_card",
+         "visit", 0),
+        ("baseline", "Baseline visit - time & travel", 7500, "prepaid_card",
+         "visit", 0),
+        ("followup", "Follow-up visit - time & travel", 5000, "ach", "visit", 0),
+        ("completion", "Study completion stipend", 10000, "check",
+         "completion", 1)]
     for nct in ncts:
         try:
             have = {r["kind"] for r in db.list_payment_rules(g.user["id"], nct)}
         except Exception:
             have = set()
-        for kind, label, cents in rule_specs:
+        for kind, label, cents, method, rtype, prorate in rule_specs:
             if kind in have:
                 continue
             try:
                 db.add_payment_rule(g.user["id"], nct, kind, label, cents,
-                                    irb_approved=1,
-                                    irb_note="Amount per IRB-approved consent, sec. 12")
+                                    method=method, irb_approved=1,
+                                    irb_note="Amount per IRB-approved consent, sec. 12",
+                                    rule_type=rtype, prorate=prorate)
             except Exception:
                 app.logger.exception("demo payment rule seeding failed")
     # The ledger below is seeded once; if payments already exist, we're done.
@@ -8241,26 +8426,33 @@ def _seed_demo_payments_if_demo():
     def _pdt(days):
         return (dt.datetime.now() - dt.timedelta(days=days)).strftime("%Y-%m-%d %H:%M")
 
-    amt = {"screening": 7500, "baseline": 7500, "followup": 5000, "travel": 2500}
+    amt = {"screening": 7500, "baseline": 7500, "followup": 5000,
+           "travel": 4200, "completion": 10000}
     lbl = {"screening": "Screening visit - time & travel",
            "baseline": "Baseline visit - time & travel",
            "followup": "Follow-up visit - time & travel",
-           "travel": "Travel reimbursement"}
+           "travel": "Travel & expense reimbursement",
+           "completion": "Study completion stipend"}
+    # Method per kind mirrors the seeded rules (varied rails read as real).
+    meth = {"screening": "gift_card", "baseline": "prepaid_card",
+            "followup": "ach", "travel": "check", "completion": "check"}
     # (participant idx, kind, status, days_ago)
     ledger = [
-        # idx 0 - long-term participant, ~6 months in, near the 1099 threshold
+        # idx 0 - long-term participant, ~6 months in, near the 1099 threshold,
+        # who then completed the study (lump sum paid).
         (0, "screening", "paid", 132), (0, "baseline", "paid", 118),
         (0, "followup", "paid", 104), (0, "followup", "paid", 90),
         (0, "followup", "paid", 76), (0, "followup", "paid", 62),
         (0, "followup", "paid", 48), (0, "followup", "paid", 34),
-        (0, "followup", "issued", 11), (0, "followup", "queued", 0),
+        (0, "followup", "issued", 11), (0, "completion", "queued", 0),
         # active participants with real, varied histories
         (1, "screening", "paid", 88), (1, "baseline", "paid", 74),
         (1, "followup", "paid", 32), (1, "followup", "void", 32),
+        (1, "travel", "paid", 74),
         (2, "screening", "paid", 70), (2, "followup", "issued", 8),
         (3, "screening", "paid", 45), (3, "followup", "queued", 0),
         (4, "screening", "paid", 60), (4, "baseline", "issued", 6),
-        (5, "screening", "issued", 10),
+        (5, "screening", "issued", 10), (5, "travel", "queued", 1),
         (6, "screening", "paid", 52), (6, "travel", "paid", 52),
         (7, "screening", "issued", 4),
         (8, "screening", "queued", 0),
@@ -8276,10 +8468,21 @@ def _seed_demo_payments_if_demo():
         try:
             db.create_payment(
                 lead["id"], lead["nct"], amt[kind], kind=kind, label=lbl[kind],
-                currency="USD", method="gift_card", status=status,
+                currency="USD", method=meth.get(kind, "gift_card"), status=status,
                 created_by="system", created_at=_pdt(days))
         except Exception:
             app.logger.exception("demo payment seeding failed")
+    # A couple of participants have chosen how they want to be paid, so the
+    # method column reads as real (informational only; no live rail wired).
+    try:
+        if len(cands) > 0:
+            db.set_payout_method(cands[0]["id"], "check")
+        if len(cands) > 1:
+            db.set_payout_method(cands[1]["id"], "ach")
+        if len(cands) > 3:
+            db.set_payout_method(cands[3]["id"], "prepaid_card")
+    except Exception:
+        app.logger.exception("demo payout method seeding failed")
 
 
 # --------------------------------------------------------------------------- #
@@ -10338,8 +10541,17 @@ def update_lead(lead_id):
     if db.update_lead_status(lead_id, status, note, actor="you"):
         if status in ("screening", "enrolled"):
             _notify_applicant_by_id(lead_id, status)
-        flash(f"Application moved to \"{db.LEAD_LABELS.get(status, status)}\".",
-              "success")
+        msg = f"Application moved to \"{db.LEAD_LABELS.get(status, status)}\"."
+        # Early withdrawal: if a completion rule prorates, queue the partial
+        # stipend for the visits the participant actually completed.
+        if status == "withdrawn":
+            lead = db.get_lead(lead_id)
+            done = _maybe_queue_completion_payment(lead, withdrawn=True) \
+                if lead else None
+            if done:
+                msg += (f" {payments_mod.format_cents(done['amount_cents'], done['currency'])}"
+                        " prorated stipend queued.")
+        flash(msg, "success")
     else:
         flash("Couldn't update that application.", "error")
     return redirect(_lead_action_return())

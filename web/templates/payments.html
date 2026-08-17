@@ -11,7 +11,8 @@
     <h1>Payments</h1>
     <p>Stipends to participants for their time and travel.</p>
   </div>
-  <div style="display:flex;gap:8px;">
+  <div style="display:flex;gap:8px;flex-wrap:wrap;">
+    {% if trials %}{{ ui.btn('Add reimbursement', 'ghost', icon='dollar', extra='data-ui-open="pay-reimb"') }}{% endif %}
     {{ ui.btn('Add payment rule', 'primary', icon='plus', extra='data-ui-open="pay-rule" onclick="payRuleReset()"') }}
   </div>
 </div>
@@ -69,7 +70,12 @@
     {% for p in payments %}
     <div class="pay-tr">
       <span class="pay-c-name"><b>{{ p.lead_name }}</b><em>{{ p.trial_title }}</em></span>
-      <span>{{ p.label }}{% if p.undue %} <span class="pay-undue" title="Above the undue-inducement flag - confirm it matches the IRB-approved amount">{{ ic.icon('alert') }}</span>{% endif %}</span>
+      <span>
+        {% if p.ptype == 'travel' %}{{ ui.badge('Travel', 'info') }}
+        {% elif p.ptype == 'completion' %}{{ ui.badge('Completion', 'violet') }}{% endif %}
+        {{ p.label }}
+        <em class="pay-method">{{ p.method_label }}</em>
+        {% if p.undue %} <span class="pay-undue" title="Above the undue-inducement flag - confirm it matches the IRB-approved amount">{{ ic.icon('alert') }}</span>{% endif %}</span>
       <span class="pay-c-amt">{{ p.amount }}</span>
       <span class="pay-c-ytd">{{ p.ytd }}{% if p.over_1099 %} <em class="pay-1099 over">1099</em>{% elif p.near_1099 %} <em class="pay-1099 near">near</em>{% endif %}</span>
       <span>{{ ui.badge(p.status|capitalize, status_tone.get(p.status,'neutral')) }}</span>
@@ -85,7 +91,15 @@
 </div>
 
 <div class="app-card">
-  <div class="app-card-title" style="padding:14px 18px 6px;">{{ ic.icon('dollar') }} <b>Payment schedule</b> <span class="app-sub" style="font-weight:400;color:var(--faint);">what each visit type pays — set once per protocol</span></div>
+  <div class="app-card-title" style="padding:14px 18px 6px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+    <span>{{ ic.icon('dollar') }} <b>Payment schedule</b> <span class="app-sub" style="font-weight:400;color:var(--faint);">per-visit stipends, completion lump sums, and reimbursements — set once per protocol</span></span>
+    {% if nct_filter %}
+    <form method="post" action="{{ url_for('payments_rules_from_soe') }}" style="display:inline" data-ajax>
+      <input type="hidden" name="nct" value="{{ nct_filter }}">
+      {{ ui.btn('Generate from Schedule of Events', 'ghost', size='sm', type='submit', icon='list') }}
+    </form>
+    {% endif %}
+  </div>
   {% if not rules %}
   <div style="padding:0 18px 18px;">
     {{ ui.empty('No rules yet', 'Add a stipend per visit type. Attest IRB approval and it auto-queues when that visit is completed.', 'dollar', action=ui.btn('Add payment rule', variant='primary', icon='plus', extra='data-ui-open="pay-rule" onclick="payRuleReset()"')) }}
@@ -97,7 +111,7 @@
       <span class="pay-rule-amt">{{ r.amount }}</span>
       <span class="pay-rule-main">
         <b>{{ r.label }}</b>
-        <em>{{ r.nct }} · {{ r.method|replace('_',' ') }}{% if not r.active %} · inactive{% endif %}</em>
+        <em>{{ r.type_label }} · {{ r.method_label }}{% if r.rule_type == 'completion' and r.prorate %} · prorated{% endif %}{% if not r.active %} · inactive{% endif %}</em>
       </span>
       <span class="pay-rule-irb">
         {% if r.irb_approved %}{{ ui.badge('IRB approved', 'ok', icon='check') }}{% else %}{{ ui.badge('Attest IRB', 'warn') }}{% endif %}
@@ -107,7 +121,8 @@
           data-id="{{ r.id }}" data-nct="{{ r.nct }}" data-kind="{{ r.kind }}"
           data-label="{{ r.label }}" data-amount="{{ '%.2f'|format(r.amount_cents/100) }}"
           data-method="{{ r.method }}" data-irb="{{ r.irb_approved }}"
-          data-irbnote="{{ r.irb_note }}">Edit</button>
+          data-irbnote="{{ r.irb_note }}" data-ruletype="{{ r.rule_type }}"
+          data-prorate="{{ r.prorate }}">Edit</button>
         {% if r.active %}
         <form method="post" action="{{ url_for('payments_rule_delete', rule_id=r.id) }}" onsubmit="return confirm('Deactivate this rule?')">{{ ui.btn('Off', 'ghost', size='sm', type='submit') }}</form>
         {% endif %}
@@ -121,29 +136,43 @@
 
 {# ---- Add / edit rule modal ---- #}
 {% call ui.modal('pay-rule', 'Payment rule', icon='dollar') %}
-<form method="post" action="{{ url_for('payments_rule_save') }}" class="cal-form" id="pay-rule-form">
+<form method="post" action="{{ url_for('payments_rule_save') }}" class="cal-form" id="pay-rule-form" data-ajax>
   <input type="hidden" name="rule_id" id="pr-id">
   <div class="field"><label>Study</label>
     <select name="nct" id="pr-nct">
-      {% for t in trials %}<option value="{{ t.nct }}">{{ t.title }}</option>{% endfor %}
+      {% for t in trials %}<option value="{{ t.nct }}"{% if t.nct == nct_filter %} selected{% endif %}>{{ t.title }}</option>{% endfor %}
     </select>
   </div>
   <div class="row">
-    <div class="field"><label>Visit type</label>
-      <select name="kind" id="pr-kind">{% for k, lbl in visit_kinds %}<option value="{{ k }}">{{ lbl }}</option>{% endfor %}</select>
-    </div>
-    <div class="field"><label>Amount (USD)</label><input type="number" name="amount" id="pr-amount" min="0" step="0.01" placeholder="75.00" required></div>
-  </div>
-  <div class="row">
-    <div class="field"><label>Method</label>
-      <select name="method" id="pr-method">
-        <option value="gift_card">Gift card</option>
-        <option value="manual">Manual / cash</option>
-        <option value="ach">ACH / bank</option>
+    <div class="field"><label>Payout type</label>
+      <select name="rule_type" id="pr-type">
+        {% for m, lbl in payout_modes %}<option value="{{ m }}">{{ lbl }}</option>{% endfor %}
       </select>
     </div>
-    <div class="field"><label>Label <span class="cal-hint">shown on the receipt</span></label><input type="text" name="label" id="pr-label" placeholder="Screening visit - time & travel"></div>
+    <div class="field" id="pr-kind-field"><label>Visit type</label>
+      <select name="kind" id="pr-kind">{% for k, lbl in visit_kinds %}<option value="{{ k }}">{{ lbl }}</option>{% endfor %}</select>
+    </div>
   </div>
+  <div class="row">
+    <div class="field"><label>Amount (USD)</label><input type="number" name="amount" id="pr-amount" min="0" step="0.01" placeholder="75.00" required></div>
+    <div class="field"><label>Method</label>
+      <select name="method" id="pr-method">
+        {% for m, lbl in methods %}<option value="{{ m }}">{{ lbl }}</option>{% endfor %}
+      </select>
+    </div>
+  </div>
+  <div class="field" id="pr-tmpl-field">
+    <label>Phase preset <span class="cal-hint">optional — prefills a starting amount you can adjust</span></label>
+    <select id="pr-tmpl">
+      <option value="">— pick a phase to suggest an amount —</option>
+      {% for t in phase_templates %}<option value="{{ t.id }}">{{ t.label }}</option>{% endfor %}
+    </select>
+  </div>
+  <div class="field" id="pr-prorate-field" hidden>
+    <label class="pay-check"><input type="checkbox" name="prorate" id="pr-prorate" value="1"> Prorate if the participant withdraws early
+      <span class="cal-hint">pays completed ÷ total protocol visits × amount</span></label>
+  </div>
+  <div class="field"><label>Label <span class="cal-hint">shown on the receipt</span></label><input type="text" name="label" id="pr-label" placeholder="Screening visit - time & travel"></div>
   <div class="field pay-irb-field">
     <label class="pay-check"><input type="checkbox" name="irb_approved" id="pr-irb" value="1"> This amount is <b>IRB/REB-approved</b> and disclosed in the consent form</label>
     <span class="cal-hint">Required before a rule can auto-issue. Amounts are for time &amp; travel, never for enrolling.</span>
@@ -153,25 +182,82 @@
 </form>
 {% endcall %}
 
+{# ---- Ad-hoc travel / expense reimbursement modal ---- #}
+{% call ui.modal('pay-reimb', 'Travel / expense reimbursement', icon='dollar') %}
+<form method="post" action="{{ url_for('payments_reimbursement') }}" class="cal-form" data-ajax>
+  <div class="field"><label>Participant</label>
+    <select name="lead_id" required>
+      <option value="">— choose a participant —</option>
+      {% for p in participants %}<option value="{{ p.id }}">{{ p.name }} · {{ p.nct }}</option>{% endfor %}
+    </select>
+  </div>
+  <div class="row">
+    <div class="field"><label>Amount (USD)</label><input type="number" name="amount" min="0" step="0.01" placeholder="42.50" required></div>
+    <div class="field"><label>Method</label>
+      <select name="method">
+        {% for m, lbl in methods %}<option value="{{ m }}">{{ lbl }}</option>{% endfor %}
+      </select>
+    </div>
+  </div>
+  <div class="field"><label>Receipt / reference <span class="cal-hint">mileage, parking, receipt #</span></label><input type="text" name="receipt" placeholder="Parking $18 + mileage 48mi"></div>
+  <div class="field"><label>Label <span class="cal-hint">shown on the receipt</span></label><input type="text" name="label" placeholder="Travel & expense reimbursement"></div>
+  <span class="cal-hint">Reimbursements cover documented costs (travel, parking, meals). They are not tied to enrolling.</span>
+  <div class="cal-form-foot"><span></span>{{ ui.btn('Queue reimbursement', 'primary', type='submit', icon='dollar') }}</div>
+</form>
+{% endcall %}
+
 <script>
+var PAY_TEMPLATES = {{ phase_templates|tojson }};
+function payTypeSync() {
+  var t = (document.getElementById('pr-type') || {}).value || 'visit';
+  var kindF = document.getElementById('pr-kind-field');
+  var proF = document.getElementById('pr-prorate-field');
+  var tmplF = document.getElementById('pr-tmpl-field');
+  // Per-visit picks a visit kind + can use a phase preset; completion can
+  // prorate; travel is a one-off reimbursement template (no kind/preset).
+  if (kindF) kindF.hidden = (t !== 'visit');
+  if (tmplF) tmplF.hidden = (t !== 'visit');
+  if (proF) proF.hidden = (t !== 'completion');
+}
+function payTmplApply() {
+  var tmpl = document.getElementById('pr-tmpl'); if (!tmpl || !tmpl.value) return;
+  var kind = (document.getElementById('pr-kind') || {}).value || 'screening';
+  var row = PAY_TEMPLATES.filter(function (x) { return x.id === tmpl.value; })[0];
+  if (!row) return;
+  var amt = row.amounts[kind];
+  if (amt != null) { var a = document.getElementById('pr-amount'); if (a) a.value = amt; }
+}
 function payRuleReset() {
   var f = document.getElementById('pay-rule-form'); if (!f) return;
   f.reset(); document.getElementById('pr-id').value = '';
   var nct = document.getElementById('pr-nct'); if (nct) nct.disabled = false;
+  var tmpl = document.getElementById('pr-tmpl'); if (tmpl) tmpl.value = '';
+  payTypeSync();
 }
 (function () {
   function setv(id, v) { var e = document.getElementById(id); if (e) e.value = v || ''; }
+  var typeSel = document.getElementById('pr-type');
+  if (typeSel) typeSel.addEventListener('change', payTypeSync);
+  var kindSel = document.getElementById('pr-kind');
+  if (kindSel) kindSel.addEventListener('change', payTmplApply);
+  var tmplSel = document.getElementById('pr-tmpl');
+  if (tmplSel) tmplSel.addEventListener('change', payTmplApply);
   document.querySelectorAll('.pay-edit').forEach(function (b) {
     b.addEventListener('click', function () {
       var d = b.dataset;
       setv('pr-id', d.id); setv('pr-kind', d.kind); setv('pr-amount', d.amount);
       setv('pr-method', d.method); setv('pr-label', d.label); setv('pr-irbnote', d.irbnote);
+      setv('pr-type', d.ruletype || 'visit');
+      var pro = document.getElementById('pr-prorate');
+      if (pro) pro.checked = (d.prorate === '1');
       var nct = document.getElementById('pr-nct');
       if (nct) { nct.value = d.nct; nct.disabled = true; }  // study is fixed on edit
       document.getElementById('pr-irb').checked = (d.irb === '1');
+      payTypeSync();
       if (window.uiOpenModal) window.uiOpenModal('pay-rule');
     });
   });
+  payTypeSync();
 })();
 </script>
 {% endblock %}

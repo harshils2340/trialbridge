@@ -7381,6 +7381,7 @@ body.fs-page { background:
 .pay-1099.near { background:var(--amber-bg); color:var(--amber); }
 .pay-undue { color:var(--amber); vertical-align:middle; }
 .pay-undue .ico { width:14px; height:14px; }
+.pay-method { display:block; font-style:normal; font-size:11.5px; color:var(--faint); margin-top:2px; }
 .pay-c-act { display:flex; gap:6px; justify-content:flex-end; }
 .pay-c-act form { margin:0; }
 

@@ -1272,6 +1272,24 @@ _MIGRATIONS = {
         "region": "TEXT DEFAULT ''",
         "country": "TEXT DEFAULT ''",
     },
+    "payment_rules": {
+        # Payout structure this rule drives:
+        #   visit      = per-visit time & travel stipend (auto-queues on a
+        #                completed visit of `kind`).
+        #   completion = lump sum queued when the participant completes the study
+        #                (optionally prorated for early withdrawal - see prorate).
+        #   travel     = expense reimbursement template (receipt-based); logged
+        #                ad hoc, never a pay-to-enroll incentive.
+        "rule_type": "TEXT DEFAULT 'visit'",
+        # For completion rules only: pay a proportional amount if the participant
+        # withdraws early (completed / total protocol visits). 0 = pay in full.
+        "prorate": "INTEGER DEFAULT 0",
+    },
+    "payment_recipients": {
+        # How this participant chose to be paid (informational + prefill for a
+        # live rail): gift_card | prepaid_card | ach | check | cash.
+        "payout_method": "TEXT DEFAULT ''",
+    },
 }
 
 
@@ -3978,29 +3996,32 @@ def rotate_calendar_feed_token(user_id):
 # and COMPLIANCE.md §5: subjects only, IRB-approved amounts, auditable ledger.
 # --------------------------------------------------------------------------- #
 def add_payment_rule(user_id, nct, kind, label, amount_cents, currency="USD",
-                     method="gift_card", irb_approved=0, irb_note=""):
+                     method="gift_card", irb_approved=0, irb_note="",
+                     rule_type="visit", prorate=0):
     db = get_db()
     ts = now()
     db.execute(
         "INSERT INTO payment_rules (user_id, nct, kind, label, amount_cents, "
-        "currency, method, irb_approved, irb_note, active, created_at, updated_at) "
-        "VALUES (?,?,?,?,?,?,?,?,?,1,?,?)",
+        "currency, method, irb_approved, irb_note, rule_type, prorate, active, "
+        "created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,1,?,?)",
         (user_id, nct or "", kind or "screening", (label or "").strip(),
          int(amount_cents or 0), currency or "USD", method or "gift_card",
-         1 if irb_approved else 0, (irb_note or "").strip(), ts, ts))
+         1 if irb_approved else 0, (irb_note or "").strip(),
+         rule_type or "visit", 1 if prorate else 0, ts, ts))
     db.commit()
     return db.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
 
 
 def update_payment_rule(rule_id, **fields):
     allowed = ("kind", "label", "amount_cents", "currency", "method",
-               "irb_approved", "irb_note", "active")
+               "irb_approved", "irb_note", "active", "rule_type", "prorate")
     sets, vals = [], []
     for k, v in fields.items():
         if k not in allowed:
             continue
         sets.append(f"{k} = ?")
-        vals.append(int(v) if k in ("amount_cents", "irb_approved", "active") else v)
+        vals.append(int(v) if k in ("amount_cents", "irb_approved", "active",
+                                    "prorate") else v)
     if not sets:
         return False
     sets.append("updated_at = ?")
@@ -4028,10 +4049,70 @@ def list_payment_rules(user_id, nct=None):
 
 
 def find_active_payment_rule(user_id, nct, kind):
+    """Active per-visit stipend rule for this trial + visit kind (auto-queue)."""
     return get_db().execute(
         "SELECT * FROM payment_rules WHERE user_id = ? AND nct = ? AND kind = ? "
-        "AND active = 1 ORDER BY id DESC LIMIT 1",
+        "AND active = 1 AND rule_type = 'visit' ORDER BY id DESC LIMIT 1",
         (user_id, nct, kind)).fetchone()
+
+
+def find_active_completion_rule(user_id, nct):
+    """Active lump-sum-on-completion rule for a trial, if any."""
+    return get_db().execute(
+        "SELECT * FROM payment_rules WHERE user_id = ? AND nct = ? "
+        "AND active = 1 AND rule_type = 'completion' ORDER BY id DESC LIMIT 1",
+        (user_id, nct)).fetchone()
+
+
+def generate_payment_rules_from_soe(user_id, nct):
+    """Draft one per-visit stipend rule for each Schedule of Events visit that
+    does not already have a rule. Amounts start at 0 and IRB is unattested, so a
+    coordinator sets the approved amount and attests before it can auto-issue.
+    Returns the number of draft rules created. Idempotent: skips visit kinds that
+    already have a rule for this study."""
+    soe = list_soe_visits(user_id, nct)
+    if not soe:
+        return 0
+    existing = {r["kind"] for r in get_db().execute(
+        "SELECT kind FROM payment_rules WHERE user_id = ? AND nct = ? "
+        "AND rule_type = 'visit'", (user_id, nct)).fetchall()}
+    created = 0
+    for v in soe:
+        name = (v["name"] or "").strip() or "Study visit"
+        kind = _soe_name_to_kind(name)
+        if kind in existing:
+            continue
+        existing.add(kind)
+        add_payment_rule(
+            user_id, nct, kind, f"{name} - time & travel", 0,
+            method="gift_card", irb_approved=0,
+            irb_note="", rule_type="visit")
+        created += 1
+    return created
+
+
+def _soe_name_to_kind(name):
+    """Map a Schedule of Events visit name to a coarse visit kind used by rules
+    and the calendar (screening|baseline|treatment|followup|reconsent|visit)."""
+    n = (name or "").lower()
+    if "screen" in n:
+        return "screening"
+    if "baseline" in n or "randomiz" in n or "day 1" in n or "week 0" in n:
+        return "baseline"
+    if "treat" in n or "dos" in n or "infus" in n or "inject" in n:
+        return "treatment"
+    if "re-consent" in n or "reconsent" in n:
+        return "reconsent"
+    if "follow" in n or "eos" in n or "end of study" in n or "final" in n:
+        return "followup"
+    return "followup"
+
+
+def completed_visit_count(lead_id):
+    """How many of a participant's booked visits are completed (proration basis)."""
+    return get_db().execute(
+        "SELECT COUNT(*) AS n FROM lead_visits WHERE lead_id = ? "
+        "AND status = 'completed'", (lead_id,)).fetchone()["n"] or 0
 
 
 def _log_payment_event(db, payment_id, action, actor="system", note=""):
@@ -4122,7 +4203,25 @@ def get_payment_recipient(lead_id):
     if row:
         return dict(row)
     return {"lead_id": lead_id, "w9_status": "not_needed",
-            "w9_collected_at": "", "payout_email": "", "updated_at": ""}
+            "w9_collected_at": "", "payout_email": "", "payout_method": "",
+            "updated_at": ""}
+
+
+def set_payout_method(lead_id, method="", email=None):
+    """Record how a participant chose to be paid (informational + a prefill for a
+    live disbursement rail). Never moves money by itself."""
+    db = get_db()
+    ts = now()
+    db.execute(
+        "INSERT INTO payment_recipients (lead_id, payout_method, payout_email, "
+        "updated_at) VALUES (?,?,?,?) ON CONFLICT(lead_id) DO UPDATE SET "
+        "payout_method = excluded.payout_method, "
+        "payout_email = CASE WHEN excluded.payout_email != '' "
+        "THEN excluded.payout_email ELSE payment_recipients.payout_email END, "
+        "updated_at = excluded.updated_at",
+        (lead_id, method or "", (email or "").strip(), ts))
+    db.commit()
+    return True
 
 
 def set_w9_status(lead_id, status):

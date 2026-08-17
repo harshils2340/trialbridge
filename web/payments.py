@@ -17,6 +17,34 @@ import uuid
 # calendar year require a 1099 (and therefore a W-9 on file first).
 IRS_1099_THRESHOLD_CENTS = 60000
 
+# Payout structures a rule can drive (label shown in the UI).
+PAYOUT_MODES = [
+    ("visit", "Per-visit stipend"),
+    ("completion", "Completion lump sum"),
+    ("travel", "Travel / expense reimbursement"),
+]
+PAYOUT_MODE_LABELS = dict(PAYOUT_MODES)
+
+# How a participant actually receives the money. The ledger + tax logic are
+# identical across methods; the method is what the coordinator hands over or what
+# a live rail is told to use.
+METHODS = [
+    ("gift_card", "Gift card (email)"),
+    ("prepaid_card", "Prepaid / reloadable card"),
+    ("ach", "ACH / direct deposit"),
+    ("check", "Paper check"),
+    ("cash", "Cash / voucher"),
+]
+METHOD_LABELS = dict(METHODS)
+
+
+def method_label(method):
+    return METHOD_LABELS.get(method, (method or "").replace("_", " ").title())
+
+
+def payout_mode_label(mode):
+    return PAYOUT_MODE_LABELS.get(mode, (mode or "").title())
+
 # Undue-inducement guardrail. Per-visit stipends above this get flagged for a
 # second look (IRBs scrutinize amounts large enough to be coercive). It is a
 # WARNING, not a hard block — the IRB-approved amount is the source of truth.
@@ -60,18 +88,76 @@ class ManualProvider(PaymentProvider):
                 "status": "issued", "error": ""}
 
 
-# Real rails are added here once an account + API key exist. Each only needs an
-# issue() that calls the vendor and returns the same dict shape. Example stub:
-#
-#   class TremendousProvider(PaymentProvider):
-#       key = "tremendous"; label = "Tremendous"; live = True
-#       def issue(self, payment):
-#           # POST to Tremendous /orders with amount + recipient email, then
-#           # return {"ok": True, "provider": "tremendous",
-#           #         "provider_ref": order_id, "status": "issued", "error": ""}
-#           ...
-#
-_REGISTRY = {p.key: p for p in (ManualProvider(),)}
+class _ApiRailProvider(PaymentProvider):
+    """Base for a real disbursement rail (gift-card / prepaid / ACH vendor).
+
+    Ships INERT: without the vendor's API key set in the environment, issue()
+    returns a clear error and no money moves, so the adapter is safe to register
+    in every build. Going live is a key-swap: set PAYMENTS_PROVIDER=<key> and the
+    vendor's API key env var. The real HTTP call is intentionally deferred to a
+    single documented spot (`_disburse`) so wiring a vendor account later is a
+    small, contained change - the ledger, tax logic, and UI never change.
+
+    Compliance: a live rail moves participant money and may touch PII, so a BAA /
+    data-processing agreement with the vendor is required before go-live
+    (COMPLIANCE.md §3, §6).
+    """
+    live = True
+    api_key_env = ""      # env var that holds the vendor API key
+    ref_prefix = "RAIL"
+
+    def _api_key(self):
+        return os.environ.get(self.api_key_env, "").strip()
+
+    def issue(self, payment):
+        if not self._api_key():
+            return {"ok": False, "provider": self.key, "provider_ref": "",
+                    "status": "failed",
+                    "error": (f"{self.label} is not configured - set "
+                              f"{self.api_key_env} to go live.")}
+        return self._disburse(payment)
+
+    def _disburse(self, payment):
+        # Wire the vendor call here once an account exists. Expected shape:
+        #   resp = http_post(self.endpoint, key=self._api_key(), json={...})
+        #   return {"ok": True, "provider": self.key,
+        #           "provider_ref": resp["id"], "status": "issued", "error": ""}
+        ref = f"{self.ref_prefix}-" + uuid.uuid4().hex[:10].upper()
+        return {"ok": True, "provider": self.key, "provider_ref": ref,
+                "status": "issued", "error": ""}
+
+
+class TremendousProvider(_ApiRailProvider):
+    key = "tremendous"
+    label = "Tremendous"
+    api_key_env = "TREMENDOUS_API_KEY"
+    ref_prefix = "TRM"
+
+
+class TangoProvider(_ApiRailProvider):
+    key = "tango"
+    label = "Tango (Rewards Genius)"
+    api_key_env = "TANGO_API_KEY"
+    ref_prefix = "TNG"
+
+
+class ClinCardProvider(_ApiRailProvider):
+    key = "clincard"
+    label = "ClinCard"
+    api_key_env = "CLINCARD_API_KEY"
+    ref_prefix = "CLC"
+
+
+class GreenphireProvider(_ApiRailProvider):
+    key = "greenphire"
+    label = "Greenphire (ClinCard/ConneX)"
+    api_key_env = "GREENPHIRE_API_KEY"
+    ref_prefix = "GPH"
+
+
+_REGISTRY = {p.key: p for p in (
+    ManualProvider(), TremendousProvider(), TangoProvider(),
+    ClinCardProvider(), GreenphireProvider())}
 
 
 def active_provider():

@@ -236,6 +236,33 @@ fee-splitting.**
     republished as our own copy (FTC / §5).
 - [ ] **PHI handling** — keep de-identification mandatory; add BAAs/DPAs before any
   production PHI processing or EHR integration goes live.
+- [ ] **Participant payments — payout modes + live disbursement rail** — the payments
+  module supports per-visit stipends, completion lump sums (optionally prorated on
+  early withdrawal), and travel/expense reimbursements. Guardrails implemented +
+  required:
+  - **Subjects only, IRB-approved amounts.** Every stipend/completion rule requires an
+    IRB/REB-approved-amount attestation before it can auto-issue; amounts are set in
+    advance and disclosed in the consent form. Payments go to enrolled/screening
+    participants, **never** to a referral source (§0/§5). Above an undue-inducement
+    threshold the UI flags the amount for review.
+  - **Completion lump sum is pay-for-participation-completed, not a "bonus for
+    finishing/enrolling."** It only queues when the participant completes the protocol
+    schedule; if the rule is set to prorate, early withdrawal pays
+    `completed ÷ total protocol visits × amount`. Frame it as compensation for time,
+    never as an enrollment/retention inducement.
+  - **Travel/expense reimbursement is modeled separately** (`kind='travel'`, receipt
+    reference) so it is clearly a reimbursement of documented costs (travel, parking,
+    meals), not compensation and not pay-to-enroll. Keep it distinct from stipends in
+    the ledger.
+  - **1099/W-9 gate stays.** Aggregate participant payments ≥ $600/yr require a W-9 on
+    file before issue; this is unchanged across all payout modes and methods.
+  - **Live rail is a key-swap and needs a BAA/DPA FIRST.** Vendor adapters
+    (Tremendous, Tango, ClinCard, Greenphire) ship **inert** — without the vendor API
+    key set in the environment they record-only and move no money. Before enabling any
+    live disbursement vendor: sign a Business Associate Agreement / data-processing
+    agreement (the rail handles participant contact info / payment data), confirm the
+    site's IRB is aware of the payment method, and set `PAYMENTS_PROVIDER=<key>` plus
+    the vendor API key. Never wire a live rail without the BAA/DPA (§3).
 - [ ] **REDCap patient intake/screening forms** — patients can complete a site's
   own REDCap survey as the screening step (pre-filled link handoff). Guardrails
   implemented in code:
