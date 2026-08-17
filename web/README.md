@@ -1,9 +1,11 @@
-# BridgeMD
+# BridgeMD — technical reference
 
-A doctor-facing wrapper on ClinicalTrials.gov. Paste a de-identified patient
-note, get ranked recruiting trials with a plain explanation of the fit, refer a
-patient in one click, and track every referral through the pipeline
-(referred → contacted → screened → enrolled) for status/attribution.
+Product overview lives in the [top-level README](../README.md). This file is the
+detailed reference: how to run it, the full environment-variable table,
+notification/SMS setup, ops endpoints, and backup/restore drills.
+
+BridgeMD is one Flask app (`app.py`) serving three things: a patient-facing trial
+finder, a study-team workspace (`/app`), and the outreach/marketing surfaces.
 
 > ⚠️ **Read [`../COMPLIANCE.md`](../COMPLIANCE.md) before touching referrals,
 > payments, "commission", trial advertising, or patient data.** Paying physicians
