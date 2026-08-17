@@ -5559,6 +5559,15 @@ body.fs-page { background:
 .fs-trust-chip svg { width: 14px; height: 14px; color: var(--green); }
 .fs-trust-chip:hover { border-color: var(--accent); box-shadow: var(--shadow-lift); }
 .fs-cta { display: flex; gap: 12px; flex-wrap: wrap; margin: 26px 0 0; justify-content: flex-start; }
+/* Hero: keep both CTAs on one line (wrap only on small screens). Trim the
+   padding/size a touch and stop text wrapping inside so both fit the copy
+   column at natural width. */
+.fs-hero .fs-cta { flex-wrap: nowrap; }
+.fs-hero .fs-cta .fs-btn { white-space: nowrap; padding: 16px 22px; font-size: 16px; }
+@media (max-width: 560px) {
+  .fs-hero .fs-cta { flex-wrap: wrap; }
+  .fs-hero .fs-cta .fs-btn { white-space: nowrap; }
+}
 .fs-note { display: flex; align-items: center; justify-content: flex-start; gap: 7px; font-size: 13.5px; color: var(--muted); margin: 16px 0 0; }
 .fs-note svg { width: 15px; height: 15px; color: var(--green); }
 /* Hero compliance seals: framework wordmarks with honest status. Self-attestable
