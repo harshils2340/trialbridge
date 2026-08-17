@@ -6503,16 +6503,22 @@ def search_index():
 
 
 def _set_active_study(claims):
-    """Resolve the study-switcher selection. A valid `nct` query param sets it;
-    otherwise the last choice persists in the session. There is no "all studies"
-    view - a specific study is always active, defaulting to the first one."""
+    """Resolve the study-switcher selection, matching `_active_scope`. A valid
+    `nct` query param focuses that study; anything else (incl. empty) means
+    "All studies" (`""`). When the user has never chosen, demo/multi-study builds
+    default to All studies so pages open on the whole book of business; a real
+    single-site account focuses its first study as a workspace."""
     valid = {c["nct"] for c in claims}
     param = request.args.get("nct")
-    if param is not None and param in valid:
-        session["active_nct"] = param
-    cur = session.get("active_nct", "")
-    if cur in valid:
-        return cur
+    if param is not None:
+        session["active_nct"] = param if param in valid else ""
+        return session["active_nct"]
+    if "active_nct" in session:
+        cur = session.get("active_nct") or ""
+        return cur if cur in valid else ""
+    if claims and (_demo_mode_enabled() or _site_demo_enabled()
+                   or _is_demo_account(g.user)):
+        return ""  # demo opens on All studies
     first = claims[0]["nct"] if claims else ""
     if first:
         session["active_nct"] = first
