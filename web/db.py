@@ -414,6 +414,21 @@ CREATE TABLE IF NOT EXISTS lead_visits (
     FOREIGN KEY (lead_id) REFERENCES leads(id)
 );
 
+-- Extra ATTENDEES on a visit beyond the fixed two (the participant and the
+-- coordinator/organizer). Lets a coordinator add/edit/remove guests - a
+-- sub-investigator, PI, interpreter, caregiver, or sponsor monitor - and switch
+-- a guest's role inline. Record-only scheduling metadata: guests are NOT emailed
+-- automatically (avoids sending anything to an unverified address).
+CREATE TABLE IF NOT EXISTS visit_guests (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    visit_id   INTEGER NOT NULL,
+    name       TEXT DEFAULT '',
+    email      TEXT DEFAULT '',
+    role       TEXT DEFAULT 'guest',   -- see GUEST_ROLES in code
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (visit_id) REFERENCES lead_visits(id)
+);
+
 -- Participant PAYMENTS (stipends / reimbursement for time & travel).
 -- COMPLIANCE (see COMPLIANCE.md §5): these pay STUDY SUBJECTS only - never a
 -- referral source, and never tied to enrollment. Every rule carries its
@@ -3895,6 +3910,80 @@ def get_visit(visit_id):
     return get_db().execute(
         "SELECT * FROM lead_visits WHERE id = ?",
         (visit_id,)).fetchone()
+
+
+# Roles a visit guest can hold. Value -> display label. Kept small and clinical
+# so the inline "switch role" picker is fast and unambiguous.
+GUEST_ROLES = [
+    ("sub_i", "Sub-investigator"),
+    ("pi", "Principal investigator"),
+    ("coordinator", "Study coordinator"),
+    ("interpreter", "Interpreter"),
+    ("caregiver", "Caregiver / family"),
+    ("monitor", "Sponsor monitor (CRA)"),
+    ("guest", "Guest"),
+]
+GUEST_ROLE_LABELS = dict(GUEST_ROLES)
+
+
+def guest_role_label(role):
+    return GUEST_ROLE_LABELS.get(role, (role or "Guest").replace("_", " ").title())
+
+
+def list_visit_guests(visit_id):
+    rows = get_db().execute(
+        "SELECT * FROM visit_guests WHERE visit_id = ? ORDER BY id ASC",
+        (visit_id,)).fetchall()
+    out = []
+    for r in rows:
+        d = dict(r)
+        d["role_label"] = guest_role_label(d.get("role"))
+        out.append(d)
+    return out
+
+
+def add_visit_guest(visit_id, name, email="", role="guest"):
+    if not (name or "").strip():
+        return None
+    if role not in GUEST_ROLE_LABELS:
+        role = "guest"
+    db = get_db()
+    db.execute(
+        "INSERT INTO visit_guests (visit_id, name, email, role, created_at) "
+        "VALUES (?,?,?,?,?)",
+        (visit_id, name.strip(), (email or "").strip(), role, now()))
+    db.commit()
+    return db.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+
+
+def update_visit_guest(guest_id, visit_id, **fields):
+    """Edit a guest (name/email) or switch their role. Scoped to visit_id so a
+    guest can only be changed on the visit it belongs to."""
+    allowed = ("name", "email", "role")
+    sets, vals = [], []
+    for k, v in fields.items():
+        if k not in allowed or v is None:
+            continue
+        if k == "role" and v not in GUEST_ROLE_LABELS:
+            continue
+        sets.append(f"{k} = ?")
+        vals.append((v or "").strip() if isinstance(v, str) else v)
+    if not sets:
+        return False
+    vals.extend([guest_id, visit_id])
+    db = get_db()
+    db.execute(f"UPDATE visit_guests SET {', '.join(sets)} "
+               f"WHERE id = ? AND visit_id = ?", vals)
+    db.commit()
+    return True
+
+
+def remove_visit_guest(guest_id, visit_id):
+    db = get_db()
+    db.execute("DELETE FROM visit_guests WHERE id = ? AND visit_id = ?",
+               (guest_id, visit_id))
+    db.commit()
+    return True
 
 
 def get_visits(lead_id):

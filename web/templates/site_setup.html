@@ -6,11 +6,23 @@
 {% block body %}
 <div class="app-head">
   <div>
-    <h1>Site setup</h1>
-    <p>Claim your active ClinicalTrials.gov studies so applicants for those NCTs route to your board.</p>
+    <h1>Settings</h1>
+    <p>Your organization, studies, patient intake, and team - all in one place.</p>
   </div>
 </div>
 
+<div class="setup-shell">
+  <nav class="setup-tabs" aria-label="Settings sections">
+    <button type="button" class="setup-tab on" data-setup-tab="org">{{ ic.icon('users') }} Organization</button>
+    <button type="button" class="setup-tab" data-setup-tab="studies">{{ ic.icon('award') }} Studies{% if claims %} <span class="setup-count">{{ claims|length }}</span>{% endif %}</button>
+    <button type="button" class="setup-tab" data-setup-tab="intake">{{ ic.icon('file') }} Intake &amp; screening</button>
+    <button type="button" class="setup-tab" data-setup-tab="team">{{ ic.icon('users') }} Team</button>
+    {% if is_owner %}<button type="button" class="setup-tab" data-setup-tab="internal">{{ ic.icon('activity') }} Internal</button>{% endif %}
+  </nav>
+</div>
+
+{# ============================ ORGANIZATION ============================ #}
+<div class="setup-panel" data-setup-panel="org">
 <div class="app-card pad">
     <div class="app-card-title">Organization profile</div>
     <form method="post" class="site-form site-form-2col">
@@ -44,10 +56,13 @@
     <p class="site-hint">
       REDCap connection status: <b>{{ 'Connected' if redcap_on else 'Not connected' }}</b>.
       Manage the connection and choose your patient intake form in the
-      <b>REDCap intake</b> section below.
+      <b>Intake &amp; screening</b> tab.
     </p>
   </div>
+</div>{# /org panel #}
 
+{# ========================= INTAKE & SCREENING ========================= #}
+<div class="setup-panel" data-setup-panel="intake" hidden>
 <div class="app-card pad">
   <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
     <div>
@@ -168,6 +183,15 @@
 </div>
 
 <div class="app-card pad">
+  <div class="app-card-title">Applicant intake</div>
+  <p class="site-hint">Get a forwarding email address per study (route applicants from any source into one queue) and bulk-import an existing applicant list by CSV.</p>
+  <a href="{{ url_for('intake_page') }}" class="btn btn-ghost btn-sm">{{ ic.icon('file') }} Set up intake &amp; import</a>
+</div>
+</div>{# /intake panel #}
+
+{# ============================== STUDIES ============================== #}
+<div class="setup-panel" data-setup-panel="studies" hidden>
+<div class="app-card pad">
   <div class="app-card-title">Claim a study</div>
   <form method="post" action="{{ url_for('add_study_claim') }}" class="site-form">
     <label>NCT number
@@ -186,7 +210,10 @@
 
 <div class="app-card pad">
   <div class="app-card-title">Post a site study</div>
-  <p class="site-hint">Use this when a study is actively enrolling at your site but not published on ClinicalTrials.gov yet.</p>
+  <p class="site-hint">Uncommon - most sites just claim by NCT above. Use this only when a study is enrolling at your site but isn't on ClinicalTrials.gov yet.</p>
+  <details class="redcap-advanced" style="margin-top:8px;">
+  <summary>Add a site-posted study</summary>
+  <div style="padding:14px 16px;">
   <form method="post" action="{{ url_for('post_site_study') }}" class="site-form site-form-2col">
     <label>Study title
       <input type="text" name="title" placeholder="e.g. Phase II Metabolic Health Study" required>
@@ -223,6 +250,8 @@
     </label>
       {{ ui.btn('Post study', 'primary', type='submit', icon='plus') }}
     </form>
+  </div>
+  </details>
 </div>
 
 <div class="app-card pad">
@@ -293,27 +322,46 @@
   {% endif %}
 </div>
 
-<div class="app-card pad">
-  <div class="app-card-title">Applicant intake</div>
-  <p class="site-hint">Get a forwarding email address per study (route applicants from any source into one queue) and bulk-import an existing applicant list by CSV.</p>
-  <a href="{{ url_for('intake_page') }}" class="btn btn-ghost btn-sm">{{ ic.icon('file') }} Set up intake &amp; import</a>
-</div>
+</div>{# /studies panel #}
 
+{# =============================== TEAM =============================== #}
+<div class="setup-panel" data-setup-panel="team" hidden>
 <div class="app-card pad">
   <div class="app-card-title">Team</div>
   <p class="site-hint">Invite coordinators, PIs, and research students, and manage their roles and access.</p>
   <a href="{{ url_for('team_page') }}" class="btn btn-ghost btn-sm">{{ ic.icon('users') }} Manage team</a>
 </div>
+</div>{# /team panel #}
 
 {% if is_owner %}
-{# Internal, owner-only: kept out of the main nav - it's our traffic dashboard,
-   not a customer feature. #}
+{# ============================= INTERNAL ============================= #}
+{# Owner-only: our traffic dashboard, not a customer feature. #}
+<div class="setup-panel" data-setup-panel="internal" hidden>
 <div class="app-card pad">
   <div class="app-card-title">Internal</div>
   <p class="site-hint">Owner-only tools. Not shown to trial-site users.</p>
   <a href="{{ url_for('owner_analytics') }}" class="btn btn-ghost btn-sm">{{ ic.icon('activity') }} Visitor analytics</a>
 </div>
+</div>{# /internal panel #}
 {% endif %}
+
+<script>
+(function () {
+  var tabs = Array.prototype.slice.call(document.querySelectorAll('.setup-tab'));
+  var panels = Array.prototype.slice.call(document.querySelectorAll('[data-setup-panel]'));
+  if (!tabs.length || !panels.length) return;
+  function activate(name) {
+    tabs.forEach(function (t) { t.classList.toggle('on', t.getAttribute('data-setup-tab') === name); });
+    panels.forEach(function (p) { p.hidden = p.getAttribute('data-setup-panel') !== name; });
+    try { history.replaceState(null, '', '#' + name); } catch (e) {}
+  }
+  tabs.forEach(function (t) {
+    t.addEventListener('click', function () { activate(t.getAttribute('data-setup-tab')); });
+  });
+  var initial = (location.hash || '').replace('#', '');
+  if (initial && document.querySelector('[data-setup-panel="' + initial + '"]')) activate(initial);
+})();
+</script>
 
 {% endblock %}
 

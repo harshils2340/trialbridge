@@ -55,9 +55,54 @@
     </div>
 
     <div class="tev-people">
-      <div class="tev-people-h">{{ ic.icon('users') }} Attendees</div>
+      <div class="tev-people-h">{{ ic.icon('users') }} Attendees
+        {% if c.guests %}<span class="tev-guest-n">{{ 2 + c.guests|length }}</span>{% endif %}
+        <button type="button" class="tev-editlink tev-guest-addlink" data-tev-guest="{{ c.visit_id }}">Add guest</button>
+      </div>
       <div class="tev-person"><span class="app-av">{{ c.name[:1]|upper }}</span><span><b>{{ c.name }}</b><em>Participant</em></span></div>
       <div class="tev-person"><span class="app-av neutral">{{ (user['name'] or 'You')[:1]|upper }}</span><span><b>{{ user['name'] or 'You' }}</b><em>Site coordinator · organizer</em></span></div>
+
+      {# ── Guests: add / remove / switch role, all in place ── #}
+      {% for gst in c.guests %}
+      <div class="tev-person tev-guest">
+        <span class="app-av neutral">{{ (gst.name or '?')[:1]|upper }}</span>
+        <span class="tev-guest-main">
+          <b>{{ gst.name }}</b>
+          {% if gst.email %}<em class="tev-guest-email">{{ gst.email }}</em>{% endif %}
+        </span>
+        <span class="tev-guest-controls">
+          <form method="post" action="{{ url_for('calendar_visit_guest_update', visit_id=c.visit_id, guest_id=gst.id) }}"
+                data-ajax data-ajax-refresh="#visit-{{ c.visit_id }}">
+            <input type="hidden" name="next" value="{{ _onext }}">
+            <select name="role" class="tev-guest-role" title="Switch role">
+              {% for rv, rl in guest_roles %}<option value="{{ rv }}"{{ ' selected' if gst.role == rv else '' }}>{{ rl }}</option>{% endfor %}
+            </select>
+          </form>
+          <form method="post" action="{{ url_for('calendar_visit_guest_remove', visit_id=c.visit_id, guest_id=gst.id) }}"
+                data-ajax data-ajax-refresh="#visit-{{ c.visit_id }}">
+            <input type="hidden" name="next" value="{{ _onext }}">
+            <button type="submit" class="tev-guest-x" title="Remove {{ gst.name }}">{{ ic.icon('x') }}</button>
+          </form>
+        </span>
+      </div>
+      {% endfor %}
+
+      <form class="tev-guest-add" id="tev-guest-add-{{ c.visit_id }}" method="post" hidden
+            action="{{ url_for('calendar_visit_guest_add', visit_id=c.visit_id) }}"
+            data-ajax data-ajax-refresh="#visit-{{ c.visit_id }}">
+        <input type="hidden" name="next" value="{{ _onext }}">
+        <div class="tev-guest-row">
+          <input type="text" name="name" placeholder="Guest name" autocomplete="off" required>
+          <select name="role">
+            {% for rv, rl in guest_roles %}<option value="{{ rv }}"{{ ' selected' if rv == 'sub_i' else '' }}>{{ rl }}</option>{% endfor %}
+          </select>
+        </div>
+        <input type="email" name="email" placeholder="Email (optional)" autocomplete="off">
+        <div class="tev-resched-acts">
+          {{ ui.btn('Add guest', 'primary', 'sm', icon='plus', type='submit') }}
+          <button type="button" class="btn btn-ghost btn-sm" data-tev-guest-cancel="{{ c.visit_id }}">Back</button>
+        </div>
+      </form>
     </div>
   </div>
 
@@ -199,67 +244,70 @@
 {% endfor %}
 
 <script>
-document.querySelectorAll('[data-tev-resched]').forEach(function(btn){
-  btn.addEventListener('click', function(){
-    var f = document.getElementById('tev-resched-' + btn.getAttribute('data-tev-resched'));
-    if (f) { f.hidden = false; btn.hidden = true; }
-  });
-});
-document.querySelectorAll('[data-tev-resched-cancel]').forEach(function(btn){
-  btn.addEventListener('click', function(){
-    var idx = btn.getAttribute('data-tev-resched-cancel');
-    var f = document.getElementById('tev-resched-' + idx);
-    var opener = document.querySelector('[data-tev-resched="' + idx + '"]');
-    if (f) f.hidden = true;
-    if (opener) opener.hidden = false;
-  });
-});
-document.querySelectorAll('[data-tev-recur]').forEach(function(btn){
-  btn.addEventListener('click', function(){
-    var f = document.getElementById('tev-recur-' + btn.getAttribute('data-tev-recur'));
-    if (f) { f.hidden = false; btn.hidden = true; }
-  });
-});
-document.querySelectorAll('[data-tev-recur-cancel]').forEach(function(btn){
-  btn.addEventListener('click', function(){
-    var idx = btn.getAttribute('data-tev-recur-cancel');
-    var f = document.getElementById('tev-recur-' + idx);
-    var opener = document.querySelector('[data-tev-recur="' + idx + '"]');
-    if (f) f.hidden = true;
-    if (opener) opener.hidden = false;
-  });
-});
-document.querySelectorAll('[data-tev-agenda]').forEach(function(btn){
-  btn.addEventListener('click', function(){
-    var idx = btn.getAttribute('data-tev-agenda');
-    var f = document.getElementById('tev-agenda-edit-' + idx);
-    var view = document.getElementById('tev-agenda-view-' + idx);
-    if (f) f.hidden = false;
-    if (view) view.hidden = true;
-    btn.hidden = true;
-  });
-});
-document.querySelectorAll('[data-tev-agenda-cancel]').forEach(function(btn){
-  btn.addEventListener('click', function(){
-    var idx = btn.getAttribute('data-tev-agenda-cancel');
-    var f = document.getElementById('tev-agenda-edit-' + idx);
-    var view = document.getElementById('tev-agenda-view-' + idx);
-    var opener = document.querySelector('[data-tev-agenda="' + idx + '"]');
-    if (f) f.hidden = true;
-    if (view) view.hidden = false;
-    if (opener) opener.hidden = false;
-  });
-});
-document.querySelectorAll('.tev-copy').forEach(function(btn){
-  btn.addEventListener('click', function(){
-    var url = btn.getAttribute('data-copy') || '';
-    var done = function(){ var t = btn.innerHTML; btn.textContent = 'Copied'; setTimeout(function(){ btn.innerHTML = t; }, 1400); };
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(url).then(done).catch(function(){});
-    } else {
-      var ta = document.createElement('textarea'); ta.value = url; document.body.appendChild(ta);
-      ta.select(); try { document.execCommand('copy'); done(); } catch (e) {} document.body.removeChild(ta);
+/* All overlay interactions are DELEGATED on document so they keep working after
+   an AJAX refresh swaps a visit card's innerHTML (guest add/remove/switch,
+   notes, and agenda all refresh in place). Binding directly would go dead on the
+   first refresh. */
+(function () {
+  if (window.__tevOverlayWired) return;   // wire once per page
+  window.__tevOverlayWired = true;
+
+  function show(id) { var f = document.getElementById(id); if (f) f.hidden = false; return f; }
+  function hide(id) { var f = document.getElementById(id); if (f) f.hidden = true; return f; }
+
+  document.addEventListener('click', function (e) {
+    var t;
+    // Reschedule / recur / agenda toggles.
+    if ((t = e.target.closest('[data-tev-resched]'))) {
+      var i = t.getAttribute('data-tev-resched'); show('tev-resched-' + i); t.hidden = true; return;
+    }
+    if ((t = e.target.closest('[data-tev-resched-cancel]'))) {
+      var i = t.getAttribute('data-tev-resched-cancel'); hide('tev-resched-' + i);
+      var o = document.querySelector('[data-tev-resched="' + i + '"]'); if (o) o.hidden = false; return;
+    }
+    if ((t = e.target.closest('[data-tev-recur]'))) {
+      var i = t.getAttribute('data-tev-recur'); show('tev-recur-' + i); t.hidden = true; return;
+    }
+    if ((t = e.target.closest('[data-tev-recur-cancel]'))) {
+      var i = t.getAttribute('data-tev-recur-cancel'); hide('tev-recur-' + i);
+      var o = document.querySelector('[data-tev-recur="' + i + '"]'); if (o) o.hidden = false; return;
+    }
+    if ((t = e.target.closest('[data-tev-agenda]'))) {
+      var i = t.getAttribute('data-tev-agenda'); show('tev-agenda-edit-' + i); hide('tev-agenda-view-' + i);
+      t.hidden = true; return;
+    }
+    if ((t = e.target.closest('[data-tev-agenda-cancel]'))) {
+      var i = t.getAttribute('data-tev-agenda-cancel'); hide('tev-agenda-edit-' + i); show('tev-agenda-view-' + i);
+      var o = document.querySelector('[data-tev-agenda="' + i + '"]'); if (o) o.hidden = false; return;
+    }
+    // Guests: open / close the add form.
+    if ((t = e.target.closest('[data-tev-guest]'))) {
+      var f = show('tev-guest-add-' + t.getAttribute('data-tev-guest'));
+      if (f) { var n = f.querySelector('input[name="name"]'); if (n) n.focus(); } return;
+    }
+    if ((t = e.target.closest('[data-tev-guest-cancel]'))) {
+      var f = hide('tev-guest-add-' + t.getAttribute('data-tev-guest-cancel'));
+      if (f) { try { f.reset(); } catch (err) {} } return;
+    }
+    // Copy invite link.
+    if ((t = e.target.closest('.tev-copy'))) {
+      var url = t.getAttribute('data-copy') || '';
+      var done = function () { var h = t.innerHTML; t.textContent = 'Copied'; setTimeout(function () { t.innerHTML = h; }, 1400); };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(url).then(done).catch(function () {});
+      } else {
+        var ta = document.createElement('textarea'); ta.value = url; document.body.appendChild(ta);
+        ta.select(); try { document.execCommand('copy'); done(); } catch (err) {} document.body.removeChild(ta);
+      }
+      return;
     }
   });
-});
+
+  /* Switch a guest's role: changing the select submits its form in place. */
+  document.addEventListener('change', function (e) {
+    var sel = e.target.closest('.tev-guest-role');
+    if (!sel || !sel.form) return;
+    if (sel.form.requestSubmit) sel.form.requestSubmit(); else sel.form.submit();
+  });
+})();
 </script>

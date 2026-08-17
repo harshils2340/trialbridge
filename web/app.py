@@ -1467,6 +1467,7 @@ def inject_globals():
             "pay_due": pay_due, "upd_due": upd_due,
             "sites_home_url": _sites_home_url(),
             "sites_nav_features": sites_features.nav_items(),
+            "guest_roles": db.GUEST_ROLES,
             "is_owner": _is_owner()}
 
 
@@ -7080,6 +7081,7 @@ def _build_visit_card(v, now):
         "date_iso": vd.strftime("%Y-%m-%d"), "time_iso": vd.strftime("%H:%M"),
         "window": win, "history": ctx["history"], "notes": ctx["notes"],
         "series": ctx["series"],
+        "guests": db.list_visit_guests(v["id"]),
     }
 
 
@@ -7701,6 +7703,59 @@ def calendar_visit_agenda(visit_id):
         abort(404)
     db.update_visit(visit_id, agenda=(request.form.get("agenda") or "").strip())
     flash("Agenda saved.", "ok")
+    return redirect(_cal_back())
+
+
+@app.route("/app/calendar/visit/<int:visit_id>/guest", methods=["POST"])
+@login_required
+def calendar_visit_guest_add(visit_id):
+    """Add an extra attendee (guest) to a visit - sub-I, PI, interpreter,
+    caregiver, monitor. Record-only scheduling metadata; guests are not emailed
+    automatically. KPI: Tier-2 efficiency (coordinator manages who's in the room
+    without leaving the visit)."""
+    v, lead = _visit_owned(visit_id)
+    if not v:
+        abort(404)
+    name = (request.form.get("name") or "").strip()
+    if not name:
+        flash("Add a name for the guest.", "warn")
+        return redirect(_cal_back())
+    db.add_visit_guest(visit_id, name, email=request.form.get("email") or "",
+                       role=request.form.get("role") or "guest")
+    flash(f"{name} added to the visit.", "ok")
+    return redirect(_cal_back())
+
+
+@app.route("/app/calendar/visit/<int:visit_id>/guest/<int:guest_id>",
+           methods=["POST"])
+@login_required
+def calendar_visit_guest_update(visit_id, guest_id):
+    """Edit a guest or switch their role inline."""
+    v, lead = _visit_owned(visit_id)
+    if not v:
+        abort(404)
+    fields = {}
+    if "role" in request.form:
+        fields["role"] = request.form.get("role")
+    if request.form.get("name"):
+        fields["name"] = request.form.get("name")
+    if "email" in request.form:
+        fields["email"] = request.form.get("email")
+    db.update_visit_guest(guest_id, visit_id, **fields)
+    flash("Guest updated.", "ok")
+    return redirect(_cal_back())
+
+
+@app.route("/app/calendar/visit/<int:visit_id>/guest/<int:guest_id>/remove",
+           methods=["POST"])
+@login_required
+def calendar_visit_guest_remove(visit_id, guest_id):
+    """Remove a guest from a visit."""
+    v, lead = _visit_owned(visit_id)
+    if not v:
+        abort(404)
+    db.remove_visit_guest(guest_id, visit_id)
+    flash("Guest removed.", "ok")
     return redirect(_cal_back())
 
 

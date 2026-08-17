@@ -4107,6 +4107,29 @@ main:focus { outline: none; }
 .tev-person > span:last-child { display: flex; flex-direction: column; line-height: 1.3; }
 .tev-person b { font-size: 13.5px; color: var(--ink); }
 .tev-person em { font-size: 12px; font-style: normal; color: var(--muted); }
+/* ---- Attendees CRUD (guests): add / remove / switch role in place ---- */
+.tev-people-h .tev-guest-n { display: inline-flex; align-items: center; justify-content: center;
+  min-width: 17px; height: 17px; padding: 0 5px; border-radius: var(--radius-pill);
+  background: var(--surface-2); color: var(--muted); font-size: 10.5px; font-weight: 700; }
+.tev-guest-addlink { margin-left: auto; }
+.tev-guest { align-items: center; }
+.tev-guest-main { display: flex; flex-direction: column; line-height: 1.3; min-width: 0; flex: 1; }
+.tev-guest-main .tev-guest-email { font-size: 11.5px; color: var(--faint); }
+.tev-guest-controls { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+.tev-guest-controls form { margin: 0; }
+.tev-guest-role { font-size: 12px; padding: 4px 8px; border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm); background: var(--surface); color: var(--ink); cursor: pointer; max-width: 160px; }
+.tev-guest-x { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px;
+  border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface);
+  color: var(--faint); cursor: pointer; }
+.tev-guest-x:hover { color: var(--red); border-color: var(--danger-border); background: var(--red-bg); }
+.tev-guest-x .ico { width: 14px; height: 14px; }
+.tev-guest-add { border-top: 1px dashed var(--border); margin-top: 4px; padding-top: 10px;
+  display: flex; flex-direction: column; gap: 8px; }
+.tev-guest-row { display: flex; gap: 8px; }
+.tev-guest-row input[name="name"] { flex: 1; }
+.tev-guest-add input, .tev-guest-add select { padding: 8px 10px; border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm); font: inherit; font-size: 13px; background: var(--surface); color: var(--ink); }
 .tev-prep { background: var(--surface-2); border: 1px solid var(--border);
   border-radius: var(--radius-sm); padding: 12px 14px; }
 .tev-prep-h { display: flex; align-items: center; gap: 6px; font-size: 12.5px;
