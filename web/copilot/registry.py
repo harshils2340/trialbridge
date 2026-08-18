@@ -48,6 +48,12 @@ _READS = [
          "Enrollment funnel: totals, conversion, and the biggest drop-off.",
          trace=["Pulled funnel metrics across all your studies"],
          run=lambda uid, lid, p: tools.funnel_overview(uid)),
+    Tool("needs_reply", "read",
+         "Your inbox: applicants who messaged and are waiting on a reply, each "
+         "with a suggested response drafted from their last message.",
+         trace=["Read your inbox for messages waiting on a reply",
+                "Drafted a suggested reply for each from their last message"],
+         run=lambda uid, lid, p: tools.needs_reply(uid)),
     Tool("search_messages", "read",
          "Find applicants whose message thread mentions a word or phrase.",
          params={"term": "the word or phrase to search for"},

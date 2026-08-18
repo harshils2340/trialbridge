@@ -86,6 +86,10 @@ def _display_items(items):
             bits.append(f"{n} mention" + ("" if n == 1 else "s"))
         if it.get("snippet"):
             bits.append("\u201c" + str(it["snippet"]).strip() + "\u201d")
+        if it.get("draft"):
+            bits.append("Suggested reply: \u201c" + str(it["draft"]).strip() + "\u201d")
+        elif it.get("blocked"):
+            bits.append(str(it["blocked"]))
         out.append({
             "title": str(title),
             "detail": " \u00b7 ".join(b for b in bits if b),
@@ -97,7 +101,7 @@ def _display_items(items):
 # Action-first starters shown in the empty rail - phrased as work to do, not
 # questions to ask (Bridget is an agent that acts, not a Q&A bot).
 STARTERS = [
-    "Triage my review queue",
+    "Draft replies to my inbox",
     "Send booking reminders to everyone stuck",
     "Find my biggest funnel leak",
 ]
@@ -121,7 +125,7 @@ _BULK_HINTS = ("everyone", "all of them", "each of", "each one", "stuck",
                "all applicants", "everybody")
 
 
-def _classify(query):
+def _classify(query, has_lead=False):
     """Return (intent, params) from keyword rules. Deterministic + cheap; the
     LLM is only used later to phrase the grounded answer, not to route.
 
@@ -135,6 +139,18 @@ def _classify(query):
     if ("search" in q or "find" in q or "mention" in q) and m:
         return "search_messages", {"term": m.group(2).strip()}
 
+    # --- Inbox / new replies (read + a suggested draft per applicant) ----------
+    # This is inbox triage, not a single-applicant send, so it must beat the
+    # generic 'draft/reply' branch below (which needs an applicant open).
+    if any(w in q for w in ("inbox", "inboxes", "new message", "new messages",
+                            "new reply", "new replies", "unanswered", "unread",
+                            "who messaged", "who wrote", "who replied",
+                            "needs a reply", "need a reply", "need replies",
+                            "waiting on a reply", "waiting for a reply",
+                            "reply to everyone", "replies to my", "reply to my",
+                            "catch up on")):
+        return "needs_reply", {}
+
     # --- Action intents (require an explicit send/booking/message verb) --------
     booking_word = any(w in q for w in ("book", "booking", "self-schedule",
                                         "calendly", "schedule link", "screening link"))
@@ -142,8 +158,14 @@ def _classify(query):
         if any(h in q for h in _BULK_HINTS):
             return "bulk_booking", {}
         return "send_booking", {}
-    if any(w in q for w in ("draft", "reply", "message", "write", "follow up",
-                            "followup", "nudge", "reschedule", "thank")):
+    if any(w in q for w in ("draft", "reply", "replies", "message", "write",
+                            "follow up", "followup", "nudge", "reschedule",
+                            "thank", "respond")):
+        # No applicant open -> they mean their inbox, not one person. Route to the
+        # inbox reader (which drafts per applicant) instead of dead-ending on
+        # "open an applicant first".
+        if not has_lead:
+            return "needs_reply", {}
         intent = "check_in"
         if "remind" in q:
             intent = "booking"
@@ -225,14 +247,15 @@ _PROPOSAL_INTRO = {
 
 def _help_payload():
     return {
-        "summary": ("I can help across your studies - the queue, calendar, "
-                    "documents, campaigns, and record matches. Try: \u201cwho's "
-                    "waiting on my decision?\u201d, \u201cwho's stuck in "
-                    "screening?\u201d, \u201chow's my funnel?\u201d, \u201cwhat "
-                    "documents are due?\u201d, \u201cwhich campaign enrolls "
-                    "cheapest?\u201d, \u201cwhat should I prep for tomorrow?\u201d, "
-                    "or open an applicant and ask \u201csummarize this "
-                    "applicant\u201d or \u201cdraft a follow-up\u201d."),
+        "summary": ("I can help across your studies - your inbox, the queue, "
+                    "calendar, documents, campaigns, and record matches. Try: "
+                    "\u201cdraft replies to my inbox\u201d, \u201cwho's waiting on "
+                    "my decision?\u201d, \u201cwho's stuck in screening?\u201d, "
+                    "\u201chow's my funnel?\u201d, \u201cwhat documents are "
+                    "due?\u201d, \u201cwhich campaign enrolls cheapest?\u201d, "
+                    "\u201cwhat should I prep for tomorrow?\u201d, or open an "
+                    "applicant and ask \u201csummarize this applicant\u201d or "
+                    "\u201cdraft a reply\u201d."),
         "items": [], "citations": [],
     }
 
@@ -268,7 +291,7 @@ def _plan_llm(query, ctx):
 
 def _plan(query, ctx):
     """Choose a tool: LLM planner first (if configured), keyword rules otherwise."""
-    return _plan_llm(query, ctx) or _classify(query)
+    return _plan_llm(query, ctx) or _classify(query, bool(ctx.get("has_lead")))
 
 
 def _ground_with_llm(query, payload):
