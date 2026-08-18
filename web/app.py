@@ -10175,6 +10175,36 @@ def recruitment_summary_json():
     }), 200
 
 
+def _team_context():
+    """Shared workspace roster + pending invites, shaped for the team UI. Used by
+    both the standalone Team page and the Team tab inside Settings so the roster
+    shows inline without a second click."""
+    members = db.list_org_members(g.user["id"])
+    members = [{
+        "user_id": m["user_id"], "name": m["name"], "email": m["email"],
+        "role": m["role"], "custom_label": m["role_label"] or "",
+        "role_label": (m["role_label"] or db.ORG_ROLE_LABELS.get(m["role"], m["role"])),
+        "is_me": m["user_id"] == g.user["id"],
+    } for m in members]
+    members.sort(key=lambda m: not m["is_me"])  # "you" first
+    invites = [{
+        "token": i["token"], "email": i["email"],
+        "role_label": (i["role_label"] or db.ORG_ROLE_LABELS.get(i["role"], i["role"])),
+        "url": url_for("team_join", token=i["token"], _external=True),
+    } for i in db.list_org_invites(g.user["id"])]
+    return {"members": members, "invites": invites,
+            "roles": db.ORG_ROLES, "role_labels": db.ORG_ROLE_LABELS}
+
+
+def _team_return():
+    """Return to wherever a team action was submitted from (Settings Team tab or
+    the standalone Team page), so acting inline never bounces the user away."""
+    ref = request.referrer or ""
+    if "/app/site" in ref:
+        return url_for("site_setup") + "#team"
+    return url_for("team_page")
+
+
 def _render_site_setup(instruments=None, active_tab=None):
     """Render site setup, including per-site REDCap connection state.
 
@@ -10200,7 +10230,8 @@ def _render_site_setup(instruments=None, active_tab=None):
         redcap_intake_enabled=cfg.intake_enabled,
         redcap_instruments=instruments,
         redcap_simulated=simulated,
-        active_tab=active_tab)
+        active_tab=active_tab,
+        **_team_context())
 
 
 @app.route("/app/site", methods=["GET", "POST"])
@@ -13072,22 +13103,7 @@ def intake_import():
 def team_page():
     """The shared workspace roster: everyone on the trial with full visibility.
     Coordinators/PIs can invite teammates and set roles; students see the team."""
-    members = db.list_org_members(g.user["id"])
-    members = [{
-        "user_id": m["user_id"], "name": m["name"], "email": m["email"],
-        "role": m["role"], "custom_label": m["role_label"] or "",
-        "role_label": (m["role_label"] or db.ORG_ROLE_LABELS.get(m["role"], m["role"])),
-        "is_me": m["user_id"] == g.user["id"],
-    } for m in members]
-    # Put "you" at the top of the roster — small but it makes the list read as yours.
-    members.sort(key=lambda m: not m["is_me"])
-    invites = [{
-        "token": i["token"], "email": i["email"],
-        "role_label": (i["role_label"] or db.ORG_ROLE_LABELS.get(i["role"], i["role"])),
-        "url": url_for("team_join", token=i["token"], _external=True),
-    } for i in db.list_org_invites(g.user["id"])]
-    return render_template("team.html", members=members, invites=invites,
-                           roles=db.ORG_ROLES, role_labels=db.ORG_ROLE_LABELS)
+    return render_template("team.html", **_team_context())
 
 
 def _resolve_team_role(form):
@@ -13118,7 +13134,7 @@ def team_invite():
     token = db.create_org_invite(g.user["id"], email, role, role_label=label)
     link = url_for("team_join", token=token, _external=True)
     flash(f"Invite link ready - share it with your teammate: {link}", "ok")
-    return redirect(url_for("team_page"))
+    return redirect(_team_return())
 
 
 @app.route("/app/team/role", methods=["POST"])
@@ -13132,7 +13148,7 @@ def team_set_role():
         flash("Role updated.", "ok")
     else:
         flash("Couldn't update that role.", "error")
-    return redirect(url_for("team_page"))
+    return redirect(_team_return())
 
 
 @app.route("/app/team/remove", methods=["POST"])
@@ -13146,7 +13162,7 @@ def team_remove():
     else:
         flash("Couldn't remove that member (can't remove the last coordinator).",
               "error")
-    return redirect(url_for("team_page"))
+    return redirect(_team_return())
 
 
 @app.route("/app/team/invite/revoke", methods=["POST"])
@@ -13156,7 +13172,7 @@ def team_revoke_invite():
         abort(403)
     db.revoke_org_invite(g.user["id"], request.form.get("token", "").strip())
     flash("Invite revoked.", "ok")
-    return redirect(url_for("team_page"))
+    return redirect(_team_return())
 
 
 @app.route("/app/team/join/<token>")
