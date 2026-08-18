@@ -5847,7 +5847,7 @@ def seed_demo_team(clinician_id):
          "Site Director / President"),
         ("mhenderson@fieveclinical.com", "Margaret Henderson, MD, CCRC",
          "coordinator", "Director of Clinical Operations"),
-        ("dejosama@fieveclinical.com", "Danny-Elle Josama", "student",
+        ("dejosama@fieveclinical.com", "Danny-Elle Josama", "coordinator",
          "Clinical Research Coordinator"),
         ("kwalsh@fieveclinical.com", "Kara Walsh, MPH", "student",
          "Clinical Research Coordinator"),

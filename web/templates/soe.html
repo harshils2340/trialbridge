@@ -17,7 +17,7 @@
 </div>
 {% else %}
 
-{% if trials|length > 1 %}
+{% if show_picker %}
 <div class="soe-studies" aria-label="Choose a study">
   {% for t in trials %}
   <a class="ui-chip{{ ' is-active' if t.nct == nct else '' }}" href="{{ url_for('soe_page', nct=t.nct) }}">{{ t.title[:46] }}</a>

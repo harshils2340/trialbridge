@@ -5069,6 +5069,14 @@ a.rail-attn:hover { text-decoration: underline; }
   background: transparent; font: inherit; font-size: 14px; line-height: 1.45;
   color: var(--ink); padding: 8px 0; min-height: 22px; height: 38px;
   max-height: 160px; overflow-y: auto; }
+/* The wrapper (.chatbar) already draws the border + focus ring; the inner field
+   must not add a second one, or you get a double outline on focus. */
+.chatbar-input:focus { border: none; outline: none; box-shadow: none; }
+/* iMessage-style time break: a centered, muted header shown only at real gaps
+   (see hydrateThread in base.html), instead of a clock stamp on every bubble. */
+.thread-sep { text-align: center; font-size: 11px; font-weight: 600;
+  letter-spacing: .01em; color: var(--faint); margin: 12px 0 6px; }
+.thread-sep:first-child { margin-top: 0; }
 .chatbar-send { flex: none; width: 36px; height: 36px; border: none;
   border-radius: 50%; background: var(--accent); color: var(--accent-ink);
   display: inline-flex; align-items: center; justify-content: center;
@@ -5292,6 +5300,8 @@ a.rail-attn:hover { text-decoration: underline; }
 .cli-study { font-size: 10.5px; color: var(--faint); text-align: right;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 48%; flex: none; }
 .cli-detail { font-size: 11.5px; line-height: 1.4; color: var(--muted); margin-top: 2px; }
+.copilot-li-more { font-size: 11.5px; color: var(--faint); text-align: center; }
+.brief-suggest { margin-top: 12px; }
 .copilot-suggest, .copilot-cites { display: flex; flex-wrap: wrap; gap: 6px;
   margin-top: 8px; }
 .copilot-chip {
@@ -7483,7 +7493,12 @@ body.fs-page { background:
 .cal-mode-i:hover { border-color:var(--border-strong); color:var(--ink); }
 .cal-mode-i.is-on { background:var(--accent-soft); border-color:var(--accent);
   color:var(--accent); }
-.cal-where-hint { font-size:12px; color:var(--faint); margin:6px 2px 0; }
+.cal-where-hint { font-size:12px; color:var(--faint); margin:6px 2px 0; line-height:1.5; }
+.cal-where-hint .cw-spin { display:inline-block; vertical-align:-3px; margin-right:5px; }
+.cal-where-ok { color:var(--ok); font-weight:700; margin-right:2px; }
+.cal-where-regen { background:none; border:none; color:var(--accent); font-weight:600;
+  cursor:pointer; padding:0; font-size:12px; text-decoration:underline; }
+.cal-where-regen:hover { color:var(--accent-strong, var(--accent)); }
 
 /* Searchable applicant combobox (New visit modal) */
 .cal-combo { position:relative; }

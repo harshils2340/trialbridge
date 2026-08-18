@@ -405,7 +405,7 @@ def ops_readiness():
 # --------------------------------------------------------------------------- #
 # NO_LOGIN (defined near the top with the production guard) enables the no-login
 # demo shell. It is forced off in production so the ATS is never anonymous.
-_DEMO_EMAIL = "vfieve@fieveclinical.com"
+_DEMO_EMAIL = "dejosama@fieveclinical.com"
 _DEMO_PATIENT_EMAIL = "demo.patient@bridgemd.local"
 _DEMO_PATIENT_NAME = os.environ.get("DEMO_PATIENT_NAME", "Harshil Test User").strip() or "Harshil Test User"
 DEMO_SESSION_KEY = "demo_mode"
@@ -467,7 +467,7 @@ def _ensure_demo_user():
     u = db.get_user_by_email(_DEMO_EMAIL)
     if not u:
         pw = generate_password_hash("demo-no-login", method="pbkdf2:sha256")
-        db.create_user(_DEMO_EMAIL, pw, "Vanessa Fieve, JD, CCRC", "", "")
+        db.create_user(_DEMO_EMAIL, pw, "Danny-Elle Josama", "", "")
         u = db.get_user_by_email(_DEMO_EMAIL)
     return u
 
@@ -1148,6 +1148,21 @@ def _notify(to_addr, subject, body):
                           allow_sms=False)
 
 
+def _notify_async(to_addr, subject, body):
+    """Fire-and-forget variant of _notify: the SMTP send runs on a daemon thread
+    so heads-up emails (new candidate, owner alert, site DM copy) never make an
+    interactive request wait on the mail provider. The message is already built
+    in the request; only the network send is deferred."""
+    def _run():
+        try:
+            _NOTIFIER.send(to_email=to_addr, subject=subject, email_body=body,
+                           allow_sms=False)
+        except Exception:
+            app.logger.exception("async notify failed")
+    threading.Thread(target=_run, daemon=True).start()
+    return True
+
+
 def _notify_patient(to_email, to_phone, subject, email_body, sms_body):
     """Patient-facing notify: email by default, optional SMS when env-enabled."""
     return _NOTIFIER.send(
@@ -1159,6 +1174,34 @@ def _notify_patient(to_email, to_phone, subject, email_body, sms_body):
     )
 
 
+def _notify_patient_async(to_email, to_phone, subject, email_body, sms_body):
+    """Fire the SMTP/Twilio send on a daemon thread so an interactive request
+    (e.g. sending a chat message, booking a visit) never blocks on the mail/SMS
+    provider. Message text is already built in the request; only the network send
+    is deferred. The no-op path stays instant (notifier short-circuits when off)."""
+    def _run():
+        try:
+            _NOTIFIER.send(to_email=to_email, to_phone=to_phone, subject=subject,
+                           email_body=email_body, sms_body=sms_body)
+        except Exception:
+            app.logger.exception("async patient notify failed")
+    threading.Thread(target=_run, daemon=True).start()
+
+
+def _gcal_sync_async(lead, visit, invite_url):
+    """Push the visit to the site's connected Google Calendar off the request
+    path - it's a best-effort network POST and must never make booking feel slow."""
+    def _run():
+        try:
+            sync = calendar_invites.maybe_sync_google_event(lead, visit, invite_url)
+            if sync.get("attempted") and not sync.get("ok"):
+                app.logger.warning("google calendar sync failed: %s",
+                                   sync.get("detail", "unknown"))
+        except Exception:
+            app.logger.exception("async google calendar sync failed")
+    threading.Thread(target=_run, daemon=True).start()
+
+
 def _notify_site_new_candidate(token):
     """Tell the study site a new de-identified candidate is waiting (with the
     secure review link). Recipient: the lead's site email, else SITE_NOTIFY_EMAIL."""
@@ -1168,7 +1211,7 @@ def _notify_site_new_candidate(token):
     to_addr = db.site_contact_for_nct(lead["nct"]) or SITE_NOTIFY_EMAIL
     link = _abs_url("candidate_page", token=lead["site_token"])
     subject, body = mailer.build_candidate_message(lead, link)
-    return _notify(to_addr, subject, body)
+    return _notify_async(to_addr, subject, body)
 
 
 def _dedup_email_list(raw, exclude=None):
@@ -1213,7 +1256,7 @@ def _notify_owner_new_application(token, exclude_emails=None):
     link = _abs_url("applicant_detail", lead_id=lead["id"])
     inbox = _abs_url("operator_inbox")
     subject, body = mailer.build_owner_new_application(lead, link, inbox=inbox)
-    return _notify(", ".join(recipients), subject, body)
+    return _notify_async(", ".join(recipients), subject, body)
 
 
 def _notify_applicant(token, kind):
@@ -1224,7 +1267,8 @@ def _notify_applicant(token, kind):
         return False
     link = _abs_url("applications")
     subject, body = mailer.build_applicant_message(lead, kind, link)
-    return _notify_patient(lead["email"], lead["phone"], subject, body, "")
+    _notify_patient_async(lead["email"], lead["phone"], subject, body, "")
+    return True
 
 
 def _notify_applicant_by_id(lead_id, kind):
@@ -1239,7 +1283,8 @@ def _notify_applicant_apply_confirmation(token):
     if not lead or (not lead["email"] and not lead["phone"]):
         return False
     subject, body = mailer.build_apply_confirmation(lead, _abs_url("applications"))
-    return _notify_patient(lead["email"], lead["phone"], subject, body, "")
+    _notify_patient_async(lead["email"], lead["phone"], subject, body, "")
+    return True
 
 
 def _notify_applicant_schedule(lead):
@@ -1250,7 +1295,8 @@ def _notify_applicant_schedule(lead):
     subject, body = mailer.build_schedule_message(
         lead, lead["schedule_url"], _abs_url("applications"))
     sms = mailer.build_schedule_sms(lead, lead["schedule_url"])
-    return _notify_patient(lead["email"], lead["phone"], subject, body, sms)
+    _notify_patient_async(lead["email"], lead["phone"], subject, body, sms)
+    return True
 
 
 def _notify_applicant_message(lead, body):
@@ -1260,7 +1306,8 @@ def _notify_applicant_message(lead, body):
     subject, msg = mailer.build_dm_message(
         lead, body, _abs_url("applications"), to="patient")
     sms = mailer.build_dm_sms(lead, link, to="patient")
-    return _notify_patient(lead["email"], lead["phone"], subject, msg, sms)
+    _notify_patient_async(lead["email"], lead["phone"], subject, msg, sms)
+    return True
 
 
 def _notify_site_message(lead, body):
@@ -1269,7 +1316,7 @@ def _notify_site_message(lead, body):
     to_addr = db.site_contact_for_nct(lead["nct"]) or SITE_NOTIFY_EMAIL
     link = _abs_url("candidate_page", token=lead["site_token"])
     subject, msg = mailer.build_dm_message(lead, body, link, to="site")
-    return _notify(to_addr, subject, msg)
+    return _notify_async(to_addr, subject, msg)
 
 
 def _notify_applicant_visit(lead, when, location, invite_url=""):
@@ -1278,7 +1325,8 @@ def _notify_applicant_visit(lead, when, location, invite_url=""):
     subject, body = mailer.build_visit_message(
         lead, when, location, _abs_url("applications"), invite_url=invite_url)
     sms = mailer.build_reminder_sms(lead, when, location, _abs_url("applications"))
-    return _notify_patient(lead["email"], lead["phone"], subject, body, sms)
+    _notify_patient_async(lead["email"], lead["phone"], subject, body, sms)
+    return True
 
 
 def _notify_alert(alert, new_matches):
@@ -4281,7 +4329,7 @@ def demo_request():
         "What they're recruiting for / notes:",
         message or "-",
     ])
-    _notify(OWNER_NOTIFY_EMAIL, subject, body)
+    _notify_async(OWNER_NOTIFY_EMAIL, subject, body)
     flash("Thanks - we'll email you shortly to schedule your live demo.", "success")
     return redirect(return_to)
 
@@ -7593,10 +7641,7 @@ def _share_visit_invite(lead, visit_id, when, kind, location):
         sysmsg += f" Add it to your calendar: {invite_url} We'll remind you beforehand."
         db.add_message(lead["id"], "system", sysmsg)
         _notify_applicant_visit(lead, when, location, invite_url=invite_url)
-        sync = calendar_invites.maybe_sync_google_event(lead, visit, invite_url)
-        if sync.get("attempted") and not sync.get("ok"):
-            app.logger.warning("google calendar sync failed: %s",
-                               sync.get("detail", "unknown"))
+        _gcal_sync_async(lead, visit, invite_url)
     except Exception:
         app.logger.exception("visit invite share failed")
 
@@ -9031,6 +9076,10 @@ def soe_page():
     active = (req_nct if req_nct in valid else "") or nct_filter or (
         trials[0]["nct"] if trials else "")
     active_title = next((t["title"] for t in trials if t["nct"] == active), active)
+    # Only offer the on-page study picker as a fallback when the top-bar switcher is
+    # on "All studies". If a specific trial is already selected there, assume it and
+    # don't show a redundant legend — switching happens from the top bar.
+    show_picker = (not nct_filter) and len(trials) > 1
     visits = db.list_soe_visits(g.user["id"], active) if active else []
     # Enrolled/in-progress participants we can apply the schedule to.
     apply_leads = []
@@ -9042,6 +9091,7 @@ def soe_page():
                     {"id": r["id"], "name": r["name"] or f"Applicant #{r['id']}"})
     return render_template(
         "soe.html", trials=trials, nct=active, active_title=active_title,
+        show_picker=show_picker,
         visits=visits, apply_leads=apply_leads, has_llm=bool(mt.LLM_API_KEY),
         today=dt.date.today().strftime("%Y-%m-%d"))
 
@@ -12836,6 +12886,8 @@ def team_page():
         "role_label": (m["role_label"] or db.ORG_ROLE_LABELS.get(m["role"], m["role"])),
         "is_me": m["user_id"] == g.user["id"],
     } for m in members]
+    # Put "you" at the top of the roster — small but it makes the list read as yours.
+    members.sort(key=lambda m: not m["is_me"])
     invites = [{
         "token": i["token"], "email": i["email"],
         "role_label": (i["role_label"] or db.ORG_ROLE_LABELS.get(i["role"], i["role"])),
@@ -13151,10 +13203,7 @@ def candidate_visit(token):
         sysmsg += " We'll remind you beforehand."
         db.add_message(lead["id"], "system", sysmsg)
         _notify_applicant_visit(lead, when, location, invite_url=invite_url)
-        sync = calendar_invites.maybe_sync_google_event(lead, visit, invite_url)
-        if sync.get("attempted") and not sync.get("ok"):
-            app.logger.warning("google calendar sync failed: %s",
-                               sync.get("detail", "unknown"))
+        _gcal_sync_async(lead, visit, invite_url)
         flash("Visit booked and shared with the applicant.", "ok")
     else:
         flash("Pick a date and time for the visit.", "error")

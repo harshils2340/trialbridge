@@ -140,21 +140,20 @@
 
   <div class="card">
     <div class="section-title"><h2>Messages</h2></div>
-    {% if messages %}
     <ul class="thread-list">
       {% for m in messages %}
-      <li class="msg msg-{{ m['sender'] }}">
+      <li class="msg msg-{{ m['sender'] }}" data-ts="{{ m['created_at'] }}">
         <span class="msg-who">{% if m['sender'] == 'site' %}You{% elif m['sender'] == 'system' %}BridgeMD{% else %}Applicant{% endif %}</span>
         <span class="msg-body">{{ m['body'] }}</span>
         <span class="msg-time">{{ m['created_at'] }}</span>
       </li>
+      {% else %}
+      <li class="thread-empty" data-ajax-empty>No messages yet. A quick, warm first message ("Thanks for applying, here's what
+        happens next") is the single biggest thing that keeps candidates from going quiet.</li>
       {% endfor %}
     </ul>
-    {% else %}
-    <p class="thread-empty">No messages yet. A quick, warm first message ("Thanks for applying, here's what
-      happens next") is the single biggest thing that keeps candidates from going quiet.</p>
-    {% endif %}
-    <form class="thread-form" method="post" action="{{ url_for('candidate_message', token=lead['site_token']) }}" data-ajax data-ajax-refresh=".thread-list">
+    <form class="thread-form" method="post" action="{{ url_for('candidate_message', token=lead['site_token']) }}" data-ajax data-ajax-quiet data-ajax-refresh=".thread-list" data-optimistic=".thread-list">
+      <template data-optimistic-tpl><li class="msg msg-site" data-ts="{{'{{time}}'}}"><span class="msg-who">You</span><span class="msg-body">{{'{{body}}'}}</span><span class="msg-time">Just now</span></li></template>
       <input type="text" name="body" placeholder="Message the applicant..." required autocomplete="off" data-ajax-clear>
       <button class="btn btn-primary btn-sm" type="submit">Send</button>
     </form>

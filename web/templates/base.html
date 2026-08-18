@@ -508,6 +508,98 @@ document.addEventListener('click', function (e) {
   }
   window.uiToast = toast;
 
+  function esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+  function pad2(n) { return (n < 10 ? '0' : '') + n; }
+  function nowStamps() {
+    var d = new Date();
+    var ymd = d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
+    return { time: ymd + ' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes()) };
+  }
+  // Parse "YYYY-MM-DD HH:MM[:SS]" as local wall-clock (what the server stores).
+  function parseTs(s) {
+    if (!s) return null;
+    var d = new Date(String(s).trim().replace(' ', 'T'));
+    return isNaN(d.getTime()) ? null : d;
+  }
+  // iMessage-style label: recent reads relative, older reads day + clock.
+  function relLabel(d) {
+    var now = new Date(), diff = (now - d) / 1000;
+    if (diff < 45) return 'Just now';
+    if (diff < 3600) { var m = Math.max(1, Math.round(diff / 60)); return m + ' min ago'; }
+    var hm = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    if (d.toDateString() === now.toDateString()) return hm;
+    var y = new Date(now); y.setDate(now.getDate() - 1);
+    if (d.toDateString() === y.toDateString()) return 'Yesterday ' + hm;
+    if ((now - d) < 6 * 864e5) return d.toLocaleDateString([], { weekday: 'long' }) + ' ' + hm;
+    var opt = (d.getFullYear() === now.getFullYear())
+      ? { month: 'short', day: 'numeric' }
+      : { month: 'short', day: 'numeric', year: 'numeric' };
+    return d.toLocaleDateString([], opt) + ' ' + hm;
+  }
+
+  // Group a bubble thread the way iMessage does: no per-bubble clock; a centered
+  // time header only when there's a real gap (>15 min) or the day changes.
+  function hydrateThread(thread) {
+    thread.querySelectorAll('.thread-sep').forEach(function (s) { s.remove(); });
+    var prev = null;
+    thread.querySelectorAll('[data-ts]').forEach(function (el) {
+      var d = parseTs(el.getAttribute('data-ts'));
+      if (!d) return;
+      var brk = !prev || (d - prev) > 15 * 60 * 1000 || d.toDateString() !== prev.toDateString();
+      if (brk) {
+        var sep = document.createElement('div');
+        sep.className = 'thread-sep';
+        sep.textContent = relLabel(d);
+        el.parentNode.insertBefore(sep, el);
+      }
+      prev = d;
+    });
+  }
+  // Inline-timestamp list (candidate page): keep the time but make it relative.
+  function hydrateList(list) {
+    list.querySelectorAll('[data-ts]').forEach(function (el) {
+      var d = parseTs(el.getAttribute('data-ts'));
+      var t = el.querySelector('.msg-time');
+      if (d && t) t.textContent = relLabel(d);
+    });
+  }
+  function hydrateTimes(root) {
+    (root || document).querySelectorAll('.thread').forEach(hydrateThread);
+    (root || document).querySelectorAll('.thread-list').forEach(hydrateList);
+  }
+  window.hydrateTimes = hydrateTimes;
+
+  /* Optimistic append: a form marked [data-optimistic="<container>"] with a
+     matching <template data-optimistic-tpl> renders the new item into the
+     container the instant you submit, so it never waits on the round-trip. The
+     template uses {{field}} tokens (form field names, HTML-escaped) plus {{time}}
+     for the current timestamp and a data-ts attribute the timestamps hydrate off.
+     A [data-ajax-empty] placeholder is removed on first item. The background
+     refresh reconciles with the server's copy afterward. */
+  function optimistic(form, fd) {
+    var sel = form.getAttribute('data-optimistic');
+    if (!sel) return false;
+    var container = document.querySelector(sel);
+    var tpl = form.querySelector('template[data-optimistic-tpl]');
+    if (!container || !tpl) return false;
+    var t = nowStamps();
+    var html = tpl.innerHTML.replace(/\{\{\s*(\w+)\s*\}\}/g, function (_, key) {
+      if (key in t) return t[key];
+      var v = fd.get(key);
+      return v == null ? '' : esc(v);
+    });
+    var empty = container.querySelector('[data-ajax-empty]');
+    if (empty) empty.remove();
+    container.insertAdjacentHTML('beforeend', html);
+    hydrateTimes(container.closest('.thread, .thread-list, .app-card, .card') || document);
+    container.scrollTop = container.scrollHeight;
+    return true;
+  }
+
   function refresh(form) {
     var sel = form.getAttribute('data-ajax-refresh');
     var modal = form.closest('.ui-modal');
@@ -526,6 +618,7 @@ document.addEventListener('click', function (e) {
           if (m2) { modal.innerHTML = m2.innerHTML; modal.hidden = false; }
         }
         if (window.__attachCsrf) window.__attachCsrf();
+        hydrateTimes();
         document.querySelectorAll('.thread, .thread-list').forEach(function (t) { t.scrollTop = t.scrollHeight; });
       }).catch(function () {});
   }
@@ -539,9 +632,13 @@ document.addEventListener('click', function (e) {
     var meta = document.querySelector('meta[name="csrf-token"]');
     var csrf = meta ? meta.getAttribute('content') : '';
     var btn = form.querySelector('[type="submit"]');
+    var fd = new FormData(form);
+    // Paint + clear on submit, not on response, so the UI reacts instantly.
+    var painted = optimistic(form, fd);
+    if (painted) { form.querySelectorAll('[data-ajax-clear]').forEach(function (i) { i.value = ''; }); }
     if (btn) btn.disabled = true;
     fetch(action, {
-      method: 'POST', body: new FormData(form), credentials: 'same-origin',
+      method: 'POST', body: fd, credentials: 'same-origin',
       headers: { 'X-BridgeMD-Ajax': '1', 'X-CSRF-Token': csrf }
     }).then(function (r) {
       var ct = r.headers.get('Content-Type') || '';
@@ -551,12 +648,12 @@ document.addEventListener('click', function (e) {
       if (!data) return;
       if (btn) btn.disabled = false;
       if (data.ok === false) { toast(data.error || 'Something went wrong. Please retry.', 'error'); return; }
-      // Feedback belongs where the work happens. If the form lives inside an open
-      // overlay/modal, the in-place refresh below already shows the saved state,
-      // so a toast on the main screen (hidden behind the overlay) is just noise.
-      // Suppress it there; only toast for top-level submits. Errors always toast.
+      // Skip the toast when the in-place refresh IS the confirmation: forms inside
+      // an open overlay/modal, or forms that opt out via data-ajax-quiet (chat,
+      // notes). Errors always toast.
       var inModal = form.closest('.ui-modal');
-      if (data.toast && !inModal) toast(data.toast, data.category);
+      var quiet = form.hasAttribute('data-ajax-quiet');
+      if (data.toast && !inModal && !quiet) toast(data.toast, data.category);
       form.querySelectorAll('[data-ajax-clear]').forEach(function (i) { i.value = ''; });
       if (!form.querySelector('[data-ajax-clear]')) { try { form.reset(); } catch (e) {} }
       refresh(form);
@@ -565,6 +662,9 @@ document.addEventListener('click', function (e) {
       toast('Something went wrong. Please retry.', 'error');
     });
   });
+
+  hydrateTimes();
+  setInterval(hydrateTimes, 60000);  // keep "Just now" -> "N min ago" fresh
 })();
 </script>
 </body>

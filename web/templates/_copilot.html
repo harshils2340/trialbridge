@@ -98,9 +98,8 @@
     var hello = document.createElement('div');
     hello.className = 'copilot-msg bot';
     hello.innerHTML = '<div class="copilot-avatar">' + iconHtml('sparkle') + '</div>'
-      + '<div class="copilot-hello"><b>Hi, I\u2019m Bridget.</b> I work across your studies \u2014 '
-      + 'triaging your queue, flagging funnel leaks, and drafting messages. '
-      + 'You approve anything before it goes out.</div>';
+      + '<div class="copilot-hello"><b>Hi, I\u2019m Bridget.</b> Here\u2019s where to start '
+      + '\u2014 or just ask.</div>';
     log.appendChild(hello);
 
     var brief = document.createElement('div');
@@ -120,20 +119,15 @@
     brief.innerHTML = '';
     var sections = (d && d.sections) || [];
     if (sections.length) {
-      var head = document.createElement('div');
-      head.className = 'brief-head';
-      head.textContent = d.headline || 'Here\u2019s what needs you today.';
-      brief.appendChild(head);
-
-      sections.forEach(function (s) {
+      // Show only the top few priorities so it reads calm, not like a wall.
+      sections.slice(0, 3).forEach(function (s) {
         var meta = sectionMeta(s.title);
         var card = document.createElement('button');
         card.type = 'button';
         card.className = 'brief-card';
         card.innerHTML =
           '<span class="brief-ic">' + iconHtml(meta.icon) + '</span>'
-          + '<span class="brief-body"><span class="brief-title">' + escapeHtml(s.title) + '</span>'
-          + '<span class="brief-sub">' + escapeHtml(s.summary || '') + '</span></span>'
+          + '<span class="brief-body"><span class="brief-title">' + escapeHtml(s.title) + '</span></span>'
           + '<span class="brief-count">' + s.count + '</span>'
           + '<span class="brief-arrow">' + iconHtml('chevron-right') + '</span>';
         card.addEventListener('click', function () { ask(meta.q); });
@@ -143,24 +137,20 @@
       var ok = document.createElement('div');
       ok.className = 'brief-clear';
       ok.innerHTML = '<span class="brief-clear-ic">' + iconHtml('check') + '</span>'
-        + '<div><b>You\u2019re all caught up.</b><span>Nothing needs you across your studies right now.</span></div>';
+        + '<div><b>You\u2019re all caught up.</b><span>Nothing needs you right now.</span></div>';
       brief.appendChild(ok);
     }
 
-    // "Or ask me anything" — a few phrased starters below the live brief.
-    var sug = document.createElement('div');
-    sug.className = 'brief-starters';
-    sug.innerHTML = '<div class="brief-starters-h">Or ask me anything</div>';
+    // A couple of light suggestions — no heading, keep it quiet.
     var chips = document.createElement('div');
-    chips.className = 'copilot-suggest';
-    STARTERS.forEach(function (s) {
+    chips.className = 'copilot-suggest brief-suggest';
+    STARTERS.slice(0, 3).forEach(function (s) {
       var c = document.createElement('button');
       c.type = 'button'; c.className = 'copilot-chip'; c.textContent = s;
       c.addEventListener('click', function () { ask(s); });
       chips.appendChild(c);
     });
-    sug.appendChild(chips);
-    brief.appendChild(sug);
+    brief.appendChild(chips);
     scroll();
   }
 
@@ -193,7 +183,9 @@
     var host = bodyOf(wrap);
     var ul = document.createElement('ul');
     ul.className = 'copilot-list';
-    items.forEach(function (it) {
+    var CAP = 5;
+    var shown = items.slice(0, CAP);
+    shown.forEach(function (it) {
       var li = document.createElement('li');
       li.className = 'copilot-li' + (it.url ? ' is-link' : '');
       var main = document.createElement('div');
@@ -218,6 +210,12 @@
       if (it.url) { li.addEventListener('click', function () { window.location.href = it.url; }); }
       ul.appendChild(li);
     });
+    if (items.length > CAP) {
+      var more = document.createElement('li');
+      more.className = 'copilot-li copilot-li-more';
+      more.textContent = '+' + (items.length - CAP) + ' more';
+      ul.appendChild(more);
+    }
     host.appendChild(ul);
     scroll();
   }
