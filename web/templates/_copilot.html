@@ -1,46 +1,71 @@
 {% import "_icons.html" as ic %}
-<aside class="appdock" id="copilot" data-open="1" aria-label="Copilot assistant">
+<aside class="appdock" id="copilot" data-open="1" aria-label="Bridget assistant">
+  <div class="dock-resize" id="dockResize" role="separator" aria-orientation="vertical" aria-label="Resize Bridget" title="Drag to resize · double-click to reset"></div>
   <header class="dock-head">
     <div class="dock-title">
       <span class="dock-brand">
         {{ ic.icon('mark', 'brand-glyph') }}
         <span class="dock-dot" title="Online"></span>
       </span>
-      <div><b>Bridget</b><span>Enrollment agent · works across your studies</span></div>
+      <div><b>Bridget</b><span>Enrollment agent</span></div>
     </div>
-    <button type="button" class="dock-collapse" id="copilotCollapse" aria-label="Hide Bridget">{{ ic.icon('chevron-right') }}</button>
+    <div class="dock-head-actions">
+      <button type="button" class="dock-icon-btn" id="copilotReset" aria-label="New chat" title="New chat">{{ ic.icon('plus') }}</button>
+      <button type="button" class="dock-icon-btn" id="copilotCollapse" aria-label="Hide Bridget" title="Hide">{{ ic.icon('chevron-right') }}</button>
+    </div>
   </header>
-  <div class="dock-log" id="copilotLog">
-    <div class="copilot-msg bot">
-      <p>I'm <b>Bridget</b>, your enrollment agent, wired into your studies. I triage your queue, surface funnel leaks, and draft booking links and messages. You approve anything before it goes out, and I never decide eligibility.</p>
-      <p class="copilot-msg-cta">Pick a starting point:</p>
-      <div class="copilot-suggest" id="copilotSuggest"></div>
-    </div>
-  </div>
+  <div class="dock-log" id="copilotLog"></div>
   <form class="dock-form" id="copilotForm">
-    <input type="text" id="copilotInput" placeholder="Tell Bridget what to do&hellip;" autocomplete="off">
-    <button type="submit" aria-label="Send">{{ ic.icon('send') }}</button>
+    <div class="dock-inputwrap">
+      <input type="text" id="copilotInput" placeholder="Ask about your studies, or tell me what to do&hellip;" autocomplete="off" aria-label="Message Bridget">
+      <button type="submit" aria-label="Send">{{ ic.icon('send') }}</button>
+    </div>
   </form>
 </aside>
 <button type="button" class="copilot-fab" id="copilotReopen" aria-label="Open Bridget, your enrollment copilot" title="Ask Bridget">
   {{ ic.icon('mark', 'brand-glyph brand-glyph-lg') }}
   <span class="fab-dot"></span>
 </button>
+{# Reusable icon library so JS-built cards use the same real icons (not inline one-offs). #}
+<div id="bridgetIcons" hidden aria-hidden="true">
+  <i data-ic="inbox">{{ ic.icon('inbox') }}</i><i data-ic="clock">{{ ic.icon('clock') }}</i><i data-ic="calendar">{{ ic.icon('calendar') }}</i><i data-ic="file">{{ ic.icon('file') }}</i><i data-ic="shield">{{ ic.icon('shield') }}</i><i data-ic="users">{{ ic.icon('users') }}</i><i data-ic="sparkle">{{ ic.icon('sparkle') }}</i><i data-ic="check">{{ ic.icon('check') }}</i><i data-ic="chevron-right">{{ ic.icon('chevron-right') }}</i>
+</div>
 <script>
 (function () {
   var dock = document.getElementById('copilot');
   if (!dock) return;
   var collapse = document.getElementById('copilotCollapse');
+  var resetBtn = document.getElementById('copilotReset');
   var reopen = document.getElementById('copilotReopen');
   var log = document.getElementById('copilotLog');
   var form = document.getElementById('copilotForm');
   var input = document.getElementById('copilotInput');
-  var suggestWrap = document.getElementById('copilotSuggest');
   var sendBtn = form.querySelector('button[type="submit"]');
   var STARTERS = (window.BRIDGET_STARTERS && window.BRIDGET_STARTERS.length)
     ? window.BRIDGET_STARTERS
-    : ["Triage my review queue", "Send booking reminders to everyone stuck", "Find my biggest funnel leak"];
-  var busy = false;
+    : ["Who's waiting on my decision?", "Draft a booking reminder for everyone stuck", "How's my funnel this week?"];
+  var busy = false, briefLoaded = false;
+
+  // Map a live digest section to the icon + the question that runs its tool, so a
+  // card in the brief actually *does* something when clicked (not decoration).
+  var SECTION_MAP = [
+    { re: /decision|waiting/i,        icon: 'inbox',    q: "Who's waiting on my decision?" },
+    { re: /stuck|screening/i,         icon: 'clock',    q: "Who's stuck in screening?" },
+    { re: /visit|window|attention/i,  icon: 'calendar', q: "Which visits are out of window?" },
+    { re: /document|due/i,            icon: 'file',     q: "What documents need action?" },
+    { re: /consent/i,                 icon: 'shield',   q: "Who's due for re-consent?" },
+    { re: /match|record/i,            icon: 'users',    q: "Show me new record matches" },
+  ];
+  function sectionMeta(title) {
+    for (var i = 0; i < SECTION_MAP.length; i++) {
+      if (SECTION_MAP[i].re.test(title || '')) return SECTION_MAP[i];
+    }
+    return { icon: 'sparkle', q: title };
+  }
+  function iconHtml(name) {
+    var el = document.querySelector('#bridgetIcons [data-ic="' + name + '"]');
+    return el ? el.innerHTML : '';
+  }
 
   function csrf() {
     var m = document.querySelector('meta[name="csrf-token"]');
@@ -54,20 +79,113 @@
     dock.setAttribute('data-open', open ? '1' : '0');
     reopen.style.display = open ? 'none' : '';
     try { localStorage.setItem('bm_copilot_open', open ? '1' : '0'); } catch (e) {}
-    if (open) { input.focus(); }
+    if (open) { input.focus(); if (!briefLoaded) renderIntro(); }
   }
   function scroll() { log.scrollTop = log.scrollHeight; }
+  function escapeHtml(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
 
+  // ---- Intro / live brief -------------------------------------------------- //
+  // The empty state is not a static blurb: it pulls the same real data the rest
+  // of the app shows and turns each thing that needs the coordinator today into a
+  // one-click action. Feels wired-in, because it is.
+  function renderIntro() {
+    briefLoaded = true;
+    log.innerHTML = '';
+    var hello = document.createElement('div');
+    hello.className = 'copilot-msg bot';
+    hello.innerHTML = '<div class="copilot-avatar">' + iconHtml('sparkle') + '</div>'
+      + '<div class="copilot-hello"><b>Hi, I\u2019m Bridget.</b> I work across your studies \u2014 '
+      + 'triaging your queue, flagging funnel leaks, and drafting messages. '
+      + 'You approve anything before it goes out.</div>';
+    log.appendChild(hello);
+
+    var brief = document.createElement('div');
+    brief.className = 'bridget-brief';
+    brief.innerHTML = '<div class="brief-load">'
+      + '<span class="cw-spin" aria-hidden="true"></span> Checking your studies\u2026</div>';
+    log.appendChild(brief);
+    scroll();
+
+    fetch('/app/copilot/digest', { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) { renderBrief(brief, d); })
+      .catch(function () { renderBrief(brief, null); });
+  }
+
+  function renderBrief(brief, d) {
+    brief.innerHTML = '';
+    var sections = (d && d.sections) || [];
+    if (sections.length) {
+      var head = document.createElement('div');
+      head.className = 'brief-head';
+      head.textContent = d.headline || 'Here\u2019s what needs you today.';
+      brief.appendChild(head);
+
+      sections.forEach(function (s) {
+        var meta = sectionMeta(s.title);
+        var card = document.createElement('button');
+        card.type = 'button';
+        card.className = 'brief-card';
+        card.innerHTML =
+          '<span class="brief-ic">' + iconHtml(meta.icon) + '</span>'
+          + '<span class="brief-body"><span class="brief-title">' + escapeHtml(s.title) + '</span>'
+          + '<span class="brief-sub">' + escapeHtml(s.summary || '') + '</span></span>'
+          + '<span class="brief-count">' + s.count + '</span>'
+          + '<span class="brief-arrow">' + iconHtml('chevron-right') + '</span>';
+        card.addEventListener('click', function () { ask(meta.q); });
+        brief.appendChild(card);
+      });
+    } else {
+      var ok = document.createElement('div');
+      ok.className = 'brief-clear';
+      ok.innerHTML = '<span class="brief-clear-ic">' + iconHtml('check') + '</span>'
+        + '<div><b>You\u2019re all caught up.</b><span>Nothing needs you across your studies right now.</span></div>';
+      brief.appendChild(ok);
+    }
+
+    // "Or ask me anything" — a few phrased starters below the live brief.
+    var sug = document.createElement('div');
+    sug.className = 'brief-starters';
+    sug.innerHTML = '<div class="brief-starters-h">Or ask me anything</div>';
+    var chips = document.createElement('div');
+    chips.className = 'copilot-suggest';
+    STARTERS.forEach(function (s) {
+      var c = document.createElement('button');
+      c.type = 'button'; c.className = 'copilot-chip'; c.textContent = s;
+      c.addEventListener('click', function () { ask(s); });
+      chips.appendChild(c);
+    });
+    sug.appendChild(chips);
+    brief.appendChild(sug);
+    scroll();
+  }
+
+  // ---- Messages ------------------------------------------------------------ //
   function addMsg(role, text) {
     var wrap = document.createElement('div');
     wrap.className = 'copilot-msg ' + role;
+    if (role === 'bot') {
+      var av = document.createElement('div');
+      av.className = 'copilot-avatar';
+      av.innerHTML = iconHtml('sparkle');
+      wrap.appendChild(av);
+    }
+    var body = document.createElement('div');
+    body.className = 'copilot-body';
     var p = document.createElement('p');
     p.textContent = text;
-    wrap.appendChild(p);
+    body.appendChild(p);
+    wrap.appendChild(body);
     log.appendChild(wrap);
     scroll();
     return wrap;
   }
+  function bodyOf(wrap) { return wrap.querySelector('.copilot-body') || wrap; }
+
   function addCitations(wrap, cites) {
     if (!cites || !cites.length) return;
     var box = document.createElement('div');
@@ -77,13 +195,15 @@
       a.href = c.url; a.textContent = c.label;
       box.appendChild(a);
     });
-    wrap.appendChild(box);
+    bodyOf(wrap).appendChild(box);
     scroll();
   }
-  // A confirmable action card. The copilot proposes; the human reviews (and can
-  // edit the text) then clicks Confirm, which POSTs the token back to execute.
+
+  // A confirmable action card. Bridget proposes; the human reviews (and can edit
+  // the text) then clicks Confirm, which POSTs the token back to execute.
   function renderProposal(wrap, p) {
     if (!p || !p.token) return;
+    var host = bodyOf(wrap);
     var card = document.createElement('div');
     card.className = 'copilot-confirm';
 
@@ -123,7 +243,7 @@
     var note = document.createElement('div');
     note.className = 'cc-note';
     card.appendChild(note);
-    wrap.appendChild(card);
+    host.appendChild(card);
     scroll();
 
     cancel.addEventListener('click', function () {
@@ -135,28 +255,27 @@
       confirm.disabled = true; cancel.disabled = true;
       confirm.textContent = 'Sending\u2026';
       note.textContent = '';
-      var body = { token: p.token };
-      if (editor) { body.text = editor.value; }
+      var b = { token: p.token };
+      if (editor) { b.text = editor.value; }
       fetch('/app/copilot/act', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf(),
                    'X-Requested-With': 'XMLHttpRequest' },
-        body: JSON.stringify(body)
-      }).then(function (r) { return r.json(); }).then(function (d) {
-        if (!d || !d.ok) {
+        body: JSON.stringify(b)
+      }).then(function (r) { return r.json(); }).then(function (dd) {
+        if (!dd || !dd.ok) {
           confirm.disabled = false; cancel.disabled = false;
           confirm.textContent = p.confirm_label || 'Confirm';
-          note.textContent = (d && d.error) || 'That didn\u2019t go through.';
+          note.textContent = (dd && dd.error) || 'That didn\u2019t go through.';
           return;
         }
-        // Replace the card with a done state so it can't be sent twice.
         card.classList.add('is-done');
         card.innerHTML = '';
         var done = document.createElement('div');
         done.className = 'cc-done';
-        done.textContent = '\u2713 ' + (d.answer || 'Done.');
+        done.innerHTML = iconHtml('check') + '<span>' + escapeHtml(dd.answer || 'Done.') + '</span>';
         card.appendChild(done);
-        addCitations(card, d.citations);
+        addCitations(wrap, dd.citations);
         scroll();
       }).catch(function () {
         confirm.disabled = false; cancel.disabled = false;
@@ -166,48 +285,42 @@
     });
   }
 
-  function escapeHtml(s) {
-    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
-      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
-    });
-  }
-
   // A "working" row (spinner + status), like an agent narrating that it's on it.
   function addWorking() {
     var wrap = document.createElement('div');
     wrap.className = 'copilot-msg bot';
+    wrap.innerHTML = '<div class="copilot-avatar">' + iconHtml('sparkle') + '</div>';
+    var body = document.createElement('div'); body.className = 'copilot-body';
     var w = document.createElement('div');
     w.className = 'copilot-working';
     w.setAttribute('aria-label', 'Bridget is working');
-    w.innerHTML = '<span class="cw-spin" aria-hidden="true"></span>'
-                + '<span class="cw-label">Working\u2026</span>';
-    wrap.appendChild(w);
+    w.innerHTML = '<span class="cw-dots"><i></i><i></i><i></i></span>';
+    body.appendChild(w); wrap.appendChild(body);
     log.appendChild(wrap);
     scroll();
     return wrap;
   }
 
-  // Reveal the agent's steps one at a time with a check, like a tool run trace.
+  // Reveal the agent's steps one at a time with a check, like a tool-run trace.
   function renderSteps(wrap, steps, done) {
     if (!steps || !steps.length) { if (done) done(); return; }
     var box = document.createElement('div');
     box.className = 'copilot-steps';
-    wrap.appendChild(box);
+    bodyOf(wrap).appendChild(box);
     var i = 0;
     (function next() {
       if (i >= steps.length) { if (done) setTimeout(done, 140); return; }
-      var row = document.createElement('div');
-      row.className = 'copilot-step';
-      var c = document.createElement('span'); c.className = 'cs-check'; c.textContent = '\u2713';
-      var t = document.createElement('span'); t.className = 'cs-text'; t.textContent = steps[i];
-      row.appendChild(c); row.appendChild(t);
-      box.appendChild(row); scroll();
+      var r = document.createElement('div');
+      r.className = 'copilot-step';
+      r.innerHTML = '<span class="cs-check">' + iconHtml('check') + '</span>'
+        + '<span class="cs-text">' + escapeHtml(steps[i]) + '</span>';
+      box.appendChild(r); scroll();
       i++;
       setTimeout(next, 170);
     })();
   }
 
-  // Stream the answer in word-by-word so it reads like a live response.
+  // Stream the answer in so it reads like a live response.
   function revealText(p, text, done) {
     text = String(text == null ? '' : text);
     if (!text) { if (done) done(); return; }
@@ -231,8 +344,16 @@
     if (!b) { input.focus(); }
   }
 
+  function clearBrief() {
+    var b = log.querySelector('.bridget-brief');
+    if (b) b.remove();
+    var h = log.querySelector('.copilot-hello');
+    // keep the hello line; only the brief cards disappear once a conversation starts
+  }
+
   function ask(q) {
     if (busy || !q) return;
+    clearBrief();
     setBusy(true);
     addMsg('me', q);
     input.value = '';
@@ -243,8 +364,6 @@
                  'X-Requested-With': 'XMLHttpRequest' },
       body: JSON.stringify({ q: q, lead_id: leadId() })
     }).then(function (r) {
-      // Read as text first so a redirect/login/404 (non-JSON) fails gracefully
-      // instead of throwing a generic "could not reach" error.
       return r.text().then(function (t) {
         var d = null;
         try { d = JSON.parse(t); } catch (e) {}
@@ -267,17 +386,19 @@
               : (d.error || 'Something went wrong.')));
         return;
       }
-      // Narrate what the agent did (steps), then stream the result.
       function deliver() {
         var w = addMsg('bot', '');
         revealText(w.querySelector('p'), d.answer || '', function () {
           addCitations(w, d.citations);
           renderProposal(w, d.proposal);
+          renderFollowups(w, d.suggestions);
         });
       }
       if (d.trace && d.trace.length) {
         var sw = document.createElement('div');
         sw.className = 'copilot-msg bot';
+        sw.innerHTML = '<div class="copilot-avatar">' + iconHtml('sparkle') + '</div>'
+          + '<div class="copilot-body"></div>';
         log.appendChild(sw);
         renderSteps(sw, d.trace, deliver);
       } else {
@@ -289,25 +410,34 @@
     }).finally(function () { setBusy(false); });
   }
 
-  STARTERS.forEach(function (s) {
-    var c = document.createElement('button');
-    c.type = 'button'; c.className = 'copilot-chip'; c.textContent = s;
-    c.addEventListener('click', function () { ask(s); });
-    suggestWrap.appendChild(c);
-  });
+  function renderFollowups(wrap, sugs) {
+    if (!sugs || !sugs.length) return;
+    var box = document.createElement('div');
+    box.className = 'copilot-suggest';
+    sugs.forEach(function (s) {
+      var c = document.createElement('button');
+      c.type = 'button'; c.className = 'copilot-chip'; c.textContent = s;
+      c.addEventListener('click', function () { ask(s); });
+      box.appendChild(c);
+    });
+    bodyOf(wrap).appendChild(box);
+    scroll();
+  }
 
   collapse.addEventListener('click', function () { setOpen(false); });
   reopen.addEventListener('click', function () { setOpen(true); });
+  resetBtn.addEventListener('click', function () { if (!busy) { briefLoaded = false; renderIntro(); } });
   form.addEventListener('submit', function (e) { e.preventDefault(); ask(input.value.trim()); });
 
   var saved = null;
   try { saved = localStorage.getItem('bm_copilot_open'); } catch (e) {}
   // Default open only when the screen is wide enough to fit the dock inline
   // beside the page's right rail; otherwise start collapsed so nothing is
-  // clipped (the user can still open it as a drawer via the FAB). Respect a
-  // saved choice once the user has toggled it.
+  // clipped (the user can still open it as a drawer via the FAB).
   var wide = window.matchMedia('(min-width: 1440px)').matches;
-  setOpen(saved === null ? wide : saved === '1');
+  var startOpen = saved === null ? wide : saved === '1';
+  setOpen(startOpen);
+  if (startOpen) renderIntro();
 
   // Let any page open Bridget or ask it something (e.g. the Calendar's "Ask AI").
   window.bridgetOpen = function () { setOpen(true); };

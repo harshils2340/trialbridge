@@ -146,6 +146,7 @@ def pending_decisions(user_id, limit=8):
         "summary": (f"{len(pend)} applicant(s) are waiting on your decision. "
                     f"Highest match: {top['code']} ({top['verdict']}, "
                     f"score {top['score']})."),
+        "total": len(pend),
         "items": items,
         "citations": [{"label": i["code"], "url": i["url"]} for i in items],
     }
@@ -191,6 +192,7 @@ def stuck_in_screening(user_id, days=5, limit=8):
         "summary": (f"{len(stuck)} applicant(s) are stuck in screening. Sending a "
                     "booking link (or a nudge) is the fastest way to move "
                     "screened -> enrolled."),
+        "total": len(stuck),
         "items": items,
         "citations": [{"label": i["code"], "url": i["url"]} for i in items],
     }
@@ -445,6 +447,7 @@ def visits_out_of_window(user_id):
     return {
         "summary": (f"{_n(len(hits), 'visit')} {verb} attention: overdue, out of "
                     "protocol window, or with a window closing in the next few days."),
+        "total": len(hits),
         "items": items,
         "citations": [{"label": "Calendar", "url": "/app/calendar"}],
     }
@@ -466,6 +469,7 @@ def reconsent_due(user_id):
         "summary": (f"{_n(len(hits), 'participant')} {verb} a re-consent visit "
                     "coming up. Make sure the current ICF version is ready for "
                     "each one."),
+        "total": len(hits),
         "items": [_visit_item(r) for r in hits[:10]],
         "citations": [{"label": "Calendar", "url": "/app/calendar"}],
     }
@@ -565,6 +569,7 @@ def documents_overview(user_id, limit=8):
     return {
         "summary": lead + ". Clearing these keeps sponsor and IRB paperwork "
                    "current so visits aren't held up.",
+        "total": len(actionable),
         "items": items,
         "citations": [{"label": "Documents", "url": "/app/documents"}],
     }
@@ -634,6 +639,7 @@ def record_matches(user_id, limit=8):
         "summary": (f"{_n(int(counts.get('new', len(new))), 'new candidate')} "
                     "matched from your records and ready to review. Reviewing and "
                     "reaching out is the top of your funnel."),
+        "total": int(counts.get('new', len(new))),
         "items": items,
         "citations": [{"label": "Matches", "url": "/app/matches"}],
     }

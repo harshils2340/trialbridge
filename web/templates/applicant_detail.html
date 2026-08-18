@@ -214,29 +214,45 @@
         {% endfor %}
       </div>
       {% if l['revealed'] %}
-      <div class="app-chips" id="quickReplies" style="margin-bottom:10px;">
+      <div class="app-chips chat-suggest" id="quickReplies">
         <button type="button" class="ui-chip" data-msg="Hi {{ first }}, just checking in on your interest in the study - happy to answer any questions.">Check in</button>
         <button type="button" class="ui-chip" data-msg="Friendly reminder to book your screening visit using the link we sent - let me know if you need another time.">Booking reminder</button>
         <button type="button" class="ui-chip" data-msg="Are you still available for your screening visit? If not, we can easily reschedule.">Reschedule</button>
         <button type="button" class="ui-chip" data-msg="Thanks so much - we've received everything we need for now and will follow up with next steps shortly.">Thanks</button>
       </div>
-      <form method="post" action="{{ url_for('message_lead', lead_id=l['id']) }}" class="composer" data-ajax data-ajax-refresh=".thread">
-        <textarea name="body" id="composerBody" placeholder="Write a message…" required data-ajax-clear></textarea>
-        <div class="bar">
-          <span class="bar-sp sp"></span>
-          {{ ui.btn('Send', 'primary', 'sm', type='submit', icon='send') }}
-        </div>
+      <form method="post" action="{{ url_for('message_lead', lead_id=l['id']) }}" class="chatbar" data-ajax data-ajax-refresh=".thread">
+        <textarea name="body" id="composerBody" class="chatbar-input" rows="1"
+                  placeholder="Message {{ first }}…" required data-ajax-clear
+                  aria-label="Write a message to {{ first }}"></textarea>
+        <button type="submit" class="chatbar-send" aria-label="Send message" title="Send — Enter">{{ ic.icon('send') }}</button>
       </form>
+      <div class="chatbar-hint"><kbd>Enter</kbd> to send · <kbd>Shift</kbd>+<kbd>Enter</kbd> for a new line</div>
       <script>
       (function () {
         var box = document.getElementById('composerBody');
+        if (!box) return;
+        var form = box.closest('form');
+        function grow() {
+          box.style.height = 'auto';
+          box.style.height = Math.min(box.scrollHeight, 160) + 'px';
+        }
         document.querySelectorAll('#quickReplies .ui-chip').forEach(function (c) {
           c.addEventListener('click', function () {
-            if (!box) return;
             box.value = c.getAttribute('data-msg') || '';
-            box.focus();
+            box.focus(); grow();
           });
         });
+        box.addEventListener('input', grow);
+        // Enter sends (like texting); Shift+Enter makes a new line.
+        box.addEventListener('keydown', function (e) {
+          if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
+            e.preventDefault();
+            if (!box.value.trim()) return;
+            if (form.requestSubmit) form.requestSubmit(); else form.submit();
+          }
+        });
+        // After an AJAX send the box is cleared - shrink it back down.
+        form.addEventListener('submit', function () { setTimeout(grow, 250); });
         // Jump the thread to the newest message on load.
         var thread = document.querySelector('.thread');
         if (thread) thread.scrollTop = thread.scrollHeight;

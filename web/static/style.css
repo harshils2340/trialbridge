@@ -3872,9 +3872,12 @@ main:focus { outline: none; }
  * primitives those screens share.                                    *
  * ================================================================= */
 .appshell { display: flex; min-height: 100vh; background: var(--bg); }
-.appside { width: 240px; flex-shrink: 0; background: var(--surface);
+.appside { width: var(--appside-w, 240px); flex-shrink: 0; background: var(--surface);
   border-right: 1px solid var(--border); display: flex; flex-direction: column;
-  position: sticky; top: 0; height: 100vh; transition: width .15s ease; }
+  position: sticky; top: 0; height: 100vh; }
+/* No width transition while actively dragging (feels laggy); only when snapping. */
+.appside { transition: width .15s ease; }
+body.is-resizing .appside, body.is-resizing .appdock { transition: none; }
 
 /* Collapsed icon rail: default state so the main page is the control surface.
    Labels are hidden with font-size:0 (SVG icons keep their fixed size); hover
@@ -3894,7 +3897,7 @@ main:focus { outline: none; }
 .appside.is-collapsed .appside-foot .mini { font-size: 0; justify-content: center; gap: 0; }
 .appside.is-collapsed .appside-foot .mini .ico { font-size: initial; }
 /* Hover the collapsed rail to reveal full labels (no toggle button needed). */
-.appside.is-collapsed:hover { width: 240px; box-shadow: var(--shadow-lift); z-index: 5; }
+.appside.is-collapsed:hover { width: var(--appside-w, 240px); box-shadow: var(--shadow-lift); z-index: 5; }
 .appside.is-collapsed:hover .appside-brand { justify-content: flex-start; }
 .appside.is-collapsed:hover .appside-brand .bt { display: block; }
 .appside.is-collapsed:hover .appnav a { justify-content: flex-start; gap: 10px;
@@ -4466,6 +4469,52 @@ a.detail-row:hover { color: var(--accent); text-decoration: none; }
 .appside-foot .theme-toggle.mini:hover { background: var(--surface-2); color: var(--ink); }
 .appside-foot .theme-toggle.mini .ico { width: 16px; height: 16px; }
 
+/* ── Resizable / customizable panels (Cursor-style) ─────────────────────── */
+/* A thin drag strip on the panel's inner edge. Widen the hit area, show a subtle
+   accent line on hover/drag. Double-click resets to the default width. */
+.appside-resize, .dock-resize { position: absolute; top: 0; height: 100%;
+  width: 8px; z-index: 6; cursor: col-resize; touch-action: none; }
+.appside-resize { right: -4px; }
+.dock-resize { left: -4px; }
+.appside-resize::after, .dock-resize::after { content: ""; position: absolute; top: 0;
+  bottom: 0; left: 50%; width: 2px; transform: translateX(-50%);
+  background: transparent; transition: background .12s ease; }
+.appside-resize:hover::after, .dock-resize:hover::after,
+body.is-resizing .appside-resize::after, body.is-resizing .dock-resize::after {
+  background: var(--accent); }
+body.is-resizing { cursor: col-resize; user-select: none; }
+/* Hide the left handle where resizing doesn't apply (rail or mobile drawer). */
+.appside.is-collapsed .appside-resize,
+.appshell.is-drawer .appside-resize { display: none; }
+/* The dock handle only makes sense when the dock sits inline and is open. */
+.dock-resize { display: none; }
+@media (min-width: 1440px) { .appdock[data-open="1"] .dock-resize { display: block; } }
+
+/* Panel toggle button in the top bar — collapses the rail on desktop, opens the
+   drawer on mobile. One discoverable control, like a workspace sidebar toggle. */
+.apptop-panel-toggle { flex: none; display: inline-flex; align-items: center;
+  justify-content: center; width: 34px; height: 34px; margin-left: -6px;
+  border: 1px solid transparent; border-radius: 9px; background: none;
+  color: var(--muted); cursor: pointer; transition: background .12s ease, color .12s ease; }
+.apptop-panel-toggle:hover { background: var(--surface-2); color: var(--ink); }
+.apptop-panel-toggle .ico { width: 19px; height: 19px; }
+
+/* Mobile: the sidebar becomes an off-canvas drawer with a backdrop. */
+.appside-backdrop { position: fixed; inset: 0; background: rgba(2, 6, 23, .42);
+  z-index: 79; opacity: 0; pointer-events: none; transition: opacity .2s ease; }
+.appshell.is-drawer .appside { position: fixed; top: 0; left: 0; height: 100vh;
+  z-index: 80; width: var(--appside-w, 264px); transform: translateX(-100%);
+  transition: transform .22s ease; box-shadow: var(--shadow-lift); }
+.appshell.is-drawer.is-drawer-open .appside { transform: none; }
+.appshell.is-drawer.is-drawer-open .appside-backdrop { opacity: 1; pointer-events: auto; }
+/* In drawer mode there's no rail: always show full labels. */
+.appshell.is-drawer .appside.is-collapsed { width: var(--appside-w, 264px); }
+.appshell.is-drawer .appside.is-collapsed .appnav a { justify-content: flex-start;
+  gap: 10px; font-size: 14px; padding-left: 12px; padding-right: 12px; }
+.appshell.is-drawer .appside.is-collapsed .appside-brand .bt,
+.appshell.is-drawer .appside.is-collapsed .appnav-count,
+.appshell.is-drawer .appside.is-collapsed .appside-user .u { display: block; }
+
 .appmain { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 .apptop { height: 56px; background: var(--surface); border-bottom: 1px solid var(--border);
   display: flex; align-items: center; gap: 16px; padding: 0 24px;
@@ -4996,21 +5045,47 @@ a.rail-attn:hover { text-decoration: underline; }
 .thread .stamp { text-align: center; }
 .thread .stamp span { font-size: 11px; color: var(--faint); background: var(--bg);
   padding: 3px 12px; border-radius: 999px; }
-.bubble { max-width: 74%; padding: 10px 14px; border-radius: 12px; font-size: 13px;
-  color: var(--ink); line-height: 1.55; border: 1px solid var(--border); background: var(--bg); }
-.bubble .m { font-size: 11px; color: var(--faint); margin-top: 4px; }
-.msg-out { display: flex; justify-content: flex-end; }
-.msg-out .bubble { background: var(--accent-soft); border-color: var(--brand-border); }
-.msg-in { display: flex; justify-content: flex-start; }
-.msg-sys { display: flex; justify-content: center; }
+.thread { gap: 4px; }
+.bubble { max-width: 76%; padding: 9px 13px; border-radius: 18px; font-size: 14px;
+  color: var(--ink); line-height: 1.5; border: 1px solid var(--border);
+  background: var(--surface); word-wrap: break-word; white-space: pre-wrap; }
+.bubble .m { font-size: 10.5px; color: var(--faint); margin-top: 3px; opacity: .85; }
+.msg-out, .msg-in, .msg-sys { display: flex; margin-top: 6px; }
+.msg-out { justify-content: flex-end; }
+.msg-out .bubble { background: var(--accent); color: var(--accent-ink);
+  border-color: var(--accent); border-bottom-right-radius: 6px; }
+.msg-out .bubble .m { color: var(--accent-ink); opacity: .72; }
+.msg-in { justify-content: flex-start; }
+.msg-in .bubble { border-bottom-left-radius: 6px; }
+.msg-sys { justify-content: center; }
 .msg-sys .bubble { background: var(--violet-bg); border-color: var(--violet-border);
-  color: var(--violet); max-width: 90%; text-align: center; }
-.composer { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
-.composer textarea { width: 100%; padding: 12px 14px; border: none; outline: none;
-  resize: none; font: inherit; font-size: 13px; min-height: 70px; box-sizing: border-box; }
-.composer .bar { display: flex; gap: 8px; align-items: center; padding: 8px 12px;
-  border-top: 1px solid var(--border); background: var(--bg); }
-.composer .bar .sp { flex: 1; }
+  color: var(--violet); max-width: 90%; text-align: center; font-size: 12.5px; }
+
+/* Texting-style composer: a rounded pill that grows with the message and a
+   circular send button. Enter sends, Shift+Enter makes a new line. */
+.chat-suggest { margin-bottom: 10px; }
+.chatbar { display: flex; align-items: flex-end; gap: var(--space-2);
+  border: 1px solid var(--border-strong); border-radius: 22px;
+  padding: 5px 6px 5px 15px; background: var(--surface);
+  transition: border-color .15s ease, box-shadow .15s ease; }
+.chatbar:focus-within { border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft); }
+.chatbar-input { flex: 1; border: none; outline: none; resize: none;
+  background: transparent; font: inherit; font-size: 14px; line-height: 1.45;
+  color: var(--ink); padding: 8px 0; min-height: 22px; height: 38px;
+  max-height: 160px; overflow-y: auto; }
+.chatbar-send { flex: none; width: 36px; height: 36px; border: none;
+  border-radius: 50%; background: var(--accent); color: var(--accent-ink);
+  display: inline-flex; align-items: center; justify-content: center;
+  cursor: pointer; transition: opacity .15s ease, transform .08s ease; }
+.chatbar-send:hover { opacity: .88; }
+.chatbar-send:active { transform: scale(.92); }
+.chatbar-send .ico { width: 17px; height: 17px; }
+.chatbar-hint { font-size: 11.5px; color: var(--faint); margin: 7px 4px 0;
+  text-align: right; }
+.chatbar-hint kbd { font: inherit; font-size: 10.5px; background: var(--surface-2);
+  border: 1px solid var(--border); border-radius: 5px; padding: 1px 5px;
+  color: var(--muted); }
 
 /* Side panel widgets --------------------------------------------- */
 .mini-list .mi { display: flex; align-items: center; justify-content: space-between;
@@ -5101,7 +5176,6 @@ a.rail-attn:hover { text-decoration: underline; }
 .doc-attest input { margin-top: 2px; flex-shrink: 0; }
 
 @media (max-width: 900px) {
-  .appside { display: none; }
   .app-split { grid-template-columns: 1fr; }
   .verdict-grid { grid-template-columns: 1fr; }
   .appbody { padding: 20px 16px; }
@@ -5119,7 +5193,7 @@ a.rail-attn:hover { text-decoration: underline; }
    Copilot - a docked, always-on side panel on study-team pages (third column)
    -------------------------------------------------------------------------- */
 .appdock {
-  width: 360px; flex-shrink: 0; background: var(--surface);
+  width: var(--appdock-w, 360px); flex-shrink: 0; background: var(--surface);
   border-left: 1px solid var(--border); display: flex; flex-direction: column;
   position: sticky; top: 0; height: 100vh;
 }
@@ -5139,29 +5213,76 @@ a.rail-attn:hover { text-decoration: underline; }
 .dock-dot { position: absolute; right: -1px; bottom: -1px; width: 10px; height: 10px;
   border-radius: var(--radius-pill); background: var(--green, #16a34a);
   border: 2px solid var(--surface); }
-.dock-collapse {
-  margin-left: auto; background: none; border: none; cursor: pointer;
-  color: var(--faint); display: inline-flex; padding: 4px;
-}
-.dock-collapse svg { width: 18px; height: 18px; }
-.dock-log { flex: 1; overflow-y: auto; padding: 18px; display: flex;
-  flex-direction: column; gap: var(--space-3); }
-.copilot-msg { max-width: 90%; }
-.copilot-msg p {
-  margin: 0; padding: 10px 12px; border-radius: var(--radius);
-  font-size: 13px; line-height: 1.5; white-space: pre-wrap;
-}
+.dock-head-actions { margin-left: auto; display: inline-flex; align-items: center; gap: 2px; }
+.dock-icon-btn { background: none; border: none; cursor: pointer; color: var(--faint);
+  display: inline-flex; padding: 6px; border-radius: 8px;
+  transition: background .12s ease, color .12s ease; }
+.dock-icon-btn:hover { background: var(--bg); color: var(--ink); }
+.dock-icon-btn svg { width: 18px; height: 18px; }
+.dock-log { flex: 1; overflow-y: auto; padding: 16px; display: flex;
+  flex-direction: column; gap: 12px; }
+/* Bot messages read as an assistant turn: a small brand avatar + a stacked body
+   (bubble, citations, action card). "Me" stays a right-aligned bubble. */
+.copilot-msg { max-width: 92%; display: flex; gap: 9px; }
 .copilot-msg.bot { align-self: flex-start; }
+.copilot-msg.me { align-self: flex-end; max-width: 86%; }
+.copilot-avatar { flex: none; width: 26px; height: 26px; border-radius: 8px;
+  background: var(--accent-soft); color: var(--accent); display: grid;
+  place-items: center; margin-top: 1px; }
+.copilot-avatar svg { width: 15px; height: 15px; }
+.copilot-body { min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.copilot-body:empty { display: none; }
+.copilot-msg p {
+  margin: 0; padding: 10px 13px; border-radius: 13px;
+  font-size: 13px; line-height: 1.55; white-space: pre-wrap;
+}
+.copilot-msg p:empty { display: none; }
 .copilot-msg.bot p { background: var(--bg); color: var(--ink);
-  border: 1px solid var(--border); }
-.copilot-msg.me { align-self: flex-end; }
-.copilot-msg.me p { background: var(--accent); color: #fff; }
-/* Intro second line ("Pick a starting point:") reads as a quiet label, not a
-   second chat bubble, so the assistant intro looks composed. */
-.copilot-msg p + p { margin-top: 8px; }
-.copilot-msg .copilot-msg-cta { background: none; border: 0; padding: 2px 2px 0;
-  font-size: 11.5px; font-weight: 700; letter-spacing: .02em; color: var(--faint);
-  text-transform: uppercase; }
+  border: 1px solid var(--border); border-top-left-radius: 4px; }
+.copilot-msg.me p { background: var(--accent); color: var(--accent-ink);
+  border-top-right-radius: 4px; }
+/* Intro (not a bubble): a quietly framed welcome line beside the avatar. */
+.copilot-hello { font-size: 13px; line-height: 1.55; color: var(--ink);
+  background: var(--bg); border: 1px solid var(--border);
+  border-radius: 13px; border-top-left-radius: 4px; padding: 11px 13px; }
+.copilot-hello b { color: var(--ink); }
+/* Live brief: real, clickable tasks pulled from the same data as the app. */
+.bridget-brief { align-self: stretch; display: flex; flex-direction: column;
+  gap: 7px; animation: copilot-in .2s ease both; }
+.brief-load { display: inline-flex; align-items: center; gap: 8px;
+  font: 500 12.5px/1 var(--sans); color: var(--muted); padding: 4px 2px; }
+.brief-head { font: 700 12px/1.4 var(--sans); color: var(--ink); padding: 4px 2px 2px; }
+.brief-card { display: flex; align-items: center; gap: 10px; width: 100%;
+  text-align: left; border: 1px solid var(--border); background: var(--surface);
+  border-radius: 12px; padding: 10px 11px; cursor: pointer;
+  transition: border-color .12s ease, box-shadow .12s ease, transform .08s ease; }
+.brief-card:hover { border-color: var(--accent);
+  box-shadow: 0 4px 14px rgba(2,6,23,.07); transform: translateY(-1px); }
+.brief-ic { flex: none; width: 34px; height: 34px; border-radius: 9px;
+  background: var(--accent-soft); color: var(--accent); display: grid; place-items: center; }
+.brief-ic svg { width: 17px; height: 17px; }
+.brief-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.brief-title { font: 600 12.5px/1.3 var(--sans); color: var(--ink); }
+.brief-sub { font-size: 11px; line-height: 1.35; color: var(--faint);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.brief-count { flex: none; min-width: 20px; height: 20px; padding: 0 6px;
+  border-radius: var(--radius-pill); background: var(--accent);
+  color: var(--accent-ink); font: 700 11.5px/20px var(--sans); text-align: center; }
+.brief-arrow { flex: none; color: var(--faint); display: grid; place-items: center; }
+.brief-arrow svg { width: 15px; height: 15px; }
+.brief-card:hover .brief-arrow { color: var(--accent); }
+.brief-clear { display: flex; align-items: center; gap: 10px;
+  border: 1px solid var(--border); background: var(--surface);
+  border-radius: 12px; padding: 12px; }
+.brief-clear-ic { flex: none; width: 30px; height: 30px; border-radius: var(--radius-pill);
+  background: var(--ok-bg, var(--accent-soft)); color: var(--ok, var(--accent));
+  display: grid; place-items: center; }
+.brief-clear-ic svg { width: 16px; height: 16px; }
+.brief-clear div { display: flex; flex-direction: column; }
+.brief-clear b { font-size: 13px; color: var(--ink); }
+.brief-clear span { font-size: 11.5px; color: var(--faint); }
+.brief-starters-h { font: 600 10.5px/1 var(--sans); letter-spacing: .06em;
+  text-transform: uppercase; color: var(--faint); margin: 12px 2px 8px; }
 .copilot-suggest, .copilot-cites { display: flex; flex-wrap: wrap; gap: 6px;
   margin-top: 8px; }
 .copilot-chip {
@@ -5183,12 +5304,11 @@ a.rail-attn:hover { text-decoration: underline; }
 }
 .copilot-msg { animation: copilot-in .18s ease both; }
 .copilot-msg.bot p { box-shadow: var(--shadow-sm, 0 1px 2px rgba(2,6,23,.05)); }
-/* "Working" row: a spinner + status, like an agent that's on the task. */
+/* "Working" row: a typing indicator, like an agent that's on the task. */
 .copilot-working {
   display: inline-flex; align-items: center; gap: 9px;
-  padding: 11px 14px; border-radius: var(--radius);
+  padding: 12px 14px; border-radius: 13px; border-top-left-radius: 4px;
   background: var(--bg); border: 1px solid var(--border);
-  font: 600 12.5px/1 var(--sans); color: var(--muted);
 }
 .cw-spin {
   width: 14px; height: 14px; border-radius: var(--radius-pill); flex-shrink: 0;
@@ -5196,6 +5316,13 @@ a.rail-attn:hover { text-decoration: underline; }
   animation: cw-spin .7s linear infinite;
 }
 @keyframes cw-spin { to { transform: rotate(360deg); } }
+.cw-dots { display: inline-flex; gap: 4px; align-items: center; }
+.cw-dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--faint);
+  animation: cw-bounce 1s infinite ease-in-out; }
+.cw-dots i:nth-child(2) { animation-delay: .15s; }
+.cw-dots i:nth-child(3) { animation-delay: .3s; }
+@keyframes cw-bounce { 0%,80%,100% { opacity: .3; transform: translateY(0); }
+  40% { opacity: 1; transform: translateY(-3px); } }
 /* Agent step trace: each thing it did, revealed with a check (Codex-style). */
 .copilot-steps { display: flex; flex-direction: column; gap: 5px; }
 .copilot-step {
@@ -5203,10 +5330,12 @@ a.rail-attn:hover { text-decoration: underline; }
   font: 500 12.5px/1.45 var(--sans); color: var(--ink-soft, var(--muted));
   animation: copilot-in .18s ease both;
 }
-.cs-check { color: var(--green, #16a34a); font-weight: 800; flex-shrink: 0; }
+.cs-check { color: var(--green, #16a34a); flex-shrink: 0; display: inline-flex; margin-top: 1px; }
+.cs-check svg { width: 13px; height: 13px; }
 @media (prefers-reduced-motion: reduce) {
-  .copilot-msg, .copilot-step { animation: none; }
+  .copilot-msg, .copilot-step, .bridget-brief { animation: none; }
   .cw-spin { animation-duration: 0s; }
+  .cw-dots i { animation: none; }
 }
 /* Confirmable action card ("send this / book this") shown inline in the log. */
 .copilot-confirm {
@@ -5244,29 +5373,32 @@ a.rail-attn:hover { text-decoration: underline; }
 .cc-note { color: var(--danger); font-size: 12px; }
 .cc-note:empty { display: none; }
 .copilot-confirm.is-done { border-color: var(--ok-border, var(--border)); }
-.cc-done { color: var(--ok, var(--green)); font: 600 13px/1.4 var(--sans); }
-.dock-form { display: flex; gap: 8px; padding: 14px 18px;
-  border-top: 1px solid var(--border); flex-shrink: 0; }
+.cc-done { display: inline-flex; align-items: center; gap: 6px;
+  color: var(--ok, var(--green)); font: 600 13px/1.4 var(--sans); }
+.cc-done svg { width: 15px; height: 15px; }
+/* Composer: a single rounded pill with an inline circular send button. */
+.dock-form { padding: 12px 16px 16px; border-top: 1px solid var(--border); flex-shrink: 0; }
+.dock-inputwrap { display: flex; align-items: center; gap: 6px;
+  border: 1px solid var(--border-strong); border-radius: var(--radius-pill);
+  background: var(--surface); padding: 4px 4px 4px 15px;
+  transition: border-color .12s ease, box-shadow .12s ease; }
+.dock-inputwrap:focus-within { border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft); }
 .dock-form input {
-  flex: 1; padding: 10px 12px; border: 1px solid var(--border);
-  border-radius: var(--radius-pill); font: 400 13px/1 var(--sans);
-  background: var(--bg); color: var(--ink);
-  transition: border-color .12s ease, box-shadow .12s ease;
-}
-.dock-form input:focus {
-  outline: none; border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-soft);
+  flex: 1; min-width: 0; border: none; outline: none; background: transparent;
+  font: 400 13.5px/1 var(--sans); color: var(--ink); padding: 8px 0;
 }
 .dock-form input:disabled { opacity: .7; }
 .dock-form button {
-  border: none; cursor: pointer; background: var(--accent); color: #fff;
-  width: 40px; flex-shrink: 0; border-radius: var(--radius-pill);
+  border: none; cursor: pointer; background: var(--accent); color: var(--accent-ink);
+  width: 34px; height: 34px; flex-shrink: 0; border-radius: 50%;
   display: inline-flex; align-items: center; justify-content: center;
-  transition: opacity .12s ease, transform .12s ease;
+  transition: opacity .12s ease, transform .08s ease;
 }
-.dock-form button:hover:not(:disabled) { transform: translateY(-1px); }
-.dock-form button:disabled { opacity: .5; cursor: default; }
-.dock-form button svg { width: 18px; height: 18px; }
+.dock-form button:hover:not(:disabled) { opacity: .9; }
+.dock-form button:active:not(:disabled) { transform: scale(.94); }
+.dock-form button:disabled { opacity: .45; cursor: default; }
+.dock-form button svg { width: 17px; height: 17px; }
 /* Collapsed-state launcher: a clean circular button with the brand logo. */
 .copilot-fab {
   position: fixed; right: 22px; bottom: 22px; z-index: 60; display: none;
@@ -7853,6 +7985,9 @@ body.fs-page { background:
   background:none; border:0; color:var(--faint); cursor:pointer;
   padding:6px; border-radius:var(--radius-sm); }
 .soe-del:hover { color:var(--red); background:var(--red-bg); }
+.soe-studies { display:flex; flex-wrap:wrap; gap:var(--space-2);
+  margin:0 0 var(--space-4); }
+.soe-studies .ui-chip { text-decoration:none; }
 
 /* ── Documents (regulatory binder) ─────────────────────────────────────── */
 .doc-list { padding:0; overflow:hidden; }

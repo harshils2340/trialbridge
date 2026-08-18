@@ -8795,6 +8795,156 @@ def _soe_template():
     ]
 
 
+def _soe_template_for(title="", condition=""):
+    """A realistic, indication-shaped schedule of events per study, so each demo
+    trial's Protocol schedule reads like its real protocol - not one generic
+    skeleton. Grounded in the actual designs of Fieve's active trials (antidepressant
+    RCTs with MADRS/C-SSRS, a single-dose psilocybin trial with prep + dosing +
+    integration, and acute-migraine trials with an e-diary run-in). Coordinators
+    still edit freely. Demo-only shaping (COMPLIANCE.md)."""
+    t = (str(title) + " " + str(condition)).lower()
+
+    # Single-dose psychedelic (COMP360 psilocybin in TRD): prep -> dosing day ->
+    # integration -> follow-ups. Distinct from a daily-drug RCT.
+    if "psilocybin" in t or "comp360" in t or "treatment-resistant" in t:
+        return [
+            {"name": "Screening", "day_offset": -21, "window_before": 7,
+             "window_after": 0, "duration_min": 120,
+             "procedures": "Informed consent\nMINI / diagnosis\nMADRS\nC-SSRS\n"
+                           "Antidepressant taper plan\nLabs (CBC, chemistry)\nECG"},
+            {"name": "Preparation session", "day_offset": -1, "window_before": 3,
+             "window_after": 0, "duration_min": 90,
+             "procedures": "Prep session with study therapist\nMADRS\nC-SSRS\n"
+                           "Confirm washout complete"},
+            {"name": "Dosing day", "day_offset": 0, "window_before": 0,
+             "window_after": 0, "duration_min": 420,
+             "procedures": "Administer COMP360\n6-8h monitored session (2 therapists)\n"
+                           "Vitals hourly\nC-SSRS post-session"},
+            {"name": "Integration (Day 2)", "day_offset": 1, "window_before": 0,
+             "window_after": 1, "duration_min": 90,
+             "procedures": "Integration session\nMADRS\nC-SSRS\nAdverse-event review"},
+            {"name": "Week 1", "day_offset": 8, "window_before": 2, "window_after": 2,
+             "duration_min": 60,
+             "procedures": "Integration session\nMADRS\nC-SSRS\nAE review"},
+            {"name": "Week 3 (primary endpoint)", "day_offset": 21,
+             "window_before": 3, "window_after": 3, "duration_min": 75,
+             "procedures": "MADRS (primary endpoint)\nCGI-S\nC-SSRS\nAE review"},
+            {"name": "Week 6", "day_offset": 42, "window_before": 3, "window_after": 3,
+             "duration_min": 60, "procedures": "MADRS\nC-SSRS\nAE review"},
+            {"name": "Week 12 follow-up", "day_offset": 84, "window_before": 5,
+             "window_after": 5, "duration_min": 60,
+             "procedures": "MADRS\nC-SSRS\nFinal AE review"},
+        ]
+
+    # Acute migraine (Elismetrep, Ubrogepant): screening -> e-diary run-in ->
+    # treat an attack -> post-treatment diary review.
+    if "migraine" in t:
+        if "long-term" in t or "safety" in t:
+            return [
+                {"name": "Screening", "day_offset": -14, "window_before": 7,
+                 "window_after": 0, "duration_min": 75,
+                 "procedures": "Informed consent\nMigraine history (IHS)\n"
+                               "Eligibility review\nLabs\nDispense e-diary"},
+                {"name": "Baseline / Day 1", "day_offset": 0, "window_before": 0,
+                 "window_after": 0, "duration_min": 60,
+                 "procedures": "Confirm attack frequency\nDispense study medication "
+                               "for intermittent use\nTrain on e-diary"},
+                {"name": "Month 1", "day_offset": 28, "window_before": 5,
+                 "window_after": 5, "duration_min": 45,
+                 "procedures": "e-diary review\nAE review\nMedication accountability"},
+                {"name": "Month 3", "day_offset": 84, "window_before": 7,
+                 "window_after": 7, "duration_min": 60,
+                 "procedures": "e-diary review\nLabs\nAE review"},
+                {"name": "Month 6", "day_offset": 168, "window_before": 7,
+                 "window_after": 7, "duration_min": 60,
+                 "procedures": "e-diary review\nLabs\nECG\nAE review"},
+                {"name": "Month 12 / End of Treatment", "day_offset": 364,
+                 "window_before": 7, "window_after": 7, "duration_min": 75,
+                 "procedures": "Final e-diary review\nLabs\nECG\nAE review\n"
+                               "Medication accountability"},
+                {"name": "Safety Follow-up", "day_offset": 392, "window_before": 7,
+                 "window_after": 7, "duration_min": 30,
+                 "procedures": "AE review\nCon-meds review"},
+            ]
+        return [
+            {"name": "Screening", "day_offset": -21, "window_before": 7,
+             "window_after": 0, "duration_min": 75,
+             "procedures": "Informed consent\nMigraine history (IHS criteria)\n"
+                           "Eligibility review\nLabs\nDispense e-diary"},
+            {"name": "Baseline / run-in", "day_offset": 0, "window_before": 0,
+             "window_after": 0, "duration_min": 60,
+             "procedures": "Confirm ~2-8 attacks/month\nTrain on e-diary + study-med "
+                           "use\nDispense study medication"},
+            {"name": "Treat an attack", "day_offset": 14, "window_before": 14,
+             "window_after": 14, "duration_min": 30,
+             "procedures": "Dose at onset of a moderate/severe attack\n"
+                           "Record pain + most-bothersome symptom at 2h and 24h"},
+            {"name": "Post-treatment", "day_offset": 21, "window_before": 3,
+             "window_after": 5, "duration_min": 45,
+             "procedures": "e-diary review\nPain freedom at 2h\nAE review"},
+            {"name": "End of Study", "day_offset": 35, "window_before": 5,
+             "window_after": 5, "duration_min": 45,
+             "procedures": "Final e-diary review\nAE review\nMedication accountability"},
+        ]
+
+    # Long-term open-label extension in MDD: monthly-ish visits out to ~1 year.
+    if "open-label" in t or "extension" in t or "x-nova-ole" in t or " ole" in t:
+        return [
+            {"name": "OLE enrollment / Day 1", "day_offset": 0, "window_before": 0,
+             "window_after": 0, "duration_min": 75,
+             "procedures": "Open-label consent\nMADRS\nC-SSRS\n"
+                           "Dispense open-label study drug"},
+            {"name": "Month 1", "day_offset": 28, "window_before": 5,
+             "window_after": 5, "duration_min": 45,
+             "procedures": "MADRS\nC-SSRS\nAE review\nDrug accountability"},
+            {"name": "Month 3", "day_offset": 84, "window_before": 7,
+             "window_after": 7, "duration_min": 60,
+             "procedures": "MADRS\nC-SSRS\nLabs\nAE review"},
+            {"name": "Month 6", "day_offset": 168, "window_before": 7,
+             "window_after": 7, "duration_min": 60,
+             "procedures": "MADRS\nC-SSRS\nLabs\nECG\nAE review"},
+            {"name": "Month 9", "day_offset": 252, "window_before": 7,
+             "window_after": 7, "duration_min": 45,
+             "procedures": "MADRS\nC-SSRS\nAE review"},
+            {"name": "Month 12 / End of Treatment", "day_offset": 364,
+             "window_before": 7, "window_after": 7, "duration_min": 90,
+             "procedures": "MADRS\nC-SSRS\nLabs\nECG\nFinal PRO\nDrug accountability"},
+            {"name": "Safety Follow-up", "day_offset": 392, "window_before": 7,
+             "window_after": 7, "duration_min": 30,
+             "procedures": "AE review\nC-SSRS\nCon-meds review"},
+        ]
+
+    # Default: antidepressant RCT (Azetukalner X-NOVA3, Seltorexant) - a 6-week
+    # double-blind schedule with MADRS/C-SSRS at each visit.
+    return [
+        {"name": "Screening", "day_offset": -28, "window_before": 14,
+         "window_after": 0, "duration_min": 120,
+         "procedures": "Informed consent\nMINI / eligibility\nMADRS\nC-SSRS\n"
+                       "Medical history\nLabs (CBC, chemistry)\nECG\n"
+                       "Urine drug screen"},
+        {"name": "Baseline / Randomization (Day 1)", "day_offset": 0,
+         "window_before": 0, "window_after": 0, "duration_min": 90,
+         "procedures": "Confirm eligibility\nMADRS\nC-SSRS\nRandomize\n"
+                       "Dispense study drug\nDispense e-diary"},
+        {"name": "Week 1", "day_offset": 7, "window_before": 2, "window_after": 2,
+         "duration_min": 45,
+         "procedures": "MADRS\nC-SSRS\nAE review\nCompliance check"},
+        {"name": "Week 2", "day_offset": 14, "window_before": 2, "window_after": 2,
+         "duration_min": 45,
+         "procedures": "MADRS\nC-SSRS\nAE review\nDrug accountability"},
+        {"name": "Week 4", "day_offset": 28, "window_before": 3, "window_after": 3,
+         "duration_min": 60,
+         "procedures": "MADRS\nC-SSRS\nLabs\nAE review\nDispense study drug"},
+        {"name": "Week 6 / End of double-blind (primary)", "day_offset": 42,
+         "window_before": 3, "window_after": 3, "duration_min": 90,
+         "procedures": "MADRS (primary endpoint)\nCGI-S\nC-SSRS\nLabs\nECG\n"
+                       "Drug accountability"},
+        {"name": "Safety Follow-up", "day_offset": 70, "window_before": 7,
+         "window_after": 7, "duration_min": 30,
+         "procedures": "AE review\nC-SSRS\nCon-meds review"},
+    ]
+
+
 def _soe_normalize(v):
     procs = v.get("procedures")
     if isinstance(procs, list):
@@ -8848,13 +8998,18 @@ def _seed_demo_soe_if_demo():
             or _site_demo_enabled()):
         return
     try:
-        ncts = sorted(db.user_claimed_ncts(g.user["id"]))
+        studies = db.list_team_studies(g.user["id"])
     except Exception:
         return
-    for nct in ncts:
+    for s in studies:
+        nct = s["nct"]
+        if not nct:
+            continue
         try:
             if not db.soe_visit_count(g.user["id"], nct):
-                db.replace_soe_visits(g.user["id"], nct, _soe_template())
+                tmpl = _soe_template_for(s["title"] or "", s["condition"]
+                                         if "condition" in s.keys() else "")
+                db.replace_soe_visits(g.user["id"], nct, tmpl)
         except Exception:
             app.logger.exception("demo SoE seeding failed")
 
@@ -8865,8 +9020,13 @@ def soe_page():
     _seed_demo_soe_if_demo()
     nct_filter, studies = _active_scope()
     trials = [{"nct": s["nct"], "title": s["title"] or s["nct"]} for s in studies]
-    # A schedule belongs to one study: use the active scope, or the only study.
-    active = nct_filter or (trials[0]["nct"] if len(trials) == 1 else "")
+    # A schedule belongs to ONE study. Let this page pick a study on its own (chips)
+    # so it's never blank under the global "All studies" scope: on-page pick wins,
+    # then the global scope, then just default to the first trial.
+    valid = {t["nct"] for t in trials}
+    req_nct = (request.args.get("nct") or "").strip()
+    active = (req_nct if req_nct in valid else "") or nct_filter or (
+        trials[0]["nct"] if trials else "")
     active_title = next((t["title"] for t in trials if t["nct"] == active), active)
     visits = db.list_soe_visits(g.user["id"], active) if active else []
     # Enrolled/in-progress participants we can apply the schedule to.
