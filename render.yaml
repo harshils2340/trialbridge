@@ -88,7 +88,7 @@ services:
       # the demo dataset changes materially — otherwise seed_demo_* no-ops
       # forever because the disk already has rows from the first boot.
       - key: DB_PATH
-        value: /var/data/bridgemd-fieve9.db
+        value: /var/data/bridgemd-fieve10.db
     disk:
       name: bridgemd-data
       mountPath: /var/data
