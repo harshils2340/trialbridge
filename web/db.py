@@ -5673,8 +5673,8 @@ def seed_demo_engagement(clinician_id):
             (clinician_id,)).fetchone()
         if not _prof or not ((_prof["org_name"] or "").strip()):
             upsert_site_profile(
-                clinician_id, "Fieve Clinical Research", "Study Coordinator",
-                "coordinator@fieveclinical.com", "+1 212 772 3570")
+                clinician_id, "Fieve Clinical Research", "Vanessa Fieve",
+                "info@fieveclinical.com", "+1 212 772 3570")
 
     # Ensure at least one visible booking link exists in demo so "calendar invite"
     # UX can be tested immediately on both study-team and patient surfaces.
@@ -5822,14 +5822,22 @@ def seed_demo_team(clinician_id):
     # Name the shared workspace after the site.
     db.execute("UPDATE organizations SET name = ? WHERE id = ?",
                ("Fieve Clinical Research", oid))
-    # (email, name, role, display label). Roles: pi signs/approves; coordinator
-    # runs the day-to-day + manages the team.
+    # Fieve's real staff (from fieveclinical.com). Base role gates permissions:
+    # pi = signs/approves docs; coordinator = admin (manages team + approves);
+    # student = full day-to-day visibility, no sign-off/team management (fits the
+    # CRCs). role_label carries their actual title for display.
     team = [
-        ("mhenderson@fieveclinical.com", "Margaret Henderson", "pi",
+        ("peder@fieveclinical.com", "Paul Eder, MD", "pi",
          "Principal Investigator"),
-        ("dejosama@fieveclinical.com", "Danny-Elle Josama", "coordinator",
-         "Research Manager"),
-        ("kwalsh@fieveclinical.com", "Kara Walsh", "coordinator",
+        ("swomack@fieveclinical.com", "Sharita D. Womack, PMHNP-BC", "pi",
+         "Sub-Investigator"),
+        ("vfieve@fieveclinical.com", "Vanessa Fieve, JD, CCRC", "coordinator",
+         "Site Director / President"),
+        ("mhenderson@fieveclinical.com", "Margaret Henderson, MD, CCRC",
+         "coordinator", "Director of Clinical Operations"),
+        ("dejosama@fieveclinical.com", "Danny-Elle Josama", "student",
+         "Clinical Research Coordinator"),
+        ("kwalsh@fieveclinical.com", "Kara Walsh, MPH", "student",
          "Clinical Research Coordinator"),
     ]
     for email, name, role, label in team:
