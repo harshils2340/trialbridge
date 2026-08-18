@@ -9,12 +9,11 @@
 {# ---- Build the role-aware index (list of {g,label,kw,url,icon,action}) ---- #}
 {% set items = [] %}
 {% if pov == 'study' %}
-  {% set _ = items.append({'g':'Navigate','label':'Dashboard','kw':'home overview stats','url':url_for('study_home'),'icon':'grid'}) %}
+  {% set _ = items.append({'g':'Navigate','label':'Inbox','kw':'home inbox threads messages inquiries email needs reply','url':url_for('team_inbox'),'icon':'inbox'}) %}
   {% set _ = items.append({'g':'Navigate','label':'Applicants','kw':'leads patients candidates people referrals','url':url_for('leads'),'icon':'user-plus'}) %}
-  {% set _ = items.append({'g':'Navigate','label':'Needs reply','kw':'inbox chat conversations replies messages waiting','url':url_for('study_home', _anchor='needs-reply'),'icon':'chat'}) %}
   {% set _ = items.append({'g':'Navigate','label':'Applicant intake','kw':'intake import csv email forwarding studies trials','url':url_for('intake_page'),'icon':'file'}) %}
-  {% set _ = items.append({'g':'Navigate','label':'Campaigns','kw':'outreach email marketing','url':url_for('campaign_list'),'icon':'megaphone'}) %}
-  {% set _ = items.append({'g':'Navigate','label':'Recruitment','kw':'funnel enrollment metrics conversion','url':url_for('recruitment_dashboard'),'icon':'activity'}) %}
+  {# Campaigns + Recruitment are hidden CTMS surfaces now - kept out so the
+     palette matches the nav. #}
   {% set _ = items.append({'g':'Navigate','label':'Team','kw':'members invite roles permissions people','url':url_for('team_page'),'icon':'users'}) %}
   {% set _ = items.append({'g':'Navigate','label':'Settings','kw':'preferences site setup account configuration options','url':url_for('site_setup'),'icon':'gear'}) %}
   {% if is_owner %}{% set _ = items.append({'g':'Navigate','label':'Visitors','kw':'analytics traffic owner','url':url_for('owner_analytics'),'icon':'activity'}) %}{% endif %}

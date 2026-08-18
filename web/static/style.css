@@ -4090,6 +4090,10 @@ body.is-resizing .appside.is-snapping { transition: width .18s ease; }
   overflow: hidden; text-overflow: ellipsis; }
 .today-ev em { font-size: 10.5px; font-style: normal; color: var(--muted); white-space: nowrap;
   overflow: hidden; text-overflow: ellipsis; }
+/* A narrow block must ellipsize, not overflow: as flex items these default to
+   their min-content width and spill past the block, which clipped the start of
+   the label ("9:00 AM" rendering as "00 AM"). min-width:0 lets them shrink. */
+.today-ev b, .today-ev em { min-width: 0; max-width: 100%; }
 .today-ev.flag-overdue, .today-ev.flag-deviation { background: var(--red-bg); border-left-color: var(--red); }
 .today-ev.flag-overdue b, .today-ev.flag-deviation b { color: var(--red); }
 .today-ev.flag-closing { background: var(--amber-bg); border-left-color: var(--amber); }
@@ -4572,6 +4576,12 @@ body.is-resizing { cursor: col-resize; user-select: none; }
   background: var(--surface); border: 1px solid var(--border);
   border-radius: var(--radius-sm, 8px); padding: 1px 6px; line-height: 1.5;
   pointer-events: none; }
+/* Inbox variant of the top search: wider affordance, live match count on the
+   right where the ⌘K hint would sit. It IS the inbox's only search. */
+.appsearch-inbox { max-width: 640px; }
+.appsearch-inbox .appsearch-input { padding-right: 104px; }
+.appsearch-count { position: absolute; right: 14px; top: 50%; transform: translateY(-50%);
+  font-size: 12px; color: var(--faint); pointer-events: none; white-space: nowrap; }
 .appsearch-panel { position: absolute; top: calc(100% + 6px); left: 0; right: 0; z-index: 40;
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
   box-shadow: var(--shadow-lg, 0 24px 60px rgba(2,6,23,.28)); max-height: 62vh;
@@ -5442,6 +5452,18 @@ a.rail-attn:hover { text-decoration: underline; }
 @media (max-width: 1439px) {
   .appdock { position: fixed; top: 0; right: 0; bottom: 0; height: 100vh;
     width: min(380px, 100vw); z-index: 62; box-shadow: var(--shadow-lift); }
+}
+/* The inbox gives up its right rail, so the assistant fits inline as a true third
+   pane at any desktop width (above the mobile breakpoint) - reserving its own
+   column instead of overlaying and covering the right side of the list. It only
+   becomes a drawer on genuinely small/mobile screens. */
+@media (min-width: 901px) {
+  .appshell:has(.gm) .appdock { position: sticky; inset: 0 auto 0 auto; top: 0;
+    height: 100vh; width: var(--appdock-w, 340px); z-index: auto; box-shadow: none; }
+}
+/* Keep the list breathing when the window is tight: trim the dock a bit. */
+@media (min-width: 901px) and (max-width: 1180px) {
+  .appshell:has(.gm) .appdock { width: 300px; }
 }
 [data-theme="dark"] .appdock, [data-theme="dark"] .copilot-chip,
 [data-theme="dark"] .copilot-cites a { background: var(--surface); }
@@ -8230,21 +8252,308 @@ body.fs-page { background:
 .route-form select { width:auto; min-width:120px; max-width:260px; }
 .route-when { color:var(--muted); font-size:13px; font-weight:600; }
 
-/* Trial switcher tabs (team_inbox.html) */
-.trial-tabs { display:flex; gap:6px; overflow-x:auto; padding-bottom:var(--space-2);
-  margin-bottom:var(--space-4); scrollbar-width:thin; }
-.trial-tab { display:inline-flex; align-items:center; gap:8px; white-space:nowrap;
-  padding:8px 14px; border-radius:var(--radius-pill); border:1px solid var(--border);
-  background:var(--surface); color:var(--muted); font-size:13px; font-weight:600;
-  flex-shrink:0; transition:background .12s, color .12s, border-color .12s; }
-.trial-tab:hover { background:var(--surface-2); color:var(--ink); text-decoration:none; }
-.trial-tab.is-active { background:var(--accent); color:var(--accent-ink);
-  border-color:var(--accent); }
-.trial-tab-name { max-width:220px; overflow:hidden; text-overflow:ellipsis; }
-.trial-tab-count { background:var(--surface-2); color:var(--muted); font-size:11px;
-  font-weight:700; padding:1px 7px; border-radius:var(--radius-pill); }
-.trial-tab.is-active .trial-tab-count { background:rgba(255,255,255,.24);
-  color:var(--accent-ink); }
+/* ===================================================================== *
+ * Gmail-style inbox (team_inbox.html): label rail + dense thread list.   *
+ * ===================================================================== */
+/* Let the inbox go full-bleed inside the app frame (Gmail is edge-to-edge). */
+.appbody:has(.gm) { padding: 0; max-width: none; }
+/* The inbox is the middle pane of the workspace (icon rail · inbox · assistant
+   dock). On its own it's one clean column - the thread list - and it splits into
+   list + reading pane only when a thread is open. Trials switch on the tab strip;
+   the assistant and the calendar peek live elsewhere, so the list gets the room. */
+.gm { display: grid; grid-template-columns: minmax(0, 1fr);
+  height: calc(100dvh - 57px); background: var(--surface); }
+/* The Today strip is a full-width row above the panes. Scoped with :has() so the
+   panes keep filling the whole frame when there's no strip. */
+.gm:has(.gm-today) { grid-template-rows: auto minmax(0, 1fr); }
+.gm-today { grid-column: 1 / -1; padding: 12px 18px 14px;
+  border-bottom: 1px solid var(--border); background: var(--surface); }
+.gm-today .today-lane { height: 68px; }
+.gm-today .today-h { margin-bottom: 8px; }
+/* Rendered as <a> here (a block opens that patient's thread), not <button>. */
+.gm-today .today-next-card { text-decoration: none; }
+
+/* Left rail: views + studies (labels) */
+.gm-side { border-right: 1px solid var(--border); padding: 14px 10px;
+  overflow-y: auto; display: flex; flex-direction: column; gap: 20px;
+  background: var(--bg); }
+.gm-side-sect { display: flex; flex-direction: column; gap: 2px; }
+.gm-side-h { font-size: 11px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .06em; color: var(--faint); padding: 0 10px 6px; }
+.gm-view, .gm-label, .gm-side-act { display: flex; align-items: center; gap: 10px;
+  width: 100%; text-align: left; padding: 8px 11px; border-radius: var(--radius-pill);
+  border: 0; background: transparent; color: var(--ink-soft); font-size: 13.5px;
+  font-weight: 600; cursor: pointer; text-decoration: none; line-height: 1.2; }
+.gm-view svg, .gm-label svg, .gm-side-act svg { width: 16px; height: 16px;
+  flex-shrink: 0; color: var(--muted); }
+.gm-view > span:not(.gm-n), .gm-label-name { flex: 1; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; }
+.gm-view:hover, .gm-label:hover, .gm-side-act:hover { background: var(--surface-2); }
+.gm-view.is-active, .gm-label.is-active { background: var(--accent-soft);
+  color: var(--accent); }
+.gm-view.is-active svg { color: var(--accent); }
+.gm-n { font-size: 11px; font-weight: 700; color: var(--muted);
+  background: var(--surface-2); padding: 1px 7px; border-radius: var(--radius-pill); }
+.gm-view.is-active .gm-n, .gm-label.is-active .gm-n { background: var(--surface);
+  color: var(--accent); }
+.gm-label-dot { width: 9px; height: 9px; border-radius: var(--radius-pill);
+  background: var(--dot, var(--faint)); flex-shrink: 0; }
+/* Multicolor study labels (like Gmail). Child 1 is the section header. */
+.gm-side-sect .gm-label:nth-child(2) .gm-label-dot { background: var(--faint); }
+.gm-side-sect .gm-label:nth-child(3) .gm-label-dot { background: #0d6c6a; }
+.gm-side-sect .gm-label:nth-child(4) .gm-label-dot { background: #9d3f6d; }
+.gm-side-sect .gm-label:nth-child(5) .gm-label-dot { background: #97620f; }
+.gm-side-sect .gm-label:nth-child(6) .gm-label-dot { background: #16a34a; }
+.gm-side-sect .gm-label:nth-child(7) .gm-label-dot { background: #4e5a63; }
+.gm-side-sect .gm-label:nth-child(8) .gm-label-dot { background: #b42a1f; }
+.gm-side-sect .gm-label:nth-child(n+9) .gm-label-dot { background: #0d6c6a; }
+.gm-side-foot { margin-top: auto; display: flex; flex-direction: column; gap: 2px;
+  padding-top: 12px; border-top: 1px solid var(--border); }
+.gm-side-act { font-size: 12.5px; color: var(--muted); font-weight: 600; }
+
+/* Main column: tabs + search + filters + list */
+.gm-main { display: flex; flex-direction: column; min-width: 0; overflow: hidden; }
+
+/* Trial switcher tabs (replaces the old Studies rail) on the left; row actions
+   pinned right. One band, with the underline border owned by the bar. */
+.gm-tabsbar { display: flex; align-items: stretch; gap: 8px; padding: 6px 14px 0;
+  border-bottom: 1px solid var(--border); }
+.gm-tabs { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; flex: 1; min-width: 0; }
+.gm-tabs::-webkit-scrollbar { display: none; }
+.gm-tabs-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0;
+  padding-bottom: 6px; }
+.gm-tab { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap;
+  padding: 8px 13px; border-radius: 9px 9px 0 0; color: var(--muted); font-size: 13px;
+  font-weight: 600; text-decoration: none; border-bottom: 2px solid transparent;
+  margin-bottom: -1px; }
+.gm-tab:hover { background: var(--surface-2); color: var(--ink); }
+.gm-tab.is-active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 700; }
+.gm-tab-dot { width: 8px; height: 8px; border-radius: var(--radius-pill);
+  background: var(--dot, var(--faint)); flex-shrink: 0; }
+.gm-tab-name { max-width: 190px; overflow: hidden; text-overflow: ellipsis; }
+/* Multicolor study dots, like Gmail labels. First tab is "All studies" (no dot). */
+.gm-tab:nth-child(2) .gm-tab-dot { background: #0d6c6a; }
+.gm-tab:nth-child(3) .gm-tab-dot { background: #9d3f6d; }
+.gm-tab:nth-child(4) .gm-tab-dot { background: #97620f; }
+.gm-tab:nth-child(5) .gm-tab-dot { background: #16a34a; }
+.gm-tab:nth-child(6) .gm-tab-dot { background: #4e5a63; }
+.gm-tab:nth-child(7) .gm-tab-dot { background: #b42a1f; }
+.gm-tab:nth-child(8) .gm-tab-dot { background: #2563eb; }
+.gm-tab:nth-child(n+9) .gm-tab-dot { background: #0d6c6a; }
+
+.gm-toolbar { display: flex; align-items: center; gap: 8px; padding: 12px 16px 8px; }
+.gm-check { display: inline-flex; align-items: center; padding: 3px; cursor: pointer; }
+.gm-check input { width: 16px; height: 16px; cursor: pointer; accent-color: var(--accent); }
+.gm-tool { background: transparent; border: 0; color: var(--muted); cursor: pointer;
+  padding: 8px; border-radius: 9px; display: inline-flex; align-items: center; gap: 6px;
+  text-decoration: none; font-size: 13px; font-weight: 600; }
+.gm-tool:hover { background: var(--surface-2); color: var(--ink); }
+.gm-tool svg { width: 16px; height: 16px; }
+.gm-tool-lbl { padding: 8px 12px; border: 1px solid var(--border); }
+/* One prominent search - the main way to find a thread. */
+.gm-search { flex: 1; min-width: 180px; display: flex; align-items: center; gap: 10px;
+  background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius-pill);
+  padding: 10px 16px; transition: border-color .12s, box-shadow .12s; }
+.gm-search:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.gm-search svg { width: 17px; height: 17px; color: var(--faint); flex-shrink: 0; }
+.gm-search input { border: 0; background: transparent; outline: 0; width: 100%;
+  font-size: 14px; color: var(--ink); }
+.gm-count { font-size: 12px; color: var(--faint); white-space: nowrap; flex-shrink: 0; }
+
+/* Filter row: select-all · scrolling chips · pinned actions. Only the chips
+   scroll, so Cover/Routing never get clipped when the dock narrows the column. */
+.gm-filters { display: flex; align-items: center; gap: 8px; padding: 9px 16px;
+  border-bottom: 1px solid var(--border); }
+.gm-filters .gm-check { flex-shrink: 0; }
+.gm-chips-scroll { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0;
+  overflow-x: auto; scrollbar-width: none; }
+.gm-chips-scroll::-webkit-scrollbar { display: none; }
+.gm-filter-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.gm-filters .chip { flex-shrink: 0; padding: 6px 13px; font-size: 13px; font-weight: 600; }
+.gm-filters .chip.is-on { background: var(--accent); border-color: var(--accent);
+  color: var(--accent-ink); }
+.gm-filters .chip.is-on:hover { transform: none; }
+.gm-filters .chip.is-on .gm-n { background: rgba(255,255,255,.22); color: var(--accent-ink); }
+.gm-filters-div { width: 1px; height: 20px; background: var(--border); flex-shrink: 0; margin: 0 4px; }
+
+/* Bulk action bar */
+.gm-bulk { display: flex; align-items: center; gap: 10px; padding: 8px 16px;
+  background: var(--accent-soft); border-bottom: 1px solid var(--brand-border); }
+.gm-bulk-count { font-size: 13px; color: var(--accent); font-weight: 600; }
+.gm-bulk-assignee { max-width: 200px; }
+
+/* Thread rows */
+.gm-list { list-style: none; margin: 0; padding: 0; overflow-y: auto; flex: 1; }
+.gm-row { display: flex; align-items: center; gap: 10px; padding: 0 16px; height: 46px;
+  border-bottom: 1px solid var(--border); background: var(--surface); position: relative; }
+.gm-row:hover { z-index: 1; box-shadow: var(--shadow); }
+.gm-row.is-picked { background: var(--accent-soft); }
+.gm-star { color: var(--faint); display: inline-flex; flex-shrink: 0; background: none;
+  border: 0; cursor: default; }
+.gm-star svg { width: 16px; height: 16px; }
+.gm-star.on { color: var(--amber); }
+.gm-star.on svg { fill: currentColor; }
+.gm-open { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px;
+  text-decoration: none; color: inherit; height: 100%; }
+.gm-from { width: 148px; flex-shrink: 0; font-size: 13.5px; color: var(--ink-soft);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: flex;
+  align-items: center; gap: 6px; }
+.gm-row.is-unread .gm-from { font-weight: 800; color: var(--ink); }
+.gm-dot { width: 7px; height: 7px; border-radius: var(--radius-pill);
+  background: var(--accent); flex-shrink: 0; }
+.gm-body { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 8px;
+  overflow: hidden; }
+.gm-subj { font-size: 13.5px; color: var(--ink); flex-shrink: 0; max-width: 44%;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gm-row.is-unread .gm-subj { font-weight: 700; }
+.gm-snip { font-size: 13px; color: var(--faint); overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; }
+.gm-you { color: var(--muted); }
+.gm-tags { display: flex; gap: 5px; flex-shrink: 0; align-items: center; }
+.gm-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0;
+  justify-content: flex-end; }
+.gm-when { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.gm-assignee { font-size: 11px; font-weight: 600; color: var(--muted);
+  background: var(--surface-2); padding: 2px 8px; border-radius: var(--radius-pill);
+  max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gm-actions { display: none; align-items: center; gap: 6px; flex-shrink: 0; }
+.gm-actions form { margin: 0; }
+.gm-row:hover .gm-actions { display: flex; }
+.gm-row:hover .gm-right { display: none; }
+.gm-actions select { font-size: 12px; padding: 4px 6px; max-width: 150px; }
+.gm-iconbtn { border: 1px solid var(--border); background: var(--surface);
+  border-radius: 8px; padding: 6px; cursor: pointer; color: var(--muted);
+  display: inline-flex; }
+.gm-iconbtn svg { width: 15px; height: 15px; }
+.gm-iconbtn:hover { background: var(--ok-bg); color: var(--ok);
+  border-color: var(--ok-border); }
+.gm-empty-wrap { padding: 44px 16px; }
+
+/* Right: upcoming-visits agenda (calendar peek) */
+.gm-agenda { border-left: 1px solid var(--border); background: var(--bg);
+  display: flex; flex-direction: column; overflow: hidden; }
+.gm-agenda-h { display: flex; align-items: center; gap: 8px; padding: 13px 16px;
+  border-bottom: 1px solid var(--border); font-weight: 700; font-size: 14px;
+  color: var(--ink); }
+.gm-agenda-h svg { width: 16px; height: 16px; color: var(--muted); }
+.gm-agenda-h > span { flex: 1; }
+.gm-agenda-more { font-size: 12px; font-weight: 600; color: var(--accent);
+  text-decoration: none; }
+.gm-agenda-more:hover { text-decoration: underline; }
+.gm-agenda-scroll { overflow-y: auto; padding: 8px 10px 16px; }
+.gm-agenda-day { margin-top: 10px; }
+.gm-agenda-date { font-size: 11px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .05em; color: var(--faint); padding: 4px 6px; }
+.gm-visit { display: flex; align-items: flex-start; gap: 10px; padding: 8px 8px;
+  border-radius: var(--radius-sm); text-decoration: none; color: inherit; }
+.gm-visit:hover { background: var(--surface-2); }
+.gm-visit-time { font-size: 12px; font-weight: 700; color: var(--ink-soft);
+  width: 62px; flex-shrink: 0; padding-top: 1px; }
+.gm-visit-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.gm-visit-who { font-size: 13px; font-weight: 600; color: var(--ink);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gm-visit-kind { font-size: 11.5px; color: var(--muted); overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; }
+.gm-visit-flag { font-size: 10px; font-weight: 700; padding: 1px 6px;
+  border-radius: var(--radius-pill); background: var(--surface-2); color: var(--muted);
+  flex-shrink: 0; }
+.gm-visit-flag.t-soon, .gm-visit-flag.t-today { background: var(--ok-bg); color: var(--ok); }
+.gm-visit-flag.t-overdue, .gm-visit-flag.t-late { background: var(--red-bg); color: var(--red); }
+.gm-agenda-empty { padding: 30px 20px; text-align: center; color: var(--faint); }
+.gm-agenda-empty svg { width: 26px; height: 26px; opacity: .5; }
+.gm-agenda-empty p { font-size: 12.5px; margin: 8px 0 0; }
+
+/* ── Reading pane (_thread_pane.html): the open thread, inline ───────────────
+   Gmail behavior: opening a thread is a READ action - the list steps aside and
+   the thread fills the whole middle pane, so it's never crammed into a sliver
+   between the list and the assistant dock. The dock stays put on the right, so
+   you read the thread with Bridget beside it (draft a reply, ask about them).
+   Get back to the list with the pane's X (or Esc). */
+.gm.is-open { grid-template-columns: minmax(0, 1fr); }
+.gm.is-open .gm-main { display: none; }
+.gm-row.is-open { background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
+
+/* Only truly wide screens keep the list visible alongside the thread + dock
+   (list · thread · assistant). Below that, reading is full-width like Gmail. */
+@media (min-width: 1560px) {
+  .gm.is-open { grid-template-columns: 400px minmax(0, 1fr); }
+  .gm.is-open .gm-main { display: flex; }
+  .gm.is-open .gm-tags, .gm.is-open .gm-actions, .gm.is-open .gm-assignee { display: none; }
+  .gm.is-open .gm-row:hover .gm-right { display: flex; }
+  /* Split view stacks each row: who + when on top, subject + snippet below. */
+  .gm.is-open .gm-row { height: auto; min-height: 60px; padding: 9px 12px; align-items: flex-start; }
+  .gm.is-open .gm-open { flex-direction: column; align-items: stretch; gap: 2px; height: auto; }
+  .gm.is-open .gm-from { width: auto; font-size: 13px; }
+  .gm.is-open .gm-body { flex-direction: column; align-items: stretch; gap: 1px; }
+  .gm.is-open .gm-subj { max-width: 100%; font-size: 13px; }
+  .gm.is-open .gm-right { padding-top: 1px; }
+  .gm.is-open .gm-check, .gm.is-open .gm-star { margin-top: 1px; }
+}
+
+.gm-pane { border-left: 1px solid var(--border); background: var(--surface);
+  display: flex; flex-direction: column; min-width: 0; overflow: hidden; }
+.gm-pane-h { display: flex; align-items: center; gap: 10px; padding: 12px 16px;
+  border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.gm-pane-x { display: inline-flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; border-radius: var(--radius-sm); color: var(--muted);
+  flex-shrink: 0; }
+.gm-pane-x:hover { background: var(--surface-2); color: var(--ink); }
+.gm-pane-x svg { width: 17px; height: 17px; }
+.gm-pane-av { display: inline-flex; align-items: center; justify-content: center;
+  width: 34px; height: 34px; border-radius: var(--radius-pill); flex-shrink: 0;
+  background: var(--accent-soft); color: var(--accent); font-size: 12px; font-weight: 700; }
+.gm-pane-id { min-width: 0; flex: 1; }
+.gm-pane-name { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+.gm-pane-name b { font-size: 15px; color: var(--ink); }
+/* One line that wraps only when it truly must - the header should stay short so
+   the conversation gets the vertical space. */
+.gm-pane-meta { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 2px;
+  font-size: 12px; color: var(--muted); line-height: 1.5; }
+.gm-pane-meta span { display: inline-flex; align-items: center; gap: 5px; min-width: 0;
+  max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gm-pane-meta svg { width: 13px; height: 13px; color: var(--faint); flex-shrink: 0; }
+.gm-pane-act { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.gm-pane-act form { margin: 0; }
+.gm-pane-act select { font-size: 12px; padding: 5px 8px; max-width: 150px; width: auto; }
+.gm-pane-full { display: inline-flex; align-items: center; gap: 5px; font-size: 12px;
+  font-weight: 600; color: var(--muted); white-space: nowrap; }
+.gm-pane-full:hover { color: var(--accent); }
+.gm-pane-full svg { width: 14px; height: 14px; }
+
+.gm-pane-scroll { flex: 1; overflow-y: auto; padding: 16px;
+  display: flex; flex-direction: column; gap: 14px; min-height: 0; }
+/* The thread scrolls with the pane, not inside its own box. */
+.gm-pane-scroll .thread { max-height: none; overflow: visible; flex: 1; }
+
+.gm-decide { display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  padding: 14px 16px; border: 1px solid var(--brand-border);
+  background: var(--accent-soft); border-radius: var(--radius); }
+.gm-decide.is-done { background: var(--ok-bg); border-color: transparent; }
+.gm-decide-tx { flex: 1; min-width: 180px; display: flex; flex-direction: column; gap: 3px; }
+.gm-decide-tx b { font-size: 14px; color: var(--ink); display: flex; align-items: center; gap: 6px; }
+.gm-decide-tx b svg { width: 15px; height: 15px; }
+.gm-decide-tx span { font-size: 13px; color: var(--muted); line-height: 1.5; }
+.gm-decide-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+.gm-decide form { margin: 0; }
+
+.gm-screen { border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 12px 14px; background: var(--bg); }
+.gm-screen > summary { cursor: pointer; font-size: 13px; font-weight: 700;
+  color: var(--ink-soft); display: flex; align-items: center; gap: 8px; }
+.gm-screen[open] > summary { margin-bottom: 10px; }
+.gm-screen-p { font-size: 13.5px; line-height: 1.55; color: var(--muted); margin: 0 0 10px; }
+.gm-screen-none { font-size: 13px; color: var(--faint); }
+.gm-screen-fine { font-size: 11.5px; color: var(--faint); margin: 12px 0 0; }
+
+.gm-pane-reply { border-top: 1px solid var(--border); padding: 10px 16px 14px;
+  flex-shrink: 0; background: var(--surface); }
+.gm-pane-reply .chat-suggest { margin-bottom: 8px; }
+
+@media (max-width: 900px) {
+  .gm, .gm.is-open { grid-template-columns: 1fr; height: auto; }
+  .gm-tags, .gm-subj { display: none; }
+  .gm-from { width: 110px; }
+}
 
 /* Unified triage inbox (team_inbox.html) */
 .tinbox { list-style:none; margin:0; padding:0; }
@@ -8309,3 +8618,135 @@ body.fs-page { background:
   color:var(--accent); padding:5px 10px; border-radius:var(--radius-pill); font-size:12px; font-weight:600; }
 .onb-done { color:var(--accent); font-size:13px; font-weight:600; display:inline-flex; align-items:center; gap:4px; margin-left:8px; }
 .onb-finish { padding-top:var(--space-2); }
+
+/* ===================================================================== *
+ * Sites marketing page v2 (for_sites.html): clean, inbox-focused.        *
+ * Namespaced .fsx-* so it never collides with the legacy .fs-* styles     *
+ * still used by the security + contact sections on the same page.         *
+ * ===================================================================== */
+.fsx-hero { max-width:1120px; margin:0 auto; padding:72px 24px 40px; text-align:center; }
+.fsx-eyebrow { display:inline-flex; align-items:center; gap:7px; font-size:13px;
+  font-weight:700; color:var(--accent); background:var(--accent-soft);
+  padding:6px 14px; border-radius:var(--radius-pill); margin-bottom:22px; }
+.fsx-eyebrow svg { width:15px; height:15px; }
+.fsx-hero h1 { font-family:var(--sans); font-size:clamp(34px, 5.2vw, 60px); line-height:1.05;
+  letter-spacing:-.03em; font-weight:800; color:var(--display); margin:0 0 20px; }
+.fsx-grad { background:linear-gradient(100deg, var(--accent), #3fa39a);
+  -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; }
+.fsx-sub { max-width:640px; margin:0 auto 28px; font-size:clamp(16px, 2vw, 19px);
+  line-height:1.55; color:var(--muted); }
+.fsx-cta { display:flex; gap:12px; justify-content:center; flex-wrap:wrap; }
+.fsx-btn { display:inline-flex; align-items:center; gap:8px; padding:13px 22px;
+  border-radius:var(--radius-pill); font-size:15px; font-weight:700; text-decoration:none;
+  border:1px solid transparent; transition:transform .1s, background .12s, box-shadow .12s; }
+.fsx-btn svg { width:16px; height:16px; }
+.fsx-btn:active { transform:translateY(1px); }
+.fsx-btn-primary { background:var(--accent); color:var(--accent-ink); box-shadow:var(--shadow); }
+.fsx-btn-primary:hover { background:var(--btn-hover); }
+.fsx-btn-ghost { background:var(--surface); color:var(--ink); border-color:var(--border-strong); }
+.fsx-btn-ghost:hover { background:var(--surface-2); }
+.fsx-btn-lg { padding:15px 28px; font-size:16px; flex-shrink:0; }
+.fsx-trust { margin:22px 0 0; font-size:13px; color:var(--faint); font-weight:600; }
+
+.fsx-shot { max-width:1160px; margin:44px auto 0; padding:0 20px; }
+.fsx-shot-bar { display:flex; align-items:center; gap:6px; background:var(--surface-2);
+  border:1px solid var(--border); border-bottom:0; border-radius:var(--radius) var(--radius) 0 0;
+  padding:10px 14px; }
+.fsx-shot-bar span { width:11px; height:11px; border-radius:var(--radius-pill); background:var(--border-strong); }
+.fsx-shot-bar b { font-size:12px; color:var(--faint); font-weight:600; margin-left:10px; }
+.fsx-shot img { display:block; width:100%; height:auto; border:1px solid var(--border);
+  border-radius:0 0 var(--radius) var(--radius); box-shadow:var(--shadow-lift); }
+
+.fsx-section { max-width:1080px; margin:0 auto; padding:64px 24px; }
+.fsx-head { text-align:center; max-width:640px; margin:0 auto 44px; }
+.fsx-kicker { font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:.08em;
+  color:var(--accent); margin:0 0 10px; }
+.fsx-head h2 { font-size:clamp(26px, 3.6vw, 38px); line-height:1.12; letter-spacing:-.025em;
+  font-weight:800; color:var(--display); margin:0 0 12px; }
+.fsx-lead { font-size:16px; line-height:1.55; color:var(--muted); margin:0; }
+
+.fsx-features { display:flex; flex-direction:column; gap:20px; }
+.fsx-feature { display:grid; grid-template-columns:1fr 1fr; gap:32px; align-items:center;
+  background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-lg);
+  padding:36px; box-shadow:var(--shadow); }
+.fsx-feature.fsx-rev .fsx-feature-tx { order:2; }
+.fsx-feature-ic { display:inline-flex; align-items:center; justify-content:center; width:44px;
+  height:44px; border-radius:var(--radius-sm); background:var(--accent-soft); color:var(--accent);
+  margin-bottom:16px; }
+.fsx-feature-ic svg { width:22px; height:22px; }
+.fsx-feature-tx h3 { font-size:22px; font-weight:800; letter-spacing:-.02em; color:var(--ink);
+  margin:0 0 10px; }
+.fsx-feature-tx p { font-size:15px; line-height:1.6; color:var(--muted); margin:0; }
+
+/* Feature vignettes (lightweight CSS mocks) */
+.fsx-feature-viz { background:var(--bg); border:1px solid var(--border); border-radius:var(--radius);
+  padding:22px; display:flex; flex-direction:column; gap:12px; align-items:center; }
+.fsx-srcs { display:flex; flex-wrap:wrap; gap:8px; justify-content:center; }
+.fsx-src { display:inline-flex; align-items:center; gap:6px; font-size:12.5px; font-weight:600;
+  color:var(--ink-soft); background:var(--surface); border:1px solid var(--border);
+  padding:7px 12px; border-radius:var(--radius-pill); }
+.fsx-src svg { width:14px; height:14px; color:var(--muted); }
+.fsx-funnel { color:var(--faint); display:flex; }
+.fsx-funnel svg { width:22px; height:22px; }
+.fsx-onebox { display:inline-flex; align-items:center; gap:8px; font-size:14px; font-weight:700;
+  color:var(--accent); background:var(--accent-soft); padding:10px 18px; border-radius:var(--radius-pill); }
+.fsx-onebox svg { width:16px; height:16px; }
+.fsx-labels { width:100%; display:flex; flex-direction:column; gap:6px; }
+.fsx-lbl { display:flex; align-items:center; gap:10px; font-size:13.5px; font-weight:600;
+  color:var(--ink-soft); background:var(--surface); border:1px solid var(--border);
+  padding:9px 12px; border-radius:var(--radius-pill); }
+.fsx-lbl i { width:9px; height:9px; border-radius:var(--radius-pill); background:var(--d); }
+.fsx-lbl b { margin-left:auto; font-size:11px; color:var(--muted); background:var(--surface-2);
+  padding:1px 8px; border-radius:var(--radius-pill); }
+.fsx-lbl.is-on { background:var(--accent-soft); color:var(--accent); border-color:var(--brand-border); }
+.fsx-rows { width:100%; display:flex; flex-direction:column; gap:8px; }
+.fsx-row { display:flex; align-items:center; gap:10px; background:var(--surface);
+  border:1px solid var(--border); border-radius:var(--radius-sm); padding:10px 12px; font-size:13px; }
+.fsx-row b { margin-right:auto; color:var(--ink); }
+.fsx-av { display:inline-flex; align-items:center; justify-content:center; width:26px; height:26px;
+  border-radius:var(--radius-pill); background:var(--accent-soft); color:var(--accent);
+  font-size:11px; font-weight:700; flex-shrink:0; }
+.fsx-tag { font-size:11px; font-weight:700; padding:2px 9px; border-radius:var(--radius-pill); }
+.fsx-tag.t-danger { background:var(--red-bg); color:var(--red); }
+.fsx-tag.t-ok { background:var(--ok-bg); color:var(--ok); }
+.fsx-tag.t-warn { background:var(--amber-bg); color:var(--amber); }
+.fsx-tag.t-info { background:var(--info-bg); color:var(--info); }
+.fsx-rule, .fsx-cover { display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+  justify-content:center; font-size:13px; font-weight:600; color:var(--ink-soft);
+  background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-pill);
+  padding:9px 16px; width:100%; }
+.fsx-rule svg, .fsx-cover svg { width:15px; height:15px; color:var(--faint); }
+.fsx-who { display:inline-flex; align-items:center; gap:7px; }
+.fsx-who em { color:var(--red); font-style:normal; font-size:11.5px; }
+.fsx-who.is-out { opacity:.6; }
+
+.fsx-steps { display:grid; grid-template-columns:repeat(3, 1fr); gap:20px; }
+.fsx-step { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius);
+  padding:28px; }
+.fsx-step-n { display:inline-flex; align-items:center; justify-content:center; width:34px; height:34px;
+  border-radius:var(--radius-pill); background:var(--accent); color:var(--accent-ink);
+  font-weight:800; font-size:15px; margin-bottom:14px; }
+.fsx-step h3 { font-size:17px; font-weight:800; color:var(--ink); margin:0 0 8px; }
+.fsx-step p { font-size:14px; line-height:1.55; color:var(--muted); margin:0; }
+
+.fsx-price { max-width:920px; margin:0 auto; display:grid; grid-template-columns:1fr auto;
+  gap:32px; align-items:center; background:var(--surface); border:1px solid var(--border);
+  border-radius:var(--radius-lg); padding:40px; box-shadow:var(--shadow); }
+.fsx-price .fsx-kicker { text-align:left; }
+.fsx-price h2 { font-size:30px; font-weight:800; letter-spacing:-.025em; color:var(--display); margin:0 0 10px; }
+.fsx-price .fsx-lead { margin-bottom:16px; }
+.fsx-list { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:8px; }
+.fsx-list li { display:flex; align-items:center; gap:8px; font-size:14px; color:var(--ink-soft); font-weight:600; }
+.fsx-list svg { width:16px; height:16px; color:var(--ok); flex-shrink:0; }
+
+/* Scroll reveal (shared with the legacy .fs-reveal on this page) */
+.fsx-head.fs-reveal, .fsx-feature.fs-reveal, .fsx-step.fs-reveal {
+  opacity:0; transform:translateY(14px); transition:opacity .5s ease, transform .5s ease; }
+.fsx-head.is-in, .fsx-feature.is-in, .fsx-step.is-in { opacity:1; transform:none; }
+
+@media (max-width: 820px) {
+  .fsx-feature { grid-template-columns:1fr; gap:22px; padding:26px; }
+  .fsx-feature.fsx-rev .fsx-feature-tx { order:0; }
+  .fsx-steps { grid-template-columns:1fr; }
+  .fsx-price { grid-template-columns:1fr; padding:28px; }
+}

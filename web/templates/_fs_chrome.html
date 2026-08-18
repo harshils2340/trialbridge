@@ -9,29 +9,13 @@
   <div class="fs-nav-in">
     <a class="fs-nav-brand" href="{{ hub }}">
       {{ ic.icon('mark', 'brand-glyph') }}BridgeMD <span>for sites</span></a>
+    {# One product, one page. The old "Platform" mega-menu advertised four CTMS
+       pillars, which contradicted the pitch the moment you read the hero. #}
     <nav class="fs-nav-links" aria-label="Primary">
-      {# Platform: a small hover panel so each pillar is one click from anywhere. #}
-      <div class="fs-navitem fs-has-menu">
-        <button type="button" class="fs-nav-trig" aria-expanded="false" aria-controls="fsMenuPlatform">
-          Platform {{ ic.icon('chevron-down') }}</button>
-        <div class="fs-menu" id="fsMenuPlatform">
-          <div class="fs-menu-grid">
-            {% for f in sites_nav_features %}
-            <a class="fs-menu-card" href="{{ url_for('for_sites_feature', slug=f.slug) }}">
-              <span class="fs-menu-ic">{{ ic.icon(f.icon) }}</span>
-              <span class="fs-menu-tx">
-                <b>{{ f.nav }}</b>
-                <span>{{ f.blurb }}</span>
-              </span>
-            </a>
-            {% endfor %}
-          </div>
-          <a class="fs-menu-foot" href="{{ hub }}#demo">See it in the product {{ ic.icon('arrow-right') }}</a>
-        </div>
-      </div>
-      <a href="{{ hub }}#demo">See it work</a>
-      <a href="{{ url_for('blog_index') }}">Resources</a>
+      <a href="{{ hub }}#how">How it works</a>
+      <a href="{{ hub }}#pricing">Pricing</a>
       <a href="{{ hub }}#security">Security</a>
+      <a href="{{ url_for('blog_index') }}">Resources</a>
       <a href="{{ hub }}#contact">Contact</a>
     </nav>
     <div class="fs-nav-cta">
@@ -44,20 +28,10 @@
   </div>
   <div class="fs-sheet" id="fsSheet" hidden>
     <div class="fs-sheet-in">
-      <p class="fs-sheet-l">Platform</p>
-      {% for f in sites_nav_features %}
-      <a class="fs-sheet-card" href="{{ url_for('for_sites_feature', slug=f.slug) }}">
-        <span class="fs-sheet-ic">{{ ic.icon(f.icon) }}</span>
-        <span class="fs-sheet-tx">
-          <b>{{ f.nav }}</b>
-          <span>{{ f.blurb }}</span>
-        </span>
-      </a>
-      {% endfor %}
-      <p class="fs-sheet-l">More</p>
-      <a class="fs-sheet-row" href="{{ hub }}#demo">See it work</a>
-      <a class="fs-sheet-row" href="{{ url_for('blog_index') }}">Resources</a>
+      <a class="fs-sheet-row" href="{{ hub }}#how">How it works</a>
+      <a class="fs-sheet-row" href="{{ hub }}#pricing">Pricing</a>
       <a class="fs-sheet-row" href="{{ hub }}#security">Security &amp; legal</a>
+      <a class="fs-sheet-row" href="{{ url_for('blog_index') }}">Resources</a>
       <a class="fs-sheet-row" href="{{ hub }}#contact">Contact</a>
       <a class="fs-sheet-row" href="{{ url_for('login') }}">Sign in</a>
     </div>
@@ -124,15 +98,13 @@
   <div class="fs-foot-in">
     <div class="fs-foot-brand">
       <span class="fs-foot-mark">{{ ic.icon('mark', 'brand-glyph brand-glyph-sm') }}BridgeMD <b>for sites</b></span>
-      <p>The operating system for clinical trial sites.</p>
+      <p>One inbox for every study inquiry.</p>
     </div>
-    {# The feature links live here as well, since the header nav is hidden on a phone. #}
     <nav class="fs-foot-links" aria-label="Footer">
-      {% for f in sites_nav_features %}
-      <a href="{{ url_for('for_sites_feature', slug=f.slug) }}">{{ f.nav }}</a>
-      {% endfor %}
-      <a href="{{ url_for('blog_index') }}">Resources</a>
+      <a href="{{ hub }}#how">How it works</a>
+      <a href="{{ hub }}#pricing">Pricing</a>
       <a href="{{ hub }}#security">Security</a>
+      <a href="{{ url_for('blog_index') }}">Resources</a>
       <a href="{{ url_for('login') }}">Sign in</a>
       <a href="{{ url_for('privacy') }}">Privacy</a>
       <a href="{{ url_for('terms') }}">Terms</a>

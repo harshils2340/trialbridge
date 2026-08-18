@@ -472,10 +472,10 @@
 
   var saved = null;
   try { saved = localStorage.getItem('bm_copilot_open'); } catch (e) {}
-  // Default open only when the screen is wide enough to fit the dock inline
-  // beside the page's right rail; otherwise start collapsed so nothing is
-  // clipped (the user can still open it as a drawer via the FAB).
-  var wide = window.matchMedia('(min-width: 1440px)').matches;
+  // The dock is a first-class pane now, so it opens by default whenever there's
+  // room for it inline (the inbox drops its right rail to make that room). Only
+  // truly narrow screens start collapsed, where it opens as a drawer via the FAB.
+  var wide = window.matchMedia('(min-width: 1000px)').matches;
   var startOpen = saved === null ? wide : saved === '1';
   setOpen(startOpen);
   if (startOpen) renderIntro();
