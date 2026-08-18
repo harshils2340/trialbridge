@@ -321,7 +321,7 @@ document.addEventListener('click', function (e) {
   function del(k) { try { localStorage.removeItem(k); } catch (e) {} }
   // The left rail is never wider than its regular size (240) — there's no reason
   // to. Dragging narrower snaps it into the icon/logo rail below RAIL_SNAP.
-  var SIDE_FULL = 240, SIDE_MIN = 176, RAIL_SNAP = 158;
+  var SIDE_FULL = 240, SIDE_MIN = 176, RAIL_SNAP = 150, RAIL_EXPAND = 196;
   function clampSide(v) { return Math.max(SIDE_MIN, Math.min(SIDE_FULL, v)); }
   function clampDock(v) { return Math.max(300, Math.min(560, v)); }
 
@@ -396,14 +396,23 @@ document.addEventListener('click', function (e) {
       e.preventDefault();
       try { sideHandle.setPointerCapture(e.pointerId); } catch (_) {}
       document.body.classList.add('is-resizing');
+      function snap() {                     // animate this one state change
+        side.classList.add('is-snapping');
+        clearTimeout(snap._t);
+        snap._t = setTimeout(function () { side.classList.remove('is-snapping'); }, 200);
+      }
       function move(ev) {
         var raw = ev.clientX - side.getBoundingClientRect().left;
-        if (raw < RAIL_SNAP) {              // resolve into the logo/icon rail
+        var collapsed = side.classList.contains('is-collapsed');
+        if (!collapsed && raw < RAIL_SNAP) {          // resolve into the logo rail
+          snap();
           side.classList.add('is-collapsed');
-          // Keep the full width in reserve so hover-expand looks right.
-          shell.style.setProperty('--appside-w', SIDE_FULL + 'px');
-        } else {
+          shell.style.setProperty('--appside-w', SIDE_FULL + 'px');  // reserve full
+        } else if (collapsed && raw > RAIL_EXPAND) {   // pull back out (hysteresis)
+          snap();
           side.classList.remove('is-collapsed');
+          shell.style.setProperty('--appside-w', clampSide(raw) + 'px');
+        } else if (!collapsed) {                        // free resize, 1:1 with pointer
           shell.style.setProperty('--appside-w', clampSide(raw) + 'px');
         }
       }

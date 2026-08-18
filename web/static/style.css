@@ -3900,7 +3900,18 @@ body.is-resizing .appside, body.is-resizing .appdock { transition: none; }
 .appside.is-collapsed .appside-foot .mini { font-size: 0; justify-content: center; gap: 0; }
 .appside.is-collapsed .appside-foot .mini .ico { font-size: initial; }
 /* Hover the collapsed rail to reveal full labels (no toggle button needed). */
-.appside.is-collapsed:hover { width: var(--appside-w, 240px); box-shadow: var(--shadow-lift); z-index: 5; }
+body:not(.is-resizing) .appside.is-collapsed:hover { width: var(--appside-w, 240px); box-shadow: var(--shadow-lift); z-index: 5; }
+/* One-shot smooth transition when the drag snaps into / out of the rail. */
+body.is-resizing .appside.is-snapping { transition: width .18s ease; }
+/* While dragging, the pointer counts as hovering the rail — keep it looking
+   collapsed (icons only) instead of flashing full labels into a 64px column. */
+body.is-resizing .appside.is-collapsed:hover .appnav a { justify-content: center;
+  gap: 0; font-size: 0; padding-left: 0; padding-right: 0; }
+body.is-resizing .appside.is-collapsed:hover .appside-brand { justify-content: center; }
+body.is-resizing .appside.is-collapsed:hover .appside-brand .bt,
+body.is-resizing .appside.is-collapsed:hover .appnav-count,
+body.is-resizing .appside.is-collapsed:hover .app-demo-guide,
+body.is-resizing .appside.is-collapsed:hover .appside-user .u { display: none; }
 .appside.is-collapsed:hover .appside-brand { justify-content: flex-start; }
 .appside.is-collapsed:hover .appside-brand .bt { display: block; }
 .appside.is-collapsed:hover .appnav a { justify-content: flex-start; gap: 10px;
