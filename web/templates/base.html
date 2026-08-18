@@ -76,6 +76,7 @@
       <a href="{{ url_for('campaign_list') }}" class="{{ 'active' if request.endpoint in ['campaign_list','campaign_detail'] }}">{{ ic.icon('megaphone') }}Campaigns</a>
       <a href="{{ url_for('recruitment_dashboard') }}" class="{{ 'active' if request.endpoint in ['recruitment_dashboard','recruitment_balance','recruitment_balance_targets'] }}">{{ ic.icon('activity') }}Recruitment</a>
       <a href="{{ url_for('updates_page') }}" class="{{ 'active' if request.endpoint in ['updates_page','update_detail'] }}">{{ ic.icon('refresh') }}Updates{% if upd_due %}<span class="appnav-count">{{ upd_due }}</span>{% endif %}</a>
+      <a href="{{ url_for('documents_page') }}" class="{{ 'active' if request.endpoint in ['documents_page','document_action'] }}">{{ ic.icon('file') }}Documents</a>
       <a href="{{ url_for('soe_page') }}" class="{{ 'active' if request.endpoint == 'soe_page' }}">{{ ic.icon('list') }}Protocol schedule</a>
       <a href="{{ url_for('payments_page') }}" class="{{ 'active' if request.endpoint == 'payments_page' }}">{{ ic.icon('dollar') }}Payments{% if pay_due %}<span class="appnav-count">{{ pay_due }}</span>{% endif %}</a>
       <a href="{{ url_for('site_setup') }}" class="{{ 'active' if request.endpoint in ['site_setup','add_study_claim','remove_study_claim','team_page','team_invite','team_set_role','team_remove','intake_page','intake_import'] }}">{{ ic.icon('gear') }}Settings</a>
@@ -97,7 +98,7 @@
     <div class="appside-foot">
       <div class="appside-user">
         <span class="appside-avatar">{{ _initials }}</span>
-        <span class="u"><b>{{ user['name'] or 'Study team' }}</b><span>Trial site coordinator</span></span>
+        <span class="u"><b>{{ user['name'] or 'Study team' }}</b><span>{{ member_role_label or 'Study team' }}</span></span>
       </div>
       <a href="{{ url_for('logout') }}" class="mini">{{ ic.icon('logout') }}Sign out</a>
       <button type="button" class="theme-toggle side-theme-toggle mini" id="themeToggle" aria-label="Switch between light and dark theme" title="Toggle light / dark theme">

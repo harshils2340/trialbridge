@@ -405,7 +405,7 @@ def ops_readiness():
 # --------------------------------------------------------------------------- #
 # NO_LOGIN (defined near the top with the production guard) enables the no-login
 # demo shell. It is forced off in production so the ATS is never anonymous.
-_DEMO_EMAIL = "demo@bridgemd.local"
+_DEMO_EMAIL = "vfieve@fieveclinical.com"
 _DEMO_PATIENT_EMAIL = "demo.patient@bridgemd.local"
 _DEMO_PATIENT_NAME = os.environ.get("DEMO_PATIENT_NAME", "Harshil Test User").strip() or "Harshil Test User"
 DEMO_SESSION_KEY = "demo_mode"
@@ -467,7 +467,7 @@ def _ensure_demo_user():
     u = db.get_user_by_email(_DEMO_EMAIL)
     if not u:
         pw = generate_password_hash("demo-no-login", method="pbkdf2:sha256")
-        db.create_user(_DEMO_EMAIL, pw, "Demo Clinician", "", "")
+        db.create_user(_DEMO_EMAIL, pw, "Vanessa Fieve, JD, CCRC", "", "")
         u = db.get_user_by_email(_DEMO_EMAIL)
     return u
 
@@ -555,6 +555,14 @@ def _seed_demo_surfaces(user_id=None):
         db.seed_demo_collaboration(user_id)
     except Exception:
         app.logger.exception("demo collaboration seeding failed")
+    try:
+        db.seed_demo_case_notes(user_id)
+    except Exception:
+        app.logger.exception("demo case-note seeding failed")
+    try:
+        db.seed_demo_trial_documents(user_id)
+    except Exception:
+        app.logger.exception("demo trial-document seeding failed")
     try:
         _seed_demo_documents()
     except Exception:
@@ -1455,7 +1463,7 @@ def inject_globals():
             nav_studies = []
         try:
             my_role = db.member_role(g.user["id"])
-            my_role_label = db.ORG_ROLE_LABELS.get(my_role, "")
+            my_role_label = db.member_role_label(g.user["id"])
             can_manage_team = db.can_manage_team(g.user["id"])
         except Exception:
             pass
@@ -5786,7 +5794,10 @@ _SOURCE_LABELS = {
 
 
 def _initials(name):
-    parts = [p for p in (name or "").replace("#", "").split() if p]
+    # Drop trailing credentials ("Vanessa Fieve, JD, CCRC" -> "Vanessa Fieve") so
+    # avatars read as first+last initials, not the credential letters.
+    base = (name or "").split(",")[0]
+    parts = [p for p in base.replace("#", "").split() if p]
     if not parts:
         return "?"
     if len(parts) == 1:
@@ -8082,10 +8093,12 @@ def _seed_demo_calendar_if_demo(items):
         (-7, "treatment", "missed",
          "No-show; reached by phone, rebooked. Watch adherence."),
     ]
+    # Team notes attributed to the real coordinators so the case chart shows the
+    # staff collaborating, not an anonymous "Coordinator".
     _notes = [
-        "Prefers morning visits; works afternoons.",
-        "Daughter (caregiver) usually attends - add to reminders.",
-        "Mild nausea reported week 1; resolved. Monitor at next dose.",
+        ("Kara Walsh", "Prefers morning visits; works afternoons."),
+        ("Danny Josama", "Daughter (caregiver) usually attends - add to reminders."),
+        ("Kara Walsh", "Mild nausea reported week 1; resolved. Monitor at next dose."),
     ]
     for lead in cands[:3]:
         try:
@@ -8098,8 +8111,8 @@ def _seed_demo_calendar_if_demo(items):
                     agenda=_AGENDA.get(kind, ""),
                     duration_min=60 if kind in ("baseline", "treatment") else 30)
                 db.set_visit_status(vid, status)
-            for body in _notes[:2]:
-                db.add_note(lead["id"], body, author="Coordinator")
+            for author, body in _notes[:2]:
+                db.add_note(lead["id"], body, author=author)
         except Exception:
             app.logger.exception("demo context seeding failed")
 
@@ -8941,6 +8954,73 @@ def soe_apply():
         return redirect(url_for("calendar_page"))
     flash("No schedule to apply yet - build it first.", "warn")
     return redirect(url_for("soe_page"))
+
+
+@app.route("/app/documents")
+@login_required
+def documents_page():
+    """Regulatory binder + patient forms: the ICH-GCP essential documents a site
+    routes, reviews, and signs, grouped by category with a full audit trail. The
+    whole shared workspace sees the same binder, so any teammate can pick up where
+    another left off. Read + approve/return; e-signatures happen in the validated
+    vendor and the approval is recorded here (see COMPLIANCE.md)."""
+    active_nct, _team = _active_scope()
+    docs = db.list_documents(g.user["id"], nct=active_nct or None)
+    counts = db.document_counts(g.user["id"])
+    # name -> email so the audit trail shows the real teammate who acted.
+    staff = {}
+    for m in db.list_org_members(g.user["id"]):
+        if m["name"]:
+            staff[m["name"]] = m["email"]
+    order = ["consent", "patient", "regulatory", "site"]
+    groups = []
+    for cat in order:
+        items = [d for d in docs if d["category"] == cat]
+        if not items:
+            continue
+        rows = []
+        for d in items:
+            rows.append({
+                "doc": d,
+                "events": db.list_document_events(d["id"]),
+            })
+        groups.append({
+            "key": cat,
+            "label": db.DOC_CATEGORY_LABELS.get(cat, cat.title()),
+            "rows": rows,
+        })
+    return render_template(
+        "documents.html", groups=groups, counts=counts, staff=staff,
+        status_labels=db.DOC_STATUS_LABELS, has_any=bool(docs))
+
+
+@app.route("/app/documents/<int:doc_id>/action", methods=["POST"])
+@login_required
+def document_action(doc_id):
+    """Advance a document's status (review / approve / send back) and append an
+    audit event attributed to the acting teammate. Stays on the Documents page."""
+    doc = db.get_document(doc_id)
+    if not doc or doc["user_id"] not in db.org_member_ids(g.user["id"]):
+        abort(404)
+    status = (request.form.get("status") or "").strip()
+    note = (request.form.get("note") or "").strip()
+    if status not in db.DOC_STATUSES:
+        flash("Unknown document action.", "error")
+        return redirect(url_for("documents_page"))
+    role_label = db.ORG_ROLE_LABELS.get(db.member_role(g.user["id"]), "Team")
+    for m in db.list_org_members(g.user["id"]):
+        if m["user_id"] == g.user["id"] and m["role_label"]:
+            role_label = m["role_label"]
+            break
+    meaning = "Approval" if status in ("approved", "signed") else ""
+    db.set_document_status(
+        doc_id, status, actor=(g.user["name"] or "You"),
+        actor_role=role_label, meaning=meaning, note=note)
+    msg = {"approved": "Approved and logged to the binder.",
+           "returned": "Sent back for changes.",
+           "in_review": "Marked in review."}.get(status, "Document updated.")
+    flash(msg, "success")
+    return redirect(url_for("documents_page"))
 
 
 @app.route("/app/updates")

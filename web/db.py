@@ -1490,6 +1490,18 @@ def member_role(user_id):
     return (row["role"] if row else "") or ""
 
 
+def member_role_label(user_id):
+    """This user's display title - the custom role_label if set (e.g. 'Site
+    Director / President'), else the base-role label ('Coordinator')."""
+    oid = user_org_id(user_id)
+    row = get_db().execute(
+        "SELECT role, role_label FROM memberships WHERE org_id = ? AND user_id = ?",
+        (oid, user_id)).fetchone()
+    if not row:
+        return ""
+    return (row["role_label"] or ORG_ROLE_LABELS.get(row["role"], "")) or ""
+
+
 def can_manage_team(user_id):
     return member_role(user_id) in _ROLE_CAN_MANAGE_TEAM
 
@@ -5212,29 +5224,29 @@ def _demo_doc_specs():
          "Release to obtain outside records confirming the diagnosis before "
          "screening.", True),
         ("regulatory", "form_1572", "FDA Form 1572 - Statement of Investigator",
-         "investigator", "Dr. A. Patel", "v1.0", "pending", 1,
+         "investigator", "Paul Eder, MD", "v1.0", "pending", 1,
          "The PI's commitment to conduct the trial per the protocol and 21 CFR 312.",
          False),
         ("regulatory", "doa_log", "Delegation of Authority Log", "investigator",
-         "Dr. A. Patel", "v3", "in_review", 2,
+         "Paul Eder, MD", "v3", "in_review", 2,
          "Which team members are authorized for which trial tasks - the PI must "
          "review and sign.", False),
         ("regulatory", "fin_disclosure", "Financial Disclosure (FDA 3455)",
-         "investigator", "Dr. A. Patel", "v1.0", "pending", 3,
+         "investigator", "Paul Eder, MD", "v1.0", "pending", 3,
          "Investigator conflict-of-interest disclosure required by the sponsor.",
          False),
-        ("regulatory", "irb_approval", "IRB/REB Approval Letter + Approved ICF",
-         "coordinator", "REB Office", "2026-A", "approved", None,
+        ("regulatory", "irb_approval", "IRB Approval Letter + Approved ICF",
+         "coordinator", "WCG IRB", "2026-A", "approved", None,
          "Ethics board approval of the protocol and the current consent version.",
          False),
         ("regulatory", "protocol_amend", "Protocol Amendment 3 - Signature Page",
-         "investigator", "Dr. A. Patel", "Amd 3", "pending", 1,
+         "investigator", "Paul Eder, MD", "Amd 3", "pending", 1,
          "PI acknowledgement and sign-off on the latest protocol amendment.", False),
         ("site", "ib_ack", "Investigator's Brochure - Acknowledgement",
-         "investigator", "Dr. A. Patel", "Ed 7", "in_review", 4,
+         "investigator", "Paul Eder, MD", "Ed 7", "in_review", 4,
          "Confirms the PI reviewed the current IB safety information.", False),
         ("site", "gcp_cert", "GCP Training Certificate", "coordinator",
-         "J. Chen, CRC", "2026", "approved", None,
+         "Kara Walsh, MPH", "2026", "approved", None,
          "Good Clinical Practice training on file for the coordinator.", False),
         ("site", "lab_cert", "Lab Certification (CLIA/CAP) + Normal Ranges",
          "coordinator", "Central Lab", "2026", "approved", None,
@@ -5276,19 +5288,19 @@ def seed_demo_trial_documents(user_id):
                                  summary=summary)
         # Backfill a believable audit trail for non-pending docs.
         if status in ("in_review", "approved", "returned", "signed"):
-            add_document_event(doc_id, "sent", actor="J. Chen, CRC",
+            add_document_event(doc_id, "sent", actor="Kara Walsh, MPH",
                                actor_role="Coordinator", note="Routed for review")
         if is_patient:
             add_document_event(doc_id, "received", actor=(pname or "Applicant"),
                                actor_role="Patient", note="Returned by participant")
         if status == "approved":
             add_document_event(
-                doc_id, "approved", meaning="Approval", actor="Dr. A. Patel",
+                doc_id, "approved", meaning="Approval", actor="Paul Eder, MD",
                 actor_role="Principal Investigator",
                 note="Reviewed and approved for the regulatory binder.")
         if status == "signed":
             add_document_event(
-                doc_id, "approved", meaning="Approval", actor="Dr. A. Patel",
+                doc_id, "approved", meaning="Approval", actor="Paul Eder, MD",
                 actor_role="Principal Investigator",
                 note="Signed via the validated e-signature vendor; approval "
                      "recorded here.")
@@ -5860,6 +5872,58 @@ def seed_demo_team(clinician_id):
     db.commit()
 
 
+def seed_demo_case_notes(clinician_id=None):
+    """Seed internal team notes on the first few candidates, attributed across the
+    site's real staff (CRCs, PI, Director of Ops) so each candidate chart reads
+    like the whole team is working the case together - not one anonymous
+    "Coordinator". Runs unconditionally (unlike the calendar seeder, which bails
+    once future visits exist), so this collaboration surface is never empty.
+    Idempotent per-lead. Demo-only (see COMPLIANCE.md)."""
+    db = get_db()
+    base = dt.datetime.now()
+
+    def ts(days=0, hours=0):
+        return (base + dt.timedelta(days=days, hours=hours)).strftime("%Y-%m-%d %H:%M")
+
+    # A small rotation of realistic, role-appropriate notes. Each candidate gets a
+    # short multi-author thread: logistics from a CRC, a clinical note from the
+    # PI, and an ops/compliance reminder - so the chart shows people collaborating.
+    threads = [
+        [("Kara Walsh, MPH", "Prefers morning visits - works afternoons. Booked "
+          "screening for Thu 10:30 and sent visit-prep."),
+         ("Paul Eder, MD", "Reviewed pre-screen - looks eligible. Confirm washout "
+          "on the SSRI before baseline; I'll sign consent at the visit."),
+         ("Danny Josama", "Daughter (caregiver) usually attends - added her to the "
+          "reminder list and shared parking info.")],
+        [("Danny Josama", "Reached out twice; prefers text. Confirmed for Friday "
+          "and sent the e-diary link."),
+         ("Kara Walsh, MPH", "Mild nausea reported week 1, resolved on its own. "
+          "Flagged to monitor at next dose."),
+         ("Margaret Henderson, MD", "Source is current through last visit. Keep "
+          "only IRB-approved materials in the patient thread, please.")],
+        [("Kara Walsh, MPH", "Insurance card on file, transport not needed - lives "
+          "10 min from site."),
+         ("Paul Eder, MD", "No exclusionary meds. Cleared to proceed to baseline."),
+         ("Danny Josama", "Rebooked the missed follow-up; confirmed adherence back "
+          "on track.")],
+    ]
+
+    revealed = db.execute(
+        "SELECT id FROM leads WHERE revealed = 1 AND name IS NOT NULL "
+        "AND name != '' ORDER BY id LIMIT 3").fetchall()
+    for idx, ld in enumerate(revealed):
+        if list_notes(ld["id"]):
+            continue  # keep idempotent; don't stack duplicate notes
+        thread = threads[idx % len(threads)]
+        # Oldest note first so the chart reads top-to-bottom chronologically.
+        for j, (author, body) in enumerate(thread):
+            db.execute(
+                "INSERT INTO lead_notes (lead_id, body, author, created_at) "
+                "VALUES (?,?,?,?)",
+                (ld["id"], body, author, ts(days=-6, hours=j * 5)))
+    db.commit()
+
+
 def seed_demo_collaboration(clinician_id=None):
     """Seed the collaboration layer (per-candidate to-do checklists + a starter
     internal team channel per trial) so a fresh demo shows conversations working.
@@ -5887,32 +5951,74 @@ def seed_demo_collaboration(clinician_id=None):
                     (ld["id"], title, who, status, "site", ts(hours=-24),
                      ts(hours=-6) if status == "done" else ""))
 
-    # Internal (staff-only) team channel per claimed trial, seeded once per NCT
-    # so every trial channel a coordinator opens has some content.
+    # Internal (staff-only) team channel per claimed trial. Seed a realistic
+    # multi-person thread attributed to the site's real staff so the channel
+    # reads like the team actually working the study together - recruiter triage,
+    # CRC scheduling, Director-of-Ops monitoring/compliance, and PI sign-off.
     if clinician_id:
         claims = db.execute(
             "SELECT nct, title FROM study_claims WHERE user_id = ?",
             (clinician_id,)).fetchall()
-        room_seed = [
-            ("Coordinator", "Kicking off recruitment for this cohort - dropped the "
-             "latest consent packet and the pre-screen checklist in here."),
-            ("Recruiter", "Two strong applicants came in overnight. Booking screening "
-             "calls for Thursday - I'll add the visit-prep doc."),
-            ("Coordinator", "Reminder: only IRB-approved materials go in patient "
-             "threads. Working drafts stay here in the team channel."),
-        ]
+        # Map the seeded staff to (user_id, chat display name) by email so each
+        # message links to the real member. Falls back to a name string if a
+        # teammate isn't present.
+        oid = user_org_id(clinician_id)
+        who = {}
+        for email, disp in (
+            ("vfieve@fieveclinical.com", "Vanessa Fieve"),
+            ("dejosama@fieveclinical.com", "Danny Josama"),
+            ("kwalsh@fieveclinical.com", "Kara Walsh"),
+            ("mhenderson@fieveclinical.com", "Margaret Henderson"),
+            ("peder@fieveclinical.com", "Dr. Eder"),
+        ):
+            r = db.execute(
+                "SELECT u.id FROM users u JOIN memberships m ON m.user_id = u.id "
+                "WHERE m.org_id = ? AND u.email = ?", (oid, email)).fetchone()
+            who[disp] = (r["id"] if r else None, disp)
+
+        def _rater(title):
+            t = (title or "").lower()
+            if "migraine" in t:
+                return "the e-diary / attack-frequency check"
+            if "treatment-resistant" in t or "trd" in t:
+                return "the MGH-ATRQ treatment-history review"
+            return "the MADRS + C-SSRS ratings"
+
         for c in claims:
             has = db.execute(
                 "SELECT COUNT(*) n FROM team_messages WHERE nct = ?",
                 (c["nct"],)).fetchone()["n"]
             if has:
                 continue
-            for i, (who, body) in enumerate(room_seed):
+            rater = _rater(c["title"])
+            thread = [
+                ("Vanessa Fieve",
+                 "Kicking this cohort off. Sponsor wants steady screening this "
+                 "month - let's keep screen-fail tight and source current.",
+                 -30),
+                ("Danny Josama",
+                 "Three new pre-screens came in overnight. Two look strong - moved "
+                 "them to review. Third has a washout question I flagged.", -27),
+                ("Kara Walsh",
+                 f"Booked the two strong ones for screening Thu-Fri. Sent visit-prep "
+                 f"+ consent and confirmed {rater} is set up.", -24),
+                ("Margaret Henderson",
+                 "Monitor visit next Wed - please have source current by Tue EOD. "
+                 "Reminder: only IRB-approved materials in patient threads; drafts "
+                 "stay here.", -22),
+                ("Dr. Eder",
+                 "Reviewed the two flagged charts - both eligible, cleared to "
+                 "screen. I'll sign consent at the visit.", -6),
+                ("Kara Walsh",
+                 "Thanks Dr. Eder - updating their status and prepping the rooms.",
+                 -5),
+            ]
+            for disp, body, hrs in thread:
+                uid, nm = who.get(disp, (None, disp))
                 db.execute(
                     "INSERT INTO team_messages (nct, sender_user_id, sender_name, "
                     "body, created_at) VALUES (?,?,?,?,?)",
-                    (c["nct"], clinician_id if i == 0 else None, who, body,
-                     ts(hours=-20 + i)))
+                    (c["nct"], uid, nm, body, ts(hours=hrs)))
     db.commit()
 
 
