@@ -5809,6 +5809,49 @@ def seed_demo_engagement(clinician_id):
     db.commit()
 
 
+def seed_demo_team(clinician_id):
+    """Seed the shared workspace's Team with the demo site's real staff so it
+    reads like their actual team is already set up. Idempotent by email, and it
+    points each teammate at the shared org so signing in lands them here too.
+    Demo-only (see COMPLIANCE.md); turn SITE_DEMO off before onboarding real
+    sites."""
+    if not clinician_id:
+        return
+    db = get_db()
+    oid = user_org_id(clinician_id)
+    # Name the shared workspace after the site.
+    db.execute("UPDATE organizations SET name = ? WHERE id = ?",
+               ("Fieve Clinical Research", oid))
+    # (email, name, role, display label). Roles: pi signs/approves; coordinator
+    # runs the day-to-day + manages the team.
+    team = [
+        ("mhenderson@fieveclinical.com", "Margaret Henderson", "pi",
+         "Principal Investigator"),
+        ("dejosama@fieveclinical.com", "Danny-Elle Josama", "coordinator",
+         "Research Manager"),
+        ("kwalsh@fieveclinical.com", "Kara Walsh", "coordinator",
+         "Clinical Research Coordinator"),
+    ]
+    for email, name, role, label in team:
+        email = email.lower().strip()
+        row = db.execute("SELECT id FROM users WHERE email = ?", (email,)).fetchone()
+        if row:
+            uid = row["id"]
+        else:
+            cur = db.execute(
+                "INSERT INTO users (email, password_hash, name, verified, "
+                "verified_at, created_at) VALUES (?,?,?,?,?,?)",
+                (email, "", name, 1, now(), now()))
+            uid = cur.lastrowid
+        db.execute("UPDATE users SET org_id = ? WHERE id = ?", (oid, uid))
+        db.execute("INSERT OR IGNORE INTO memberships (org_id, user_id, role, "
+                   "role_label, created_at) VALUES (?,?,?,?,?)",
+                   (oid, uid, role, label, now()))
+        db.execute("UPDATE memberships SET role = ?, role_label = ? "
+                   "WHERE org_id = ? AND user_id = ?", (role, label, oid, uid))
+    db.commit()
+
+
 def seed_demo_collaboration(clinician_id=None):
     """Seed the collaboration layer (per-candidate to-do checklists + a starter
     internal team channel per trial) so a fresh demo shows conversations working.

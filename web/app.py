@@ -540,6 +540,10 @@ def _seed_demo_surfaces(user_id=None):
     except Exception:
         app.logger.exception("demo engagement seeding failed")
     try:
+        db.seed_demo_team(user_id)
+    except Exception:
+        app.logger.exception("demo team seeding failed")
+    try:
         db.seed_demo_referrals(user_id)
     except Exception:
         app.logger.exception("demo referral seeding failed")
