@@ -1481,6 +1481,9 @@ def inject_globals():
             # site should keep its normal, production-style workspace.
             "active_site_demo": bool(g.user and _site_demo_enabled()
                                      and _is_demo_account(g.user)),
+            # Guided walkthrough (homepage tour banner + sidebar step guide) is
+            # temporarily hidden while it's being reworked. Flip to re-enable.
+            "walkthrough_enabled": False,
             "nav_study_ncts": nav_study_ncts,
             "nav_studies": nav_studies, "active_nct": active_nct,
             "active_study_label": active_study_label,

@@ -84,7 +84,7 @@
       <a href="{{ url_for('internal_hub') }}" class="appnav-internal {{ 'active' if request.endpoint in ['internal_hub','operator_inbox','internal_registry','internal_registry_opt_out','internal_recruitment','internal_recruitment_targets','owner_analytics'] }}">{{ ic.icon('shield') }}Internal</a>
       {% endif %}
     </nav>
-    {% if active_site_demo %}
+    {% if active_site_demo and walkthrough_enabled %}
     <section class="app-demo-guide" aria-label="Live demo guide">
       <div class="app-demo-guide-kicker"><span></span> Live demo</div>
       <b>Take the 2-minute tour</b>
