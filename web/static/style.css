@@ -3894,6 +3894,9 @@ body.is-resizing .appside, body.is-resizing .appdock { transition: none; }
 .appside.is-collapsed .appnav-group-label { display: none; }
 .appside.is-collapsed .appside-user { justify-content: center; }
 .appside.is-collapsed .appside-user .u { display: none; }
+/* The demo guide is text-heavy — hide it in the rail, reveal on hover-expand. */
+.appside.is-collapsed .app-demo-guide { display: none; }
+.appside.is-collapsed:hover .app-demo-guide { display: block; }
 .appside.is-collapsed .appside-foot .mini { font-size: 0; justify-content: center; gap: 0; }
 .appside.is-collapsed .appside-foot .mini .ico { font-size: initial; }
 /* Hover the collapsed rail to reveal full labels (no toggle button needed). */
@@ -4483,9 +4486,12 @@ a.detail-row:hover { color: var(--accent); text-decoration: none; }
 body.is-resizing .appside-resize::after, body.is-resizing .dock-resize::after {
   background: var(--accent); }
 body.is-resizing { cursor: col-resize; user-select: none; }
-/* Hide the left handle where resizing doesn't apply (rail or mobile drawer). */
+/* Hide the left handle where resizing doesn't apply (rail or mobile drawer) —
+   but keep it live during an active drag so snapping into the rail still tracks
+   the pointer instead of dropping capture. */
 .appside.is-collapsed .appside-resize,
 .appshell.is-drawer .appside-resize { display: none; }
+body.is-resizing .appside.is-collapsed .appside-resize { display: block; }
 /* The dock handle only makes sense when the dock sits inline and is open. */
 .dock-resize { display: none; }
 @media (min-width: 1440px) { .appdock[data-open="1"] .dock-resize { display: block; } }
