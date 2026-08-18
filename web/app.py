@@ -201,7 +201,7 @@ _STUDY_TEAM_DEMO_PREFIXES = (
     "/app/balance", "/app/campaign", "/app/intake", "/app/home",
     "/app/applicant", "/app/matching", "/app/documents", "/app/copilot",
     "/app/team", "/app/calendar", "/app/soe", "/app/payments", "/app/updates",
-    "/app/irb", "/app/recruitment", "/app/scope",
+    "/app/irb", "/app/scope",
     "/files/lead", "/files/team")
 
 # Health-records / EHR sync (SMART Health IT) is hidden for now — the connector

@@ -3879,15 +3879,11 @@ main:focus { outline: none; }
 .appside { transition: width .15s ease; }
 body.is-resizing .appside, body.is-resizing .appdock { transition: none; }
 
-/* Collapsed icon rail. The shell still reserves the regular sidebar footprint
-   so collapsing the LEFT nav does not resize the workspace. Only opening the
-   RIGHT agent panel should shrink the main screen. The visible rail itself stays
-   64px wide via the pseudo background + child widths below. */
-.appside.is-collapsed { width: var(--appside-w, 240px); background: transparent;
-  border-right: 0; }
-.appside.is-collapsed::before { content: ""; position: absolute; inset: 0 auto 0 0;
-  width: 64px; background: var(--surface); border-right: 1px solid var(--border); }
-.appside.is-collapsed > * { position: relative; width: 64px; box-sizing: border-box; }
+/* Collapsed icon rail: a real 64px-wide rail. The main workspace reflows to
+   reclaim the freed space (no reserved footprint / transparent gap - that left a
+   big blank strip between the rail and the content). */
+.appside.is-collapsed { width: 64px; }
+.appside.is-collapsed > * { width: 100%; box-sizing: border-box; }
 .appside.is-collapsed .appside-brand { justify-content: center; }
 .appside.is-collapsed .appside-brand .bt { display: none; }
 .appside.is-collapsed .appnav a { justify-content: center; gap: 0; font-size: 0;
@@ -5068,8 +5064,9 @@ a.rail-attn:hover { text-decoration: underline; }
   border: 1px solid var(--border-strong); border-radius: 22px;
   padding: 5px 6px 5px 15px; background: var(--surface);
   transition: border-color .15s ease, box-shadow .15s ease; }
-.chatbar:focus-within { border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-soft); }
+/* Single clean line on focus - a border colour change only. The extra soft ring
+   read as a second concentric outline on the pill (double lining). */
+.chatbar:focus-within { border-color: var(--accent); box-shadow: none; }
 .chatbar-input { flex: 1; border: none; outline: none; resize: none;
   background: transparent; font: inherit; font-size: 14px; line-height: 1.45;
   color: var(--ink); padding: 8px 0; min-height: 22px; height: 38px;
