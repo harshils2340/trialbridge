@@ -201,6 +201,7 @@ _STUDY_TEAM_DEMO_PREFIXES = (
     "/app/balance", "/app/campaign", "/app/intake", "/app/home",
     "/app/applicant", "/app/matching", "/app/documents", "/app/copilot",
     "/app/team", "/app/calendar", "/app/soe", "/app/payments", "/app/updates",
+    "/app/irb", "/app/recruitment", "/app/scope",
     "/files/lead", "/files/team")
 
 # Health-records / EHR sync (SMART Health IT) is hidden for now — the connector
@@ -535,6 +536,10 @@ def _seed_demo_surfaces(user_id=None):
         db.seed_demo_lead_attribution(user_id)
     except Exception:
         app.logger.exception("demo lead attribution seeding failed")
+    try:
+        db.seed_demo_irb_submissions(user_id)
+    except Exception:
+        app.logger.exception("demo IRB submission seeding failed")
     try:
         db.seed_demo_engagement(user_id)
     except Exception:
@@ -9234,6 +9239,194 @@ def document_action(doc_id):
            "in_review": "Marked in review."}.get(status, "Document updated.")
     flash(msg, "success")
     return redirect(url_for("documents_page"))
+
+
+def _current_member_role_label():
+    """The acting teammate's display title for an audit trail (falls back to the
+    base role)."""
+    label = db.ORG_ROLE_LABELS.get(db.member_role(g.user["id"]), "Team")
+    for m in db.list_org_members(g.user["id"]):
+        if m["user_id"] == g.user["id"] and m["role_label"]:
+            return m["role_label"]
+    return label
+
+
+def _irb_or_404(sub_id):
+    sub = db.get_irb_submission(sub_id)
+    if not sub or sub["user_id"] not in db.org_member_ids(g.user["id"]):
+        abort(404)
+    return sub
+
+
+def _irb_days_left(expires_at):
+    exp = (expires_at or "").strip()[:10]
+    if not exp:
+        return None
+    try:
+        d = dt.datetime.strptime(exp, "%Y-%m-%d").date()
+    except ValueError:
+        return None
+    return (d - dt.date.today()).days
+
+
+@app.route("/app/irb")
+@login_required
+def irb_page():
+    """IRB & approvals: recruitment materials are advertising and need ethics-board
+    approval BEFORE use (COMPLIANCE.md §5). This is where a coordinator assembles a
+    submission package, submits it (initial / modification / continuing review),
+    tracks the review, and records the approved version + expiry. Approval here
+    flips the linked campaign's gate so - and only so - it can go live."""
+    active_nct, studies = _active_scope()
+    subs = db.list_irb_submissions_for_user(g.user["id"],
+                                            ncts=[active_nct] if active_nct else None)
+    title_by_nct = {s["nct"]: (s["title"] or s["nct"]) for s in studies}
+    rows = []
+    for s in subs:
+        days = _irb_days_left(s["expires_at"])
+        rows.append({
+            "s": s,
+            "study": title_by_nct.get(s["nct"], s["nct"]),
+            "mats": db.list_irb_items(s["id"]),
+            "days_left": days,
+            "expiring": (days is not None and days <= 45 and s["status"] == "approved"),
+        })
+    return render_template(
+        "irb.html", rows=rows, counts=db.irb_counts(g.user["id"]),
+        studies=studies, status_labels=db.IRB_STATUS_LABELS,
+        status_tone=db.IRB_STATUS_TONE, sub_types=db.IRB_SUBMISSION_TYPES,
+        known_irbs=db.KNOWN_IRBS, has_any=bool(subs))
+
+
+@app.route("/app/irb/new", methods=["POST"])
+@login_required
+def irb_create():
+    nct = (request.form.get("nct") or "").strip()
+    title = (request.form.get("title") or "").strip()
+    if not title or not nct:
+        flash("Name the package and pick the study it recruits for.", "error")
+        return redirect(url_for("irb_page"))
+    if nct not in _site_claims():
+        flash("You can only submit materials for studies you've claimed.", "error")
+        return redirect(url_for("irb_page"))
+    irb_name = (request.form.get("irb_name") or "").strip()
+    irb_kind = "local" if irb_name.lower().startswith("local") else "central"
+    sub_type = (request.form.get("submission_type") or "initial").strip()
+    if sub_type not in db.IRB_SUBMISSION_TYPES:
+        sub_type = "initial"
+    pi = ""
+    for m in db.list_org_members(g.user["id"]):
+        if (m["role"] or "") == "pi":
+            pi = m["name"] or ""
+            break
+    sid = db.create_irb_submission(
+        g.user["id"], nct, title, irb_name=irb_name, irb_kind=irb_kind,
+        submission_type=sub_type, pi_name=pi,
+        protocol_version=(request.form.get("protocol_version") or "").strip())
+    flash("Package created. Add your materials, then submit it for review.", "success")
+    return redirect(url_for("irb_detail", sub_id=sid))
+
+
+@app.route("/app/irb/<int:sub_id>")
+@login_required
+def irb_detail(sub_id):
+    sub = _irb_or_404(sub_id)
+    items = db.list_irb_items(sub_id)
+    events = db.list_irb_events(sub_id)
+    staff = {m["name"]: m["email"] for m in db.list_org_members(g.user["id"])
+             if m["name"]}
+    # Campaign creatives on this study you can pull straight into the package.
+    linked = {i["campaign_id"] for i in items if i["campaign_id"]}
+    camps = [c for c in db.list_campaigns_for_user(g.user["id"], ncts=[sub["nct"]])
+             if c["id"] not in linked]
+    return render_template(
+        "irb_detail.html", sub=sub, items=items, events=events, staff=staff,
+        campaigns=camps, days_left=_irb_days_left(sub["expires_at"]),
+        status_labels=db.IRB_STATUS_LABELS, status_tone=db.IRB_STATUS_TONE,
+        sub_types=db.IRB_SUBMISSION_TYPES, item_kinds=db.IRB_ITEM_KINDS,
+        today=dt.date.today().strftime("%Y-%m-%d"),
+        one_year=(dt.date.today() + dt.timedelta(days=365)).strftime("%Y-%m-%d"))
+
+
+@app.route("/app/irb/<int:sub_id>/item", methods=["POST"])
+@login_required
+def irb_item(sub_id):
+    sub = _irb_or_404(sub_id)
+    action = (request.form.get("action") or "add").strip()
+    if action == "remove":
+        try:
+            db.remove_irb_item(int(request.form.get("item_id") or 0), sub_id)
+        except (TypeError, ValueError):
+            pass
+        return redirect(url_for("irb_detail", sub_id=sub_id))
+    camp_id = request.form.get("campaign_id")
+    if camp_id:
+        c = db.get_campaign(int(camp_id))
+        if c and c["user_id"] in db.org_member_ids(g.user["id"]):
+            db.add_irb_item(
+                sub_id, kind="campaign", campaign_id=c["id"],
+                label=(c["name"] or "Campaign creative"),
+                version="v1.0",
+                detail=(c["headline"] or "")[:200] or "Campaign ad creative.")
+            flash("Added the campaign creative to the package.", "success")
+        return redirect(url_for("irb_detail", sub_id=sub_id))
+    label = (request.form.get("label") or "").strip()
+    if not label:
+        flash("Give the material a name.", "error")
+        return redirect(url_for("irb_detail", sub_id=sub_id))
+    kind = (request.form.get("kind") or "material").strip()
+    if kind not in db.IRB_ITEM_KINDS:
+        kind = "material"
+    db.add_irb_item(sub_id, kind=kind, label=label,
+                    version=(request.form.get("version") or "v1.0").strip(),
+                    detail=(request.form.get("detail") or "").strip())
+    flash("Material added to the package.", "success")
+    return redirect(url_for("irb_detail", sub_id=sub_id))
+
+
+@app.route("/app/irb/<int:sub_id>/status", methods=["POST"])
+@login_required
+def irb_status(sub_id):
+    sub = _irb_or_404(sub_id)
+    status = (request.form.get("status") or "").strip().lower()
+    note = (request.form.get("note") or "").strip()
+    ok, reason = db.advance_irb_status(
+        sub_id, status, actor=(g.user["name"] or "You"),
+        actor_role=_current_member_role_label(), note=note,
+        submission_ref=(request.form.get("submission_ref") or "").strip(),
+        approved_version=(request.form.get("approved_version") or "").strip(),
+        expires_at=(request.form.get("expires_at") or "").strip())
+    if not ok:
+        flash(reason or "Could not update the submission.", "error")
+    else:
+        msg = {
+            "submitted": "Marked submitted to the IRB.",
+            "in_review": "Marked under review.",
+            "revisions": "Logged the IRB's requested revisions.",
+            "approved": "Approved and logged. Linked campaigns are now cleared to "
+                        "go live.",
+            "expired": "Marked expired. Linked campaigns were paused.",
+        }.get(status, "Submission updated.")
+        flash(msg, "success")
+    return redirect(url_for("irb_detail", sub_id=sub_id))
+
+
+@app.route("/app/irb/<int:sub_id>/packet")
+@login_required
+def irb_packet(sub_id):
+    """The submission packet as a clean, printable cover sheet + materials list +
+    version history - the format you attach or upload to the IRB (print to PDF)."""
+    sub = _irb_or_404(sub_id)
+    prof = db.get_site_profile(g.user["id"]) or {}
+    try:
+        org_name = (prof["org_name"] or "").strip()
+    except (KeyError, TypeError):
+        org_name = ""
+    return render_template(
+        "irb_packet.html", sub=sub, items=db.list_irb_items(sub_id),
+        events=db.list_irb_events(sub_id), org_name=org_name,
+        sub_types=db.IRB_SUBMISSION_TYPES, item_kinds=db.IRB_ITEM_KINDS,
+        generated=dt.datetime.now().strftime("%Y-%m-%d %H:%M"))
 
 
 @app.route("/app/updates")

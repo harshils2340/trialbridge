@@ -933,6 +933,66 @@ CREATE TABLE IF NOT EXISTS document_events (
 CREATE INDEX IF NOT EXISTS idx_trial_docs_user ON trial_documents(user_id, nct);
 CREATE INDEX IF NOT EXISTS idx_doc_events_doc ON document_events(document_id);
 
+-- IRB/REB recruitment-material submissions. Recruitment materials (ads, flyers,
+-- social posts, phone-screening scripts, patient-facing copy) are ADVERTISING and
+-- must be reviewed + approved by the study's ethics board BEFORE use (21 CFR 50/56;
+-- Health Canada REB / TCPS 2 - see COMPLIANCE.md §5). This models the real workflow
+-- a coordinator runs: assemble a package, submit it to the IRB (central like WCG /
+-- Advarra, or a local/academic board), track the review (initial | modification |
+-- continuing review), and record the APPROVED version + its expiry (approvals lapse
+-- on an annual continuing-review cycle). On approval we flip the linked campaigns'
+-- irb_approved gate so - and only so - they can go live. KPI: compresses the
+-- submit->approved cycle that blocks found/contacted, without weakening the gate.
+CREATE TABLE IF NOT EXISTS irb_submissions (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id         INTEGER NOT NULL,
+    nct             TEXT DEFAULT '',
+    title           TEXT DEFAULT '',
+    irb_name        TEXT DEFAULT '',            -- WCG IRB, Advarra, local board name
+    irb_kind        TEXT DEFAULT 'central',     -- central | local
+    submission_type TEXT DEFAULT 'initial',     -- initial | modification | continuing
+    status          TEXT NOT NULL DEFAULT 'draft', -- draft|submitted|in_review|revisions|approved|expired
+    pi_name         TEXT DEFAULT '',
+    protocol_version TEXT DEFAULT '',
+    submission_ref  TEXT DEFAULT '',            -- IRB tracking # (assigned on submit)
+    approved_version TEXT DEFAULT '',           -- the exact stamped version cleared for use
+    approved_at     TEXT DEFAULT '',
+    expires_at      TEXT DEFAULT '',            -- continuing-review expiration
+    notes           TEXT DEFAULT '',
+    created_at      TEXT NOT NULL,
+    updated_at      TEXT NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
+-- Line items in a submission package: each recruitment material (or a linked
+-- campaign creative) with its own version, so the packet lists exactly what the IRB
+-- is reviewing.
+CREATE TABLE IF NOT EXISTS irb_submission_items (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    submission_id INTEGER NOT NULL,
+    kind          TEXT DEFAULT 'material',  -- flyer|social|script|consent|protocol|campaign|material
+    campaign_id   INTEGER,                  -- set when the item IS a campaign's creative
+    label         TEXT DEFAULT '',
+    version       TEXT DEFAULT 'v1.0',
+    detail        TEXT DEFAULT '',          -- short description / copy preview
+    created_at    TEXT NOT NULL,
+    FOREIGN KEY (submission_id) REFERENCES irb_submissions(id)
+);
+-- Append-only audit trail for a submission (mirrors document_events): only INSERTs.
+CREATE TABLE IF NOT EXISTS irb_submission_events (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    submission_id INTEGER NOT NULL,
+    action        TEXT DEFAULT '',  -- created|item_added|submitted|in_review|revisions|approved|expired|note
+    meaning       TEXT DEFAULT '',
+    actor         TEXT DEFAULT '',
+    actor_role    TEXT DEFAULT '',
+    note          TEXT DEFAULT '',
+    created_at    TEXT NOT NULL,
+    FOREIGN KEY (submission_id) REFERENCES irb_submissions(id)
+);
+CREATE INDEX IF NOT EXISTS idx_irb_sub_user ON irb_submissions(user_id, nct);
+CREATE INDEX IF NOT EXISTS idx_irb_items_sub ON irb_submission_items(submission_id);
+CREATE INDEX IF NOT EXISTS idx_irb_events_sub ON irb_submission_events(submission_id);
+
 -- Team workspace: a study team is an ORGANIZATION. Every study-team user belongs
 -- to exactly one org (their lab/site). All members share FULL VISIBILITY of the
 -- org's applicants, documents, and campaigns (like a shared Google-Doc space);
@@ -5205,6 +5265,190 @@ def document_counts(user_id):
     return {r["status"]: r["n"] for r in rows}
 
 
+# --------------------------------------------------------------------------- #
+# IRB / REB recruitment-material submissions
+# --------------------------------------------------------------------------- #
+# The review workflow, in the order a real submission moves. `revisions` = the IRB
+# returned "modifications required" (you edit and resubmit). `expired` = the annual
+# continuing-review lapsed (materials can no longer be used until renewed).
+IRB_STATUSES = ("draft", "submitted", "in_review", "revisions", "approved", "expired")
+IRB_STATUS_LABELS = {
+    "draft": "Draft", "submitted": "Submitted", "in_review": "Under review",
+    "revisions": "Revisions requested", "approved": "Approved", "expired": "Expired",
+}
+IRB_STATUS_TONE = {
+    "draft": "neutral", "submitted": "info", "in_review": "info",
+    "revisions": "danger", "approved": "ok", "expired": "warn",
+}
+IRB_SUBMISSION_TYPES = {
+    "initial": "Initial review",
+    "modification": "Modification / amendment",
+    "continuing": "Continuing review",
+}
+# The big central boards most US sites use, plus a local/academic escape hatch.
+KNOWN_IRBS = ("WCG IRB", "Advarra IRB", "Advarra CIRBI", "Sterling IRB",
+              "Local / academic IRB")
+IRB_ITEM_KINDS = {
+    "flyer": "Flyer / poster", "social": "Social media ad", "script": "Phone screening script",
+    "letter": "Recruitment letter / email", "consent": "Consent form", "protocol": "Protocol",
+    "campaign": "Campaign creative", "material": "Recruitment material",
+}
+
+
+def create_irb_submission(user_id, nct, title, irb_name="", irb_kind="central",
+                          submission_type="initial", pi_name="",
+                          protocol_version="", notes=""):
+    db = get_db()
+    ts = now()
+    cur = db.execute(
+        "INSERT INTO irb_submissions (user_id, nct, title, irb_name, irb_kind, "
+        "submission_type, status, pi_name, protocol_version, notes, created_at, "
+        "updated_at) VALUES (?,?,?,?,?,?,'draft',?,?,?,?,?)",
+        (user_id, _norm_nct(nct), (title or "").strip(), (irb_name or "").strip(),
+         (irb_kind or "central"), (submission_type or "initial"),
+         (pi_name or "").strip(), (protocol_version or "").strip(),
+         (notes or "").strip(), ts, ts))
+    db.commit()
+    sid = cur.lastrowid
+    add_irb_event(sid, "created", meaning="Package created")
+    return sid
+
+
+def get_irb_submission(sub_id):
+    return get_db().execute("SELECT * FROM irb_submissions WHERE id = ?",
+                            (sub_id,)).fetchone()
+
+
+def list_irb_submissions_for_user(user_id, ncts=None):
+    members = org_member_ids(user_id)
+    mqs = ",".join("?" * len(members))
+    ncts = sorted({_norm_nct(x) for x in (ncts or []) if x})
+    if ncts:
+        qs = ",".join("?" * len(ncts))
+        return get_db().execute(
+            f"SELECT * FROM irb_submissions WHERE user_id IN ({mqs}) AND nct IN ({qs}) "
+            "ORDER BY updated_at DESC, id DESC", members + ncts).fetchall()
+    return get_db().execute(
+        f"SELECT * FROM irb_submissions WHERE user_id IN ({mqs}) "
+        "ORDER BY updated_at DESC, id DESC", members).fetchall()
+
+
+def add_irb_item(submission_id, kind="material", label="", version="v1.0",
+                 detail="", campaign_id=None):
+    db = get_db()
+    db.execute(
+        "INSERT INTO irb_submission_items (submission_id, kind, campaign_id, label, "
+        "version, detail, created_at) VALUES (?,?,?,?,?,?,?)",
+        (submission_id, kind, campaign_id, (label or "").strip(),
+         (version or "v1.0").strip(), (detail or "").strip(), now()))
+    db.execute("UPDATE irb_submissions SET updated_at = ? WHERE id = ?",
+               (now(), submission_id))
+    db.commit()
+    return True
+
+
+def list_irb_items(submission_id):
+    return get_db().execute(
+        "SELECT * FROM irb_submission_items WHERE submission_id = ? ORDER BY id",
+        (submission_id,)).fetchall()
+
+
+def remove_irb_item(item_id, submission_id):
+    db = get_db()
+    db.execute("DELETE FROM irb_submission_items WHERE id = ? AND submission_id = ?",
+               (item_id, submission_id))
+    db.execute("UPDATE irb_submissions SET updated_at = ? WHERE id = ?",
+               (now(), submission_id))
+    db.commit()
+    return True
+
+
+def add_irb_event(submission_id, action, meaning="", actor="", actor_role="",
+                  note=""):
+    """Append (never mutate) one audit row for a submission action."""
+    db = get_db()
+    db.execute(
+        "INSERT INTO irb_submission_events (submission_id, action, meaning, actor, "
+        "actor_role, note, created_at) VALUES (?,?,?,?,?,?,?)",
+        (submission_id, action, meaning, actor, actor_role, note, now()))
+    db.commit()
+    return True
+
+
+def list_irb_events(submission_id):
+    return get_db().execute(
+        "SELECT * FROM irb_submission_events WHERE submission_id = ? ORDER BY id DESC",
+        (submission_id,)).fetchall()
+
+
+def _irb_linked_campaign_ids(submission_id):
+    rows = get_db().execute(
+        "SELECT DISTINCT campaign_id FROM irb_submission_items "
+        "WHERE submission_id = ? AND campaign_id IS NOT NULL", (submission_id,)
+    ).fetchall()
+    return [r["campaign_id"] for r in rows if r["campaign_id"]]
+
+
+def advance_irb_status(submission_id, status, actor="", actor_role="", note="",
+                       submission_ref="", approved_version="", expires_at=""):
+    """Move a submission through its review states AND append an audit event. The
+    compliance side-effects live here so no route can bypass them:
+      - `approved`  -> flip every linked campaign's irb_approved gate ON (they can
+        now go live), stamping the cleared version + expiry.
+      - `revisions`/`expired` -> revoke the gate on linked campaigns and PAUSE any
+        that were live, so unapproved/lapsed creative can't keep running.
+    Returns (ok, reason)."""
+    status = (status or "").strip().lower()
+    if status not in IRB_STATUSES:
+        return False, "invalid status"
+    sub = get_irb_submission(submission_id)
+    if not sub:
+        return False, "not found"
+    db = get_db()
+    ts = now()
+    fields = ["status = ?", "updated_at = ?"]
+    args = [status, ts]
+    if submission_ref:
+        fields.append("submission_ref = ?"); args.append(submission_ref.strip())
+    if status == "approved":
+        fields.append("approved_at = ?"); args.append(ts)
+        fields.append("approved_version = ?")
+        args.append((approved_version or "").strip() or "v1.0")
+        if expires_at:
+            fields.append("expires_at = ?"); args.append(expires_at.strip())
+    args.append(submission_id)
+    db.execute(f"UPDATE irb_submissions SET {', '.join(fields)} WHERE id = ?", args)
+    db.commit()
+
+    meaning = IRB_STATUS_LABELS.get(status, status)
+    add_irb_event(submission_id, status, meaning=meaning, actor=actor,
+                  actor_role=actor_role, note=note)
+
+    # Propagate to the campaign gate.
+    cids = _irb_linked_campaign_ids(submission_id)
+    if status == "approved":
+        for cid in cids:
+            approve_campaign(cid, approved=True)
+    elif status in ("revisions", "expired"):
+        for cid in cids:
+            approve_campaign(cid, approved=False)
+            c = get_campaign(cid)
+            if c and (c["status"] or "") == "active":
+                db.execute("UPDATE campaigns SET status = 'paused', updated_at = ? "
+                           "WHERE id = ?", (now(), cid))
+        db.commit()
+    return True, ""
+
+
+def irb_counts(user_id):
+    members = org_member_ids(user_id)
+    qs = ",".join("?" * len(members))
+    rows = get_db().execute(
+        f"SELECT status, COUNT(*) n FROM irb_submissions WHERE user_id IN ({qs}) "
+        "GROUP BY status", members).fetchall()
+    return {r["status"]: r["n"] for r in rows}
+
+
 def _demo_doc_specs():
     """The standard ICH-GCP essential-documents set + patient consent forms a PI
     and coordinator actually route and sign, staged across statuses so the demo
@@ -5548,6 +5792,146 @@ def seed_demo_campaigns(user_id):
             approve_campaign(cid, approved=True)
             set_campaign_status(cid, status)
         create_placement(cid, label=place, channel=place_ch)
+
+
+def seed_demo_irb_submissions(user_id):
+    """Populate the IRB & approvals surface so the recruitment-compliance workflow
+    reads as live: submissions across every review state (approved w/ expiry, under
+    review, revisions requested, draft), each with a materials package, an audit
+    trail attributed to the site's real staff, and linked to the matching campaign
+    so approval visibly unlocks that campaign's gate. No-op once any submission
+    exists. Demo-only (see COMPLIANCE.md)."""
+    if not user_id:
+        return
+    db = get_db()
+    if db.execute("SELECT COUNT(*) n FROM irb_submissions WHERE user_id = ?",
+                  (user_id,)).fetchone()["n"]:
+        return
+    studies = list_team_studies(user_id)
+    if not studies:
+        return
+    title_by_nct = {s["nct"]: (s["title"] or s["nct"]) for s in studies}
+    ncts = [s["nct"] for s in studies]
+    camps = db.execute(
+        "SELECT id, nct FROM campaigns WHERE user_id = ?", (user_id,)).fetchall()
+    camp_by_nct = {}
+    for c in camps:
+        camp_by_nct.setdefault(c["nct"], c["id"])
+
+    base = dt.datetime.now()
+
+    def ds(days=0):
+        return (base + dt.timedelta(days=days)).strftime("%Y-%m-%d")
+
+    def dts(days=0, hours=0):
+        return (base + dt.timedelta(days=days, hours=hours)).strftime("%Y-%m-%d %H:%M")
+
+    def mk(nct, title, irb_name, irb_kind, sub_type, status, pi, proto,
+           ref, approved_ver, approved_days, expires_days, items, events):
+        cid = camp_by_nct.get(nct)
+        cur = db.execute(
+            "INSERT INTO irb_submissions (user_id, nct, title, irb_name, irb_kind, "
+            "submission_type, status, pi_name, protocol_version, submission_ref, "
+            "approved_version, approved_at, expires_at, notes, created_at, updated_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (user_id, _norm_nct(nct), title, irb_name, irb_kind, sub_type, status,
+             pi, proto, ref,
+             approved_ver, (dts(approved_days) if approved_days is not None else ""),
+             (ds(expires_days) if expires_days is not None else ""), "",
+             dts(-40), dts(0)))
+        sid = cur.lastrowid
+        for kind, label, ver, detail, link in items:
+            db.execute(
+                "INSERT INTO irb_submission_items (submission_id, kind, campaign_id, "
+                "label, version, detail, created_at) VALUES (?,?,?,?,?,?,?)",
+                (sid, kind, (cid if link else None), label, ver, detail, dts(-39)))
+        for edays, action, meaning, actor, role, note in events:
+            db.execute(
+                "INSERT INTO irb_submission_events (submission_id, action, meaning, "
+                "actor, actor_role, note, created_at) VALUES (?,?,?,?,?,?,?)",
+                (sid, action, meaning, actor, role, note, dts(edays)))
+        # An APPROVED package clears its linked campaign's gate. We deliberately do
+        # NOT revoke on other states here: a modification/continuing review runs
+        # against materials that are already approved and still live, so the seed
+        # leaves those campaigns as they are (the live status engine still revokes
+        # when a user actively marks revisions/expired on a real submission).
+        if cid and status == "approved":
+            approve_campaign(cid, approved=True)
+        db.commit()
+        return sid
+
+    KARA = ("Kara Walsh, MPH", "Clinical Research Coordinator")
+    DANNY = ("Danny-Elle Josama", "Clinical Research Coordinator")
+    MARG = ("Margaret Henderson, MD", "Director of Clinical Operations")
+    PAUL = ("Paul Eder, MD", "Principal Investigator")
+
+    # 1) COMP360 - APPROVED, with a live expiry (the happy path).
+    n0 = ncts[0]
+    mk(n0, "Recruitment materials \u2013 initial review", "WCG IRB", "central",
+       "initial", "approved", PAUL[0], "v3.0", "WCG #20260142", "v2.0", -58,
+       305,
+       [("flyer", "Waiting-room flyer / poster", "v2.0",
+         "One-page flyer for the clinic waiting room and community boards.", False),
+        ("social", "Instagram / Facebook ad", "v2.0",
+         "Neutral awareness ad - no benefit or payment claims.", True),
+        ("script", "Phone pre-screening script", "v2.0",
+         "What the coordinator reads when a respondent calls in.", False),
+        ("letter", "Patient-facing study brochure", "v2.0",
+         "Plain-language overview of the study, risks and time commitment.", False)],
+       [(-40, "created", "Package created", *KARA, ""),
+        (-38, "submitted", "Submitted to WCG IRB", *DANNY,
+         "Initial recruitment package for review."),
+        (-37, "in_review", "Under review", "WCG IRB", "Central IRB", ""),
+        (-31, "revisions", "Revisions requested", "WCG IRB", "Central IRB",
+         "Reviewer: remove the word 'free' and add the time commitment to the flyer."),
+        (-29, "submitted", "Resubmitted with revisions", *KARA,
+         "Flyer + brochure updated per the reviewer's comments."),
+        (-58 + 30, "approved", "Approved (v2.0)", "WCG IRB", "Central IRB",
+         "Stamped and cleared for use. Continuing review due before the expiry.")])
+
+    # 2) Ubrogepant / migraine - UNDER REVIEW (a modification of existing materials).
+    if len(ncts) > 1:
+        n1 = ncts[1]
+        mk(n1, "Social media ad set \u2013 modification", "Advarra IRB", "central",
+           "modification", "in_review", PAUL[0], "v2.0", "Advarra #PRO000451",
+           "", None, None,
+           [("social", "TikTok / Reels short-form ad", "v1.1",
+             "15-second video ad; adds a new channel to the approved set.", True),
+            ("social", "Reddit r/migraine post", "v1.1",
+             "Text post for the weekly recruitment thread.", False)],
+           [(-9, "created", "Package created", *DANNY, ""),
+            (-7, "submitted", "Submitted to Advarra", *DANNY,
+             "Modification: adds two social placements to the approved ad set."),
+            (-6, "in_review", "Under review", "Advarra IRB", "Central IRB",
+             "Assigned to expedited review.")])
+
+    # 3) MDD study - REVISIONS REQUESTED (the board sent modifications back).
+    if len(ncts) > 2:
+        n2 = ncts[2]
+        mk(n2, "Continuing review \u2013 recruitment package", "WCG IRB", "central",
+           "continuing", "revisions", PAUL[0], "v4.0", "WCG #20260233", "",
+           None, None,
+           [("flyer", "Updated waiting-room flyer", "v3.0",
+             "Refreshed flyer for the annual continuing review.", False),
+            ("script", "Phone pre-screening script", "v3.0",
+             "Adds the new insomnia sub-study screen questions.", False)],
+           [(-14, "created", "Package created", *KARA, ""),
+            (-12, "submitted", "Submitted for continuing review", *MARG,
+             "Annual continuing review of the recruitment materials."),
+            (-11, "in_review", "Under review", "WCG IRB", "Central IRB", ""),
+            (-4, "revisions", "Revisions requested", "WCG IRB", "Central IRB",
+             "Soften the 'compensation' language and restore fair-balance of risks "
+             "on the flyer, then resubmit.")])
+
+    # 4) A DRAFT still being assembled - shows the starting state.
+    if len(ncts) > 3:
+        n3 = ncts[3]
+        mk(n3, "Campus flyer \u2013 initial review", "Local / academic IRB", "local",
+           "initial", "draft", PAUL[0], "v1.0", "", None, None, None,
+           [("flyer", "NYU / Columbia community-board flyer", "v1.0",
+             "Printed flyer for campus community boards - drafting.", False)],
+           [(-2, "created", "Package created", *DANNY,
+             "Assembling materials before submitting to the local board.")])
 
 
 def seed_demo_lead_attribution(user_id):

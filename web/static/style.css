@@ -3879,10 +3879,15 @@ main:focus { outline: none; }
 .appside { transition: width .15s ease; }
 body.is-resizing .appside, body.is-resizing .appdock { transition: none; }
 
-/* Collapsed icon rail: default state so the main page is the control surface.
-   Labels are hidden with font-size:0 (SVG icons keep their fixed size); hover
-   over an icon still shows its title tooltip. */
-.appside.is-collapsed { width: 64px; }
+/* Collapsed icon rail. The shell still reserves the regular sidebar footprint
+   so collapsing the LEFT nav does not resize the workspace. Only opening the
+   RIGHT agent panel should shrink the main screen. The visible rail itself stays
+   64px wide via the pseudo background + child widths below. */
+.appside.is-collapsed { width: var(--appside-w, 240px); background: transparent;
+  border-right: 0; }
+.appside.is-collapsed::before { content: ""; position: absolute; inset: 0 auto 0 0;
+  width: 64px; background: var(--surface); border-right: 1px solid var(--border); }
+.appside.is-collapsed > * { position: relative; width: 64px; box-sizing: border-box; }
 .appside.is-collapsed .appside-brand { justify-content: center; }
 .appside.is-collapsed .appside-brand .bt { display: none; }
 .appside.is-collapsed .appnav a { justify-content: center; gap: 0; font-size: 0;
@@ -4479,8 +4484,8 @@ body.is-resizing { cursor: col-resize; user-select: none; }
 /* Keep the left handle usable in the rail too, so you can drag it back out to
    any width. Only hide it in the mobile drawer, where width isn't draggable. */
 .appshell.is-drawer .appside-resize { display: none; }
-/* In the rail the handle sits at the 64px edge; nudge it flush so it's grabbable. */
-.appside.is-collapsed .appside-resize { right: -4px; }
+/* In the rail the handle sits at the visible 64px edge; nudge it flush so it's grabbable. */
+.appside.is-collapsed .appside-resize { left: 60px; right: auto; width: 8px; }
 /* The dock handle only makes sense when the dock sits inline and is open. */
 .dock-resize { display: none; }
 @media (min-width: 1440px) { .appdock[data-open="1"] .dock-resize { display: block; } }
@@ -8065,3 +8070,158 @@ body.fs-page { background:
   margin-top:var(--space-4); padding:var(--space-3);
   background:var(--green-bg); color:var(--green); border-radius:var(--radius);
   font-size:14px; }
+
+/* ---- IRB & approvals ---------------------------------------------------- */
+/* Workflow explainer strip: the four real stages of an IRB review. */
+.irb-flow { display:flex; align-items:stretch; gap:var(--space-2);
+  padding:var(--space-3) var(--space-4); margin-bottom:var(--space-4);
+  background:var(--card); border:1px solid var(--border);
+  border-radius:var(--radius-lg); overflow-x:auto; }
+.irb-flow-step { display:flex; align-items:center; gap:var(--space-3); flex:1;
+  min-width:180px; }
+.irb-flow-step > div { display:flex; flex-direction:column; }
+.irb-flow-step b { font-size:13.5px; color:var(--ink); }
+.irb-flow-step span:not(.irb-flow-n) { font-size:12px; color:var(--faint);
+  line-height:1.35; }
+.irb-flow-n { display:inline-flex; align-items:center; justify-content:center;
+  width:26px; height:26px; flex-shrink:0; border-radius:var(--radius-pill);
+  background:var(--bg-muted, var(--panel)); color:var(--muted);
+  font-size:13px; font-weight:700; }
+.irb-flow-step.is-done .irb-flow-n { background:var(--green-bg); color:var(--green); }
+.irb-flow-step.is-done .irb-flow-n svg { width:15px; height:15px; }
+.irb-flow-arrow { display:flex; align-items:center; color:var(--border); }
+.irb-flow-arrow svg { width:18px; height:18px; }
+
+/* List */
+.irb-list { padding:0; overflow:hidden; }
+.irb-row { display:flex; align-items:center; gap:var(--space-3);
+  padding:var(--space-3) var(--space-4); border-bottom:1px solid var(--border);
+  text-decoration:none; color:inherit; transition:background .12s ease; }
+.irb-row:last-child { border-bottom:0; }
+.irb-row:hover { background:var(--panel); }
+.irb-ico { display:inline-flex; width:34px; height:34px; flex-shrink:0;
+  align-items:center; justify-content:center; border-radius:var(--radius);
+  background:var(--accent-bg, var(--panel)); color:var(--accent); }
+.irb-ico svg { width:18px; height:18px; }
+.irb-main { flex:1; min-width:0; }
+.irb-title { font-weight:600; color:var(--ink); display:flex; align-items:center;
+  gap:var(--space-2); flex-wrap:wrap; }
+.irb-type { font-size:11.5px; font-weight:600; color:var(--muted);
+  background:var(--panel); border:1px solid var(--border);
+  padding:1px 8px; border-radius:var(--radius-pill); }
+.irb-sub { font-size:12.5px; color:var(--faint); margin-top:2px;
+  display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+.irb-sub .dot { color:var(--border); }
+.irb-side { display:flex; align-items:center; gap:var(--space-3); flex-shrink:0; }
+.irb-expiry { font-size:12px; color:var(--faint); }
+.irb-expiry.warn { color:var(--amber, var(--warn)); font-weight:600; }
+.irb-arrow { color:var(--faint); display:flex; }
+.irb-arrow svg { width:16px; height:16px; }
+
+/* Detail */
+.irb-back { display:inline-flex; align-items:center; gap:6px; font-size:13px;
+  color:var(--muted); text-decoration:none; margin-bottom:6px; }
+.irb-back:hover { color:var(--accent); }
+.irb-back svg { width:15px; height:15px; }
+.irb-head-side { display:flex; align-items:center; gap:var(--space-2); }
+.irb-banner { display:flex; align-items:flex-start; gap:var(--space-3);
+  padding:var(--space-3) var(--space-4); border-radius:var(--radius-lg);
+  margin-bottom:var(--space-4); border:1px solid var(--border); }
+.irb-banner b { display:block; font-size:14px; }
+.irb-banner span { font-size:12.5px; color:var(--muted); }
+.irb-banner-ic { display:inline-flex; flex-shrink:0; }
+.irb-banner-ic svg { width:20px; height:20px; }
+.irb-banner.ok { background:var(--green-bg); border-color:transparent; }
+.irb-banner.ok .irb-banner-ic { color:var(--green); }
+.irb-banner.warn { background:var(--amber-bg, var(--warn-bg)); }
+.irb-banner.warn .irb-banner-ic { color:var(--amber, var(--warn)); }
+.irb-banner.danger { background:var(--red-bg); border-color:transparent; }
+.irb-banner.danger .irb-banner-ic { color:var(--red); }
+
+.irb-grid { display:grid; grid-template-columns:1fr 340px; gap:var(--space-4);
+  align-items:start; }
+@media (max-width:900px) { .irb-grid { grid-template-columns:1fr; } }
+.irb-col-side { display:flex; flex-direction:column; gap:var(--space-4); }
+
+.irb-items { padding:0; overflow:hidden; }
+.irb-item { display:flex; align-items:flex-start; gap:var(--space-3);
+  padding:var(--space-3) var(--space-4); border-bottom:1px solid var(--border); }
+.irb-item:last-child { border-bottom:0; }
+.irb-item-ic { display:inline-flex; color:var(--faint); margin-top:2px; }
+.irb-item-ic svg { width:16px; height:16px; }
+.irb-item-body { flex:1; min-width:0; }
+.irb-item-top { display:flex; align-items:center; gap:var(--space-2);
+  flex-wrap:wrap; }
+.irb-item-top b { color:var(--ink); font-size:14px; }
+.irb-item-ver { font-size:11.5px; color:var(--muted); background:var(--panel);
+  border:1px solid var(--border); padding:0 6px; border-radius:var(--radius-pill); }
+.irb-item-detail { font-size:12.5px; color:var(--faint); margin-top:2px;
+  line-height:1.4; }
+.irb-item-rm { display:flex; }
+.irb-add .cal-form { margin-bottom:var(--space-3); }
+.irb-pullin { border-top:1px dashed var(--border); padding-top:var(--space-3);
+  margin-top:var(--space-2); }
+.irb-pullin-h { display:flex; align-items:center; gap:6px; font-size:12.5px;
+  font-weight:600; color:var(--muted); margin-bottom:var(--space-2); }
+.irb-pullin-h svg { width:15px; height:15px; }
+.irb-pullin-form { display:flex; gap:var(--space-2); }
+.irb-pullin-form select { flex:1; }
+
+.irb-action-hint { font-size:12.5px; color:var(--muted); margin:0 0 var(--space-3);
+  line-height:1.45; }
+.irb-revise-form { margin-top:var(--space-3); padding-top:var(--space-3);
+  border-top:1px solid var(--border); }
+.irb-meta dl { margin:0; display:flex; flex-direction:column; gap:var(--space-2); }
+.irb-meta dl > div { display:flex; justify-content:space-between; gap:var(--space-3);
+  font-size:13px; }
+.irb-meta dt { color:var(--faint); }
+.irb-meta dd { margin:0; color:var(--ink); font-weight:500; text-align:right; }
+.irb-trail-h { font-size:12px; font-weight:700; letter-spacing:.04em;
+  text-transform:uppercase; color:var(--faint); margin:0 0 var(--space-3); }
+
+/* Printable submission packet */
+.packet-body { background:var(--panel); margin:0; padding:0 0 60px;
+  font-family:var(--sans); color:var(--ink); }
+.packet-bar { display:flex; justify-content:space-between; align-items:center;
+  padding:var(--space-3) var(--space-4); background:var(--card);
+  border-bottom:1px solid var(--border); position:sticky; top:0; }
+.packet-back { color:var(--muted); text-decoration:none; font-size:13px; }
+.packet-print { background:var(--accent); color:#fff; border:0;
+  border-radius:var(--radius-pill); padding:8px 18px; font-size:13px;
+  font-weight:600; cursor:pointer; }
+.packet { max-width:760px; margin:var(--space-5) auto; background:var(--card);
+  border:1px solid var(--border); border-radius:var(--radius-lg);
+  padding:48px 56px; box-shadow:var(--shadow); }
+.packet-head { border-bottom:2px solid var(--ink); padding-bottom:var(--space-4);
+  margin-bottom:var(--space-4); }
+.packet-kicker { font-size:11px; font-weight:700; letter-spacing:.09em;
+  text-transform:uppercase; color:var(--faint); }
+.packet-head h1 { font-size:24px; margin:6px 0 4px; line-height:1.2; }
+.packet-org { font-size:14px; color:var(--muted); }
+.packet-facts { display:grid; grid-template-columns:1fr 1fr; gap:var(--space-3);
+  margin-bottom:var(--space-5); }
+.packet-facts > div { display:flex; flex-direction:column; }
+.packet-facts span { font-size:11px; text-transform:uppercase; letter-spacing:.05em;
+  color:var(--faint); }
+.packet-facts b { font-size:14px; color:var(--ink); }
+.packet-section { margin-bottom:var(--space-5); }
+.packet-section h2 { font-size:14px; text-transform:uppercase; letter-spacing:.05em;
+  color:var(--faint); border-bottom:1px solid var(--border);
+  padding-bottom:6px; margin:0 0 var(--space-3); }
+.packet-tbl { width:100%; border-collapse:collapse; font-size:13.5px; }
+.packet-tbl th { text-align:left; font-size:11px; text-transform:uppercase;
+  letter-spacing:.04em; color:var(--faint); padding:6px 8px;
+  border-bottom:1px solid var(--border); }
+.packet-tbl td { padding:8px; border-bottom:1px solid var(--border);
+  vertical-align:top; }
+.packet-detail { font-size:12px; color:var(--faint); margin-top:2px;
+  font-weight:400; }
+.packet-empty { color:var(--faint); font-size:13px; }
+.packet-foot { font-size:11.5px; color:var(--faint); line-height:1.5;
+  border-top:1px solid var(--border); padding-top:var(--space-3); }
+@media print {
+  .packet-bar { display:none; }
+  .packet-body { background:#fff; }
+  .packet { box-shadow:none; border:0; margin:0; max-width:none;
+    padding:0; }
+}

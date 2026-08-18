@@ -1,0 +1,203 @@
+{% extends "base.html" %}
+{% import "_icons.html" as ic %}
+{% import "_ui.html" as ui %}
+{% block title %}{{ sub.title }} · IRB & approvals{% endblock %}
+
+{% block body %}
+<div class="app-head">
+  <div>
+    <a class="irb-back" href="{{ url_for('irb_page') }}">{{ ic.icon('arrow-left') }} IRB &amp; approvals</a>
+    <h1>{{ sub.title }}</h1>
+    <p>{{ sub_types.get(sub.submission_type, sub.submission_type) }}{% if sub.irb_name %} &middot; {{ sub.irb_name }}{% endif %}{% if sub.nct %} &middot; {{ sub.nct }}{% endif %}</p>
+  </div>
+  <div class="irb-head-side">
+    {{ ui.badge(status_labels.get(sub.status, sub.status), status_tone.get(sub.status, 'neutral')) }}
+    {{ ui.btn('Open packet', 'ghost', size='sm', icon='file', href=url_for('irb_packet', sub_id=sub.id), extra='target="_blank" rel="noopener"') }}
+  </div>
+</div>
+
+{% if sub.status == 'approved' %}
+<div class="irb-banner ok{{ ' warn' if (days_left is not none and days_left <= 45) }}">
+  <span class="irb-banner-ic">{{ ic.icon('shield-check') }}</span>
+  <div>
+    <b>Approved &mdash; {{ sub.approved_version or 'current version' }} cleared for use.</b>
+    <span>
+      {% if sub.expires_at %}Continuing review due by {{ sub.expires_at[:10] }}{% if days_left is not none %} ({{ days_left }} days){% endif %}. {% endif %}
+      Linked campaigns are cleared to go live.
+    </span>
+  </div>
+</div>
+{% elif sub.status == 'revisions' %}
+<div class="irb-banner danger">
+  <span class="irb-banner-ic">{{ ic.icon('alert') }}</span>
+  <div><b>Revisions requested by the board.</b><span>Update the flagged materials, bump the version, and resubmit. Linked campaigns are held until it&rsquo;s approved.</span></div>
+</div>
+{% endif %}
+
+<div class="irb-grid">
+  <div class="irb-col-main">
+    <div class="app-card-title" style="margin:2px 0 10px;">{{ ic.icon('list') }} <b>Materials in this package</b> <span class="app-sub" style="font-weight:400;color:var(--faint);">{{ items|length }}</span></div>
+    <div class="app-card irb-items">
+      {% if not items %}
+      <div class="pad">{{ ui.empty('No materials yet', 'Add the flyers, ads and scripts the board needs to review.', 'file') }}</div>
+      {% else %}
+      {% for it in items %}
+      <div class="irb-item">
+        <span class="irb-item-ic">{{ ic.icon('file') }}</span>
+        <div class="irb-item-body">
+          <div class="irb-item-top">
+            <b>{{ it.label }}</b>
+            <span class="irb-item-ver">{{ it.version }}</span>
+            {{ ui.badge(item_kinds.get(it.kind, it.kind), 'brand' if it.kind == 'campaign' else 'neutral') }}
+          </div>
+          {% if it.detail %}<div class="irb-item-detail">{{ it.detail }}</div>{% endif %}
+        </div>
+        {% if sub.status in ['draft', 'revisions'] %}
+        <form method="post" action="{{ url_for('irb_item', sub_id=sub.id) }}" class="irb-item-rm">
+          <input type="hidden" name="action" value="remove">
+          <input type="hidden" name="item_id" value="{{ it.id }}">
+          <button type="submit" class="soe-del" title="Remove" aria-label="Remove">{{ ic.icon('trash') }}</button>
+        </form>
+        {% endif %}
+      </div>
+      {% endfor %}
+      {% endif %}
+    </div>
+
+    {% if sub.status in ['draft', 'revisions'] %}
+    <div class="app-card pad irb-add">
+      <div class="app-card-title" style="margin:0 0 10px;">{{ ic.icon('plus') }} <b>Add a material</b></div>
+      <form method="post" action="{{ url_for('irb_item', sub_id=sub.id) }}" class="cal-form">
+        <div class="row">
+          <div class="field"><label>Type</label>
+            <select name="kind">
+              {% for k, v in item_kinds.items() %}{% if k != 'campaign' %}<option value="{{ k }}">{{ v }}</option>{% endif %}{% endfor %}
+            </select>
+          </div>
+          <div class="field"><label>Version</label>
+            <input type="text" name="version" value="v1.0" autocomplete="off">
+          </div>
+        </div>
+        <div class="field"><label>Name</label>
+          <input type="text" name="label" placeholder="Waiting-room flyer" autocomplete="off" required>
+        </div>
+        <div class="field"><label>Description <span class="cal-hint">what the board is reviewing</span></label>
+          <textarea name="detail" rows="2" placeholder="One-page flyer for the clinic waiting room and community boards."></textarea>
+        </div>
+        <div class="cal-form-foot"><span></span>{{ ui.btn('Add material', 'primary', size='sm', type='submit', icon='plus') }}</div>
+      </form>
+
+      {% if campaigns %}
+      <div class="irb-pullin">
+        <div class="irb-pullin-h">{{ ic.icon('megaphone') }} Pull in a campaign creative</div>
+        <form method="post" action="{{ url_for('irb_item', sub_id=sub.id) }}" class="irb-pullin-form">
+          <select name="campaign_id" required>
+            <option value="">Choose a campaign on this study&hellip;</option>
+            {% for c in campaigns %}<option value="{{ c.id }}">{{ c.name or 'Untitled' }} &middot; {{ c.channel|capitalize }}</option>{% endfor %}
+          </select>
+          {{ ui.btn('Add', 'ghost', size='sm', type='submit') }}
+        </form>
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="irb-col-side">
+    {# ---- Contextual next action ---- #}
+    <div class="app-card pad irb-action">
+      <div class="app-card-title" style="margin:0 0 10px;">{{ ic.icon('activity') }} <b>Next step</b></div>
+
+      {% if sub.status == 'draft' %}
+      <p class="irb-action-hint">Everything ready? Submit the package to {{ sub.irb_name or 'the IRB' }} for review.</p>
+      <form method="post" action="{{ url_for('irb_status', sub_id=sub.id) }}" class="cal-form">
+        <input type="hidden" name="status" value="submitted">
+        <div class="field"><label>IRB tracking # <span class="cal-hint">optional &mdash; add it once assigned</span></label>
+          <input type="text" name="submission_ref" placeholder="e.g. WCG #20260142" autocomplete="off"></div>
+        {{ ui.btn('Submit to IRB', 'primary', size='block', type='submit', icon='arrow-right') }}
+      </form>
+
+      {% elif sub.status == 'submitted' %}
+      <p class="irb-action-hint">Submitted. When the board opens its review, mark it under review to keep the team in the loop.</p>
+      <form method="post" action="{{ url_for('irb_status', sub_id=sub.id) }}">
+        <input type="hidden" name="status" value="in_review">
+        {{ ui.btn('Mark under review', 'primary', size='block', type='submit') }}
+      </form>
+
+      {% elif sub.status == 'in_review' %}
+      <p class="irb-action-hint">When the decision comes back, record it here.</p>
+      <form method="post" action="{{ url_for('irb_status', sub_id=sub.id) }}" class="cal-form irb-approve-form">
+        <input type="hidden" name="status" value="approved">
+        <div class="row">
+          <div class="field"><label>Approved version</label>
+            <input type="text" name="approved_version" value="v1.0" autocomplete="off" required></div>
+          <div class="field"><label>Expires</label>
+            <input type="date" name="expires_at" value="{{ one_year }}" required></div>
+        </div>
+        {{ ui.btn('Record approval', 'primary', size='block', type='submit', icon='check') }}
+      </form>
+      <form method="post" action="{{ url_for('irb_status', sub_id=sub.id) }}" class="cal-form irb-revise-form">
+        <input type="hidden" name="status" value="revisions">
+        <div class="field"><label>Or log requested revisions</label>
+          <textarea name="note" rows="2" placeholder="e.g. Remove 'free', add the time commitment to the flyer."></textarea></div>
+        {{ ui.btn('Send back for revisions', 'ghost', size='block', type='submit', icon='arrow-left') }}
+      </form>
+
+      {% elif sub.status == 'revisions' %}
+      <p class="irb-action-hint">Fixed the flagged materials and bumped the version? Resubmit for the board to re-review.</p>
+      <form method="post" action="{{ url_for('irb_status', sub_id=sub.id) }}" class="cal-form">
+        <input type="hidden" name="status" value="submitted">
+        <div class="field"><label>What changed <span class="cal-hint">optional</span></label>
+          <textarea name="note" rows="2" placeholder="Flyer + brochure updated per the reviewer's comments."></textarea></div>
+        {{ ui.btn('Resubmit', 'primary', size='block', type='submit', icon='arrow-right') }}
+      </form>
+
+      {% elif sub.status == 'approved' %}
+      <p class="irb-action-hint">Approved and in use. Start a continuing review before it expires, or mark it expired if the window lapsed.</p>
+      <form method="post" action="{{ url_for('irb_status', sub_id=sub.id) }}" style="margin-bottom:8px;">
+        <input type="hidden" name="status" value="expired">
+        {{ ui.btn('Mark expired', 'ghost', size='block', type='submit') }}
+      </form>
+
+      {% elif sub.status == 'expired' %}
+      <p class="irb-action-hint">This lapsed. Submit a fresh continuing-review package to bring the materials back into use.</p>
+      <form method="post" action="{{ url_for('irb_status', sub_id=sub.id) }}">
+        <input type="hidden" name="status" value="submitted">
+        {{ ui.btn('Resubmit for review', 'primary', size='block', type='submit', icon='arrow-right') }}
+      </form>
+      {% endif %}
+    </div>
+
+    {# ---- Submission facts ---- #}
+    <div class="app-card pad irb-meta">
+      <dl>
+        <div><dt>Study</dt><dd>{{ sub.nct or '&mdash;' }}</dd></div>
+        <div><dt>Reviewing board</dt><dd>{{ sub.irb_name or '&mdash;' }}</dd></div>
+        <div><dt>Type</dt><dd>{{ sub_types.get(sub.submission_type, sub.submission_type) }}</dd></div>
+        {% if sub.pi_name %}<div><dt>Principal investigator</dt><dd>{{ sub.pi_name }}</dd></div>{% endif %}
+        {% if sub.protocol_version %}<div><dt>Protocol version</dt><dd>{{ sub.protocol_version }}</dd></div>{% endif %}
+        {% if sub.submission_ref %}<div><dt>IRB tracking #</dt><dd>{{ sub.submission_ref }}</dd></div>{% endif %}
+        {% if sub.approved_version %}<div><dt>Approved version</dt><dd>{{ sub.approved_version }}</dd></div>{% endif %}
+        {% if sub.expires_at %}<div><dt>Expires</dt><dd>{{ sub.expires_at[:10] }}</dd></div>{% endif %}
+      </dl>
+    </div>
+
+    {# ---- Audit trail ---- #}
+    <div class="app-card pad">
+      <div class="irb-trail-h">Review history</div>
+      <ol class="doc-trail">
+        {% for ev in events %}
+        <li>
+          <span class="doc-trail-dot{{ ' is-approve' if ev.action == 'approved' else (' is-return' if ev.action in ['revisions','expired'] else '') }}"></span>
+          <div class="doc-trail-body">
+            <div class="doc-trail-top"><b>{{ ev.meaning or ev.action|capitalize }}</b><span class="muted">{{ ev.created_at[:16] }}</span></div>
+            <div class="doc-trail-who">{{ ev.actor or 'System' }}{% if ev.actor_role %} &middot; {{ ev.actor_role }}{% endif %}{% if staff.get(ev.actor) %} &middot; {{ staff[ev.actor] }}{% endif %}</div>
+            {% if ev.note %}<div class="doc-trail-note">{{ ev.note }}</div>{% endif %}
+          </div>
+        </li>
+        {% endfor %}
+      </ol>
+    </div>
+  </div>
+</div>
+{% endblock %}
