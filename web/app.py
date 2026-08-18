@@ -1461,7 +1461,7 @@ def inject_globals():
             or path.startswith("/app/team") or path.startswith("/app/calendar")
             or path.startswith("/app/payments") or path.startswith("/app/updates")
             or path.startswith("/app/campaign") or path.startswith("/app/intake")
-            or path.startswith("/app/soe")):
+            or path.startswith("/app/soe") or path.startswith("/app/irb")):
         pov = "study"
     elif path.startswith("/app") or path.startswith("/referral"):
         pov = "clinician"
