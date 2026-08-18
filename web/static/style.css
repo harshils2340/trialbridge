@@ -3894,34 +3894,13 @@ body.is-resizing .appside, body.is-resizing .appdock { transition: none; }
 .appside.is-collapsed .appnav-group-label { display: none; }
 .appside.is-collapsed .appside-user { justify-content: center; }
 .appside.is-collapsed .appside-user .u { display: none; }
-/* The demo guide is text-heavy — hide it in the rail, reveal on hover-expand. */
 .appside.is-collapsed .app-demo-guide { display: none; }
-.appside.is-collapsed:hover .app-demo-guide { display: block; }
 .appside.is-collapsed .appside-foot .mini { font-size: 0; justify-content: center; gap: 0; }
 .appside.is-collapsed .appside-foot .mini .ico { font-size: initial; }
-/* Hover the collapsed rail to reveal full labels (no toggle button needed). */
-body:not(.is-resizing) .appside.is-collapsed:hover { width: var(--appside-w, 240px); box-shadow: var(--shadow-lift); z-index: 5; }
+/* No hover-to-open: the rail stays a rail until you drag it out or hit the
+   toggle. (Hover-expand kept snapping it open by accident.) */
 /* One-shot smooth transition when the drag snaps into / out of the rail. */
 body.is-resizing .appside.is-snapping { transition: width .18s ease; }
-/* While dragging, the pointer counts as hovering the rail — keep it looking
-   collapsed (icons only) instead of flashing full labels into a 64px column. */
-body.is-resizing .appside.is-collapsed:hover .appnav a { justify-content: center;
-  gap: 0; font-size: 0; padding-left: 0; padding-right: 0; }
-body.is-resizing .appside.is-collapsed:hover .appside-brand { justify-content: center; }
-body.is-resizing .appside.is-collapsed:hover .appside-brand .bt,
-body.is-resizing .appside.is-collapsed:hover .appnav-count,
-body.is-resizing .appside.is-collapsed:hover .app-demo-guide,
-body.is-resizing .appside.is-collapsed:hover .appside-user .u { display: none; }
-.appside.is-collapsed:hover .appside-brand { justify-content: flex-start; }
-.appside.is-collapsed:hover .appside-brand .bt { display: block; }
-.appside.is-collapsed:hover .appnav a { justify-content: flex-start; gap: 10px;
-  font-size: 14px; padding-left: 12px; padding-right: 12px; }
-.appside.is-collapsed:hover .appnav-count { display: inline-flex; }
-.appside.is-collapsed:hover .appnav-group-label { display: block; }
-.appside.is-collapsed:hover .appside-user { justify-content: flex-start; }
-.appside.is-collapsed:hover .appside-user .u { display: block; }
-.appside.is-collapsed:hover .appside-foot .mini { font-size: 12.5px;
-  justify-content: flex-start; gap: 8px; }
 .appside-brand { padding: 20px 20px 16px; border-bottom: 1px solid var(--border);
   display: flex; gap: 10px; align-items: center; }
 .appside-logo { width: 30px; height: 30px; background: var(--accent); color: var(--accent-ink);
@@ -4497,12 +4476,11 @@ a.detail-row:hover { color: var(--accent); text-decoration: none; }
 body.is-resizing .appside-resize::after, body.is-resizing .dock-resize::after {
   background: var(--accent); }
 body.is-resizing { cursor: col-resize; user-select: none; }
-/* Hide the left handle where resizing doesn't apply (rail or mobile drawer) —
-   but keep it live during an active drag so snapping into the rail still tracks
-   the pointer instead of dropping capture. */
-.appside.is-collapsed .appside-resize,
+/* Keep the left handle usable in the rail too, so you can drag it back out to
+   any width. Only hide it in the mobile drawer, where width isn't draggable. */
 .appshell.is-drawer .appside-resize { display: none; }
-body.is-resizing .appside.is-collapsed .appside-resize { display: block; }
+/* In the rail the handle sits at the 64px edge; nudge it flush so it's grabbable. */
+.appside.is-collapsed .appside-resize { right: -4px; }
 /* The dock handle only makes sense when the dock sits inline and is open. */
 .dock-resize { display: none; }
 @media (min-width: 1440px) { .appdock[data-open="1"] .dock-resize { display: block; } }

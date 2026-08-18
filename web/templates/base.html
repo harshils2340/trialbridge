@@ -321,7 +321,7 @@ document.addEventListener('click', function (e) {
   function del(k) { try { localStorage.removeItem(k); } catch (e) {} }
   // The left rail is never wider than its regular size (240) — there's no reason
   // to. Dragging narrower snaps it into the icon/logo rail below RAIL_SNAP.
-  var SIDE_FULL = 240, SIDE_MIN = 176, RAIL_SNAP = 150, RAIL_EXPAND = 196;
+  var SIDE_FULL = 240, SIDE_MIN = 176, RAIL_SNAP = 132, RAIL_EXPAND = 150;
   function clampSide(v) { return Math.max(SIDE_MIN, Math.min(SIDE_FULL, v)); }
   function clampDock(v) { return Math.max(300, Math.min(560, v)); }
 
