@@ -186,6 +186,42 @@
   }
   function bodyOf(wrap) { return wrap.querySelector('.copilot-body') || wrap; }
 
+  // Render structured rows as a clean, scannable list (title + detail) instead
+  // of a run-on sentence. Only used when there are 2+ rows.
+  function renderItems(wrap, items) {
+    if (!items || items.length < 2) return;
+    var host = bodyOf(wrap);
+    var ul = document.createElement('ul');
+    ul.className = 'copilot-list';
+    items.forEach(function (it) {
+      var li = document.createElement('li');
+      li.className = 'copilot-li' + (it.url ? ' is-link' : '');
+      var main = document.createElement('div');
+      main.className = 'cli-main';
+      var t = document.createElement('span');
+      t.className = 'cli-title';
+      t.textContent = it.title || 'Item';
+      main.appendChild(t);
+      if (it.study) {
+        var s = document.createElement('span');
+        s.className = 'cli-study';
+        s.textContent = it.study;
+        main.appendChild(s);
+      }
+      li.appendChild(main);
+      if (it.detail) {
+        var dt = document.createElement('div');
+        dt.className = 'cli-detail';
+        dt.textContent = it.detail;
+        li.appendChild(dt);
+      }
+      if (it.url) { li.addEventListener('click', function () { window.location.href = it.url; }); }
+      ul.appendChild(li);
+    });
+    host.appendChild(ul);
+    scroll();
+  }
+
   function addCitations(wrap, cites) {
     if (!cites || !cites.length) return;
     var box = document.createElement('div');
@@ -389,7 +425,14 @@
       function deliver() {
         var w = addMsg('bot', '');
         revealText(w.querySelector('p'), d.answer || '', function () {
-          addCitations(w, d.citations);
+          renderItems(w, d.items);
+          // Drop citation chips that just repeat the list rows; keep section links.
+          var cites = d.citations || [];
+          if (d.items && d.items.length > 1) {
+            var titles = d.items.map(function (i) { return i.title; });
+            cites = cites.filter(function (c) { return titles.indexOf(c.label) === -1; });
+          }
+          addCitations(w, cites);
           renderProposal(w, d.proposal);
           renderFollowups(w, d.suggestions);
         });

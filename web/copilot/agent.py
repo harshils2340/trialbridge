@@ -26,8 +26,73 @@ SYSTEM_PROMPT = (
     "coordinator decides.\n"
     "3. Refer to applicants by their code/label exactly as given. Do not guess "
     "names or contact details.\n"
-    "4. Be concise and practical - a couple of sentences, plain language."
+    "4. Be concise: write a SINGLE short headline sentence stating the key number "
+    "or takeaway. Do NOT list individual applicants, visits, or documents by name - "
+    "the interface shows those to the user as a separate, scannable list beneath "
+    "your reply, so enumerating them is redundant."
 )
+
+
+def _display_items(items):
+    """Normalize a tool's structured rows into {title, detail, study, url} so the
+    UI can render a scannable list instead of a run-on sentence. Covers the shapes
+    every read tool returns (applicants, visits, documents, campaigns, funnel
+    stages, message hits); unknown keys are simply ignored."""
+    out = []
+    for it in items or []:
+        if not isinstance(it, dict):
+            continue
+        title = (it.get("code") or it.get("who") or it.get("name")
+                 or it.get("title") or it.get("label") or it.get("stage") or "Item")
+        bits = []
+        if it.get("kind") and it.get("who"):
+            bits.append(it["kind"])
+        if it.get("when"):
+            bits.append(it["when"])
+        if it.get("issue"):
+            bits.append(it["issue"])
+        if it.get("why"):
+            bits.append(it["why"])
+        if it.get("verdict"):
+            v = str(it["verdict"])
+            if it.get("score") is not None:
+                v += f" \u00b7 score {it['score']}"
+            bits.append(v)
+        elif it.get("score") is not None and it.get("matches") is None:
+            bits.append(f"score {it['score']}")
+        if it.get("status"):
+            s = str(it["status"]).replace("_", " ")
+            if it.get("version"):
+                s += f" \u00b7 {it['version']}"
+            bits.append(s)
+        if it.get("channel"):
+            c = str(it["channel"])
+            if it.get("enrolled") is not None:
+                c += f" \u00b7 {it['enrolled']} enrolled"
+            cpe = it.get("cost_per_enrolled")
+            if cpe is not None:
+                try:
+                    c += f" \u00b7 ${round(float(cpe)):,}/enrolled"
+                except (TypeError, ValueError):
+                    pass
+            bits.append(c)
+        if it.get("stage") and it.get("reached") is not None:
+            st = f"{it['reached']} reached"
+            if it.get("conv_from_prev") is not None:
+                st += f" \u00b7 {it['conv_from_prev']}% from previous"
+            bits.append(st)
+        if it.get("matches") is not None:
+            n = it["matches"]
+            bits.append(f"{n} mention" + ("" if n == 1 else "s"))
+        if it.get("snippet"):
+            bits.append("\u201c" + str(it["snippet"]).strip() + "\u201d")
+        out.append({
+            "title": str(title),
+            "detail": " \u00b7 ".join(b for b in bits if b),
+            "study": str(it.get("study") or ""),
+            "url": it.get("url"),
+        })
+    return out
 
 # Action-first starters shown in the empty rail - phrased as work to do, not
 # questions to ask (Bridget is an agent that acts, not a Q&A bot).
@@ -257,6 +322,7 @@ def answer(user_id, query, context=None):
     text = _ground_with_llm(query, payload) or payload.get("summary", "")
     return {
         "answer": text,
+        "items": _display_items(payload.get("items")),
         "citations": payload.get("citations", []),
         "trace": tool.trace,
         "suggestions": [],
