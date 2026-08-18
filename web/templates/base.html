@@ -80,7 +80,7 @@
       <a href="{{ url_for('soe_page') }}" class="{{ 'active' if request.endpoint == 'soe_page' }}">{{ ic.icon('list') }}Protocol schedule</a>
       <a href="{{ url_for('payments_page') }}" class="{{ 'active' if request.endpoint == 'payments_page' }}">{{ ic.icon('dollar') }}Payments{% if pay_due %}<span class="appnav-count">{{ pay_due }}</span>{% endif %}</a>
       <a href="{{ url_for('site_setup') }}" class="{{ 'active' if request.endpoint in ['site_setup','add_study_claim','remove_study_claim','team_page','team_invite','team_set_role','team_remove','intake_page','intake_import'] }}">{{ ic.icon('gear') }}Settings</a>
-      {% if is_owner and not active_site_demo %}
+      {% if is_owner and not site_demo %}
       <a href="{{ url_for('internal_hub') }}" class="appnav-internal {{ 'active' if request.endpoint in ['internal_hub','operator_inbox','internal_registry','internal_registry_opt_out','internal_recruitment','internal_recruitment_targets','owner_analytics'] }}">{{ ic.icon('shield') }}Internal</a>
       {% endif %}
     </nav>
@@ -319,7 +319,10 @@ document.addEventListener('click', function (e) {
   function get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
   function set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
   function del(k) { try { localStorage.removeItem(k); } catch (e) {} }
-  function clampSide(v) { return Math.max(190, Math.min(400, v)); }
+  // The left rail is never wider than its regular size (240) — there's no reason
+  // to. Dragging narrower snaps it into the icon/logo rail below RAIL_SNAP.
+  var SIDE_FULL = 240, SIDE_MIN = 176, RAIL_SNAP = 158;
+  function clampSide(v) { return Math.max(SIDE_MIN, Math.min(SIDE_FULL, v)); }
   function clampDock(v) { return Math.max(300, Math.min(560, v)); }
 
   // Restore saved widths.
@@ -386,10 +389,45 @@ document.addEventListener('click', function (e) {
       del(opts.store);
     });
   }
-  drag(sideHandle, {
-    varName: '--appside-w', store: LS_W, clamp: clampSide,
-    compute: function (ev) { return ev.clientX - side.getBoundingClientRect().left; }
-  });
+  // Left rail drag: shrink toward the icon rail, snap into it past the threshold,
+  // and never grow past the regular width.
+  if (sideHandle) {
+    sideHandle.addEventListener('pointerdown', function (e) {
+      e.preventDefault();
+      try { sideHandle.setPointerCapture(e.pointerId); } catch (_) {}
+      document.body.classList.add('is-resizing');
+      function move(ev) {
+        var raw = ev.clientX - side.getBoundingClientRect().left;
+        if (raw < RAIL_SNAP) {              // resolve into the logo/icon rail
+          side.classList.add('is-collapsed');
+          // Keep the full width in reserve so hover-expand looks right.
+          shell.style.setProperty('--appside-w', SIDE_FULL + 'px');
+        } else {
+          side.classList.remove('is-collapsed');
+          shell.style.setProperty('--appside-w', clampSide(raw) + 'px');
+        }
+      }
+      function up() {
+        document.body.classList.remove('is-resizing');
+        window.removeEventListener('pointermove', move);
+        window.removeEventListener('pointerup', up);
+        if (side.classList.contains('is-collapsed')) {
+          set(LS_C, 'rail'); del(LS_W);
+        } else {
+          set(LS_C, 'full');
+          var cur = parseInt(getComputedStyle(shell).getPropertyValue('--appside-w'), 10);
+          if (cur) set(LS_W, String(cur));
+        }
+      }
+      window.addEventListener('pointermove', move);
+      window.addEventListener('pointerup', up);
+    });
+    sideHandle.addEventListener('dblclick', function () {
+      shell.style.removeProperty('--appside-w');
+      side.classList.remove('is-collapsed');
+      del(LS_W); set(LS_C, 'full');
+    });
+  }
   drag(dockHandle, {
     varName: '--appdock-w', store: LS_D, clamp: clampDock,
     compute: function (ev) { return dock.getBoundingClientRect().right - ev.clientX; }
