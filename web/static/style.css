@@ -8223,6 +8223,29 @@ body.fs-page { background:
     padding:0; }
 }
 
+/* Auto-routing rule builder (site_setup.html) */
+.route-form { display:flex; flex-wrap:wrap; align-items:center; gap:8px;
+  padding:14px; background:var(--surface-2); border:1px solid var(--border);
+  border-radius:var(--radius); }
+.route-form select { width:auto; min-width:120px; max-width:260px; }
+.route-when { color:var(--muted); font-size:13px; font-weight:600; }
+
+/* Trial switcher tabs (team_inbox.html) */
+.trial-tabs { display:flex; gap:6px; overflow-x:auto; padding-bottom:var(--space-2);
+  margin-bottom:var(--space-4); scrollbar-width:thin; }
+.trial-tab { display:inline-flex; align-items:center; gap:8px; white-space:nowrap;
+  padding:8px 14px; border-radius:var(--radius-pill); border:1px solid var(--border);
+  background:var(--surface); color:var(--muted); font-size:13px; font-weight:600;
+  flex-shrink:0; transition:background .12s, color .12s, border-color .12s; }
+.trial-tab:hover { background:var(--surface-2); color:var(--ink); text-decoration:none; }
+.trial-tab.is-active { background:var(--accent); color:var(--accent-ink);
+  border-color:var(--accent); }
+.trial-tab-name { max-width:220px; overflow:hidden; text-overflow:ellipsis; }
+.trial-tab-count { background:var(--surface-2); color:var(--muted); font-size:11px;
+  font-weight:700; padding:1px 7px; border-radius:var(--radius-pill); }
+.trial-tab.is-active .trial-tab-count { background:rgba(255,255,255,.24);
+  color:var(--accent-ink); }
+
 /* Unified triage inbox (team_inbox.html) */
 .tinbox { list-style:none; margin:0; padding:0; }
 .tinbox-row { display:grid; grid-template-columns:1fr auto; gap:var(--space-3);

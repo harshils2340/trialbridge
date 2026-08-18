@@ -546,6 +546,11 @@ def _seed_demo_surfaces(user_id=None):
     except Exception:
         app.logger.exception("demo engagement seeding failed")
     try:
+        # De-clone any existing demo DB seeded by the old (repetitive) copy.
+        db.diversify_demo_replies()
+    except Exception:
+        app.logger.exception("demo reply diversify failed")
+    try:
         db.seed_demo_team(user_id)
     except Exception:
         app.logger.exception("demo team seeding failed")
@@ -6701,17 +6706,35 @@ def team_inbox():
     keeps two coordinators from double-replying. KPI: Tier-2 efficiency ->
     contacted -> screened (nothing rots in a personal inbox)."""
     team_studies = db.list_team_studies(g.user["id"])
-    active_nct, team_studies = _active_scope()
+    valid_ncts = {s["nct"] for s in team_studies}
+    # Trial switcher: a ?nct= click sets the scope; "" == All studies. The inbox
+    # DEFAULTS to All (unlike the rest of the app) so it opens showing everything
+    # - it's an inbox first, a per-trial view second.
+    _p = request.args.get("nct")
+    if _p is not None:
+        session["active_nct"] = _p if _p in valid_ncts else ""
+    active_nct = session.get("active_nct", "") or ""
+    if active_nct and active_nct not in valid_ncts:
+        active_nct = ""
     members = db.list_org_members(g.user["id"])
     name_by_id = {m["user_id"]: (m["name"] or m["email"] or "Teammate")
                   for m in members}
     rows = db.list_leads_for_user(g.user["id"])
+    # Open-thread counts per study (across ALL studies, for the switcher tabs) -
+    # computed before the scope filter so every tab shows its own count.
+    tab_counts = {}
+    total_open = 0
+    for r in rows:
+        if r["status"] in db.LEAD_CLOSED:
+            continue
+        total_open += 1
+        key = r["nct"] or ""
+        tab_counts[key] = tab_counts.get(key, 0) + 1
     inbox = []
     for r in rows:
-        # Scope filter, but NEVER hide un-studied inbound (nct == ""): those are
-        # freshly captured inquiries not yet routed to a study, and they must
-        # stay visible in every scope or they'd silently disappear.
-        if active_nct and r["nct"] and r["nct"] != active_nct:
+        # Scope filter. Under a specific trial, show only that trial's threads;
+        # un-studied inbound (nct == "") shows under "All studies".
+        if active_nct and r["nct"] != active_nct:
             continue
         if r["status"] in db.LEAD_CLOSED:
             continue
@@ -6751,9 +6774,20 @@ def team_inbox():
         if n:
             label, tone = _INTENT_META.get(key, (key, "neutral"))
             intents.append({"key": key, "label": label, "tone": tone, "n": n})
+    # Trial switcher tabs: All studies + one per study, each with its open count.
+    tabs = [{"nct": "", "title": "All studies", "count": total_open,
+             "active": not active_nct}]
+    for s in team_studies:
+        tabs.append({
+            "nct": s["nct"],
+            "title": summarize.tidy_title(s["title"]) or s["nct"],
+            "count": tab_counts.get(s["nct"], 0),
+            "active": active_nct == s["nct"]})
+    unstudied = tab_counts.get("", 0)
     return render_template("team_inbox.html", inbox=inbox, stats=stats,
                            intents=intents, members=members,
-                           me_id=g.user["id"])
+                           me_id=g.user["id"], tabs=tabs, active_nct=active_nct,
+                           unstudied=unstudied)
 
 
 @app.route("/app/inbox/<int:lead_id>/assign", methods=["POST"])
@@ -10503,10 +10537,31 @@ def _render_site_setup(instruments=None, active_tab=None):
     simulated = _demo_mode_enabled() and not cfg.connected
     if instruments is None:
         instruments = list(redcap.SIMULATED_INSTRUMENTS) if simulated else []
+    claims = db.list_study_claims(g.user["id"])
+    # Auto-routing: channel picker labels + existing rules (with display labels).
+    route_channels = [{"key": "any", "label": "Any channel"}]
+    for _key in db.ROUTING_CHANNELS:
+        if _key == "any":
+            continue
+        route_channels.append({"key": _key, "label": _channel_meta(_key)[0]})
+    _study_titles = {c["nct"]: (c["title"] or c["nct"]) for c in claims}
+    routing_rules = []
+    for r in db.list_routing_rules(g.user["id"]):
+        clabel, ctone = ("Any channel", "neutral") if r["channel"] == "any" \
+            else _channel_meta(r["channel"])
+        routing_rules.append({
+            "id": r["id"],
+            "channel_label": clabel, "channel_tone": ctone,
+            "study_label": _study_titles.get(r["nct"], r["nct"]) if r["nct"]
+            else "Any study",
+            "assignee_name": r["assignee_name"], "assignee_email": r["assignee_email"],
+        })
     return render_template(
         "site_setup.html",
         profile=profile,
-        claims=db.list_study_claims(g.user["id"]),
+        claims=claims,
+        route_channels=route_channels,
+        routing_rules=routing_rules,
         posted=db.list_site_posted_studies(user_id=g.user["id"]),
         redcap_on=cfg.connected,
         redcap_token_set=bool(cfg.api_token),
@@ -10543,6 +10598,43 @@ def site_setup():
         flash("Site profile saved.", "success")
         return redirect(url_for("site_setup"))
     return _render_site_setup()
+
+
+@app.route("/app/site/routing/add", methods=["POST"])
+@login_required
+def routing_rule_add():
+    """Create an auto-routing rule (channel/study -> teammate). Any inquiry that
+    matches will be auto-assigned to that person's inbox. KPI: Tier-2 efficiency
+    -> contacted -> screened (no unassigned pile). Manage-team gated."""
+    if not db.can_manage_team(g.user["id"]):
+        flash("Only full-access members can manage routing.", "error")
+        return redirect(url_for("site_setup") + "#routing")
+    f = request.form
+    try:
+        assignee_id = int(f.get("assignee_id") or 0)
+    except (TypeError, ValueError):
+        assignee_id = 0
+    rid = db.add_routing_rule(g.user["id"], f.get("channel", "any"),
+                              f.get("nct", ""), assignee_id)
+    flash("Routing rule added." if rid else "Couldn't add that rule.",
+          "success" if rid else "error")
+    return redirect(url_for("site_setup") + "#routing")
+
+
+@app.route("/app/site/routing/delete", methods=["POST"])
+@login_required
+def routing_rule_delete():
+    if not db.can_manage_team(g.user["id"]):
+        flash("Only full-access members can manage routing.", "error")
+        return redirect(url_for("site_setup") + "#routing")
+    try:
+        rule_id = int(request.form.get("rule_id") or 0)
+    except (TypeError, ValueError):
+        rule_id = 0
+    ok = db.delete_routing_rule(g.user["id"], rule_id)
+    flash("Routing rule removed." if ok else "Rule not found.",
+          "success" if ok else "error")
+    return redirect(url_for("site_setup") + "#routing")
 
 
 @app.route("/app/site/redcap", methods=["POST"])

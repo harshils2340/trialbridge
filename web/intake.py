@@ -129,6 +129,14 @@ def handle_inbound_email(payload):
         except Exception:
             pass
 
+        # Auto-route: if the owning org has a rule for this channel/study, assign
+        # the thread to that teammate so it lands in THEIR inbox with no manual
+        # triage. Never overrides an existing human assignment.
+        try:
+            db.apply_routing_rules(lead_id, channel=source, nct=addr["nct"])
+        except Exception:
+            pass
+
         prescreen = None
         try:
             prescreen = prescreen_lead(lead_id)
@@ -155,12 +163,16 @@ _INTENT_KEYWORDS = {
     "opt_out": ("unsubscribe", "stop contacting", "stop texting", "stop emailing",
                 "remove me", "opt out", "opt-out", "do not contact",
                 "don't contact", "take me off", "no longer interested"),
+    # Only genuine scheduling cues. "available" and "visit" were too broad -
+    # "is parking available?" / "how many visits?" are questions, not scheduling.
     "scheduling": ("schedule", "reschedule", "appointment", "book", "booking",
-                   "availability", "available", "come in", "time slot", "visit",
-                   "when can i", "what time", "confirm my"),
+                   "availability", "come in", "time slot", "when can i",
+                   "what time", "which day", "what day", "set up my", "morning",
+                   "afternoon", "evening", "next week", "this week", "confirm my"),
     "document": ("attached", "attachment", "consent form", "insurance card",
                  "id card", "upload", "sending my", "here is my", "here's my",
-                 "paperwork", "form filled"),
+                 "paperwork", "form filled", "signed", "completed forms",
+                 "forms you sent", "fill out"),
     "question": ("question", "how does", "how do", "is this", "are there",
                  "side effect", "what is", "what are", "do i qualify", "eligible",
                  "cost", "paid", "compensation", "how much", "?"),
@@ -178,18 +190,22 @@ def classify_message(text):
     if not t:
         return "new_inquiry", "normal"
     # Order matters: opt-out and scheduling beat the generic question match.
+    # Priority is reserved for what's genuinely time-sensitive - opt-outs (a
+    # compliance clock) and scheduling (a slot that expires). A routine question
+    # or a fresh inquiry is normal, so "High" actually means something in the
+    # inbox instead of tagging every thread.
     for intent in ("opt_out", "scheduling", "document"):
         if any(k in t for k in _INTENT_KEYWORDS[intent]):
             priority = "high" if intent in ("opt_out", "scheduling") else "normal"
             return intent, priority
     if any(k in t for k in _INTENT_KEYWORDS["question"]):
-        return "question", "high"
+        return "question", "normal"
     # Very short, link-only, or salesy bodies read as spam, not a real applicant.
     if len(t) < 12 or "http://" in t or "https://" in t and "unsubscribe" not in t:
         if any(s in t for s in ("seo", "marketing", "backlink", "crypto",
                                  "invoice attached", "wire transfer")):
             return "spam", "low"
-    return "new_inquiry", "high"
+    return "new_inquiry", "normal"
 
 
 def _patient_summary(lead):

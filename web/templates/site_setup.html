@@ -17,6 +17,7 @@
     <button type="button" class="setup-tab" data-setup-tab="studies">{{ ic.icon('award') }} Studies{% if claims %} <span class="setup-count">{{ claims|length }}</span>{% endif %}</button>
     <button type="button" class="setup-tab" data-setup-tab="intake">{{ ic.icon('file') }} Intake &amp; screening</button>
     <button type="button" class="setup-tab" data-setup-tab="team">{{ ic.icon('users') }} Team</button>
+    <button type="button" class="setup-tab" data-setup-tab="routing">{{ ic.icon('inbox') }} Routing{% if routing_rules %} <span class="setup-count">{{ routing_rules|length }}</span>{% endif %}</button>
     {% if is_owner %}<button type="button" class="setup-tab" data-setup-tab="internal">{{ ic.icon('activity') }} Internal</button>{% endif %}
   </nav>
 </div>
@@ -444,6 +445,64 @@
 {% endcall %}
 {% endif %}
 </div>{# /team panel #}
+
+{# ============================== ROUTING ============================== #}
+<div class="setup-panel" data-setup-panel="routing" hidden>
+<div class="app-card pad">
+  <div class="app-card-title" style="margin-bottom:4px;">Auto-routing</div>
+  <p class="site-hint">Send every new inquiry to the right person automatically. When a message arrives on a channel, it's assigned to the teammate you pick and shows up in <b>their</b> inbox — no manual triage. Example: all email → your intake coordinator, all Instagram/Meta leads → your outreach lead. Rules run top-down; the first match wins.</p>
+
+  {% if members|length < 2 and not routing_rules %}
+  <p class="site-hint" style="margin-top:8px;">Invite a teammate first (Team tab) to route inquiries to them. You can still create rules that route everything to yourself.</p>
+  {% endif %}
+
+  <form method="post" action="{{ url_for('routing_rule_add') }}" class="route-form" style="margin-top:14px;">
+    <span class="route-when">When a new</span>
+    <select name="channel" aria-label="Channel">
+      {% for c in route_channels %}<option value="{{ c.key }}">{{ c.label }}</option>{% endfor %}
+    </select>
+    <span class="route-when">inquiry arrives for</span>
+    <select name="nct" aria-label="Study">
+      <option value="">any study</option>
+      {% for c in claims %}<option value="{{ c.nct }}">{{ c.title or c.nct }}</option>{% endfor %}
+    </select>
+    <span class="route-when">assign it to</span>
+    <select name="assignee_id" aria-label="Teammate" required>
+      {% for m in members %}<option value="{{ m.user_id }}">{{ m.name or m.email }}{% if m.is_me %} (you){% endif %}</option>{% endfor %}
+    </select>
+    {{ ui.btn('Add rule', 'primary', 'sm', type='submit', icon='check') }}
+  </form>
+
+  {% if routing_rules %}
+  <table class="app-table" style="margin-top:16px;">
+    <thead><tr><th>Channel</th><th>Study</th><th></th><th>Assigned to</th><th></th></tr></thead>
+    <tbody>
+      {% for r in routing_rules %}
+      <tr>
+        <td>{{ ui.badge(r.channel_label, r.channel_tone) }}</td>
+        <td>{{ r.study_label }}</td>
+        <td style="color:var(--faint);">{{ ic.icon('arrow-right') }}</td>
+        <td>
+          <div class="who">
+            <span class="app-av brand">{{ (r.assignee_name or r.assignee_email or '?')[:1]|upper }}</span>
+            <div><b>{{ r.assignee_name or r.assignee_email }}</b></div>
+          </div>
+        </td>
+        <td style="text-align:right;">
+          <form method="post" action="{{ url_for('routing_rule_delete') }}" style="display:inline;">
+            <input type="hidden" name="rule_id" value="{{ r.id }}">
+            {{ ui.btn('Remove', 'ghost', 'sm', type='submit') }}
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  {{ ui.empty('No routing rules yet', 'Add a rule above and new inquiries route themselves to the right teammate.', 'inbox') }}
+  {% endif %}
+</div>
+</div>{# /routing panel #}
 
 {% if is_owner %}
 {# ============================= INTERNAL ============================= #}

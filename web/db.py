@@ -1035,6 +1035,29 @@ CREATE TABLE IF NOT EXISTS org_invites (
 CREATE INDEX IF NOT EXISTS idx_memberships_user ON memberships(user_id);
 CREATE INDEX IF NOT EXISTS idx_memberships_org ON memberships(org_id);
 
+-- Auto-routing rules (the "Cursor for your inbox" glue). When a new inquiry
+-- lands, we match it against an org's rules top-down and auto-assign the thread
+-- to a teammate, so it shows up in THEIR inbox with zero manual triage. A rule
+-- matches on channel (email/meta/google/ctgov/referral/... or 'any') AND
+-- optionally a study (nct, '' = any study). First match wins (lowest position).
+-- KPI: Tier-2 efficiency -> contacted -> screened (no unassigned pile, no lag
+-- deciding who owns an inquiry). Internal staff routing only - no PHI leaves the
+-- org, no referral/payment logic.
+CREATE TABLE IF NOT EXISTS routing_rules (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    org_id      INTEGER NOT NULL,
+    channel     TEXT NOT NULL DEFAULT 'any',   -- any | email_intake | meta | google | ctgov | reddit | referral
+    nct         TEXT NOT NULL DEFAULT '',      -- '' = any study
+    assignee_id INTEGER NOT NULL,              -- teammate the thread routes to
+    position    INTEGER NOT NULL DEFAULT 0,    -- eval order, lowest first
+    active      INTEGER NOT NULL DEFAULT 1,
+    created_by  INTEGER,
+    created_at  TEXT NOT NULL,
+    FOREIGN KEY (org_id) REFERENCES organizations(id),
+    FOREIGN KEY (assignee_id) REFERENCES users(id)
+);
+CREATE INDEX IF NOT EXISTS idx_routing_rules_org ON routing_rules(org_id, active, position);
+
 -- Copilot action proposals. The assistant never acts on its own: it writes a
 -- PROPOSED action here, the human confirms it in the rail, and only then is it
 -- executed (and marked confirmed). This gives human-in-the-loop control, an
@@ -3607,6 +3630,98 @@ def set_lead_assignee(lead_id, user_id):
     db.commit()
 
 
+# --------------------------------------------------------------------------- #
+# Auto-routing rules (channel/study -> teammate)
+# --------------------------------------------------------------------------- #
+# Canonical channels a rule can match, in the order shown in the UI.
+ROUTING_CHANNELS = ("any", "email_intake", "meta", "google", "ctgov",
+                    "reddit", "referral")
+
+
+def list_routing_rules(user_id):
+    """All routing rules for this user's org, in evaluation order. Joins the
+    assignee's display name so the UI/inbox can show who a channel routes to."""
+    oid = user_org_id(user_id)
+    return get_db().execute(
+        "SELECT r.*, u.name AS assignee_name, u.email AS assignee_email "
+        "FROM routing_rules r JOIN users u ON u.id = r.assignee_id "
+        "WHERE r.org_id = ? ORDER BY r.position, r.id", (oid,)).fetchall()
+
+
+def add_routing_rule(actor_user_id, channel, nct, assignee_id):
+    """Create a rule routing (channel, nct) -> assignee. Scoped to the actor's
+    org; the assignee must be a same-org member. Returns the new rule id or None."""
+    oid = user_org_id(actor_user_id)
+    if assignee_id not in set(org_member_ids(actor_user_id)):
+        return None
+    channel = channel if channel in ROUTING_CHANNELS else "any"
+    nct = (nct or "").strip()
+    db = get_db()
+    nextpos = db.execute(
+        "SELECT COALESCE(MAX(position), 0) + 1 AS p FROM routing_rules "
+        "WHERE org_id = ?", (oid,)).fetchone()["p"]
+    cur = db.execute(
+        "INSERT INTO routing_rules (org_id, channel, nct, assignee_id, position, "
+        "active, created_by, created_at) VALUES (?,?,?,?,?,1,?,?)",
+        (oid, channel, nct, assignee_id, nextpos, actor_user_id, now()))
+    db.commit()
+    return cur.lastrowid
+
+
+def delete_routing_rule(actor_user_id, rule_id):
+    """Remove a rule (org-scoped so no cross-team deletes)."""
+    oid = user_org_id(actor_user_id)
+    db = get_db()
+    cur = db.execute("DELETE FROM routing_rules WHERE id = ? AND org_id = ?",
+                     (rule_id, oid))
+    db.commit()
+    return cur.rowcount > 0
+
+
+def match_routing_rule(org_id, channel, nct):
+    """Return the assignee_id for the first active rule matching (channel, nct),
+    or None. A rule with channel/nct 'any'/'' is a wildcard; more specific rules
+    should be ordered before wildcards (lower position). First match wins."""
+    channel = (channel or "").strip()
+    nct = (nct or "").strip()
+    rows = get_db().execute(
+        "SELECT channel, nct, assignee_id FROM routing_rules "
+        "WHERE org_id = ? AND active = 1 ORDER BY position, id", (org_id,)
+    ).fetchall()
+    for r in rows:
+        if r["channel"] not in ("any", channel):
+            continue
+        if r["nct"] and r["nct"] != nct:
+            continue
+        return r["assignee_id"]
+    return None
+
+
+def apply_routing_rules(lead_id, channel="", nct=""):
+    """Auto-assign a freshly captured lead per its owner org's routing rules.
+    No-op if the lead is already assigned (never steal a human's claim) or no
+    rule matches. Returns the assigned user_id, or None. Never raises."""
+    try:
+        lead = get_lead(lead_id)
+        if not lead:
+            return None
+        if "assigned_user_id" in lead.keys() and lead["assigned_user_id"]:
+            return None
+        owner = lead["owner_user_id"] if "owner_user_id" in lead.keys() else None
+        if not owner:
+            return None
+        oid = user_org_id(owner)
+        assignee = match_routing_rule(
+            oid, channel or (lead["source"] if "source" in lead.keys() else ""),
+            nct or lead["nct"])
+        if not assignee:
+            return None
+        set_lead_assignee(lead_id, assignee)
+        return assignee
+    except Exception:
+        return None
+
+
 def reassign_open_leads(actor_user_id, from_user_id, to_user_id):
     """Coverage / vacation handoff: move every OPEN thread currently assigned to
     `from_user_id` over to `to_user_id` (or None to just unassign), in one call.
@@ -6155,6 +6270,56 @@ def seed_demo_leads():
         con.close()
 
 
+# A varied pool of realistic applicant replies, mixed across triage intents
+# (scheduling / question / document) so the inbox reads like a real one and the
+# triage labels show genuine variety instead of a single repeated line. Indexed
+# by lead id at seed time so no two adjacent threads are identical.
+_DEMO_PATIENT_REPLIES = [
+    "Can we schedule my screening for Tuesday or Thursday afternoon?",
+    "Roughly how many visits are involved, and is there any compensation?",
+    "I've attached my insurance card and the signed consent form.",
+    "What should I bring on my first day, and how long will it take?",
+    "Will taking part affect the care I get from my own doctor?",
+    "Mornings are easier for me. Is next week open to book?",
+    "Is travel to the site reimbursed?",
+    "Thanks. I'll upload the completed forms you sent tonight.",
+    "Is the study still enrolling? I'd like to move forward.",
+    "I'm free Wednesday at 10am if that works to book a visit.",
+]
+
+# The old seed strings this pool replaces (used to de-clone existing demo DBs).
+_DEMO_OLD_REPLIES = (
+    "Thank you! Roughly how many visits are involved, and is parking available?",
+    "Great, thanks. What should I bring to the first visit?",
+    "Sounds good - mornings work best for me. Is Thursday possible?",
+    "Appreciate it! Will taking part affect my regular care?",
+)
+
+
+def diversify_demo_replies():
+    """Fix an already-seeded demo DB in place: the old seeder gave the first
+    applicant in every study the same canned reply, so the inbox read as a wall
+    of clones. Swap those known strings for the varied pool (keyed by lead id,
+    deterministic) and clear triage so labels/priority recompute with the current
+    classifier. Idempotent - once the old strings are gone it no-ops, and it only
+    ever touches the known seed strings, never a real conversation."""
+    db = get_db()
+    rows = db.execute(
+        "SELECT id, lead_id FROM messages WHERE sender = 'patient' AND body IN "
+        "(?,?,?,?) ORDER BY id", _DEMO_OLD_REPLIES).fetchall()
+    if not rows:
+        return
+    # Round-robin over the pool so the copy is spread evenly across the inbox
+    # (keying by lead id clustered several threads onto the same line).
+    for i, r in enumerate(rows):
+        body = _DEMO_PATIENT_REPLIES[i % len(_DEMO_PATIENT_REPLIES)]
+        db.execute("UPDATE messages SET body = ? WHERE id = ?", (body, r["id"]))
+    # Re-triage everything so the labels reflect the new bodies + fixed rules.
+    db.execute("UPDATE leads SET triage_intent = '', triage_priority = '', "
+               "triage_at = ''")
+    db.commit()
+
+
 def seed_demo_engagement(clinician_id):
     """Populate the retention/engagement surfaces (messages, visits, one physician
     referral) on top of the demo leads so a fresh demo shows the whole loop alive.
@@ -6218,12 +6383,7 @@ def seed_demo_engagement(clinician_id):
         "Hi {first}, thanks for your interest. I've noted what happens next; let "
         "me know if anything is unclear.",
     ]
-    replies = [
-        "Thank you! Roughly how many visits are involved, and is parking available?",
-        "Great, thanks. What should I bring to the first visit?",
-        "Sounds good - mornings work best for me. Is Thursday possible?",
-        "Appreciate it! Will taking part affect my regular care?",
-    ]
+    replies = _DEMO_PATIENT_REPLIES
     follow = ("Absolutely - I'll send those details over now. Talk soon!")
     revealed = db.execute(
         "SELECT * FROM leads WHERE revealed = 1 ORDER BY id").fetchall()
@@ -6267,19 +6427,26 @@ def seed_demo_engagement(clinician_id):
     by_trial = {}
     for ld in revealed:
         by_trial.setdefault(ld["nct"], []).append(ld)
+    ri = oi = 0  # running counters so copy spreads evenly, never per-trial clones
     for _nct, leads in by_trial.items():
         for idx, ld in enumerate(leads):
             first = ld["name"].split()[0] if ld["name"] else "there"
             kind = idx % 3
+            # Running counters (not per-trial idx) so the first applicant in
+            # every study doesn't get the identical line - that cloned wall was
+            # the thing that read as fake.
             db.execute("INSERT INTO messages (lead_id, sender, body, read_patient, "
                        "read_site, created_at) VALUES (?,?,?,?,?,?)",
-                       (ld["id"], "site", openers[idx % len(openers)].format(first=first),
+                       (ld["id"], "site",
+                        openers[oi % len(openers)].format(first=first),
                         1, 1, ts(hours=-30)))
+            oi += 1
             if kind != 1:  # patient wrote back
                 db.execute("INSERT INTO messages (lead_id, sender, body, read_patient, "
                            "read_site, created_at) VALUES (?,?,?,?,?,?)",
-                           (ld["id"], "patient", replies[idx % len(replies)],
+                           (ld["id"], "patient", replies[ri % len(replies)],
                             1, 0 if kind == 0 else 1, ts(hours=-26)))
+                ri += 1
             if kind == 2:  # we already replied -> waiting on the patient
                 db.execute("INSERT INTO messages (lead_id, sender, body, read_patient, "
                            "read_site, created_at) VALUES (?,?,?,?,?,?)",

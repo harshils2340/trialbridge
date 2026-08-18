@@ -15,9 +15,22 @@
 <div class="app-head">
   <div>
     <h1>Inbox</h1>
-    <p>Every inquiry across all your studies and channels — email, ad lead forms, ClinicalTrials.gov, referrals — triaged by what it needs and how urgent. Work it top-down.</p>
+    <p>Every applicant message across your studies, sorted by what it needs and how urgent.</p>
   </div>
 </div>
+
+{% if tabs and tabs|length > 1 %}
+<nav class="trial-tabs" aria-label="Switch trial">
+  {% for t in tabs %}
+  <a href="{{ url_for('team_inbox', nct=t.nct or none) }}"
+     class="trial-tab{% if t.active %} is-active{% endif %}"
+     title="{{ t.title }}">
+    <span class="trial-tab-name">{{ t.title }}</span>
+    {% if t.count %}<span class="trial-tab-count">{{ t.count }}</span>{% endif %}
+  </a>
+  {% endfor %}
+</nav>
+{% endif %}
 
 <div class="app-stats">
   <div class="app-stat"><div class="l">Open threads</div><div class="n">{{ stats.total }}</div></div>
@@ -39,6 +52,9 @@
     <input id="inboxSearch" type="search" placeholder="Search name, email, study, message…" autocomplete="off">
   </div>
   <button type="button" class="chip" data-intent="" aria-pressed="true">All</button>
+  {% if members and members|length > 1 %}
+  <button type="button" class="chip" data-quick="__me" aria-pressed="false">{{ ic.icon('inbox') }} Mine</button>
+  {% endif %}
   <button type="button" class="chip" data-intent="__unread" aria-pressed="false">{{ ic.icon('sparkle') }} Unread</button>
   {% for it in intents %}
   <button type="button" class="chip" data-intent="{{ it.key }}" aria-pressed="false">{{ it.label }} · {{ it.n }}</button>
@@ -52,6 +68,7 @@
     {% for m in members %}<option value="{{ m.user_id }}">{{ m.name or m.email }}{% if m.user_id == me_id %} (me){% endif %}</option>{% endfor %}
   </select>
   <button type="button" class="btn ghost sm" data-ui-open="coverModal" title="Reassign a teammate's queue">{{ ic.icon('users') }} Cover</button>
+  <a class="btn ghost sm" href="{{ url_for('site_setup') }}#routing" title="Auto-assign inquiries to teammates">{{ ic.icon('arrow-right') }} Routing</a>
   {% endif %}
   <span id="inboxCount" class="tag" aria-live="polite"></span>
 </div>
@@ -179,8 +196,19 @@
   if (assignSel) assignSel.addEventListener('change', apply);
   chips.forEach(function (c) {
     c.addEventListener('click', function () {
+      // "Mine" is a shortcut to the assignee filter, not an intent filter.
+      if (c.dataset.quick === '__me') {
+        var on = c.getAttribute('aria-pressed') === 'true';
+        if (assignSel) { assignSel.value = on ? '' : '__me'; }
+        c.setAttribute('aria-pressed', on ? 'false' : 'true');
+        apply();
+        return;
+      }
       activeIntent = c.dataset.intent;
-      chips.forEach(function (x) { x.setAttribute('aria-pressed', x === c ? 'true' : 'false'); });
+      chips.forEach(function (x) {
+        if (x.dataset.quick === '__me') return;
+        x.setAttribute('aria-pressed', x === c ? 'true' : 'false');
+      });
       apply();
     });
   });
