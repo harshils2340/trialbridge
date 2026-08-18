@@ -1302,6 +1302,25 @@ _MIGRATIONS = {
         # The specific placement (posting location) that produced this applicant,
         # so a site sees which channel/place actually converts to enrolled.
         "placement_id": "INTEGER",
+        # Inbox triage (decision-support only, a human still acts). intent is what
+        # the latest inbound message is ABOUT (new_inquiry|scheduling|question|
+        # document|opt_out|spam|other); priority is how urgently it needs a human
+        # (high|normal|low). Set by the AI triage pass on inbound + backfill.
+        "triage_intent": "TEXT DEFAULT ''",
+        "triage_priority": "TEXT DEFAULT ''",
+        "triage_at": "TEXT DEFAULT ''",
+        # Shared workspace: which teammate owns this thread right now (NULL =
+        # unassigned). Any org member can pick it up; keeps two coordinators from
+        # double-replying to the same applicant.
+        "assigned_user_id": "INTEGER",
+        # Workspace ownership. Historically a lead was reachable only via a
+        # VERIFIED claim on its NCT; that gate stops an account harvesting a
+        # public trial's applicants. But the inbox product also captures a site's
+        # OWN forwarded/imported mail, which may have no study yet. owner_user_id
+        # ties such a lead directly to the workspace that received it, so it shows
+        # in that team's inbox with zero study setup - and NEVER leaks to anyone
+        # else (scoping is org-membership based).
+        "owner_user_id": "INTEGER",
     },
     "lead_visits": {
         # Lifecycle so the calendar can show/flag state, not just a date.
@@ -2967,6 +2986,12 @@ def create_lead(data):
          (ts if opt_in else ""), (data.get("registry_consent_version", "") if opt_in else ""),
          ts, ts))
     lead_id = cur.lastrowid
+    # Workspace ownership (inbox product): tie the lead to the receiving team so
+    # it shows with no study/claim needed. Set separately to avoid reshaping the
+    # big INSERT above.
+    if data.get("owner_user_id"):
+        db.execute("UPDATE leads SET owner_user_id = ? WHERE id = ?",
+                   (data.get("owner_user_id"), lead_id))
     db.execute(
         "INSERT INTO lead_events (lead_id, status, note, actor, created_at) "
         "VALUES (?,?,?,?,?)",
@@ -3036,6 +3061,14 @@ def get_or_create_intake_address(user_id, nct, label=""):
         "SELECT * FROM intake_addresses WHERE address = ?", (addr,)).fetchone()
 
 
+def get_or_create_catchall_address(user_id, label="All inquiries"):
+    """The site's single catch-all intake address (nct = ''). This is what a new
+    site forwards its whole recruitment mailbox to on day one - no study needed.
+    Inbound mail here creates workspace-owned leads that show in the inbox
+    immediately; the coordinator can attach a study later."""
+    return get_or_create_intake_address(user_id, "", label=label)
+
+
 def resolve_intake_address(address):
     """Map an inbound address (full email or bare local-part) to its active
     intake row, or None. Used by the inbound-email webhook to route mail to the
@@ -3083,16 +3116,24 @@ def set_lead_campaign(lead_id, campaign_id):
 
 def match_or_create_lead(nct, email="", name="", title="", condition="",
                          phone="", notes="", source="intake", consent=0,
-                         campaign_id=None):
+                         campaign_id=None, owner_user_id=None):
     """Find an existing applicant for (nct, email) or create one. Returns
     (lead_id, token, created: bool). This is the single entrypoint every capture
     channel (inbound email, CSV import, campaign landing) routes through, so
-    dedupe and attribution stay consistent."""
+    dedupe and attribution stay consistent. owner_user_id ties a lead to the
+    workspace that received it (inbox product; may have no study yet)."""
     existing = find_lead_by_nct_email(nct, email) if email else None
     if existing:
         # Backfill attribution if we now know the campaign and didn't before.
         if campaign_id and not existing["campaign_id"]:
             set_lead_campaign(existing["id"], campaign_id)
+        # Backfill ownership if this lead predates the inbox product.
+        if owner_user_id and not (
+                "owner_user_id" in existing.keys() and existing["owner_user_id"]):
+            get_db().execute(
+                "UPDATE leads SET owner_user_id = ? WHERE id = ?",
+                (owner_user_id, existing["id"]))
+            get_db().commit()
         return existing["id"], existing["token"], False
     token = create_lead({
         "nct": (nct or "").strip(),
@@ -3104,6 +3145,7 @@ def match_or_create_lead(nct, email="", name="", title="", condition="",
         "notes": notes,
         "consent": 1 if consent else 0,
         "source": source or "intake",
+        "owner_user_id": owner_user_id,
     })
     lead = get_lead_by_token(token)
     if campaign_id:
@@ -3202,13 +3244,27 @@ def list_leads():
 
 
 def list_leads_for_user(user_id):
+    """Every lead this team can see: those on a study the team has VERIFIED-
+    claimed (the CTMS path) PLUS those directly OWNED by a team member's
+    workspace (the inbox path - forwarded/imported mail that may have no study
+    yet). Union means a self-serve site sees its own inbound with zero claim
+    setup, while cross-org leakage stays impossible (both filters are scoped to
+    this user's org members)."""
+    members = org_member_ids(user_id)
     claims = sorted(user_claimed_ncts(user_id))
-    if not claims:
+    where = []
+    args = []
+    if claims:
+        where.append(f"nct IN ({','.join('?' * len(claims))})")
+        args.extend(claims)
+    if members:
+        where.append(f"owner_user_id IN ({','.join('?' * len(members))})")
+        args.extend(members)
+    if not where:
         return []
-    qs = ",".join("?" * len(claims))
     return get_db().execute(
-        f"SELECT * FROM leads WHERE nct IN ({qs}) "
-        "ORDER BY updated_at DESC, id DESC", claims).fetchall()
+        f"SELECT * FROM leads WHERE {' OR '.join(where)} "
+        "ORDER BY updated_at DESC, id DESC", args).fetchall()
 
 
 def list_leads_by_applicant(applicant_token):
@@ -3516,6 +3572,66 @@ def lead_unread_for_site(lead_id):
         "SELECT COUNT(*) n FROM messages WHERE lead_id = ? AND sender = 'patient' "
         "AND read_site = 0", (lead_id,)).fetchone()
     return r["n"] if r else 0
+
+
+def last_message(lead_id):
+    """Most recent message on a thread (any sender), or None. Used by the inbox
+    to show a one-line preview without loading the whole thread."""
+    return get_db().execute(
+        "SELECT * FROM messages WHERE lead_id = ? ORDER BY id DESC LIMIT 1",
+        (lead_id,)).fetchone()
+
+
+# --------------------------------------------------------------------------- #
+# Inbox triage + shared-workspace assignment
+#
+# Triage is DECISION SUPPORT only: it labels what a thread is about and how
+# urgent it is so a coordinator can clear the inbox top-down. A human always
+# acts - we never auto-reply or auto-close from a triage label. Assignment lets
+# a team share one inbox without stepping on each other.
+# --------------------------------------------------------------------------- #
+def set_lead_triage(lead_id, intent="", priority=""):
+    db = get_db()
+    db.execute(
+        "UPDATE leads SET triage_intent = ?, triage_priority = ?, triage_at = ? "
+        "WHERE id = ?",
+        ((intent or "").strip(), (priority or "").strip(), now(), lead_id))
+    db.commit()
+
+
+def set_lead_assignee(lead_id, user_id):
+    """Assign (user_id) or unassign (None) a thread to a teammate."""
+    db = get_db()
+    db.execute("UPDATE leads SET assigned_user_id = ?, updated_at = ? WHERE id = ?",
+               (user_id, now(), lead_id))
+    db.commit()
+
+
+def reassign_open_leads(actor_user_id, from_user_id, to_user_id):
+    """Coverage / vacation handoff: move every OPEN thread currently assigned to
+    `from_user_id` over to `to_user_id` (or None to just unassign), in one call.
+    Scoped to the actor's own workspace (owned leads OR verified-claim studies)
+    and to same-org members, so no one can reassign another team's threads.
+    Returns the number of threads moved."""
+    members = set(org_member_ids(actor_user_id))
+    if from_user_id not in members:
+        return 0
+    if to_user_id is not None and to_user_id not in members:
+        return 0
+    claims = sorted(user_claimed_ncts(actor_user_id))
+    scope = ["owner_user_id IN (%s)" % ",".join("?" * len(members))]
+    args = list(members)
+    if claims:
+        scope.append("nct IN (%s)" % ",".join("?" * len(claims)))
+        args.extend(claims)
+    closed = tuple(LEAD_CLOSED)
+    q = (f"UPDATE leads SET assigned_user_id = ?, updated_at = ? "
+         f"WHERE assigned_user_id = ? AND ({' OR '.join(scope)}) "
+         f"AND status NOT IN ({','.join('?' * len(closed))})")
+    db = get_db()
+    cur = db.execute(q, [to_user_id, now(), from_user_id, *args, *closed])
+    db.commit()
+    return cur.rowcount
 
 
 # --------------------------------------------------------------------------- #

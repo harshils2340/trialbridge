@@ -1,0 +1,216 @@
+{% extends "base.html" %}
+{% block title %}Inbox · BridgeMD{% endblock %}
+{% import "_icons.html" as ic %}
+{% import "_ui.html" as ui %}
+
+{% macro verdict_badge(v) %}
+  {% if v == 'eligible' %}{{ ui.badge('Eligible', 'ok') }}
+  {% elif v in ('likely', 'likely eligible') %}{{ ui.badge('Likely', 'info') }}
+  {% elif v == 'possible' %}{{ ui.badge('Possible', 'warn') }}
+  {% elif v in ('ineligible', 'not eligible', 'excluded') %}{{ ui.badge('Ineligible', 'danger') }}
+  {% endif %}
+{% endmacro %}
+
+{% block body %}
+<div class="app-head">
+  <div>
+    <h1>Inbox</h1>
+    <p>Every inquiry across all your studies and channels — email, ad lead forms, ClinicalTrials.gov, referrals — triaged by what it needs and how urgent. Work it top-down.</p>
+  </div>
+</div>
+
+<div class="app-stats">
+  <div class="app-stat"><div class="l">Open threads</div><div class="n">{{ stats.total }}</div></div>
+  <div class="app-stat accent"><div class="l">Unread</div><div class="n">{{ stats.unread }}</div></div>
+  <div class="app-stat warn"><div class="l">High priority</div><div class="n">{{ stats.high }}</div></div>
+  <div class="app-stat"><div class="l">Unassigned</div><div class="n">{{ stats.unassigned }}</div></div>
+</div>
+
+{% if not inbox %}
+<div class="app-card pad">
+  {{ ui.empty('Inbox zero',
+     'New inquiries land here the moment they arrive from any channel. Forward your recruitment email to your study intake address to route it in.',
+     'inbox') }}
+</div>
+{% else %}
+<div class="list-toolbar">
+  <div class="search-field">
+    {{ ic.icon('search') }}
+    <input id="inboxSearch" type="search" placeholder="Search name, email, study, message…" autocomplete="off">
+  </div>
+  <button type="button" class="chip" data-intent="" aria-pressed="true">All</button>
+  <button type="button" class="chip" data-intent="__unread" aria-pressed="false">{{ ic.icon('sparkle') }} Unread</button>
+  {% for it in intents %}
+  <button type="button" class="chip" data-intent="{{ it.key }}" aria-pressed="false">{{ it.label }} · {{ it.n }}</button>
+  {% endfor %}
+  <div class="spacer"></div>
+  {% if members and members|length > 1 %}
+  <select id="inboxAssignee" title="Filter by who's handling it">
+    <option value="">Everyone</option>
+    <option value="__me">My threads</option>
+    <option value="__none">Unassigned</option>
+    {% for m in members %}<option value="{{ m.user_id }}">{{ m.name or m.email }}{% if m.user_id == me_id %} (me){% endif %}</option>{% endfor %}
+  </select>
+  <button type="button" class="btn ghost sm" data-ui-open="coverModal" title="Reassign a teammate's queue">{{ ic.icon('users') }} Cover</button>
+  {% endif %}
+  <span id="inboxCount" class="tag" aria-live="polite"></span>
+</div>
+
+{% if members and members|length > 1 %}
+{% call ui.modal('coverModal', 'Cover a teammate') %}
+<p class="onb-hint">Someone out on vacation? Move their entire open queue to another teammate so nothing goes cold.</p>
+<form method="post" action="{{ url_for('inbox_cover') }}" class="onb-form">
+  <input type="hidden" name="next" value="{{ url_for('team_inbox') }}">
+  <div class="row">
+    <label class="field">
+      <span>Cover for</span>
+      <select name="from_user_id" required>
+        <option value="">Select teammate…</option>
+        {% for m in members %}<option value="{{ m.user_id }}">{{ m.name or m.email }}{% if m.user_id == me_id %} (me){% endif %}</option>{% endfor %}
+      </select>
+    </label>
+    <label class="field">
+      <span>Reassign to</span>
+      <select name="to_user_id">
+        <option value="me">Me</option>
+        <option value="none">Unassign</option>
+        {% for m in members %}<option value="{{ m.user_id }}">{{ m.name or m.email }}</option>{% endfor %}
+      </select>
+    </label>
+  </div>
+  {{ ui.btn('Reassign queue', 'primary', 'sm', type='submit') }}
+</form>
+{% endcall %}
+{% endif %}
+
+<div class="app-card">
+  <ul class="tinbox" id="inboxList">
+    {% for a in inbox %}
+    <li class="tinbox-row{% if a.unread %} is-unread{% endif %}"
+        data-intent="{{ a.intent }}"
+        data-unread="{{ '1' if a.unread else '0' }}"
+        data-assignee="{{ a.assigned_user_id or '' }}"
+        data-text="{{ ((a.name ~ ' ' ~ a.email ~ ' ' ~ a.phone ~ ' ' ~ a.title ~ ' ' ~ a.nct ~ ' ' ~ a.condition ~ ' ' ~ a.preview)|lower) }}">
+      <div class="tinbox-main">
+        <a class="tinbox-head" href="{{ url_for('applicant_detail', lead_id=a.id) }}">
+          <span class="app-av brand">{{ a.initials }}</span>
+          <span class="tinbox-who">
+            <b>{{ a.name }}{% if a.unread %}<span class="tinbox-dot" title="Unread"></span>{% endif %}</b>
+            <span class="tinbox-sub">{{ a.title }}{% if a.nct %} · {{ a.nct }}{% endif %}</span>
+          </span>
+        </a>
+        <div class="tinbox-badges">
+          {% if a.priority == 'high' %}{{ ui.badge('High', 'danger') }}{% endif %}
+          {{ ui.badge(a.intent_label, a.intent_tone) }}
+          {{ ui.badge(a.channel, a.channel_tone) }}
+          {{ verdict_badge(a.verdict) }}
+          {% if a.opt_out %}{{ ui.badge('Opted out', 'danger') }}{% endif %}
+        </div>
+        <a class="tinbox-preview" href="{{ url_for('applicant_detail', lead_id=a.id) }}">
+          {% if a.preview_mine %}<span class="tinbox-you">You:</span> {% endif %}{{ a.preview|truncate(140) }}
+        </a>
+      </div>
+      <div class="tinbox-side">
+        <span class="tinbox-when">{{ a.when }}</span>
+        <form method="post" action="{{ url_for('inbox_assign', lead_id=a.id) }}" class="tinbox-assign">
+          <input type="hidden" name="next" value="{{ url_for('team_inbox') }}">
+          <select name="user_id" onchange="this.form.submit()" title="Assign teammate">
+            <option value="none"{% if not a.assigned_user_id %} selected{% endif %}>Unassigned</option>
+            {% for m in members %}
+            <option value="{{ m.user_id }}"{% if a.assigned_user_id == m.user_id %} selected{% endif %}>{{ m.name or m.email }}{% if m.user_id == me_id %} (me){% endif %}</option>
+            {% endfor %}
+          </select>
+        </form>
+        <div class="tinbox-actions">
+          {% if a.revealed and not a.opt_out %}
+          <button type="button" class="btn ghost sm" data-reply="{{ a.id }}">{{ ic.icon('message') }} Reply</button>
+          {% else %}
+          {{ ui.btn('Review', 'ghost', 'sm', href=url_for('applicant_detail', lead_id=a.id)) }}
+          {% endif %}
+        </div>
+      </div>
+      {% if a.revealed and not a.opt_out %}
+      <form method="post" action="{{ url_for('message_lead', lead_id=a.id) }}" class="tinbox-composer" id="composer-{{ a.id }}" hidden>
+        <input type="hidden" name="next" value="{{ url_for('team_inbox') }}">
+        <textarea name="body" rows="3" placeholder="Write a reply…"></textarea>
+        <div class="tinbox-composer-foot">
+          <button type="button" class="btn ghost sm" data-draft="{{ a.id }}">{{ ic.icon('sparkle') }} AI draft</button>
+          <div class="spacer"></div>
+          <button type="button" class="btn ghost sm" data-reply-cancel="{{ a.id }}">Cancel</button>
+          {{ ui.btn('Send', 'primary', 'sm', type='submit') }}
+        </div>
+      </form>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  <div id="inboxEmpty" style="display:none;">{{ ui.empty('No matches', 'Try a different search or filter.', 'search') }}</div>
+</div>
+
+<script>
+(function () {
+  var q = document.getElementById('inboxSearch');
+  var rows = Array.prototype.slice.call(document.querySelectorAll('#inboxList .tinbox-row'));
+  var chips = Array.prototype.slice.call(document.querySelectorAll('.list-toolbar .chip'));
+  var assignSel = document.getElementById('inboxAssignee');
+  var meId = '{{ me_id }}';
+  var empty = document.getElementById('inboxEmpty'), count = document.getElementById('inboxCount');
+  var activeIntent = '';
+  function okAssignee(r) {
+    if (!assignSel || !assignSel.value) return true;
+    var v = assignSel.value, a = r.dataset.assignee || '';
+    if (v === '__me') return a === meId;
+    if (v === '__none') return a === '';
+    return a === v;
+  }
+  function apply() {
+    var term = (q.value || '').toLowerCase().trim(), shown = 0;
+    rows.forEach(function (r) {
+      var okText = !term || r.dataset.text.indexOf(term) >= 0;
+      var okIntent = !activeIntent
+        || (activeIntent === '__unread' ? r.dataset.unread === '1' : r.dataset.intent === activeIntent);
+      var ok = okText && okIntent && okAssignee(r);
+      r.style.display = ok ? '' : 'none'; if (ok) shown++;
+    });
+    empty.style.display = shown ? 'none' : 'block';
+    count.textContent = shown + (shown === 1 ? ' thread' : ' threads');
+  }
+  q.addEventListener('input', apply);
+  if (assignSel) assignSel.addEventListener('change', apply);
+  chips.forEach(function (c) {
+    c.addEventListener('click', function () {
+      activeIntent = c.dataset.intent;
+      chips.forEach(function (x) { x.setAttribute('aria-pressed', x === c ? 'true' : 'false'); });
+      apply();
+    });
+  });
+  // Inline reply composer + AI draft.
+  document.addEventListener('click', function (e) {
+    var open = e.target.closest('[data-reply]');
+    if (open) {
+      var f = document.getElementById('composer-' + open.dataset.reply);
+      if (f) { f.hidden = false; f.querySelector('textarea').focus(); }
+      return;
+    }
+    var cancel = e.target.closest('[data-reply-cancel]');
+    if (cancel) {
+      var fc = document.getElementById('composer-' + cancel.dataset.replyCancel);
+      if (fc) fc.hidden = true;
+      return;
+    }
+    var draft = e.target.closest('[data-draft]');
+    if (draft) {
+      var id = draft.dataset.draft;
+      var ta = document.querySelector('#composer-' + id + ' textarea');
+      draft.disabled = true; draft.textContent = 'Drafting…';
+      fetch('/app/inbox/' + id + '/draft.json')
+        .then(function (r) { return r.json(); })
+        .then(function (d) { if (d.ok && ta) ta.value = d.draft; })
+        .finally(function () { draft.disabled = false; draft.textContent = 'AI draft'; });
+    }
+  });
+  apply();
+})();
+</script>
+{% endif %}
+{% endblock %}

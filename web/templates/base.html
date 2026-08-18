@@ -64,22 +64,29 @@
 {# ── Study-team app: "BridgeMD for sites" shell (sidebar + top bar) ── #}
 <div class="appshell">
   <aside class="appside" id="appSidebar">
-    <a class="appside-brand" href="{{ url_for('study_home') }}">
+    <a class="appside-brand" href="{{ url_for('team_inbox') }}">
       <span class="appside-logo">{{ ic.icon('mark') }}</span>
       <span class="bt"><b>BridgeMD</b><small>for sites</small></span>
     </a>
     <nav class="appnav">
-      <a href="{{ url_for('study_home') }}" class="{{ 'active' if request.endpoint == 'study_home' }}">{{ ic.icon('grid') }}Dashboard</a>
+      {# Lean product: shared AI-triaged inbox + calendar + team workspace. The
+         fuller CTMS surfaces below are HIDDEN (routes still work) while we focus
+         on the intake-inbox wedge. Un-comment to bring one back. #}
+      <a href="{{ url_for('team_inbox') }}" class="{{ 'active' if request.endpoint in ['team_inbox','applicant_detail'] }}">{{ ic.icon('inbox') }}Inbox{% if site_unread %}<span class="appnav-count">{{ site_unread }}</span>{% endif %}</a>
       <a href="{{ url_for('calendar_page') }}" class="{{ 'active' if request.endpoint == 'calendar_page' }}">{{ ic.icon('calendar') }}Calendar{% if cal_due %}<span class="appnav-count">{{ cal_due }}</span>{% endif %}</a>
-      <a href="{{ url_for('matching_page') }}" class="{{ 'active' if request.endpoint in ['matching_page','match_detail'] }}">{{ ic.icon('crosshair') }}Matches{% if matches_new %}<span class="appnav-count">{{ matches_new }}</span>{% endif %}</a>
-      <a href="{{ url_for('leads') }}" class="{{ 'active' if request.endpoint in ['leads','applicant_detail'] }}">{{ ic.icon('user-plus') }}Applicants</a>
-      <a href="{{ url_for('recruitment_dashboard') }}" class="{{ 'active' if request.endpoint in ['recruitment_dashboard','recruitment_balance','recruitment_balance_targets','campaign_list','campaign_detail'] }}">{{ ic.icon('activity') }}Recruitment</a>
-      <a href="{{ url_for('irb_page') }}" class="{{ 'active' if request.endpoint in ['irb_page','irb_detail'] }}">{{ ic.icon('shield-check') }}IRB &amp; approvals</a>
-      <a href="{{ url_for('updates_page') }}" class="{{ 'active' if request.endpoint in ['updates_page','update_detail'] }}">{{ ic.icon('refresh') }}Updates{% if upd_due %}<span class="appnav-count">{{ upd_due }}</span>{% endif %}</a>
-      <a href="{{ url_for('documents_page') }}" class="{{ 'active' if request.endpoint in ['documents_page','document_action'] }}">{{ ic.icon('file') }}Documents</a>
-      <a href="{{ url_for('soe_page') }}" class="{{ 'active' if request.endpoint == 'soe_page' }}">{{ ic.icon('list') }}Protocol schedule</a>
-      <a href="{{ url_for('payments_page') }}" class="{{ 'active' if request.endpoint == 'payments_page' }}">{{ ic.icon('dollar') }}Payments{% if pay_due %}<span class="appnav-count">{{ pay_due }}</span>{% endif %}</a>
-      <a href="{{ url_for('site_setup') }}" class="{{ 'active' if request.endpoint in ['site_setup','add_study_claim','remove_study_claim','team_page','team_invite','team_set_role','team_remove','intake_page','intake_import'] }}">{{ ic.icon('gear') }}Settings</a>
+      <a href="{{ url_for('leads') }}" class="{{ 'active' if request.endpoint == 'leads' }}">{{ ic.icon('user-plus') }}Applicants</a>
+      <a href="{{ url_for('team_page') }}" class="{{ 'active' if request.endpoint in ['team_page','team_invite','team_set_role','team_remove'] }}">{{ ic.icon('users') }}Team</a>
+      <a href="{{ url_for('site_setup') }}" class="{{ 'active' if request.endpoint in ['site_setup','add_study_claim','remove_study_claim','intake_page','intake_import'] }}">{{ ic.icon('gear') }}Settings</a>
+      {#  Hidden CTMS surfaces (kept for later):
+      <a href="{{ url_for('study_home') }}">Dashboard</a>
+      <a href="{{ url_for('matching_page') }}">Matches</a>
+      <a href="{{ url_for('recruitment_dashboard') }}">Recruitment</a>
+      <a href="{{ url_for('irb_page') }}">IRB &amp; approvals</a>
+      <a href="{{ url_for('updates_page') }}">Updates</a>
+      <a href="{{ url_for('documents_page') }}">Documents</a>
+      <a href="{{ url_for('soe_page') }}">Protocol schedule</a>
+      <a href="{{ url_for('payments_page') }}">Payments</a>
+      #}
       {% if is_owner and not site_demo %}
       <a href="{{ url_for('internal_hub') }}" class="appnav-internal {{ 'active' if request.endpoint in ['internal_hub','operator_inbox','internal_registry','internal_registry_opt_out','internal_recruitment','internal_recruitment_targets','owner_analytics'] }}">{{ ic.icon('shield') }}Internal</a>
       {% endif %}

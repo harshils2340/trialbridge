@@ -197,6 +197,7 @@ CAL_LINK = os.environ.get("CAL_LINK", "https://cal.com/harshil-shah-7tkvs7/30min
 # (Excludes owner-only /app/analytics.) Patient/clinician/public paths are never
 # auto-impersonated, so they stay public/gated exactly as before.
 _STUDY_TEAM_DEMO_PREFIXES = (
+    "/app/inbox", "/app/onboarding",
     "/app/leads", "/app/messages", "/app/site", "/app/dashboard",
     "/app/balance", "/app/campaign", "/app/intake", "/app/home",
     "/app/applicant", "/app/matching", "/app/documents", "/app/copilot",
@@ -994,7 +995,7 @@ _HIDDEN_PHYSICIAN_ENDPOINTS = frozenset({
 @app.before_request
 def _hide_physician_surface():
     if request.endpoint in _HIDDEN_PHYSICIAN_ENDPOINTS:
-        return redirect(url_for("study_home") if g.user else url_for("home"))
+        return redirect(url_for("team_inbox") if g.user else url_for("home"))
 
 
 @app.before_request
@@ -1452,7 +1453,7 @@ def inject_globals():
     # three POVs (patient / clinician / study team) without signing in.
     path = request.path or "/"
     if (path.startswith("/app/leads") or path.startswith("/app/dashboard")
-            or path.startswith("/app/inbox")
+            or path.startswith("/app/inbox") or path.startswith("/app/onboarding")
             or path.startswith("/app/site") or path.startswith("/app/messages")
             or path.startswith("/app/analytics") or path.startswith("/app/home")
             or path.startswith("/app/balance")
@@ -1626,7 +1627,7 @@ def _ensure_site_access_for_lead(lead_id):
 @app.route("/register", methods=["GET", "POST"])
 def register():
     if g.user:
-        return redirect(url_for("study_home"))
+        return redirect(url_for(_home_endpoint()))
     nxt = _safe_next(request.args.get("next", ""))
     if nxt:
         session[USER_NEXT_KEY] = nxt
@@ -1668,7 +1669,7 @@ def register():
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if g.user:
-        return redirect(url_for("study_home"))
+        return redirect(url_for(_home_endpoint()))
     nxt = _safe_next(request.args.get("next", ""))
     if nxt:
         session[USER_NEXT_KEY] = nxt
@@ -1890,7 +1891,8 @@ def _csrf_guard():
     if request.method != "POST":
         return None
     if request.endpoint in {"alerts_run", "reminders_run", "redcap_webhook",
-                            "ops_verify_claim"}:
+                            "ops_verify_claim", "inbound_email_webhook",
+                            "inbound_lead_webhook"}:
         return None
     sent = (request.form.get("_csrf_token", "")
             or request.headers.get("X-CSRF-Token", ""))
@@ -2056,9 +2058,31 @@ def _post_patient_login_redirect():
     return redirect(nxt if nxt.startswith("/") else url_for("home"))
 
 
+def _needs_onboarding(user_id):
+    """A brand-new workspace: no site profile and no studies yet. Such a user is
+    sent through the quick setup (forward address + first study) instead of an
+    empty inbox."""
+    try:
+        if db.get_site_profile(user_id):
+            return False
+        return not db.list_study_claims(user_id)
+    except Exception:
+        return False
+
+
+def _home_endpoint():
+    """Where a signed-in study-team user belongs: setup if their workspace is
+    brand-new, otherwise the inbox (the product's home)."""
+    if g.user and _needs_onboarding(g.user["id"]):
+        return "onboarding"
+    return "team_inbox"
+
+
 def _post_user_login_redirect():
     nxt = session.pop(USER_NEXT_KEY, "")
-    return redirect(nxt if nxt.startswith("/") else url_for("study_home"))
+    if nxt.startswith("/"):
+        return redirect(nxt)
+    return redirect(url_for(_home_endpoint()))
 
 
 @app.route("/account/signup", methods=["GET", "POST"])
@@ -4816,6 +4840,31 @@ def inbound_email_webhook():
     return jsonify(result), 200
 
 
+@app.route("/integrations/lead", methods=["POST"])
+def inbound_lead_webhook():
+    """Generic ad / lead-form capture (Instagram-Meta, Google, Reddit, Zapier,
+    Make). An automation posts {to: <intake address>, name, email, phone,
+    message, channel} and it lands in the same triaged inbox as email. One
+    endpoint covers every ad channel without per-platform OAuth. Same secret +
+    PHI/BAA rules as the email webhook (see matcher/COMPLIANCE.md)."""
+    secret = os.environ.get("INTAKE_WEBHOOK_SECRET", "")
+    if not secret:
+        abort(403)
+    provided = (request.headers.get("X-Intake-Token", "")
+                or request.args.get("secret", ""))
+    if not (provided and hmac.compare_digest(provided, secret)):
+        abort(403)
+    payload = request.get_json(silent=True) or {}
+    if not payload:
+        payload = {k: v for k, v in request.form.items()}
+    # Map a lead-form message onto the field the handler threads as the body.
+    if payload.get("message") and not payload.get("text"):
+        payload["text"] = payload.get("message")
+    payload.setdefault("channel", "meta")
+    result = intake_mod.handle_inbound_email(payload)
+    return jsonify(result), 200
+
+
 @app.route("/app/leads/<int:lead_id>/redcap/refresh", methods=["POST"])
 @login_required
 def refresh_lead_redcap(lead_id):
@@ -6520,7 +6569,7 @@ def recruitment_balance_targets():
     return redirect(url_for("recruitment_balance", nct=nct or None))
 
 
-@app.route("/app/inbox")
+@app.route("/internal/inbox")
 @owner_required
 def operator_inbox():
     """Cross-study operator inbox: EVERY real application that lands, in one
@@ -6542,7 +6591,243 @@ def operator_inbox():
         "records": sum(1 for a in apps if a["records"]),
         "eligible": sum(1 for a in apps if a["verdict"] == "eligible"),
     }
-    return render_template("inbox.html", apps=apps, stats=stats)
+    return render_template("internal_inbox.html", apps=apps, stats=stats)
+
+
+# Where an applicant came from -> a friendly channel label + badge tone. The
+# unified inbox groups every channel (a site's forwarded mail, ad lead forms,
+# ClinicalTrials.gov, physician referrals, imports) into one triage list.
+_CHANNEL_META = {
+    "web": ("Website", "brand"),
+    "email_intake": ("Email", "info"),
+    "email": ("Email", "info"),
+    "intake": ("Email", "info"),
+    "referral": ("Physician", "violet"),
+    "csv_import": ("Import", "neutral"),
+    "meta": ("Instagram / Meta", "violet"),
+    "instagram": ("Instagram / Meta", "violet"),
+    "facebook": ("Instagram / Meta", "violet"),
+    "google": ("Google Ads", "warn"),
+    "reddit": ("Reddit", "warn"),
+    "ctgov": ("ClinicalTrials.gov", "info"),
+    "campus": ("Campus", "neutral"),
+    "emr": ("EMR match", "neutral"),
+    "demo": ("Demo", "neutral"),
+}
+
+# Triage intent -> (label, badge tone). Mirrors intake.TRIAGE_INTENTS.
+_INTENT_META = {
+    "opt_out": ("Opt-out", "danger"),
+    "scheduling": ("Scheduling", "brand"),
+    "document": ("Document", "info"),
+    "question": ("Question", "warn"),
+    "new_inquiry": ("New inquiry", "ok"),
+    "spam": ("Spam", "neutral"),
+    "other": ("Other", "neutral"),
+}
+
+_PRIORITY_RANK = {"high": 0, "normal": 1, "low": 2, "": 1}
+
+
+def _channel_meta(source):
+    key = (source or "web").strip().lower()
+    return _CHANNEL_META.get(key, (key.replace("_", " ").title() or "Other",
+                                    "neutral"))
+
+
+def _triage_inbox_row(r, msg, unread, assignee_name):
+    """Flatten a lead + its latest message into one triage-inbox row."""
+    keys = set(r.keys())
+
+    def g_(k, d=""):
+        return (r[k] if k in keys else d)
+
+    def _verdict():
+        raw = g_("eligibility", "")
+        if not raw:
+            return ""
+        try:
+            v = json.loads(raw)
+            return (v.get("verdict") or "").lower() if isinstance(v, dict) else ""
+        except (ValueError, TypeError):
+            return ""
+
+    ch_label, ch_tone = _channel_meta(g_("source"))
+    intent = (g_("triage_intent") or "").strip()
+    if not intent:
+        intent = "new_inquiry"
+    intent_label, intent_tone = _INTENT_META.get(
+        intent, (intent.replace("_", " ").capitalize(), "neutral"))
+    priority = (g_("triage_priority") or "normal").strip()
+    last_at = (msg["created_at"] if msg else "") or g_("updated_at") or g_("created_at")
+    awaiting = bool(msg) and msg["sender"] == "patient"
+    return {
+        "id": g_("id"),
+        "name": g_("name") or "Anonymous",
+        "initials": _initials(g_("name") or g_("email") or "?"),
+        "email": g_("email"),
+        "phone": g_("phone"),
+        "nct": g_("nct"),
+        "title": g_("title") or g_("condition") or g_("nct") or "—",
+        "condition": g_("condition"),
+        "status": g_("status") or "new",
+        "revealed": bool(g_("revealed", 0)),
+        "channel": ch_label,
+        "channel_tone": ch_tone,
+        "intent": intent,
+        "intent_label": intent_label,
+        "intent_tone": intent_tone,
+        "priority": priority,
+        "verdict": _verdict(),
+        "opt_out": bool(g_("contact_opt_out", 0)),
+        "preview": (msg["body"] if msg else "") or "No messages yet",
+        "preview_mine": bool(msg) and msg["sender"] == "site",
+        "awaiting": awaiting,
+        "unread": bool(unread),
+        "when": _inbox_time_label(last_at),
+        "last_at": last_at or "",
+        "assignee": assignee_name or "",
+        "assigned_user_id": g_("assigned_user_id"),
+    }
+
+
+@app.route("/app/inbox")
+@login_required
+def team_inbox():
+    """The product: one shared, AI-triaged inbox across every study and every
+    channel (forwarded email, ad lead forms, ClinicalTrials.gov, referrals,
+    imports). Each thread is labeled with what it's about + how urgent, so a
+    team can clear it top-down. Scoped to the team's claimed studies; assignment
+    keeps two coordinators from double-replying. KPI: Tier-2 efficiency ->
+    contacted -> screened (nothing rots in a personal inbox)."""
+    team_studies = db.list_team_studies(g.user["id"])
+    active_nct, team_studies = _active_scope()
+    members = db.list_org_members(g.user["id"])
+    name_by_id = {m["user_id"]: (m["name"] or m["email"] or "Teammate")
+                  for m in members}
+    rows = db.list_leads_for_user(g.user["id"])
+    inbox = []
+    for r in rows:
+        # Scope filter, but NEVER hide un-studied inbound (nct == ""): those are
+        # freshly captured inquiries not yet routed to a study, and they must
+        # stay visible in every scope or they'd silently disappear.
+        if active_nct and r["nct"] and r["nct"] != active_nct:
+            continue
+        if r["status"] in db.LEAD_CLOSED:
+            continue
+        msg = db.last_message(r["id"])
+        # Lazy triage: label any thread that has an inbound message but no triage
+        # yet (e.g. captured before triage existed), from its latest patient
+        # message. Persisted so it only runs once per new message.
+        if msg and msg["sender"] == "patient" and not (r["triage_intent"] or ""):
+            try:
+                _intent, _prio = intake_mod.classify_message(msg["body"])
+                db.set_lead_triage(r["id"], _intent, _prio)
+                r = db.get_lead(r["id"])
+            except Exception:
+                pass
+        unread = db.lead_unread_for_site(r["id"])
+        assignee = name_by_id.get(r["assigned_user_id"] if "assigned_user_id"
+                                  in r.keys() else None, "")
+        inbox.append(_triage_inbox_row(r, msg, unread, assignee))
+    # Sort: unread first, then priority (high->low), then awaiting a reply, then
+    # most-recent activity. Puts the most urgent unhandled thread on top.
+    inbox.sort(key=lambda a: (
+        not a["unread"], _PRIORITY_RANK.get(a["priority"], 1),
+        not a["awaiting"], a["last_at"]), reverse=False)
+    # Secondary recency sort within equal urgency (most recent first).
+    inbox.sort(key=lambda a: a["last_at"], reverse=True)
+    inbox.sort(key=lambda a: (
+        not a["unread"], _PRIORITY_RANK.get(a["priority"], 1), not a["awaiting"]))
+    stats = {
+        "total": len(inbox),
+        "unread": sum(1 for a in inbox if a["unread"]),
+        "high": sum(1 for a in inbox if a["priority"] == "high"),
+        "unassigned": sum(1 for a in inbox if not a["assignee"]),
+    }
+    intents = []
+    for key in intake_mod.TRIAGE_INTENTS:
+        n = sum(1 for a in inbox if a["intent"] == key)
+        if n:
+            label, tone = _INTENT_META.get(key, (key, "neutral"))
+            intents.append({"key": key, "label": label, "tone": tone, "n": n})
+    return render_template("team_inbox.html", inbox=inbox, stats=stats,
+                           intents=intents, members=members,
+                           me_id=g.user["id"])
+
+
+@app.route("/app/inbox/<int:lead_id>/assign", methods=["POST"])
+@login_required
+def inbox_assign(lead_id):
+    """Claim/assign a thread to a teammate (or unassign). Shared-workspace glue."""
+    _ensure_site_access_for_lead(lead_id)
+    back = _safe_next(request.form.get("next", "")) or url_for("team_inbox")
+    raw = (request.form.get("user_id") or "").strip()
+    if raw == "me":
+        uid = g.user["id"]
+    elif raw in ("", "none", "0"):
+        uid = None
+    else:
+        try:
+            uid = int(raw)
+        except ValueError:
+            uid = None
+        # Only allow assigning to a real teammate.
+        if uid is not None and uid not in {
+                m["user_id"] for m in db.list_org_members(g.user["id"])}:
+            uid = None
+    db.set_lead_assignee(lead_id, uid)
+    flash("Assigned." if uid else "Unassigned.", "success")
+    return redirect(back)
+
+
+@app.route("/app/inbox/cover", methods=["POST"])
+@login_required
+def inbox_cover():
+    """Vacation / coverage handoff: reassign a teammate's entire open queue to
+    someone else (or to yourself) in one click. The #1 shared-workspace need -
+    when a coordinator is out, their threads can't go cold."""
+    back = _safe_next(request.form.get("next", "")) or url_for("team_inbox")
+    members = {m["user_id"] for m in db.list_org_members(g.user["id"])}
+
+    def _resolve(raw):
+        raw = (raw or "").strip()
+        if raw == "me":
+            return g.user["id"]
+        if raw in ("", "none", "0"):
+            return None
+        try:
+            return int(raw)
+        except ValueError:
+            return None
+
+    from_id = _resolve(request.form.get("from_user_id"))
+    to_id = _resolve(request.form.get("to_user_id"))
+    if not from_id or from_id not in members:
+        flash("Pick whose threads to cover.", "error")
+        return redirect(back)
+    n = db.reassign_open_leads(g.user["id"], from_id, to_id)
+    if to_id:
+        who = next((m["name"] or m["email"] for m in db.list_org_members(g.user["id"])
+                    if m["user_id"] == to_id), "a teammate")
+        flash(f"Reassigned {n} thread{'' if n == 1 else 's'} to {who}.", "success")
+    else:
+        flash(f"Unassigned {n} thread{'' if n == 1 else 's'}.", "success")
+    return redirect(back)
+
+
+@app.route("/app/inbox/<int:lead_id>/draft.json")
+@login_required
+def inbox_draft(lead_id):
+    """AI-drafted first-contact reply for a thread (decision-support; a human
+    approves + sends). Returns a plain string the composer prefills."""
+    _ensure_site_access_for_lead(lead_id)
+    try:
+        draft = intake_mod.draft_outreach(lead_id)
+    except Exception:
+        app.logger.exception("inbox draft failed")
+        draft = ""
+    return jsonify({"ok": bool(draft), "draft": draft})
 
 
 @app.route("/app/search-index.json")
@@ -13098,6 +13383,82 @@ def intake_import():
     return redirect(url_for("intake_page"))
 
 
+@app.route("/app/onboarding")
+@login_required
+def onboarding():
+    """Quick setup for a new site: (1) forward your recruitment mail to your
+    catch-all intake address, (2) optionally add a study so triage can pre-screen,
+    (3) optionally invite teammates. Then the shared inbox starts filling - no
+    CTMS rollout, no verification wall (owned mail shows immediately). KPI:
+    activation -> time-to-first-triaged-inquiry."""
+    catchall = db.get_or_create_catchall_address(g.user["id"])
+    studies = db.list_study_claims(g.user["id"])
+    profile = db.get_site_profile(g.user["id"])
+    members = db.list_org_members(g.user["id"])
+    lead_webhook = url_for("inbound_lead_webhook", _external=True)
+    return render_template(
+        "onboarding.html",
+        catchall_full=intake_mod.full_intake_address(catchall["address"]),
+        lead_webhook=lead_webhook,
+        studies=studies, profile=profile, members=members,
+        can_manage_team=db.can_manage_team(g.user["id"]))
+
+
+@app.route("/app/onboarding/site", methods=["POST"])
+@login_required
+def onboarding_site():
+    """Save the workspace name/contact (marks onboarding 'started')."""
+    f = request.form
+    org = (f.get("org_name") or "").strip()
+    if not org:
+        flash("Add your site or clinic name.", "error")
+        return redirect(url_for("onboarding"))
+    db.upsert_site_profile(
+        g.user["id"], org, (f.get("contact_name") or g.user["name"] or "").strip(),
+        (f.get("contact_email") or g.user["email"] or "").strip(),
+        (f.get("contact_phone") or "").strip())
+    flash("Workspace saved.", "success")
+    return redirect(url_for("onboarding"))
+
+
+@app.route("/app/onboarding/study", methods=["POST"])
+@login_required
+def onboarding_study():
+    """Add a study so triage can pre-screen against its criteria. Creates a
+    site-owned study (safe: it's the team's own record, not a claim on a public
+    trial's applicant pool), so there's no verification wait."""
+    f = request.form
+    title = (f.get("title") or "").strip()
+    if not title:
+        flash("Give the study a name.", "error")
+        return redirect(url_for("onboarding"))
+    db.create_site_posted_study(g.user["id"], {
+        "title": title,
+        "condition": (f.get("condition") or "").strip(),
+        "eligibility": (f.get("eligibility") or "").strip(),
+        "location": (f.get("location") or "").strip(),
+    })
+    flash("Study added - triage will pre-screen inquiries against it.", "success")
+    return redirect(url_for("onboarding"))
+
+
+@app.route("/app/onboarding/invite", methods=["POST"])
+@login_required
+def onboarding_invite():
+    """Invite a teammate into the shared workspace during setup."""
+    if not db.can_manage_team(g.user["id"]):
+        flash("Only a coordinator or PI can invite teammates.", "error")
+        return redirect(url_for("onboarding"))
+    email = (request.form.get("email") or "").strip()
+    if not email:
+        flash("Enter a teammate's email.", "error")
+        return redirect(url_for("onboarding"))
+    role, label = _resolve_team_role(request.form)
+    db.create_org_invite(g.user["id"], email, role, role_label=label)
+    flash(f"Invite sent to {email}.", "success")
+    return redirect(url_for("onboarding"))
+
+
 @app.route("/app/team")
 @login_required
 def team_page():
@@ -13183,12 +13544,12 @@ def team_join(token):
     inv = db.get_org_invite(token)
     if not inv or (inv["accepted_at"] or "").strip():
         flash("That invite link is invalid or already used.", "error")
-        return redirect(url_for("study_home"))
+        return redirect(url_for("team_inbox"))
     if db.accept_org_invite(g.user["id"], token):
         flash("You've joined the team - you now share this workspace.", "ok")
     else:
         flash("Couldn't join that team.", "error")
-    return redirect(url_for("study_home"))
+    return redirect(url_for("team_inbox"))
 
 
 @app.route("/app/campaign", methods=["GET", "POST"])

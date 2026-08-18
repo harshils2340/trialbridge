@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+{% block title %}Set up your inbox · BridgeMD{% endblock %}
+{% import "_icons.html" as ic %}
+{% import "_ui.html" as ui %}
+
+{% block body %}
+<div class="app-head">
+  <div>
+    <h1>Set up your inbox</h1>
+    <p>Three quick steps and every trial inquiry lands in one shared, AI-triaged inbox. No migration, no waiting.</p>
+  </div>
+  {{ ui.btn('Skip to inbox', 'ghost', href=url_for('team_inbox')) }}
+</div>
+
+<div class="onb">
+
+  <section class="app-card onb-step">
+    <div class="onb-num">1</div>
+    <div class="onb-body">
+      <h2>Name your workspace</h2>
+      <p class="onb-hint">This is your site/clinic. Your whole team shares it.</p>
+      <form method="post" action="{{ url_for('onboarding_site') }}" class="onb-form">
+        <div class="row">
+          <label class="field">
+            <span>Site / clinic name</span>
+            <input name="org_name" value="{{ profile.org_name if profile else '' }}" placeholder="Fieve Clinical Research" required>
+          </label>
+          <label class="field">
+            <span>Contact email</span>
+            <input name="contact_email" type="email" value="{{ profile.contact_email if profile else user.email }}" placeholder="recruit@yoursite.com">
+          </label>
+        </div>
+        {{ ui.btn('Save workspace', 'primary', 'sm', type='submit') }}
+        {% if profile %}<span class="onb-done">{{ ic.icon('check') }} Saved</span>{% endif %}
+      </form>
+    </div>
+  </section>
+
+  <section class="app-card onb-step">
+    <div class="onb-num">2</div>
+    <div class="onb-body">
+      <h2>Connect your channels</h2>
+      <p class="onb-hint">Point your recruitment inquiries here. Everything routes into one triaged inbox.</p>
+
+      <div class="onb-channel">
+        <b>Forward your recruitment email</b>
+        <p>Set your recruitment mailbox (or ClinicalTrials.gov contact address) to auto-forward here:</p>
+        <div class="onb-copy">
+          <code id="catchall">{{ catchall_full }}</code>
+          <button type="button" class="btn ghost sm" data-copy="catchall">Copy</button>
+        </div>
+      </div>
+
+      <div class="onb-channel">
+        <b>Instagram / Meta &amp; other ad lead forms</b>
+        <p>Connect your ad lead forms with a Zapier/Make automation that POSTs each new lead to this endpoint (send <code>to</code> = your address above, plus <code>name</code>, <code>email</code>, <code>phone</code>, <code>message</code>, <code>channel</code>):</p>
+        <div class="onb-copy">
+          <code id="hook">{{ lead_webhook }}</code>
+          <button type="button" class="btn ghost sm" data-copy="hook">Copy</button>
+        </div>
+      </div>
+
+      <div class="onb-channel">
+        <b>Have a spreadsheet already?</b>
+        <p>Import your current applicant list (CSV) so nothing starts from zero.
+          <a href="{{ url_for('intake_page') }}">Import a CSV →</a></p>
+      </div>
+    </div>
+  </section>
+
+  <section class="app-card onb-step">
+    <div class="onb-num">3</div>
+    <div class="onb-body">
+      <h2>Add a study <span class="onb-opt">optional</span></h2>
+      <p class="onb-hint">Paste the eligibility criteria and triage will pre-screen every inquiry against it — so your team works the most eligible people first.</p>
+      {% if studies %}
+      <div class="onb-list">
+        {% for s in studies %}<span class="onb-chip">{{ ic.icon('check') }} {{ s.title or s.nct }}</span>{% endfor %}
+      </div>
+      {% endif %}
+      <form method="post" action="{{ url_for('onboarding_study') }}" class="onb-form">
+        <div class="row">
+          <label class="field">
+            <span>Study name</span>
+            <input name="title" placeholder="Elismetrep (K-304) for Acute Migraine" required>
+          </label>
+          <label class="field">
+            <span>Condition</span>
+            <input name="condition" placeholder="Migraine">
+          </label>
+        </div>
+        <label class="field">
+          <span>Eligibility criteria <span class="onb-opt">optional, improves triage</span></span>
+          <textarea name="eligibility" rows="3" placeholder="Inclusion: adults 18–65 with 4–14 migraine days/month… Exclusion: …"></textarea>
+        </label>
+        {{ ui.btn('Add study', 'primary', 'sm', type='submit') }}
+      </form>
+    </div>
+  </section>
+
+  {% if can_manage_team %}
+  <section class="app-card onb-step">
+    <div class="onb-num">4</div>
+    <div class="onb-body">
+      <h2>Invite your team <span class="onb-opt">optional</span></h2>
+      <p class="onb-hint">The inbox is shared. Assign threads so no one double-replies.</p>
+      {% if members and members|length > 1 %}
+      <div class="onb-list">
+        {% for m in members %}<span class="onb-chip">{{ m.name or m.email }}</span>{% endfor %}
+      </div>
+      {% endif %}
+      <form method="post" action="{{ url_for('onboarding_invite') }}" class="onb-form">
+        <div class="row">
+          <label class="field">
+            <span>Teammate email</span>
+            <input name="email" type="email" placeholder="coordinator@yoursite.com" required>
+          </label>
+          <label class="field">
+            <span>Role</span>
+            <select name="role">
+              <option value="coordinator">Coordinator</option>
+              <option value="pi">PI</option>
+              <option value="student">Student / staff</option>
+            </select>
+          </label>
+        </div>
+        {{ ui.btn('Send invite', 'primary', 'sm', type='submit') }}
+      </form>
+    </div>
+  </section>
+  {% endif %}
+
+  <div class="onb-finish">
+    {{ ui.btn('Go to my inbox', 'primary', href=url_for('team_inbox')) }}
+  </div>
+</div>
+
+<script>
+document.addEventListener('click', function (e) {
+  var b = e.target.closest('[data-copy]');
+  if (!b) return;
+  var el = document.getElementById(b.dataset.copy);
+  if (!el) return;
+  navigator.clipboard.writeText(el.textContent.trim()).then(function () {
+    var t = b.textContent; b.textContent = 'Copied'; b.disabled = true;
+    setTimeout(function () { b.textContent = t; b.disabled = false; }, 1400);
+  });
+});
+</script>
+{% endblock %}
