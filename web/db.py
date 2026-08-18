@@ -4924,21 +4924,37 @@ def _demo_lead_specs():
     # across review/active/done instead of a tiny sample.
     # Study lookup (nct, title, condition) keyed by a short code, so the volume
     # roster below stays readable. All applicants are at the one site (Fieve, NYC).
+    # Fieve Clinical Research's real, currently-active trials (verified on
+    # ClinicalTrials.gov by NCT + facility). Titles are shortened for the UI but
+    # the NCTs are exact, so the site recognizes each study as their own.
     _S = {
         "aze": ("NCT07076407",
                 "Azetukalner vs Placebo in Major Depressive Disorder (X-NOVA3)",
                 "Major Depressive Disorder"),
+        "azeo": ("NCT06922110",
+                 "Azetukalner Open-Label Extension in Major Depressive Disorder (X-NOVA-OLE)",
+                 "Major Depressive Disorder"),
         "sel": ("NCT06559306",
                 "Adjunctive Seltorexant in MDD With Insomnia Symptoms",
                 "Major Depressive Disorder"),
-        "mig": ("NCT07645924",
-                "Elismetrep (K-304) for the Acute Treatment of Migraine",
-                "Migraine"),
+        "selm": ("NCT07573176",
+                 "Seltorexant Monotherapy in Major Depressive Disorder",
+                 "Major Depressive Disorder"),
         "trd": ("NCT05711940",
                 "COMP360 Psilocybin in Treatment-Resistant Depression",
                 "Treatment-Resistant Depression"),
+        "mig": ("NCT07645924",
+                "Elismetrep (K-304) for the Acute Treatment of Migraine",
+                "Migraine"),
+        "migl": ("NCT07674654",
+                 "Elismetrep (K-304) Long-Term Safety in Acute Migraine",
+                 "Acute Migraine"),
+        "umm": ("NCT06417775",
+                "Ubrogepant for Menstrual Migraine",
+                "Menstrual Migraine"),
     }
-    # (first, last, sex, age, status, records, study-code)
+    # (first, last, sex, age, status, records, study-code). Spread across all 8
+    # active Fieve trials. Menstrual-migraine (umm) applicants are female by design.
     _rows = [
         ("Ava", "Chen", "female", "41", "prescreen", 1, "aze"),
         ("Noah", "Bernstein", "male", "49", "prescreen", 0, "sel"),
@@ -4950,7 +4966,7 @@ def _demo_lead_specs():
         ("Leo", "Kaplan", "male", "54", "enrolled", 1, "trd"),
         ("Chloe", "Nguyen", "female", "31", "closed", 0, "mig"),
         ("Mason", "Rivera", "male", "58", "eligible", 1, "trd"),
-        ("Ella", "Brooks", "female", "39", "prescreen", 0, "aze"),
+        ("Ella", "Brooks", "female", "39", "prescreen", 0, "azeo"),
         ("James", "Sullivan", "male", "50", "prescreen", 1, "sel"),
         ("Zoe", "Feldman", "female", "45", "eligible", 1, "aze"),
         ("Lucas", "Park", "male", "37", "screening", 0, "mig"),
@@ -4958,31 +4974,36 @@ def _demo_lead_specs():
         ("Olivia", "Bennett", "female", "38", "eligible", 1, "sel"),
         ("Henry", "Cohen", "male", "63", "screening", 1, "trd"),
         ("Amelia", "Rosen", "female", "56", "enrolled", 1, "aze"),
-        ("Jack", "Donovan", "male", "60", "eligible", 1, "sel"),
+        ("Jack", "Donovan", "male", "60", "eligible", 1, "selm"),
         ("Charlotte", "Diaz", "female", "26", "eligible", 1, "mig"),
         ("Benjamin", "Foster", "male", "48", "screening", 1, "trd"),
-        ("Harper", "Reed", "female", "35", "enrolled", 1, "mig"),
+        ("Harper", "Reed", "female", "35", "enrolled", 1, "migl"),
         ("Daniel", "Goldberg", "male", "52", "eligible", 1, "sel"),
         ("Aria", "Morgan", "female", "40", "eligible", 1, "aze"),
-        ("William", "Perry", "male", "51", "screening", 1, "aze"),
-        ("Scarlett", "Klein", "female", "53", "eligible", 1, "sel"),
+        ("William", "Perry", "male", "51", "screening", 1, "azeo"),
+        ("Scarlett", "Klein", "female", "53", "eligible", 1, "selm"),
         ("Michael", "Torres", "male", "59", "enrolled", 1, "trd"),
+        ("Rosa", "Delacruz", "female", "34", "eligible", 1, "umm"),
+        ("Nadia", "Haddad", "female", "29", "screening", 1, "umm"),
+        ("Tara", "Okonkwo", "female", "44", "prescreen", 1, "umm"),
+        ("Bianca", "Lozano", "female", "37", "enrolled", 1, "umm"),
+        ("Gina", "Petrov", "female", "31", "prescreen", 0, "umm"),
         # More fresh inbound requests (prescreen) so the "New" queue reads busy
         # across every trial, not a couple of stragglers.
         ("Nora", "Whitfield", "female", "34", "prescreen", 1, "aze"),
         ("Elijah", "Barnes", "male", "45", "prescreen", 0, "sel"),
         ("Priya", "Nair", "female", "29", "prescreen", 1, "mig"),
         ("Caleb", "Fisher", "male", "57", "prescreen", 0, "trd"),
-        ("Maya", "Stein", "female", "42", "prescreen", 1, "aze"),
-        ("Oscar", "Delgado", "male", "39", "prescreen", 1, "mig"),
-        ("Ruth", "Abramson", "female", "61", "prescreen", 0, "sel"),
+        ("Maya", "Stein", "female", "42", "prescreen", 1, "azeo"),
+        ("Oscar", "Delgado", "male", "39", "prescreen", 1, "migl"),
+        ("Ruth", "Abramson", "female", "61", "prescreen", 0, "selm"),
         ("Simon", "Yang", "male", "47", "prescreen", 1, "trd"),
         ("Talia", "Rosenthal", "female", "31", "prescreen", 1, "aze"),
         ("Devon", "Pierce", "male", "53", "prescreen", 0, "mig"),
         ("Hannah", "Blum", "female", "38", "prescreen", 1, "sel"),
-        ("Andre", "Costa", "male", "44", "prescreen", 1, "aze"),
+        ("Andre", "Costa", "male", "44", "prescreen", 1, "azeo"),
         ("Vera", "Lindqvist", "female", "50", "prescreen", 0, "trd"),
-        ("Marco", "Santos", "male", "36", "prescreen", 1, "mig"),
+        ("Marco", "Santos", "male", "36", "prescreen", 1, "migl"),
     ]
     extra = [(f, l, sx, ag, st, rc, _S[k][0], _S[k][1], _S[k][2], loc, site)
              for (f, l, sx, ag, st, rc, k) in _rows]
@@ -5025,7 +5046,7 @@ def _demo_lead_specs():
             "site": site,
             "name": f"{first} {last[0]}.",
             "email": f"candidate.{first.lower()}.{last.lower()}@example.com",
-            "phone": f"+1 416 555 {1200 + idx:04d}",
+            "phone": f"+1 212 555 {1200 + idx:04d}",
             "age": age,
             "sex": sex,
             "screener": screener,
@@ -5286,7 +5307,7 @@ def seed_demo_claims(user_id):
     rows = db.execute(
         "SELECT nct, MAX(title) title FROM leads WHERE nct != '' "
         "GROUP BY nct ORDER BY nct").fetchall()
-    for r in rows[:6]:
+    for r in rows[:8]:
         add_study_claim(user_id, r["nct"], r["title"] or "", verified=True)
         # Reusable per-study booking link + attach it to already-accepted demo
         # applicants so the scheduling flow shows as live (link already sent).
@@ -5643,13 +5664,17 @@ def seed_demo_engagement(clinician_id):
                 "INSERT OR IGNORE INTO study_claims (user_id, nct, title, created_at) "
                 "VALUES (?,?,?,?)",
                 (clinician_id, s["nct"], s["title"] or "", ts(days=-10)))
-        db.execute(
-            "INSERT OR IGNORE INTO site_profiles (user_id, org_name, contact_name, "
-            "contact_email, contact_phone, created_at, updated_at) "
-            "VALUES (?,?,?,?,?,?,?)",
-            (clinician_id, "Research Site", "Site Coordinator",
-             "coordinator@site.example", "+1 416 555 0199", ts(days=-10),
-             ts(days=-1)))
+        # Fill the org profile with the demo site's details. An earlier step
+        # (set_site_calendar_url) may have created a blank profile row, so an
+        # INSERT OR IGNORE would be skipped - upsert instead, but only when the
+        # org name is still empty so we never clobber a real edited profile.
+        _prof = db.execute(
+            "SELECT org_name FROM site_profiles WHERE user_id = ?",
+            (clinician_id,)).fetchone()
+        if not _prof or not ((_prof["org_name"] or "").strip()):
+            upsert_site_profile(
+                clinician_id, "Fieve Clinical Research", "Study Coordinator",
+                "coordinator@fieveclinical.com", "+1 212 772 3570")
 
     # Ensure at least one visible booking link exists in demo so "calendar invite"
     # UX can be tested immediately on both study-team and patient surfaces.
@@ -5960,6 +5985,9 @@ def ensure_demo_claim_volume(user_id, minimum_rows=18):
         city = meta.get("location") or "New York, NY"
         site_name = meta.get("site") or "Fieve Clinical Research"
         sex = "female" if idx % 2 else "male"
+        # Sex-restricted studies (e.g. menstrual migraine) only enroll women.
+        if "menstrual" in (title_for.get(nct, "") or "").lower():
+            sex = "female"
         age = str(24 + (idx * 7) % 50)
         first = _firsts[(idx * 5) % len(_firsts)]
         last = _lasts[(idx * 3) % len(_lasts)]
