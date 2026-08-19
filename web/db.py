@@ -2160,21 +2160,43 @@ def set_marketing_thread_status(user_id, thread_id, status):
     return bool(cur.rowcount)
 
 
+# The account the study-team demo runs as (see app._DEMO_EMAIL). The rich
+# marketing-hub demo is only ever seeded onto this throwaway account.
+_MARKETING_DEMO_EMAIL = "dejosama@fieveclinical.com"
+# Sentinel: presence of this source means the rich demo has already been seeded,
+# so we never re-seed (and never trample edits made live during a demo).
+_MARKETING_DEMO_SENTINEL = "recruit@fieveclinical.com"
+
+
 def seed_demo_marketing_hub(user_id):
-    """Populate the isolated demo account with fake channels and conversations."""
+    """Populate the demo account with a realistic, multi-account marketing inbox.
+
+    Idempotent: seeds once (detected via a sentinel source) so a coordinator can
+    click around, reply, and reassign during a live clinic demo without the data
+    resetting under them. The first run also clears any throwaway accounts the
+    demo user hand-added, so the inbox reads like a real, busy site."""
     if not user_id:
         return
     conn = get_db()
     demo_user = conn.execute(
         "SELECT email FROM users WHERE id = ?", (user_id,)).fetchone()
-    if not demo_user or (demo_user["email"] or "").lower() != "demo@bridgemd.local":
+    if not demo_user or (demo_user["email"] or "").lower() != _MARKETING_DEMO_EMAIL:
         return
     oid = user_org_id(user_id)
     if conn.execute(
-            "SELECT 1 FROM marketing_sources WHERE org_id = ? LIMIT 1",
-            (oid,)).fetchone():
+            "SELECT 1 FROM marketing_sources WHERE org_id = ? "
+            "AND lower(identifier) = lower(?) LIMIT 1",
+            (oid, _MARKETING_DEMO_SENTINEL)).fetchone():
         get_marketing_handoff(user_id)
         return
+
+    # First rich seed: wipe any prior (hand-added test) marketing data for this
+    # org so the demo starts from a clean, curated inbox.
+    conn.execute(
+        "DELETE FROM marketing_messages WHERE thread_id IN "
+        "(SELECT id FROM marketing_threads WHERE org_id = ?)", (oid,))
+    conn.execute("DELETE FROM marketing_threads WHERE org_id = ?", (oid,))
+    conn.execute("DELETE FROM marketing_sources WHERE org_id = ?", (oid,))
 
     ts = now()
 
@@ -2197,75 +2219,176 @@ def seed_demo_marketing_hub(user_id):
             (oid, uid, "student", "Marketing teammate", ts))
         return uid
 
-    jordan_id = _demo_member("jordan.marketing@bridgemd.local", "Jordan Lee")
-    casey_id = _demo_member("casey.marketing@bridgemd.local", "Casey Morgan")
+    jordan_id = _demo_member("jordan.lee@fieveclinical.com", "Jordan Lee")
+    casey_id = _demo_member("casey.morgan@fieveclinical.com", "Casey Morgan")
 
-    def _source(channel, label, identifier):
+    def _source(channel, label, identifier, status="connected"):
         cur = conn.execute(
             "INSERT INTO marketing_sources "
             "(org_id, channel, label, identifier, connection_mode, status, "
             "created_by, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)",
-            (oid, channel, label, identifier, "demo", "connected", user_id,
-             ts, ts))
+            (oid, channel, label, identifier, "demo", status, user_id, ts, ts))
         return cur.lastrowid
 
-    email_id = _source("email", "Recruitment inbox", "hello@northstartrials.com")
-    instagram_id = _source("instagram", "Community DMs", "@northstartrials")
-    ads_id = _source("google_ads", "Patient search ads", "Northstar Search")
+    # Multiple accounts across channels - what a real recruiting team juggles.
+    recruit_id = _source("email", "Recruitment inbox", _MARKETING_DEMO_SENTINEL)
+    migraine_id = _source("email", "Migraine study inbox",
+                          "migraine@fieveclinical.com")
+    instagram_id = _source("instagram", "Instagram DMs", "@fieveclinical")
+    ads_id = _source("google_ads", "Google Ads — Migraine Search",
+                     "Fieve Migraine Search")
+    # One disconnected account so the connect/reconnect state is visible.
+    _source("email", "Newsletter replies", "news@fieveclinical.com",
+            status="disconnected")
 
     def _ago(minutes):
         return (dt.datetime.now() - dt.timedelta(minutes=minutes)).strftime(
             "%Y-%m-%d %H:%M")
 
-    def _thread(source_id, contact, handle, subject, body, minutes,
-                assignee, unread=1, status="open", reply=""):
-        stamp = _ago(minutes)
+    def _seq(source_id, contact, handle, subject, assignee, status, unread,
+             messages):
+        """messages: list of (kind, by, body, minutes_ago).
+        kind: inbound|outbound|note ; by: 'contact'|'system'|<user_id>."""
+        mins = [m[3] for m in messages]
+        created, updated = _ago(max(mins)), _ago(min(mins))
         cur = conn.execute(
             "INSERT INTO marketing_threads "
             "(org_id, source_id, contact_name, contact_handle, subject, status, "
             "assigned_to, unread, created_at, updated_at) "
             "VALUES (?,?,?,?,?,?,?,?,?,?)",
             (oid, source_id, contact, handle, subject, status, assignee,
-             unread, stamp, stamp))
+             1 if unread else 0, created, updated))
         tid = cur.lastrowid
-        conn.execute(
-            "INSERT INTO marketing_messages "
-            "(org_id, thread_id, kind, body, author_name, delivery_status, "
-            "created_at) VALUES (?,?,?,?,?,?,?)",
-            (oid, tid, "inbound", body, contact, "received", stamp))
-        if reply:
+        for kind, by, body, minutes in messages:
+            if kind == "inbound":
+                author_uid, author_name, delivery = None, contact, "received"
+            elif kind == "note":
+                author_uid = by if isinstance(by, int) else None
+                author_name, delivery = "BridgeMD team", ""
+            else:  # outbound
+                author_uid = by if isinstance(by, int) else None
+                author_name, delivery = "BridgeMD team", "saved"
             conn.execute(
                 "INSERT INTO marketing_messages "
                 "(org_id, thread_id, kind, body, author_user_id, author_name, "
                 "delivery_status, created_at) VALUES (?,?,?,?,?,?,?,?)",
-                (oid, tid, "outbound", reply, assignee, "BridgeMD team",
-                 "saved", _ago(max(0, minutes - 8))))
+                (oid, tid, kind, body, author_uid, author_name, delivery,
+                 _ago(minutes)))
         return tid
 
-    _thread(
-        email_id, "Nadia Brooks", "nadia@example.com",
-        "Do you offer evening screening appointments?",
-        "I work until 5 most days. Are there evening screening appointments, "
-        "and is parking covered?", 7, user_id, unread=1)
-    _thread(
-        instagram_id, "Mina Chen", "@healthwithmina",
-        "Community partnership question",
-        "I run a local health education page. Who can I speak with about sharing "
-        "your study information?", 24, casey_id, unread=1)
-    _thread(
-        ads_id, "Google Ads", "Automated alert",
-        "Cost per application increased 22%",
-        "The patient search campaign is pacing above its seven-day cost per "
-        "application average. Review search terms and budget allocation.",
-        51, jordan_id, unread=0)
-    _thread(
-        email_id, "Dr. Sam Patel", "sam.patel@example.com",
-        "Referral materials for my clinic",
-        "Could you send a one-page overview that my care team can use when "
-        "patients ask about the study?", 190, user_id, unread=0,
-        status="resolved",
-        reply="Absolutely. I have attached the approved clinic overview and "
-        "included our direct contact details.")
+    me = user_id
+
+    # ── Recruitment inbox (email) ──────────────────────────────────────────
+    _seq(recruit_id, "Nadia Brooks", "nadia.brooks@gmail.com",
+         "Do you offer evening screening appointments?", me, "open", True,
+         [("inbound", "contact",
+           "Hi — I saw your migraine study online. I work until 5 most days, so "
+           "are evening screening appointments possible? Also, is parking "
+           "covered when I come in?", 6)])
+    _seq(recruit_id, "Marcus Reed", "marcus.reed@outlook.com",
+         "Is travel reimbursed for study visits?", jordan_id, "open", False,
+         [("inbound", "contact",
+           "I'd have to drive about 45 minutes each way. Is mileage or travel "
+           "reimbursed for the visits?", 52),
+          ("outbound", jordan_id,
+           "Hi Marcus — yes, we reimburse travel for every completed visit, and "
+           "it's paid the same week. Want me to hold a screening slot for you?",
+           41),
+          ("note", casey_id,
+           "He's a strong fit for the migraine cohort — flagging so we prioritize "
+           "the callback.", 39)])
+    _seq(recruit_id, "Dr. Sam Patel", "spatel@riversidefamilymed.com",
+         "Referring a patient who may qualify", me, "open", True,
+         [("inbound", "contact",
+           "I have a patient with chronic migraine who's interested. What's the "
+           "best way to refer, and can you send materials my front desk can hand "
+           "out?", 96),
+          ("note", me,
+           "@Casey can you send the approved clinic one-pager and set up a warm "
+           "handoff for the patient?", 88)])
+    _seq(recruit_id, "Priya Anand", "priya.anand@gmail.com",
+         "Compensation for the migraine study", casey_id, "resolved", False,
+         [("inbound", "contact",
+           "How much is the compensation, and when is it paid?", 1520),
+          ("outbound", casey_id,
+           "Hi Priya — participants receive up to $1,200 across the study, paid "
+           "per completed visit. I've emailed the full schedule. Let me know if "
+           "you'd like to book screening!", 1505)])
+
+    # ── Migraine study inbox (email) ───────────────────────────────────────
+    _seq(migraine_id, "Lauren Fitzgerald", "lauren.f@yahoo.com",
+         "Eligible with 16 migraine days a month?", me, "open", True,
+         [("inbound", "contact",
+           "I get migraines about 16 days a month and I'm 34. Would I qualify "
+           "for this study?", 19)])
+    _seq(migraine_id, "Tomás Rivera", "trivera@gmail.com",
+         "Need to reschedule my screening visit", jordan_id, "open", False,
+         [("inbound", "contact",
+           "Something came up at work — can I move my Thursday screening to next "
+           "week?", 215),
+          ("outbound", jordan_id,
+           "No problem at all, Tomás. I have Tuesday 10:00am or Wednesday 2:00pm "
+           "open — which works better?", 205),
+          ("inbound", "contact", "Tuesday 10am is perfect, thank you!", 150)])
+    _seq(migraine_id, "Grace Kim", "grace.kim@icloud.com",
+         "Withdrawing my application", casey_id, "resolved", False,
+         [("inbound", "contact",
+           "I've decided not to move forward right now. Thanks for your time.",
+           2950),
+          ("outbound", casey_id,
+           "Completely understand, Grace — thank you for letting us know. The "
+           "door's open if anything changes down the road.", 2940)])
+
+    # ── Instagram DMs ──────────────────────────────────────────────────────
+    _seq(instagram_id, "Alicia Vance", "@mig_warrior", "New DM", casey_id,
+         "open", True,
+         [("inbound", "contact",
+           "saw your ad on my feed 🙌 how do i sign up for the migraine study??",
+           13)])
+    _seq(instagram_id, "Mina Chen", "@healthwithmina",
+         "Community partnership question", casey_id, "open", False,
+         [("inbound", "contact",
+           "hi! i run a local health education page — who can i talk to about "
+           "sharing your study with my followers?", 72),
+          ("note", casey_id,
+           "Legit micro-influencer, ~18k local followers. Worth a call — could be "
+           "a cheap referral channel.", 66)])
+    _seq(instagram_id, "Rob Torres", "@rob.torres.tx",
+         "Do I need a referral?", me, "open", False,
+         [("inbound", "contact",
+           "do i need a referral from my own doctor to join or can i just apply "
+           "directly?", 330),
+          ("outbound", me,
+           "You can apply directly — no referral needed! I'll send a quick link "
+           "to check if you're eligible. 👍", 322)])
+    _seq(instagram_id, "Sam W.", "@skeptical_sam", "Is this real?", jordan_id,
+         "open", True,
+         [("inbound", "contact",
+           "is this legit or a scam lol. how do i know my info is safe?", 145)])
+
+    # ── Google Ads alerts ──────────────────────────────────────────────────
+    _seq(ads_id, "Google Ads", "Automated alert",
+         "Ad disapproved: landing page policy", me, "open", True,
+         [("inbound", "system",
+           "One ad in 'Migraine Search' was disapproved for a landing page "
+           "policy issue. Affected ad is not serving. Review and resubmit to "
+           "resume delivery.", 9)])
+    _seq(ads_id, "Google Ads", "Automated alert",
+         "Cost per application up 22% this week", jordan_id, "open", False,
+         [("inbound", "system",
+           "'Migraine Search' is pacing 22% above its 7-day cost-per-application "
+           "average. Review search terms and budget allocation.", 58),
+          ("note", jordan_id,
+           "Added 6 negative keywords and trimmed broad match. Watching CPA "
+           "through the weekend.", 44)])
+    _seq(ads_id, "Google Ads", "Automated alert",
+         "Budget 90% spent — Migraine Search", jordan_id, "resolved", False,
+         [("inbound", "system",
+           "'Migraine Search' has spent 90% of its monthly budget with 8 days "
+           "remaining.", 1810),
+          ("note", jordan_id,
+           "Topped up budget by $500 for the month — approved by Danny-Elle.",
+           1790)])
 
     conn.execute(
         "INSERT INTO marketing_handoffs "
