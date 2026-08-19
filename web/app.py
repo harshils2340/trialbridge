@@ -7140,6 +7140,12 @@ def study_home():
     enrolled -> retained, ordered by urgency: respond to people waiting, decide on
     new applicants, nudge the ones going quiet, prep visits, clear approvals.
     Vanity totals live on Recruitment; this page is only what you DO today."""
+    # Retired as a surface: the inbox is the product's home now, so /app/home (and
+    # every old url_for('study_home') link/bookmark/notification) sends you to the
+    # inbox, carrying the study scope through. The worklist's live bits (Today
+    # visits, needs-reply) already live on the inbox. Everything below is kept only
+    # so the route still imports cleanly; delete once no caller needs it.
+    return redirect(url_for("team_inbox", nct=(request.args.get("nct") or None)))
     claims = db.list_study_claims(g.user["id"])
     # Trial-workspace mode: when a specific study is selected in the top switcher,
     # Home becomes THAT trial's workspace and every queue is scoped to it. A
