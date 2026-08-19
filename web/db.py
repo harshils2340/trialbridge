@@ -1120,6 +1120,19 @@ CREATE TABLE IF NOT EXISTS marketing_messages (
     FOREIGN KEY (author_user_id) REFERENCES users(id)
 );
 
+CREATE TABLE IF NOT EXISTS marketing_webhook_events (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    provider            TEXT NOT NULL,
+    event_key           TEXT NOT NULL,
+    account_external_id TEXT DEFAULT '',
+    payload_json        TEXT NOT NULL,
+    status              TEXT NOT NULL DEFAULT 'pending',
+    error_message       TEXT DEFAULT '',
+    created_at          TEXT NOT NULL,
+    processed_at        TEXT DEFAULT '',
+    UNIQUE (provider, event_key)
+);
+
 CREATE TABLE IF NOT EXISTS marketing_handoffs (
     org_id          INTEGER PRIMARY KEY,
     primary_user_id INTEGER,
@@ -1143,6 +1156,8 @@ CREATE INDEX IF NOT EXISTS idx_marketing_threads_org
     ON marketing_threads(org_id, status, updated_at);
 CREATE INDEX IF NOT EXISTS idx_marketing_messages_thread
     ON marketing_messages(thread_id, id);
+CREATE INDEX IF NOT EXISTS idx_marketing_webhook_pending
+    ON marketing_webhook_events(provider, status, created_at);
 
 -- Auto-routing rules (the "Cursor for your inbox" glue). When a new inquiry
 -- lands, we match it against an org's rules top-down and auto-assign the thread
@@ -1909,6 +1924,24 @@ def accept_org_invite(user_id, token):
 # --------------------------------------------------------------------------- #
 # Shared marketing inbox
 # --------------------------------------------------------------------------- #
+def record_marketing_webhook_event(provider, event_key, payload_json,
+                                   account_external_id=""):
+    """Store a provider event once so retries cannot duplicate processing."""
+    provider = (provider or "").strip().lower()
+    event_key = (event_key or "").strip()[:128]
+    if provider not in MARKETING_CONNECTION_PROVIDERS or not event_key:
+        return False
+    conn = get_db()
+    cur = conn.execute(
+        "INSERT OR IGNORE INTO marketing_webhook_events "
+        "(provider, event_key, account_external_id, payload_json, created_at) "
+        "VALUES (?,?,?,?,?)",
+        (provider, event_key, (account_external_id or "").strip()[:255],
+         payload_json or "{}", now()))
+    conn.commit()
+    return bool(cur.rowcount)
+
+
 def get_marketing_source(user_id, source_id):
     oid = user_org_id(user_id)
     return get_db().execute(

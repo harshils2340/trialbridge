@@ -438,6 +438,17 @@ MARKETING_GOOGLE_STATE_KEY = "marketing_google_state"
 CSRF_SESSION_KEY = "_csrf_token"
 GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "").strip()
 GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "").strip()
+INSTAGRAM_APP_ID = (
+    os.environ.get("INSTAGRAM_APP_ID", "").strip()
+    or os.environ.get("META_APP_ID", "").strip())
+INSTAGRAM_APP_SECRET = (
+    os.environ.get("INSTAGRAM_APP_SECRET", "").strip()
+    or os.environ.get("META_APP_SECRET", "").strip())
+INSTAGRAM_WEBHOOK_VERIFY_TOKEN = os.environ.get(
+    "INSTAGRAM_WEBHOOK_VERIFY_TOKEN", "").strip()
+INSTAGRAM_WEBHOOK_MAX_BYTES = max(
+    1024, min(5_000_000, int(os.environ.get(
+        "INSTAGRAM_WEBHOOK_MAX_BYTES", "1000000"))))
 GOOGLE_OAUTH_SCOPE = "openid email profile"
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
@@ -1982,6 +1993,7 @@ def _csrf_guard():
     if request.method != "POST":
         return None
     if request.endpoint in {"alerts_run", "reminders_run", "redcap_webhook",
+                            "instagram_webhook",
                             "ops_verify_claim", "inbound_email_webhook",
                             "inbound_lead_webhook"}:
         return None
@@ -6161,6 +6173,57 @@ def redcap_webhook():
         _mark_screening_complete(lead, actor="redcap",
                                  note="screening form completed (REDCap)")
     return app.response_class("ok", mimetype="text/plain")
+
+
+@app.route("/integrations/instagram/webhook", methods=["GET", "POST"])
+def instagram_webhook():
+    """Verify Meta's subscription and persist signed Instagram events."""
+    if request.method == "GET":
+        mode = request.args.get("hub.mode", "")
+        provided = request.args.get("hub.verify_token", "")
+        challenge = request.args.get("hub.challenge", "")
+        configured = INSTAGRAM_WEBHOOK_VERIFY_TOKEN
+        if (mode == "subscribe" and configured and provided
+                and hmac.compare_digest(provided, configured)):
+            return app.response_class(
+                challenge, status=200, mimetype="text/plain")
+        return app.response_class(
+            "Webhook verification failed", status=403, mimetype="text/plain")
+
+    if request.content_length and request.content_length > \
+            INSTAGRAM_WEBHOOK_MAX_BYTES:
+        return jsonify({"ok": False, "error": "payload_too_large"}), 413
+
+    raw_payload = request.get_data(cache=True)
+    if len(raw_payload) > INSTAGRAM_WEBHOOK_MAX_BYTES:
+        return jsonify({"ok": False, "error": "payload_too_large"}), 413
+    if not INSTAGRAM_APP_SECRET:
+        return jsonify({"ok": False, "error": "webhook_not_configured"}), 503
+
+    provided_signature = request.headers.get("X-Hub-Signature-256", "")
+    expected_signature = "sha256=" + hmac.new(
+        INSTAGRAM_APP_SECRET.encode("utf-8"), raw_payload,
+        hashlib.sha256).hexdigest()
+    if not (provided_signature and hmac.compare_digest(
+            provided_signature, expected_signature)):
+        return jsonify({"ok": False, "error": "invalid_signature"}), 403
+
+    try:
+        payload = json.loads(raw_payload)
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "invalid_json"}), 400
+    if not isinstance(payload, dict):
+        return jsonify({"ok": False, "error": "invalid_payload"}), 400
+
+    account_external_id = ""
+    entries = payload.get("entry")
+    if isinstance(entries, list) and entries and isinstance(entries[0], dict):
+        account_external_id = str(entries[0].get("id") or "")
+    event_key = hashlib.sha256(raw_payload).hexdigest()
+    db.record_marketing_webhook_event(
+        "instagram", event_key, raw_payload.decode("utf-8", errors="replace"),
+        account_external_id=account_external_id)
+    return jsonify({"ok": True}), 200
 
 
 @app.route("/integrations/inbound-email", methods=["POST"])

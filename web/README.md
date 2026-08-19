@@ -65,6 +65,23 @@ and advances Gmail's `historyId` for idempotent incremental sync. The marketing
   the public demo, the verified Google identity creates or resumes a private
   workspace so credentials are never attached to shared demo data.
 
+### Instagram webhook for the marketing hub
+
+Set `INSTAGRAM_APP_ID`, `INSTAGRAM_APP_SECRET`, and
+`INSTAGRAM_WEBHOOK_VERIFY_TOKEN` in the deployed service environment. The verify
+token is an application-defined secret and must exactly match the value entered
+in the Meta dashboard. For the BridgeMD production app, use:
+
+- Callback URL: `https://bridgemd.health/integrations/instagram/webhook`
+- Verify token: the value of `INSTAGRAM_WEBHOOK_VERIFY_TOKEN` on Render
+
+The callback returns Meta's verification challenge on a valid subscription
+request. Event deliveries must include a valid `X-Hub-Signature-256` generated
+with the Meta app secret; accepted events are stored idempotently for later
+processing. Deploy this code and set the Render variables before asking Meta to
+verify the production callback. A repository-root `.env` only configures the
+local server.
+
 ## Integrated E2E smoke (patient -> site ATS)
 
 From `matcher/web`:
@@ -181,6 +198,8 @@ commented `disk:` block in `render.yaml`).
 | `OAUTH_TOKEN_ENCRYPTION_KEY` | Recommended stable Fernet key for provider tokens at rest |
 | `GMAIL_INITIAL_THREAD_LIMIT` | Latest inbox threads imported by a full sync (default `20`, maximum `50`) |
 | `GMAIL_THREAD_MESSAGE_LIMIT` | Messages retained from each imported Gmail thread (default `50`, maximum `100`) |
+| `INSTAGRAM_APP_ID`, `INSTAGRAM_APP_SECRET` | Meta app credentials used for Instagram integration and webhook signatures |
+| `INSTAGRAM_WEBHOOK_VERIFY_TOKEN` | Private value that must exactly match the Meta webhook configuration |
 | `GOOGLE_CALENDAR_SYNC` | `1` enables best-effort Google Calendar push on visit booking |
 | `GOOGLE_CALENDAR_ID`, `GOOGLE_CALENDAR_ACCESS_TOKEN` | Calendar destination + auth token for visit push |
 | `GOOGLE_CALENDAR_TIMEZONE` | Optional timezone for pushed events (default `UTC`) |

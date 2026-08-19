@@ -26,6 +26,12 @@ services:
         sync: false              # Google OAuth web client
       - key: GOOGLE_CLIENT_SECRET
         sync: false
+      - key: INSTAGRAM_APP_ID
+        sync: false              # Meta app ID for Instagram API
+      - key: INSTAGRAM_APP_SECRET
+        sync: false              # signs Instagram webhook deliveries
+      - key: INSTAGRAM_WEBHOOK_VERIFY_TOKEN
+        sync: false              # must exactly match the Meta dashboard value
       - key: OAUTH_TOKEN_ENCRYPTION_KEY
         sync: false              # Fernet key for encrypted provider tokens
       - key: BEHIND_PROXY
@@ -59,7 +65,7 @@ services:
       - key: SITE_NOTIFY_EMAIL
         sync: false              # coordinator inbox for new candidates
       - key: PUBLIC_BASE_URL
-        sync: false              # e.g. https://bridgemd.onrender.com (email links)
+        sync: false              # https://bridgemd.health (OAuth/webhook links)
       - key: SMTP_HOST
         sync: false
       - key: SMTP_PORT
