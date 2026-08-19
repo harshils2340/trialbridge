@@ -15,10 +15,12 @@ Run:
 Without an LLM key the app still fetches + gates trials (deterministic age/sex
 screening) but skips the per-trial eligibility reasoning.
 """
+import base64
 import difflib
 import functools
 import hashlib
 import hmac
+import html
 import io
 import json
 import math
@@ -36,11 +38,18 @@ except Exception:  # pragma: no cover
     ZoneInfo = None
 import csv
 import mimetypes
+import urllib.error
 import urllib.parse
 import urllib.request
 from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from email.header import decode_header, make_header
+from email.message import EmailMessage
+from email.policy import SMTP
+from email.utils import formatdate, getaddresses, make_msgid, parseaddr
+from html.parser import HTMLParser
 
+from dotenv import load_dotenv
 from flask import (Flask, abort, flash, g, get_flashed_messages, jsonify,
                    make_response, redirect, render_template, request, send_file,
                    session, url_for)
@@ -49,6 +58,9 @@ from werkzeug.utils import secure_filename
 
 # Reuse the matching engine + referral helpers from the parent package.
 HERE = pathlib.Path(__file__).resolve().parent
+# Local development keeps secrets in the ignored repository-root .env. Existing
+# process variables win, which preserves normal production configuration.
+load_dotenv(HERE.parent / ".env")
 sys.path.insert(0, str(HERE.parent))
 import match_trials as mt  # noqa: E402
 import refer as rf  # noqa: E402
@@ -77,6 +89,7 @@ import summarize  # noqa: E402
 import trends  # noqa: E402
 import ctis  # noqa: E402
 import copilot  # noqa: E402
+import token_crypto  # noqa: E402
 
 app = Flask(__name__)
 trends.configure(app)
@@ -421,6 +434,7 @@ PATIENT_PENDING_KEY = "patient_pending_id"
 PATIENT_PENDING_PURPOSE_KEY = "patient_pending_purpose"
 PATIENT_NEXT_KEY = "patient_next"
 PATIENT_GOOGLE_STATE_KEY = "patient_google_state"
+MARKETING_GOOGLE_STATE_KEY = "marketing_google_state"
 CSRF_SESSION_KEY = "_csrf_token"
 GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "").strip()
 GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "").strip()
@@ -428,6 +442,20 @@ GOOGLE_OAUTH_SCOPE = "openid email profile"
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_USERINFO_URL = "https://openidconnect.googleapis.com/v1/userinfo"
+GOOGLE_REVOKE_URL = "https://oauth2.googleapis.com/revoke"
+GMAIL_PROFILE_URL = "https://gmail.googleapis.com/gmail/v1/users/me/profile"
+GMAIL_API_BASE_URL = "https://gmail.googleapis.com/gmail/v1/users/me"
+GMAIL_INITIAL_THREAD_LIMIT = max(
+    1, min(50, int(os.environ.get("GMAIL_INITIAL_THREAD_LIMIT", "20"))))
+GMAIL_THREAD_MESSAGE_LIMIT = max(
+    1, min(100, int(os.environ.get("GMAIL_THREAD_MESSAGE_LIMIT", "50"))))
+GMAIL_OAUTH_SCOPES = (
+    "openid",
+    "email",
+    "profile",
+    "https://www.googleapis.com/auth/gmail.readonly",
+    "https://www.googleapis.com/auth/gmail.send",
+)
 RATE_LIMIT_WINDOW_SECONDS = max(
     1, int(os.environ.get("RATE_LIMIT_WINDOW_SECONDS", "300")))
 RATE_LIMIT_DEFAULT_MSG = (
@@ -2111,6 +2139,703 @@ def _google_userinfo(access_token):
     )
     with urllib.request.urlopen(req, timeout=20) as r:
         return json.loads(r.read().decode("utf-8"))
+
+
+def _google_refresh_access_token(refresh_token):
+    payload = urllib.parse.urlencode({
+        "client_id": GOOGLE_CLIENT_ID,
+        "client_secret": GOOGLE_CLIENT_SECRET,
+        "refresh_token": refresh_token,
+        "grant_type": "refresh_token",
+    }).encode("utf-8")
+    req = urllib.request.Request(
+        GOOGLE_TOKEN_URL,
+        data=payload,
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=20) as r:
+        return json.loads(r.read().decode("utf-8"))
+
+
+def _gmail_profile(access_token):
+    req = urllib.request.Request(
+        GMAIL_PROFILE_URL,
+        headers={"Authorization": f"Bearer {access_token}"},
+        method="GET",
+    )
+    with urllib.request.urlopen(req, timeout=20) as r:
+        return json.loads(r.read().decode("utf-8"))
+
+
+def _google_revoke_token(token):
+    if not token:
+        return False
+    payload = urllib.parse.urlencode({"token": token}).encode("utf-8")
+    req = urllib.request.Request(
+        GOOGLE_REVOKE_URL,
+        data=payload,
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=20):
+        return True
+
+
+def _oauth_token_expiry(expires_in):
+    try:
+        seconds = max(0, int(expires_in))
+    except (TypeError, ValueError):
+        seconds = 3600
+    expires = dt.datetime.now(dt.timezone.utc) + dt.timedelta(seconds=seconds)
+    return expires.replace(microsecond=0).isoformat()
+
+
+def _gmail_connection_access_token(user_id, source_id):
+    """Return a usable token for Gmail sync/send operations."""
+    connection = db.get_marketing_connection_for_source(user_id, source_id)
+    if not connection or connection["provider"] != "gmail":
+        raise RuntimeError("Gmail is not connected for this source.")
+    if connection["status"] != "connected":
+        raise RuntimeError("Gmail must be reconnected.")
+
+    try:
+        expires_at = dt.datetime.fromisoformat(connection["token_expires_at"] or "")
+    except (TypeError, ValueError):
+        expires_at = None
+    now_utc = dt.datetime.now(dt.timezone.utc)
+    if expires_at and expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=dt.timezone.utc)
+    try:
+        access_token = token_crypto.decrypt_token(
+            connection["access_token_encrypted"], app.secret_key)
+        if access_token and expires_at and expires_at > now_utc + dt.timedelta(minutes=2):
+            return access_token
+        refresh_token = token_crypto.decrypt_token(
+            connection["refresh_token_encrypted"], app.secret_key)
+    except token_crypto.TokenEncryptionError:
+        db.set_marketing_connection_error(
+            user_id, connection["id"], "token_decryption_failed",
+            "Stored credentials can no longer be decrypted.", "needs_reauth")
+        raise RuntimeError("Gmail must be reconnected.") from None
+    if not refresh_token:
+        db.set_marketing_connection_error(
+            user_id, connection["id"], "refresh_token_missing",
+            "Google did not provide an offline refresh token.", "needs_reauth")
+        raise RuntimeError("Gmail must be reconnected.")
+    try:
+        refreshed = _google_refresh_access_token(refresh_token)
+        access_token = (refreshed or {}).get("access_token", "")
+        if not access_token:
+            raise RuntimeError("Google returned no access token.")
+        encrypted = token_crypto.encrypt_token(access_token, app.secret_key)
+        db.update_marketing_connection_tokens(
+            user_id, connection["id"], access_token_encrypted=encrypted,
+            token_expires_at=_oauth_token_expiry(refreshed.get("expires_in")),
+            refresh_token_encrypted=(
+                token_crypto.encrypt_token(refreshed["refresh_token"], app.secret_key)
+                if refreshed.get("refresh_token") else None),
+            granted_scopes=(refreshed.get("scope") or "").split() or None)
+        return access_token
+    except Exception:
+        db.set_marketing_connection_error(
+            user_id, connection["id"], "token_refresh_failed",
+            "Google rejected the stored credentials.", "needs_reauth")
+        raise RuntimeError("Gmail must be reconnected.") from None
+
+
+class GmailSyncError(RuntimeError):
+    def __init__(self, message, *, status=0, requires_reauth=False):
+        super().__init__(message)
+        self.status = status
+        self.requires_reauth = requires_reauth
+
+
+class GmailDeliveryError(RuntimeError):
+    def __init__(self, message, *, requires_reauth=False, uncertain=False):
+        super().__init__(message)
+        self.requires_reauth = requires_reauth
+        self.uncertain = uncertain
+
+
+class _GmailAPIError(GmailSyncError):
+    def __init__(self, status, code, message):
+        super().__init__(message, status=status,
+                         requires_reauth=status in (401, 403))
+        self.code = (code or f"http_{status}") if status else "network_error"
+
+
+def _gmail_api_get(access_token, resource, params=None):
+    """Call one authenticated Gmail JSON endpoint without exposing the token."""
+    if resource.startswith("https://"):
+        url = resource
+    else:
+        url = f"{GMAIL_API_BASE_URL}/{resource.lstrip('/')}"
+    if params:
+        url += "?" + urllib.parse.urlencode(params, doseq=True)
+    req = urllib.request.Request(
+        url, headers={"Authorization": f"Bearer {access_token}"}, method="GET")
+    try:
+        with urllib.request.urlopen(req, timeout=20) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        message = "Google could not complete the Gmail request."
+        code = f"http_{exc.code}"
+        try:
+            payload = json.loads(exc.read().decode("utf-8"))
+            detail = payload.get("error") or {}
+            if isinstance(detail, dict):
+                message = (detail.get("message") or message).strip()
+                code = (detail.get("status") or code).strip().lower()
+        except Exception:
+            pass
+        raise _GmailAPIError(exc.code, code, message) from None
+    except (urllib.error.URLError, TimeoutError) as exc:
+        reason = getattr(exc, "reason", None)
+        message = str(reason or "Gmail is temporarily unreachable.")
+        raise _GmailAPIError(0, "network_error", message) from None
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        raise _GmailAPIError(502, "invalid_response",
+                             "Google returned an invalid Gmail response.") from None
+
+
+def _gmail_api_post(access_token, resource, payload):
+    url = f"{GMAIL_API_BASE_URL}/{resource.lstrip('/')}"
+    req = urllib.request.Request(
+        url, data=json.dumps(payload, separators=(",", ":")).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json",
+        },
+        method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=20) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        message = "Google could not complete the Gmail request."
+        code = f"http_{exc.code}"
+        try:
+            result = json.loads(exc.read().decode("utf-8"))
+            detail = result.get("error") or {}
+            if isinstance(detail, dict):
+                message = (detail.get("message") or message).strip()
+                code = (detail.get("status") or code).strip().lower()
+        except Exception:
+            pass
+        raise _GmailAPIError(exc.code, code, message) from None
+    except (urllib.error.URLError, TimeoutError) as exc:
+        reason = getattr(exc, "reason", None)
+        message = str(reason or "Gmail is temporarily unreachable.")
+        raise _GmailAPIError(0, "network_error", message) from None
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        raise _GmailAPIError(502, "invalid_response",
+                             "Google returned an invalid Gmail response.") from None
+
+
+class _EmailHTMLTextParser(HTMLParser):
+    _BLOCKS = {
+        "address", "article", "blockquote", "br", "div", "footer", "h1",
+        "h2", "h3", "h4", "h5", "h6", "header", "li", "p", "section",
+        "table", "td", "th", "tr",
+    }
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.parts = []
+        self.suppressed = 0
+
+    def handle_starttag(self, tag, attrs):
+        values = {key.lower(): value or "" for key, value in attrs}
+        classes = values.get("class", "").lower().split()
+        if self.suppressed:
+            self.suppressed += 1
+            return
+        if tag in ("script", "style") or "gmail_quote" in classes:
+            self.suppressed = 1
+            return
+        if tag in self._BLOCKS:
+            self.parts.append("\n")
+
+    def handle_endtag(self, tag):
+        if self.suppressed:
+            self.suppressed -= 1
+            return
+        if tag in self._BLOCKS:
+            self.parts.append("\n")
+
+    def handle_data(self, data):
+        if not self.suppressed:
+            self.parts.append(data)
+
+    def text(self):
+        return "".join(self.parts)
+
+
+def _clean_email_text(value):
+    text = (value or "").replace("\r\n", "\n").replace("\r", "\n")
+    text = text.replace("\x00", "").replace("\u00a0", " ")
+    quote_markers = (
+        r"(?mi)^\s*On .{1,500} wrote:\s*$",
+        r"(?mi)^\s*-{2,}\s*Original Message\s*-{2,}\s*$",
+        r"(?mi)^\s*From:\s*.+\n\s*Sent:\s*.+$",
+    )
+    cut = len(text)
+    for marker in quote_markers:
+        match = re.search(marker, text)
+        if match:
+            cut = min(cut, match.start())
+    text = text[:cut]
+    lines = []
+    blank = False
+    for raw in text.split("\n"):
+        line = re.sub(r"[ \t]+", " ", raw).strip()
+        if not line:
+            if lines and not blank:
+                lines.append("")
+            blank = True
+            continue
+        lines.append(line)
+        blank = False
+    return "\n".join(lines).strip()
+
+
+def _gmail_decode_body_data(raw, content_type=""):
+    if not raw:
+        return ""
+    try:
+        padded = raw + "=" * (-len(raw) % 4)
+        data = base64.urlsafe_b64decode(padded.encode("ascii"))
+    except (ValueError, UnicodeEncodeError):
+        return ""
+    charset_match = re.search(
+        r"charset\s*=\s*[\"']?([^;\"'\s]+)", content_type or "", re.I)
+    charset = charset_match.group(1) if charset_match else "utf-8"
+    try:
+        return data.decode(charset, errors="replace")
+    except LookupError:
+        return data.decode("utf-8", errors="replace")
+
+
+def _gmail_part_headers(part):
+    values = {}
+    for item in part.get("headers") or []:
+        name = (item.get("name") or "").strip().lower()
+        raw = item.get("value") or ""
+        if not name:
+            continue
+        try:
+            decoded = str(make_header(decode_header(raw)))
+        except Exception:
+            decoded = raw
+        values.setdefault(name, []).append(decoded)
+    return values
+
+
+def _gmail_payload_text(payload):
+    plain_parts = []
+    html_parts = []
+
+    def visit(part):
+        mime_type = (part.get("mimeType") or "").lower()
+        filename = (part.get("filename") or "").strip()
+        headers = _gmail_part_headers(part)
+        disposition = " ".join(headers.get("content-disposition", [])).lower()
+        if filename or "attachment" in disposition:
+            return
+        for child in part.get("parts") or []:
+            visit(child)
+        data = (part.get("body") or {}).get("data") or ""
+        if not data or mime_type not in ("text/plain", "text/html"):
+            return
+        content_type = " ".join(headers.get("content-type", []))
+        decoded = _gmail_decode_body_data(data, content_type)
+        if mime_type == "text/plain":
+            plain_parts.append(decoded)
+        else:
+            html_parts.append(decoded)
+
+    visit(payload or {})
+    text = "\n".join(plain_parts)
+    if not _clean_email_text(text) and html_parts:
+        parser = _EmailHTMLTextParser()
+        try:
+            parser.feed("\n".join(html_parts))
+            text = parser.text()
+        except Exception:
+            text = re.sub(r"<[^>]+>", " ", "\n".join(html_parts))
+    return _clean_email_text(text)
+
+
+def _gmail_header(headers, name):
+    return (headers.get(name.lower()) or [""])[0]
+
+
+def _gmail_message_time(message):
+    try:
+        seconds = int(message.get("internalDate") or 0) / 1000
+        if seconds <= 0:
+            raise ValueError
+        return dt.datetime.fromtimestamp(seconds).strftime("%Y-%m-%d %H:%M")
+    except (TypeError, ValueError, OSError, OverflowError):
+        return dt.datetime.now().strftime("%Y-%m-%d %H:%M")
+
+
+def _gmail_parse_thread(thread, account_identifier):
+    parsed = []
+    account_email = (account_identifier or "").strip().lower()
+    raw_messages = (thread.get("messages") or [])[-GMAIL_THREAD_MESSAGE_LIMIT:]
+    for message in raw_messages:
+        message_id = str(message.get("id") or "").strip()
+        payload = message.get("payload") or {}
+        headers = _gmail_part_headers(payload)
+        labels = set(message.get("labelIds") or [])
+        if not message_id or labels.intersection({"DRAFT", "SPAM", "TRASH"}):
+            continue
+        from_name, from_email = parseaddr(_gmail_header(headers, "from"))
+        from_email = from_email.strip().lower()
+        recipients = getaddresses(
+            (headers.get("to") or []) + (headers.get("cc") or []))
+        recipients = [(name.strip(), email.strip().lower())
+                      for name, email in recipients if email.strip()]
+        outbound = "SENT" in labels or (
+            bool(account_email) and from_email == account_email)
+        if outbound:
+            contact_name, contact_email = next(
+                ((name, email) for name, email in recipients
+                 if email != account_email), recipients[0] if recipients else ("", ""))
+            author_name = account_identifier or from_name or "Gmail account"
+        else:
+            contact_name, contact_email = from_name, from_email
+            author_name = from_name or from_email or "Email contact"
+        body = _gmail_payload_text(payload)
+        if not body:
+            body = _clean_email_text(html.unescape(message.get("snippet") or ""))
+        body = body or "(This email has no text body.)"
+        parsed.append({
+            "external_ref": message_id,
+            "kind": "outbound" if outbound else "inbound",
+            "body": body[:4000],
+            "author_name": author_name,
+            "delivery_status": "sent" if outbound else "received",
+            "created_at": _gmail_message_time(message),
+            "unread": "UNREAD" in labels,
+            "contact_name": contact_name,
+            "contact_email": contact_email,
+            "subject": _gmail_header(headers, "subject").strip(),
+            "subject_header_present": "subject" in headers,
+        })
+    if not parsed:
+        return None
+    parsed.sort(key=lambda item: (item["created_at"], item["external_ref"]))
+    inbound = [item for item in parsed if item["kind"] == "inbound"]
+    contact = (inbound[-1] if inbound else parsed[-1])
+    canonical_subject = next(
+        (item["subject"] for item in parsed
+         if item["subject_header_present"]), "")
+    return {
+        "external_ref": str(thread.get("id") or "").strip(),
+        "contact_name": contact["contact_name"] or contact["contact_email"],
+        "contact_handle": contact["contact_email"],
+        "subject": canonical_subject or "(no subject)",
+        "messages": parsed,
+        "latest_at": parsed[-1]["created_at"],
+    }
+
+
+def _gmail_full_thread_ids(access_token):
+    payload = _gmail_api_get(access_token, "threads", {
+        "labelIds": "INBOX",
+        "includeSpamTrash": "false",
+        "maxResults": GMAIL_INITIAL_THREAD_LIMIT,
+    })
+    return [str(item.get("id") or "").strip()
+            for item in payload.get("threads") or [] if item.get("id")]
+
+
+def _gmail_history_thread_ids(access_token, start_history_id):
+    ids = []
+    seen = set()
+    page_token = ""
+    history_id = str(start_history_id or "")
+    while True:
+        params = {
+            "startHistoryId": start_history_id,
+            "historyTypes": "messageAdded",
+            "labelId": "INBOX",
+            "maxResults": 500,
+        }
+        if page_token:
+            params["pageToken"] = page_token
+        payload = _gmail_api_get(access_token, "history", params)
+        history_id = str(payload.get("historyId") or history_id)
+        for record in payload.get("history") or []:
+            for added in record.get("messagesAdded") or []:
+                thread_id = str((added.get("message") or {}).get("threadId") or "")
+                if thread_id and thread_id not in seen:
+                    seen.add(thread_id)
+                    ids.append(thread_id)
+        page_token = str(payload.get("nextPageToken") or "")
+        if not page_token:
+            break
+    return ids, history_id
+
+
+def _gmail_fetch_threads(access_token, thread_ids):
+    ids = list(dict.fromkeys(thread_id for thread_id in thread_ids if thread_id))
+    if not ids:
+        return []
+
+    def fetch(thread_id):
+        safe_id = urllib.parse.quote(thread_id, safe="")
+        return _gmail_api_get(access_token, f"threads/{safe_id}", {"format": "full"})
+
+    results = []
+    with ThreadPoolExecutor(max_workers=min(6, len(ids))) as pool:
+        futures = {pool.submit(fetch, thread_id): thread_id for thread_id in ids}
+        for future in as_completed(futures):
+            results.append(future.result())
+    return results
+
+
+def _gmail_clean_header(value, limit=998):
+    return re.sub(r"[\r\n]+", " ", value or "").strip()[:limit]
+
+
+def _gmail_reply_context(raw_thread, account_identifier, fallback_recipient):
+    account_email = (account_identifier or "").strip().lower()
+    messages = list(raw_thread.get("messages") or [])
+
+    def message_order(message):
+        try:
+            return int(message.get("internalDate") or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    messages.sort(key=message_order)
+    usable = [message for message in messages
+              if not set(message.get("labelIds") or []).intersection(
+                  {"DRAFT", "SPAM", "TRASH"})]
+    if not usable:
+        raise GmailDeliveryError("The Gmail conversation has no replyable messages.")
+
+    contexts = []
+    for message in usable:
+        headers = _gmail_part_headers(message.get("payload") or {})
+        _, from_email = parseaddr(_gmail_header(headers, "from"))
+        from_email = from_email.strip().lower()
+        outbound = "SENT" in set(message.get("labelIds") or []) or (
+            account_email and from_email == account_email)
+        contexts.append({
+            "message": message,
+            "headers": headers,
+            "from_email": from_email,
+            "outbound": outbound,
+        })
+
+    inbound = [context for context in contexts if not context["outbound"]]
+    candidates = list(reversed(inbound))
+    candidates.extend(
+        context for context in reversed(contexts) if context["outbound"])
+    reply_target = None
+    reply_message_id = ""
+    for context in candidates:
+        candidate = _gmail_header(context["headers"], "message-id")
+        match = re.search(r"<[^<>\s]+>", candidate or "")
+        if match:
+            reply_target = context
+            reply_message_id = match.group(0)
+            break
+    if not reply_message_id:
+        raise GmailDeliveryError(
+            "Gmail did not return the original Message-ID needed for a threaded reply.")
+
+    recipient = (fallback_recipient or "").strip().lower()
+    for context in reversed(inbound):
+        headers = context["headers"]
+        _, reply_email = parseaddr(
+            _gmail_header(headers, "reply-to") or _gmail_header(headers, "from"))
+        if reply_email:
+            recipient = reply_email.strip().lower()
+            break
+    if (not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", recipient)
+            or recipient == account_email):
+        raise GmailDeliveryError("This conversation has no valid external reply address.")
+
+    target_headers = reply_target["headers"]
+    subject = _gmail_clean_header(_gmail_header(target_headers, "subject"), 500)
+    references = _gmail_header(target_headers, "references")
+    reference_ids = re.findall(r"<[^<>\s]+>", references or "")
+    if reply_message_id not in reference_ids:
+        reference_ids.append(reply_message_id)
+    return {
+        "recipient": recipient,
+        "subject": subject,
+        "subject_header_present": "subject" in target_headers,
+        "in_reply_to": reply_message_id,
+        "references": " ".join(reference_ids[-30:]),
+    }
+
+
+def _send_gmail_reply(user_id, thread, body):
+    connection = db.get_marketing_connection_for_source(
+        user_id, thread["source_id"])
+    if (not connection or connection["provider"] != "gmail"
+            or connection["status"] != "connected"):
+        raise GmailDeliveryError("Reconnect Gmail before sending this reply.",
+                                 requires_reauth=True)
+    if not (thread["external_ref"] or "").strip():
+        raise GmailDeliveryError(
+            "Only conversations imported from Gmail can be delivered as replies.")
+    try:
+        granted_scopes = set(json.loads(connection["granted_scopes"] or "[]"))
+    except (TypeError, ValueError, json.JSONDecodeError):
+        granted_scopes = set()
+    if "https://www.googleapis.com/auth/gmail.send" not in granted_scopes:
+        db.set_marketing_connection_error(
+            user_id, connection["id"], "gmail_send_scope_missing",
+            "The Gmail send permission was not granted.", "needs_reauth")
+        raise GmailDeliveryError(
+            "Reconnect Gmail and approve send permission before replying.",
+            requires_reauth=True)
+    try:
+        access_token = _gmail_connection_access_token(
+            user_id, connection["source_id"])
+    except RuntimeError as exc:
+        raise GmailDeliveryError(str(exc), requires_reauth=True) from None
+
+    thread_ref = (thread["external_ref"] or "").strip()
+    safe_thread_ref = urllib.parse.quote(thread_ref, safe="")
+    try:
+        raw_thread = _gmail_api_get(
+            access_token, f"threads/{safe_thread_ref}", {"format": "full"})
+        context = _gmail_reply_context(
+            raw_thread, connection["account_identifier"],
+            thread["contact_handle"])
+        message = EmailMessage(policy=SMTP)
+        message.set_content(body)
+        message["To"] = context["recipient"]
+        message["From"] = connection["account_identifier"]
+        if context["subject_header_present"]:
+            message["Subject"] = context["subject"]
+        message["Date"] = formatdate(localtime=True)
+        domain = connection["account_identifier"].rsplit("@", 1)[-1]
+        domain = re.sub(r"[^A-Za-z0-9.-]", "", domain) or None
+        message["Message-ID"] = make_msgid(domain=domain)
+        message["In-Reply-To"] = context["in_reply_to"]
+        message["References"] = context["references"]
+        encoded = base64.urlsafe_b64encode(message.as_bytes()).decode("ascii")
+        sent = _gmail_api_post(access_token, "messages/send", {
+            "raw": encoded,
+            "threadId": thread_ref,
+        })
+    except _GmailAPIError as exc:
+        if exc.requires_reauth:
+            db.set_marketing_connection_error(
+                user_id, connection["id"], exc.code, str(exc), "needs_reauth")
+            message = "Google access expired. Reconnect Gmail before sending."
+        else:
+            db.record_marketing_connection_sync_error(
+                user_id, connection["id"], exc.code, str(exc))
+            message = (
+                "Gmail did not confirm the send. Check Gmail Sent before retrying."
+                if not exc.status or exc.status >= 500 else
+                "Gmail rejected the reply. Nothing was sent or saved.")
+        raise GmailDeliveryError(
+            message, requires_reauth=exc.requires_reauth,
+            uncertain=not exc.requires_reauth and (
+                not exc.status or exc.status >= 500)) from None
+
+    sent_id = str((sent or {}).get("id") or "").strip()
+    if not sent_id:
+        raise GmailDeliveryError(
+            "Gmail did not confirm the send. Check Gmail Sent before retrying.",
+            uncertain=True)
+    return {
+        "id": sent_id,
+        "thread_id": str((sent or {}).get("threadId") or "").strip(),
+        "expected_thread_id": thread_ref,
+        "recipient": context["recipient"],
+    }
+
+
+def _sync_gmail_connection(user_id, connection_id, *, force_full=False):
+    connection = db.get_marketing_connection(user_id, connection_id)
+    if not connection or connection["provider"] != "gmail":
+        raise GmailSyncError("Gmail connection not found.", status=404)
+    if connection["status"] != "connected":
+        raise GmailSyncError("Gmail must be reconnected.", status=409,
+                             requires_reauth=True)
+    try:
+        access_token = _gmail_connection_access_token(
+            user_id, connection["source_id"])
+    except RuntimeError as exc:
+        raise GmailSyncError(str(exc), status=409, requires_reauth=True) from None
+
+    mode = "full" if (force_full or not connection["last_successful_sync_at"]
+                      or not connection["gmail_history_id"]) else "incremental"
+    try:
+        if mode == "full":
+            profile = _gmail_api_get(access_token, "profile")
+            next_history_id = str(
+                profile.get("historyId") or connection["gmail_history_id"] or "")
+            thread_ids = _gmail_full_thread_ids(access_token)
+        else:
+            try:
+                thread_ids, next_history_id = _gmail_history_thread_ids(
+                    access_token, connection["gmail_history_id"])
+            except _GmailAPIError as exc:
+                if exc.status != 404:
+                    raise
+                mode = "full"
+                profile = _gmail_api_get(access_token, "profile")
+                next_history_id = str(
+                    profile.get("historyId") or
+                    connection["gmail_history_id"] or "")
+                thread_ids = _gmail_full_thread_ids(access_token)
+
+        imported_messages = 0
+        imported_threads = 0
+        newest_thread_id = None
+        newest_at = ""
+        for raw_thread in _gmail_fetch_threads(access_token, thread_ids):
+            parsed = _gmail_parse_thread(raw_thread, connection["account_identifier"])
+            if not parsed or not parsed["external_ref"]:
+                continue
+            result = db.upsert_gmail_thread(
+                user_id, connection["source_id"],
+                external_ref=parsed["external_ref"],
+                contact_name=parsed["contact_name"],
+                contact_handle=parsed["contact_handle"],
+                subject=parsed["subject"], messages=parsed["messages"])
+            if not result:
+                continue
+            imported_messages += result["inserted_messages"]
+            imported_threads += int(result["inserted_thread"])
+            if result["inserted_messages"] and result["latest_at"] >= newest_at:
+                newest_at = result["latest_at"]
+                newest_thread_id = result["thread_id"]
+
+        db.mark_marketing_connection_synced(
+            user_id, connection_id, gmail_history_id=next_history_id)
+        return {
+            "mode": mode,
+            "imported_messages": imported_messages,
+            "imported_threads": imported_threads,
+            "newest_thread_id": newest_thread_id,
+            "source_id": connection["source_id"],
+        }
+    except _GmailAPIError as exc:
+        if exc.requires_reauth:
+            db.set_marketing_connection_error(
+                user_id, connection_id, exc.code, str(exc), "needs_reauth")
+            message = "Google access expired. Reconnect Gmail to continue syncing."
+        else:
+            db.record_marketing_connection_sync_error(
+                user_id, connection_id, exc.code, str(exc))
+            message = "Gmail could not sync right now. Try again in a moment."
+        raise GmailSyncError(
+            message, status=exc.status or 502,
+            requires_reauth=exc.requires_reauth) from None
 
 
 def _post_patient_login_redirect():
@@ -4398,6 +5123,10 @@ def marketing_hub():
 
     sources = [dict(row) for row in db.list_marketing_sources(
         g.user["id"], nct=active_nct)]
+    for source in sources:
+        last_sync = source.get("last_successful_sync_at") or ""
+        source["sync_time_label"] = (
+            _marketing_time_label(last_sync) if last_sync else "Not synced yet")
     members = []
     for row in db.list_org_members(g.user["id"]):
         member = dict(row)
@@ -4463,7 +5192,267 @@ def marketing_hub():
         status_filter=status, channel_filter=channel, search_query=query,
         source_filter=source_filter, active_nct=active_nct,
         channel_labels=db.MARKETING_CHANNEL_LABELS,
+        gmail_oauth_ready=_google_ready(),
         today=dt.date.today().isoformat())
+
+
+def _private_marketing_workspace_required():
+    session_user_id = session.get(USER_SESSION_KEY)
+    if not session_user_id:
+        session[USER_NEXT_KEY] = url_for("marketing_hub")
+        flash("Sign in to your own workspace before connecting Gmail.", "error")
+        return redirect(url_for("login", next=url_for("marketing_hub")))
+    if _is_demo_account(g.user):
+        flash("External accounts cannot be attached to the public demo workspace.",
+              "error")
+        return redirect(url_for("marketing_hub"))
+    return None
+
+
+@app.route("/marketing-hub/connect/gmail")
+def marketing_gmail_connect():
+    if not _google_ready():
+        flash("Gmail OAuth is not configured. Add the Google client ID and secret.",
+              "error")
+        return redirect(url_for("marketing_hub"))
+    session_user_id = session.get(USER_SESSION_KEY)
+    if not g.user or _is_demo_account(g.user):
+        session_user_id = None
+    state = secrets.token_urlsafe(32)
+    session[MARKETING_GOOGLE_STATE_KEY] = {
+        "state": state,
+        "user_id": session_user_id,
+        "created_at": int(time.time()),
+    }
+    qs = urllib.parse.urlencode({
+        "client_id": GOOGLE_CLIENT_ID,
+        "redirect_uri": _abs_url("marketing_gmail_callback"),
+        "response_type": "code",
+        "scope": " ".join(GMAIL_OAUTH_SCOPES),
+        "state": state,
+        "access_type": "offline",
+        "include_granted_scopes": "true",
+        "prompt": "consent select_account",
+    })
+    return redirect(f"{GOOGLE_AUTH_URL}?{qs}")
+
+
+@app.route("/integrations/gmail/callback")
+def marketing_gmail_callback():
+    pending = session.pop(MARKETING_GOOGLE_STATE_KEY, None)
+    if not _google_ready():
+        flash("Gmail OAuth is not configured.", "error")
+        return redirect(url_for("marketing_hub"))
+    state = request.args.get("state", "")
+    expected = pending.get("state", "") if isinstance(pending, dict) else ""
+    pending_user_id = pending.get("user_id") if isinstance(pending, dict) else None
+    created_at = pending.get("created_at", 0) if isinstance(pending, dict) else 0
+    try:
+        state_age = int(time.time()) - int(created_at)
+        state_is_fresh = 0 <= state_age <= 10 * 60
+    except (TypeError, ValueError):
+        state_is_fresh = False
+    pending_user_is_valid = (
+        pending_user_id is None
+        or (g.user is not None and session.get(USER_SESSION_KEY) == pending_user_id
+            and g.user["id"] == pending_user_id
+            and not _is_demo_account(g.user)))
+    if (not state or not expected or not hmac.compare_digest(state, expected)
+            or not pending_user_is_valid or not state_is_fresh):
+        flash("Gmail connection failed state validation. Please try again.", "error")
+        return redirect(url_for("marketing_hub"))
+    if request.args.get("error"):
+        flash("Gmail connection was cancelled. No account was added.", "error")
+        return redirect(url_for("marketing_hub"))
+    code = request.args.get("code", "").strip()
+    if not code:
+        flash("Google did not return an authorization code.", "error")
+        return redirect(url_for("marketing_hub"))
+
+    try:
+        token_payload = _google_exchange_code(code, "marketing_gmail_callback")
+        access_token = (token_payload or {}).get("access_token", "")
+        if not access_token:
+            raise RuntimeError("Google returned no access token.")
+        identity = _google_userinfo(access_token)
+        gmail_profile = _gmail_profile(access_token)
+
+        external_account_id = (identity.get("sub") or "").strip()
+        identity_email = (identity.get("email") or "").strip().lower()
+        identity_name = (identity.get("name") or "").strip()
+        identity_picture = (identity.get("picture") or "").strip()
+        gmail_email = (gmail_profile.get("emailAddress") or "").strip().lower()
+        if (not external_account_id or not gmail_email
+                or identity.get("email_verified") is False
+                or (identity_email and identity_email != gmail_email)):
+            raise RuntimeError("Google returned an inconsistent account profile.")
+
+        granted_scopes = set(
+            ((token_payload or {}).get("scope") or " ".join(GMAIL_OAUTH_SCOPES)).split())
+        required_scopes = {
+            "https://www.googleapis.com/auth/gmail.readonly",
+            "https://www.googleapis.com/auth/gmail.send",
+        }
+        if not required_scopes.issubset(granted_scopes):
+            flash("Gmail needs both read and send permission to connect.", "error")
+            return redirect(url_for("marketing_hub"))
+
+        workspace_user = db.get_user(pending_user_id) if pending_user_id else None
+        if not workspace_user:
+            workspace_user = db.get_user_by_oauth("google", external_account_id)
+        if not workspace_user and not pending_user_id:
+            workspace_user = db.get_user_by_email(gmail_email)
+        if _is_demo_account(workspace_user):
+            flash("This account belongs to the shared public demo and cannot "
+                  "store external credentials.", "error")
+            return redirect(url_for("marketing_hub"))
+        connection_user_id = workspace_user["id"] if workspace_user else None
+        existing = (db.get_marketing_connection_by_account(
+            connection_user_id, "gmail", external_account_id)
+            if connection_user_id else None)
+        refresh_token = (token_payload or {}).get("refresh_token", "")
+        if not refresh_token and not (
+                existing and existing["refresh_token_encrypted"]):
+            flash("Google did not grant offline access. Reconnect and approve all "
+                  "requested permissions.", "error")
+            return redirect(url_for("marketing_hub"))
+
+        if not workspace_user:
+            connection_user_id = db.create_user(
+                email=gmail_email,
+                password_hash=generate_password_hash(
+                    secrets.token_urlsafe(32), method="pbkdf2:sha256"),
+                name=identity_name or gmail_email.split("@", 1)[0],
+                verified=True,
+                oauth_provider="google",
+                oauth_sub=external_account_id,
+                oauth_picture=identity_picture)
+            workspace_user = db.get_user(connection_user_id)
+        elif not pending_user_id and (
+                workspace_user["oauth_provider"] != "google"
+                or workspace_user["oauth_sub"] != external_account_id):
+            db.link_user_oauth(
+                workspace_user["id"], "google", external_account_id,
+                identity_name, identity_picture)
+            workspace_user = db.get_user(workspace_user["id"])
+        connection_user_id = workspace_user["id"]
+        if pending_user_id is None:
+            session[USER_SESSION_KEY] = connection_user_id
+            session.pop(USER_PENDING_KEY, None)
+            session.pop(USER_PENDING_PURPOSE_KEY, None)
+            g.user = workspace_user
+
+        result = db.connect_marketing_account(
+            connection_user_id, provider="gmail", channel="email",
+            external_account_id=external_account_id,
+            account_identifier=gmail_email,
+            access_token_encrypted=token_crypto.encrypt_token(
+                access_token, app.secret_key),
+            refresh_token_encrypted=token_crypto.encrypt_token(
+                refresh_token, app.secret_key) if refresh_token else "",
+            granted_scopes=granted_scopes,
+            token_expires_at=_oauth_token_expiry(
+                (token_payload or {}).get("expires_in")),
+            gmail_history_id=str(gmail_profile.get("historyId") or ""),
+            label="Gmail inbox")
+        if not result:
+            raise RuntimeError("Connection storage rejected the account.")
+    except Exception:
+        app.logger.exception("gmail oauth callback failed")
+        flash("Gmail could not be connected. Please try again.", "error")
+        return redirect(url_for("marketing_hub"))
+
+    sync_result = None
+    try:
+        sync_result = _sync_gmail_connection(
+            connection_user_id, result["connection_id"], force_full=True)
+    except GmailSyncError:
+        app.logger.warning("initial gmail sync failed", exc_info=True)
+
+    _log_event("gmail_connected")
+    if sync_result and sync_result["imported_messages"]:
+        session["active_nct"] = ""
+        count = sync_result["imported_messages"]
+        flash(f"Gmail connected. Imported {count} message{'s' if count != 1 else ''}.",
+              "ok")
+    elif sync_result:
+        flash(f"Gmail connected for {gmail_email}. Your inbox is up to date.", "ok")
+    else:
+        flash("Gmail was authorized, but the first inbox sync failed. Use Sync now "
+              "to retry.", "error")
+    return redirect(url_for(
+        "marketing_hub", source=result["source_id"],
+        thread=(sync_result or {}).get("newest_thread_id")))
+
+
+@app.route("/marketing-hub/connections/<int:connection_id>/sync",
+           methods=["POST"])
+@login_required
+def marketing_connection_sync(connection_id):
+    blocked = _private_marketing_workspace_required()
+    if blocked:
+        return blocked
+    connection = db.get_marketing_connection(g.user["id"], connection_id)
+    if not connection or connection["provider"] != "gmail":
+        abort(404)
+    try:
+        result = _sync_gmail_connection(g.user["id"], connection_id)
+    except GmailSyncError as exc:
+        if _is_json_request():
+            return jsonify({
+                "ok": False,
+                "error": "gmail_reconnect_required" if exc.requires_reauth
+                         else "gmail_sync_failed",
+                "message": str(exc),
+                "reconnect_url": url_for("marketing_gmail_connect"),
+            }), 409 if exc.requires_reauth else 502
+        flash(str(exc), "error")
+        return redirect(url_for(
+            "marketing_hub", source=connection["source_id"]))
+
+    imported = result["imported_messages"]
+    if imported:
+        # Gmail cannot infer a study reliably. Show new general mail immediately
+        # instead of hiding it under whichever study happened to be selected.
+        session["active_nct"] = ""
+    target = url_for(
+        "marketing_hub", source=result["source_id"],
+        thread=result["newest_thread_id"])
+    if _is_json_request():
+        return jsonify({"ok": True, **result, "redirect_url": target})
+    if imported:
+        flash(f"Imported {imported} new Gmail message"
+              f"{'s' if imported != 1 else ''}.", "ok")
+    else:
+        flash("Gmail is up to date.", "ok")
+    return redirect(target)
+
+
+@app.route("/marketing-hub/connections/<int:connection_id>/disconnect",
+           methods=["POST"])
+@login_required
+def marketing_connection_disconnect(connection_id):
+    blocked = _private_marketing_workspace_required()
+    if blocked:
+        return blocked
+    connection = db.get_marketing_connection(g.user["id"], connection_id)
+    if not connection:
+        abort(404)
+    if connection["provider"] == "gmail":
+        try:
+            encrypted = (connection["refresh_token_encrypted"]
+                         or connection["access_token_encrypted"])
+            token = token_crypto.decrypt_token(encrypted, app.secret_key)
+            if token:
+                _google_revoke_token(token)
+        except Exception:
+            # Local credentials are still erased even if Google has already
+            # revoked the grant or its revocation endpoint is unavailable.
+            app.logger.warning("google token revocation failed", exc_info=True)
+    if not db.disconnect_marketing_connection(g.user["id"], connection_id):
+        abort(404)
+    flash("Gmail disconnected and its stored credentials were removed.", "ok")
+    return redirect(url_for("marketing_hub"))
 
 
 @app.route("/marketing-hub/sources", methods=["POST"])
@@ -4505,6 +5494,13 @@ def marketing_source_add():
 @login_required
 def marketing_source_status(source_id):
     status = (request.form.get("status") or "").strip().lower()
+    source = db.get_marketing_source(g.user["id"], source_id)
+    if not source:
+        abort(404)
+    if source["connection_mode"] == "live":
+        flash("Use the Gmail reconnect or disconnect control for live accounts.",
+              "error")
+        return redirect(url_for("marketing_hub", source=source_id))
     if not db.set_marketing_source_status(g.user["id"], source_id, status):
         abort(404)
     flash("Channel connected." if status == "connected" else "Channel disconnected.",
@@ -4530,12 +5526,49 @@ def marketing_thread_create():
 @app.route("/marketing-hub/threads/<int:thread_id>/reply", methods=["POST"])
 @login_required
 def marketing_thread_reply(thread_id):
-    if not db.add_marketing_message(
-            g.user["id"], thread_id, request.form.get("body"), kind="outbound"):
+    thread = db.get_marketing_thread(g.user["id"], thread_id)
+    if not thread:
+        abort(404)
+    body = (request.form.get("body") or "").strip()[:4000]
+    if not body:
         flash("Write a reply before sending.", "error")
+        return redirect(_marketing_thread_url(thread_id, "composer"))
+
+    if thread["connection_mode"] == "demo":
+        if db.add_marketing_message(
+                g.user["id"], thread_id, body, kind="outbound"):
+            flash("Demo reply saved to the shared thread.", "ok")
+        else:
+            flash("The reply could not be saved.", "error")
+        return redirect(_marketing_thread_url(thread_id, "composer"))
+
+    blocked = _private_marketing_workspace_required()
+    if blocked:
+        return blocked
+    if thread["provider"] != "gmail":
+        flash("External delivery is not available for this account.", "error")
+        return redirect(_marketing_thread_url(thread_id, "composer"))
+    try:
+        sent = _send_gmail_reply(g.user["id"], thread, body)
+    except GmailDeliveryError as exc:
+        flash(str(exc), "error")
+        return redirect(_marketing_thread_url(thread_id, "composer"))
+
+    stored = db.add_marketing_message(
+        g.user["id"], thread_id, body, kind="outbound",
+        delivery_status="sent", external_ref=sent["id"])
+    _log_event("gmail_reply_sent")
+    if not stored:
+        app.logger.error(
+            "gmail reply sent but local persistence failed: thread=%s message=%s",
+            thread_id, sent["id"])
+        flash("Gmail sent the reply, but the workspace could not save its local "
+              "copy. Do not resend it.", "error")
+    elif sent["thread_id"] and sent["thread_id"] != sent["expected_thread_id"]:
+        flash("Reply sent through Gmail, but Gmail started a separate conversation.",
+              "error")
     else:
-        flash("Reply saved to the shared thread. Live delivery starts after the "
-              "channel's OAuth connection is configured.", "ok")
+        flash(f"Reply sent through Gmail to {sent['recipient']}.", "ok")
     return redirect(_marketing_thread_url(thread_id, "composer"))
 
 

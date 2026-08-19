@@ -1053,6 +1053,36 @@ CREATE TABLE IF NOT EXISTS marketing_sources (
     FOREIGN KEY (created_by) REFERENCES users(id)
 );
 
+-- Provider credentials and sync cursors are isolated from the source rows that
+-- are routinely rendered in the UI. Token values are encrypted before insert.
+CREATE TABLE IF NOT EXISTS marketing_connections (
+    id                       INTEGER PRIMARY KEY AUTOINCREMENT,
+    org_id                   INTEGER NOT NULL,
+    source_id                INTEGER NOT NULL UNIQUE,
+    provider                 TEXT NOT NULL, -- gmail | instagram | google_ads
+    external_account_id      TEXT NOT NULL,
+    account_identifier       TEXT NOT NULL,
+    access_token_encrypted   TEXT NOT NULL DEFAULT '',
+    refresh_token_encrypted  TEXT NOT NULL DEFAULT '',
+    granted_scopes           TEXT NOT NULL DEFAULT '[]',
+    token_expires_at         TEXT DEFAULT '',
+    gmail_history_id         TEXT DEFAULT '',
+    gmail_watch_expires_at   TEXT DEFAULT '',
+    instagram_account_id     TEXT DEFAULT '',
+    last_successful_sync_at  TEXT DEFAULT '',
+    status                   TEXT NOT NULL DEFAULT 'connected',
+    last_error_code          TEXT DEFAULT '',
+    last_error_message       TEXT DEFAULT '',
+    last_error_at            TEXT DEFAULT '',
+    created_by               INTEGER,
+    created_at               TEXT NOT NULL,
+    updated_at               TEXT NOT NULL,
+    UNIQUE (org_id, provider, external_account_id),
+    FOREIGN KEY (org_id) REFERENCES organizations(id),
+    FOREIGN KEY (source_id) REFERENCES marketing_sources(id),
+    FOREIGN KEY (created_by) REFERENCES users(id)
+);
+
 CREATE TABLE IF NOT EXISTS marketing_threads (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
     org_id         INTEGER NOT NULL,
@@ -1078,11 +1108,12 @@ CREATE TABLE IF NOT EXISTS marketing_messages (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     org_id          INTEGER NOT NULL,
     thread_id       INTEGER NOT NULL,
+    external_ref    TEXT DEFAULT '', -- provider message ID for idempotent sync
     kind            TEXT NOT NULL, -- inbound | outbound | note
     body            TEXT NOT NULL,
     author_user_id  INTEGER,
     author_name     TEXT DEFAULT '',
-    delivery_status TEXT DEFAULT '', -- received | saved | internal
+    delivery_status TEXT DEFAULT '', -- received | saved | sent | internal
     created_at      TEXT NOT NULL,
     FOREIGN KEY (org_id) REFERENCES organizations(id),
     FOREIGN KEY (thread_id) REFERENCES marketing_threads(id),
@@ -1106,6 +1137,8 @@ CREATE TABLE IF NOT EXISTS marketing_handoffs (
 
 CREATE INDEX IF NOT EXISTS idx_marketing_sources_org
     ON marketing_sources(org_id, status);
+CREATE INDEX IF NOT EXISTS idx_marketing_connections_org
+    ON marketing_connections(org_id, provider, status);
 CREATE INDEX IF NOT EXISTS idx_marketing_threads_org
     ON marketing_threads(org_id, status, updated_at);
 CREATE INDEX IF NOT EXISTS idx_marketing_messages_thread
@@ -1238,6 +1271,9 @@ MARKETING_CHANNEL_LABELS = {
     "instagram": "Instagram",
     "google_ads": "Google Ads",
 }
+MARKETING_CONNECTION_PROVIDERS = ("gmail", "instagram", "google_ads")
+MARKETING_CONNECTION_STATUSES = (
+    "connected", "disconnected", "needs_reauth", "error")
 
 
 def now():
@@ -1301,6 +1337,9 @@ _MIGRATIONS = {
     "marketing_threads": {
         "nct": "TEXT DEFAULT ''",
         "study_label": "TEXT DEFAULT ''",
+    },
+    "marketing_messages": {
+        "external_ref": "TEXT DEFAULT ''",
     },
     "referrals": {
         "token": "TEXT",
@@ -1577,6 +1616,14 @@ def _migrate(con):
                 "ON site_posted_studies(user_id, created_at)")
     con.execute("CREATE INDEX IF NOT EXISTS idx_site_posted_status "
                 "ON site_posted_studies(status)")
+    con.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_marketing_thread_external "
+        "ON marketing_threads(source_id, external_ref) "
+        "WHERE external_ref IS NOT NULL AND external_ref != ''")
+    con.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_marketing_message_external "
+        "ON marketing_messages(thread_id, external_ref) "
+        "WHERE external_ref IS NOT NULL AND external_ref != ''")
     _backfill_orgs(con)
 
 
@@ -1872,19 +1919,29 @@ def get_marketing_source(user_id, source_id):
 def list_marketing_sources(user_id, nct=""):
     oid = user_org_id(user_id)
     # When a trial is active, per-account badges count only that trial's threads,
-    # so the sidebar stays in step with the filtered conversation list.
-    nct_open = " AND t.nct = ?" if nct else ""
-    nct_unread = " AND t.nct = ?" if nct else ""
+    # plus provider threads not assigned to any trial yet. Unassigned Gmail must
+    # remain visible until a coordinator explicitly classifies it.
+    nct_open = (
+        " AND (t.nct = ? OR COALESCE(t.nct, '') = '')" if nct else "")
+    nct_unread = (
+        " AND (t.nct = ? OR COALESCE(t.nct, '') = '')" if nct else "")
     args = [oid]
     if nct:
         args = [nct, nct, oid]
     return get_db().execute(
-        "SELECT s.*, "
+        "SELECT s.*, c.id AS connection_id, c.provider, "
+        "c.external_account_id, c.account_identifier AS connected_identifier, "
+        "c.granted_scopes, c.token_expires_at, c.gmail_history_id, "
+        "c.gmail_watch_expires_at, c.instagram_account_id, "
+        "c.last_successful_sync_at, c.status AS connection_status, "
+        "c.last_error_code, c.last_error_message, c.last_error_at, "
         "(SELECT COUNT(*) FROM marketing_threads t "
         " WHERE t.source_id = s.id AND t.status = 'open'" + nct_open + ") AS open_count, "
         "(SELECT COUNT(*) FROM marketing_threads t "
         " WHERE t.source_id = s.id AND t.unread = 1" + nct_unread + ") AS unread_count "
-        "FROM marketing_sources s WHERE s.org_id = ? "
+        "FROM marketing_sources s "
+        "LEFT JOIN marketing_connections c ON c.source_id = s.id "
+        "WHERE s.org_id = ? "
         "ORDER BY CASE s.channel WHEN 'email' THEN 0 WHEN 'instagram' THEN 1 "
         "ELSE 2 END, s.created_at",
         tuple(args)).fetchall()
@@ -1921,6 +1978,282 @@ def create_marketing_source(user_id, channel, label, identifier,
         source_id = cur.lastrowid
     conn.commit()
     return source_id
+
+
+def get_marketing_connection(user_id, connection_id):
+    oid = user_org_id(user_id)
+    return get_db().execute(
+        "SELECT * FROM marketing_connections WHERE id = ? AND org_id = ?",
+        (connection_id, oid)).fetchone()
+
+
+def get_marketing_connection_for_source(user_id, source_id):
+    oid = user_org_id(user_id)
+    return get_db().execute(
+        "SELECT * FROM marketing_connections WHERE source_id = ? AND org_id = ?",
+        (source_id, oid)).fetchone()
+
+
+def get_marketing_connection_by_account(user_id, provider,
+                                        external_account_id):
+    oid = user_org_id(user_id)
+    return get_db().execute(
+        "SELECT * FROM marketing_connections "
+        "WHERE org_id = ? AND provider = ? AND external_account_id = ?",
+        (oid, (provider or "").strip(),
+         (external_account_id or "").strip())).fetchone()
+
+
+def _marketing_scopes_json(granted_scopes):
+    if isinstance(granted_scopes, str):
+        scopes = granted_scopes.replace(",", " ").split()
+    else:
+        scopes = list(granted_scopes or [])
+    clean = sorted({str(scope).strip() for scope in scopes if str(scope).strip()})
+    return json.dumps(clean, separators=(",", ":"))
+
+
+def connect_marketing_account(user_id, *, provider, channel,
+                              external_account_id, account_identifier,
+                              access_token_encrypted,
+                              refresh_token_encrypted="", granted_scopes=None,
+                              token_expires_at="", gmail_history_id="",
+                              gmail_watch_expires_at="",
+                              instagram_account_id="",
+                              last_successful_sync_at="", label=""):
+    """Create or reconnect one provider account and its renderable source."""
+    provider = (provider or "").strip().lower()
+    channel = (channel or "").strip().lower()
+    expected_channel = {
+        "gmail": "email", "instagram": "instagram", "google_ads": "google_ads",
+    }.get(provider)
+    external_account_id = (external_account_id or "").strip()[:255]
+    account_identifier = (account_identifier or "").strip()[:320]
+    if (provider not in MARKETING_CONNECTION_PROVIDERS
+            or channel != expected_channel or not external_account_id
+            or not account_identifier or not access_token_encrypted):
+        return None
+
+    oid = user_org_id(user_id)
+    conn = get_db()
+    ts = now()
+    existing = conn.execute(
+        "SELECT * FROM marketing_connections "
+        "WHERE org_id = ? AND provider = ? AND external_account_id = ?",
+        (oid, provider, external_account_id)).fetchone()
+
+    source = None
+    if existing:
+        source = conn.execute(
+            "SELECT * FROM marketing_sources WHERE id = ? AND org_id = ?",
+            (existing["source_id"], oid)).fetchone()
+    if not source:
+        source = conn.execute(
+            "SELECT * FROM marketing_sources WHERE org_id = ? AND channel = ? "
+            "AND lower(identifier) = lower(?)",
+            (oid, channel, account_identifier)).fetchone()
+
+    clean_label = (label or "").strip()[:80]
+    default_label = (
+        "Gmail inbox" if provider == "gmail" else MARKETING_CHANNEL_LABELS[channel])
+    if source:
+        source_id = source["id"]
+        source_label = (
+            (source["label"] or "").strip() or clean_label or default_label)
+        conn.execute(
+            "UPDATE marketing_sources SET label = ?, identifier = ?, "
+            "connection_mode = 'live', status = 'connected', updated_at = ? "
+            "WHERE id = ? AND org_id = ?",
+            (source_label, account_identifier, ts, source_id, oid))
+    else:
+        source_label = clean_label or default_label
+        cur = conn.execute(
+            "INSERT INTO marketing_sources "
+            "(org_id, channel, label, identifier, connection_mode, status, "
+            "created_by, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)",
+            (oid, channel, source_label, account_identifier, "live", "connected",
+             user_id, ts, ts))
+        source_id = cur.lastrowid
+
+    if not existing:
+        existing = conn.execute(
+            "SELECT * FROM marketing_connections "
+            "WHERE source_id = ? AND org_id = ?", (source_id, oid)).fetchone()
+    same_identity = bool(
+        existing and existing["provider"] == provider
+        and existing["external_account_id"] == external_account_id)
+    refresh_encrypted = (refresh_token_encrypted or "").strip()
+    if not refresh_encrypted and same_identity:
+        refresh_encrypted = existing["refresh_token_encrypted"] or ""
+    watch_expires = (gmail_watch_expires_at or "").strip()
+    last_sync = (last_successful_sync_at or "").strip()
+    if same_identity:
+        watch_expires = watch_expires or existing["gmail_watch_expires_at"] or ""
+        last_sync = last_sync or existing["last_successful_sync_at"] or ""
+
+    values = (
+        oid, source_id, provider, external_account_id, account_identifier,
+        access_token_encrypted, refresh_encrypted,
+        _marketing_scopes_json(granted_scopes),
+        (token_expires_at or "").strip()[:40],
+        (gmail_history_id or "").strip()[:64], watch_expires[:40],
+        (instagram_account_id or "").strip()[:255], last_sync[:40],
+        "connected", "", "", "", user_id, ts, ts,
+    )
+    if existing:
+        conn.execute(
+            "UPDATE marketing_connections SET org_id = ?, source_id = ?, "
+            "provider = ?, external_account_id = ?, account_identifier = ?, "
+            "access_token_encrypted = ?, refresh_token_encrypted = ?, "
+            "granted_scopes = ?, token_expires_at = ?, gmail_history_id = ?, "
+            "gmail_watch_expires_at = ?, instagram_account_id = ?, "
+            "last_successful_sync_at = ?, status = ?, last_error_code = ?, "
+            "last_error_message = ?, last_error_at = ?, created_by = ?, "
+            "updated_at = ? WHERE id = ? AND org_id = ?",
+            values[:-2] + (ts, existing["id"], oid))
+        connection_id = existing["id"]
+    else:
+        cur = conn.execute(
+            "INSERT INTO marketing_connections "
+            "(org_id, source_id, provider, external_account_id, "
+            "account_identifier, access_token_encrypted, "
+            "refresh_token_encrypted, granted_scopes, token_expires_at, "
+            "gmail_history_id, gmail_watch_expires_at, instagram_account_id, "
+            "last_successful_sync_at, status, last_error_code, "
+            "last_error_message, last_error_at, created_by, created_at, "
+            "updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            values)
+        connection_id = cur.lastrowid
+    conn.commit()
+    return {"source_id": source_id, "connection_id": connection_id}
+
+
+def update_marketing_connection_tokens(user_id, connection_id, *,
+                                       access_token_encrypted,
+                                       token_expires_at,
+                                       refresh_token_encrypted=None,
+                                       granted_scopes=None):
+    oid = user_org_id(user_id)
+    existing = get_marketing_connection(user_id, connection_id)
+    if not existing or not access_token_encrypted:
+        return False
+    refresh = existing["refresh_token_encrypted"]
+    if refresh_token_encrypted is not None:
+        refresh = refresh_token_encrypted
+    scopes = existing["granted_scopes"]
+    if granted_scopes is not None:
+        scopes = _marketing_scopes_json(granted_scopes)
+    conn = get_db()
+    cur = conn.execute(
+        "UPDATE marketing_connections SET access_token_encrypted = ?, "
+        "refresh_token_encrypted = ?, granted_scopes = ?, token_expires_at = ?, "
+        "status = 'connected', last_error_code = '', last_error_message = '', "
+        "last_error_at = '', updated_at = ? WHERE id = ? AND org_id = ?",
+        (access_token_encrypted, refresh, scopes,
+         (token_expires_at or "").strip()[:40], now(), connection_id, oid))
+    if cur.rowcount:
+        conn.execute(
+            "UPDATE marketing_sources SET status = 'connected', updated_at = ? "
+            "WHERE id = ? AND org_id = ?",
+            (now(), existing["source_id"], oid))
+    conn.commit()
+    return bool(cur.rowcount)
+
+
+def set_marketing_connection_error(user_id, connection_id, code, message,
+                                   status="error"):
+    if status not in ("error", "needs_reauth"):
+        status = "error"
+    oid = user_org_id(user_id)
+    conn = get_db()
+    row = conn.execute(
+        "SELECT source_id FROM marketing_connections WHERE id = ? AND org_id = ?",
+        (connection_id, oid)).fetchone()
+    if not row:
+        return False
+    ts = now()
+    conn.execute(
+        "UPDATE marketing_connections SET status = ?, last_error_code = ?, "
+        "last_error_message = ?, last_error_at = ?, updated_at = ? "
+        "WHERE id = ? AND org_id = ?",
+        (status, (code or "unknown")[:80], (message or "")[:500], ts, ts,
+         connection_id, oid))
+    conn.execute(
+        "UPDATE marketing_sources SET status = 'disconnected', updated_at = ? "
+        "WHERE id = ? AND org_id = ?", (ts, row["source_id"], oid))
+    conn.commit()
+    return True
+
+
+def record_marketing_connection_sync_error(user_id, connection_id, code,
+                                           message):
+    """Record a retryable provider failure without disabling the connection."""
+    oid = user_org_id(user_id)
+    ts = now()
+    conn = get_db()
+    cur = conn.execute(
+        "UPDATE marketing_connections SET last_error_code = ?, "
+        "last_error_message = ?, last_error_at = ?, updated_at = ? "
+        "WHERE id = ? AND org_id = ? AND status = 'connected'",
+        ((code or "sync_failed")[:80], (message or "")[:500], ts, ts,
+         connection_id, oid))
+    conn.commit()
+    return bool(cur.rowcount)
+
+
+def mark_marketing_connection_synced(user_id, connection_id, *,
+                                     gmail_history_id=None,
+                                     gmail_watch_expires_at=None):
+    oid = user_org_id(user_id)
+    connection = get_marketing_connection(user_id, connection_id)
+    if not connection:
+        return False
+    fields = ["last_successful_sync_at = ?", "status = 'connected'",
+              "last_error_code = ''", "last_error_message = ''",
+              "last_error_at = ''", "updated_at = ?"]
+    ts = now()
+    args = [ts, ts]
+    if gmail_history_id is not None:
+        fields.append("gmail_history_id = ?")
+        args.append((gmail_history_id or "")[:64])
+    if gmail_watch_expires_at is not None:
+        fields.append("gmail_watch_expires_at = ?")
+        args.append((gmail_watch_expires_at or "")[:40])
+    args.extend([connection_id, oid])
+    conn = get_db()
+    cur = conn.execute(
+        f"UPDATE marketing_connections SET {', '.join(fields)} "
+        "WHERE id = ? AND org_id = ?", args)
+    if cur.rowcount:
+        conn.execute(
+            "UPDATE marketing_sources SET status = 'connected', updated_at = ? "
+            "WHERE id = ? AND org_id = ?",
+            (ts, connection["source_id"], oid))
+    conn.commit()
+    return bool(cur.rowcount)
+
+
+def disconnect_marketing_connection(user_id, connection_id):
+    oid = user_org_id(user_id)
+    conn = get_db()
+    row = conn.execute(
+        "SELECT source_id FROM marketing_connections WHERE id = ? AND org_id = ?",
+        (connection_id, oid)).fetchone()
+    if not row:
+        return False
+    ts = now()
+    conn.execute(
+        "UPDATE marketing_connections SET access_token_encrypted = '', "
+        "refresh_token_encrypted = '', token_expires_at = '', "
+        "gmail_watch_expires_at = '', status = 'disconnected', "
+        "last_error_code = '', last_error_message = '', last_error_at = '', "
+        "updated_at = ? WHERE id = ? AND org_id = ?",
+        (ts, connection_id, oid))
+    conn.execute(
+        "UPDATE marketing_sources SET status = 'disconnected', updated_at = ? "
+        "WHERE id = ? AND org_id = ?", (ts, row["source_id"], oid))
+    conn.commit()
+    return True
 
 
 def set_marketing_source_status(user_id, source_id, status):
@@ -2030,15 +2363,118 @@ def create_marketing_thread(user_id, source_id, contact_name, contact_handle,
     return thread_id
 
 
+def upsert_gmail_thread(user_id, source_id, *, external_ref, contact_name,
+                        contact_handle, subject, messages):
+    """Persist one Gmail thread and any unseen messages in one transaction."""
+    source = get_marketing_source(user_id, source_id)
+    connection = get_marketing_connection_for_source(user_id, source_id)
+    thread_ref = (external_ref or "").strip()[:255]
+    if (not source or not connection or connection["provider"] != "gmail"
+            or not thread_ref):
+        return None
+
+    clean_messages = []
+    for item in messages or []:
+        message_ref = str(item.get("external_ref") or "").strip()[:255]
+        kind = (item.get("kind") or "").strip()
+        body = (item.get("body") or "").strip()[:4000]
+        if not message_ref or kind not in ("inbound", "outbound") or not body:
+            continue
+        clean_messages.append({
+            "external_ref": message_ref,
+            "kind": kind,
+            "body": body,
+            "author_name": (item.get("author_name") or "").strip()[:100],
+            "delivery_status": (
+                item.get("delivery_status") or
+                ("received" if kind == "inbound" else "sent"))[:30],
+            "created_at": (item.get("created_at") or now()).strip()[:16],
+            "unread": bool(item.get("unread")),
+        })
+    if not clean_messages:
+        return None
+    clean_messages.sort(key=lambda item: (
+        item["created_at"], item["external_ref"]))
+
+    oid = user_org_id(user_id)
+    conn = get_db()
+    row = conn.execute(
+        "SELECT * FROM marketing_threads WHERE org_id = ? AND source_id = ? "
+        "AND external_ref = ?", (oid, source_id, thread_ref)).fetchone()
+    inserted_thread = False
+    if not row:
+        settings = get_marketing_handoff(user_id)
+        assigned_to = marketing_active_owner_id(settings)
+        first_at = clean_messages[0]["created_at"]
+        last_at = clean_messages[-1]["created_at"]
+        initial_unread = int(any(
+            item["kind"] == "inbound" and item["unread"]
+            for item in clean_messages))
+        cur = conn.execute(
+            "INSERT OR IGNORE INTO marketing_threads "
+            "(org_id, source_id, external_ref, contact_name, contact_handle, "
+            "subject, status, assigned_to, unread, created_at, updated_at) "
+            "VALUES (?,?,?,?,?,?,'open',?,?,?,?)",
+            (oid, source_id, thread_ref,
+             (contact_name or "").strip()[:100],
+             (contact_handle or "").strip()[:160],
+             (subject or "(no subject)").strip()[:180], assigned_to,
+             initial_unread, first_at, last_at))
+        inserted_thread = bool(cur.rowcount)
+        row = conn.execute(
+            "SELECT * FROM marketing_threads WHERE org_id = ? AND source_id = ? "
+            "AND external_ref = ?", (oid, source_id, thread_ref)).fetchone()
+    if not row:
+        conn.rollback()
+        return None
+
+    inserted = []
+    for item in clean_messages:
+        cur = conn.execute(
+            "INSERT OR IGNORE INTO marketing_messages "
+            "(org_id, thread_id, external_ref, kind, body, author_name, "
+            "delivery_status, created_at) VALUES (?,?,?,?,?,?,?,?)",
+            (oid, row["id"], item["external_ref"], item["kind"], item["body"],
+             item["author_name"], item["delivery_status"], item["created_at"]))
+        if cur.rowcount:
+            inserted.append(item)
+
+    latest_at = max(
+        [row["updated_at"] or ""] +
+        [item["created_at"] for item in clean_messages])
+    has_new_inbound = any(item["kind"] == "inbound" for item in inserted)
+    has_new_unread = any(
+        item["kind"] == "inbound" and item["unread"] for item in inserted)
+    conn.execute(
+        "UPDATE marketing_threads SET contact_name = ?, contact_handle = ?, "
+        "subject = ?, status = CASE WHEN ? THEN 'open' ELSE status END, "
+        "unread = CASE WHEN ? THEN 1 ELSE unread END, updated_at = ? "
+        "WHERE id = ? AND org_id = ?",
+        ((contact_name or row["contact_name"] or "").strip()[:100],
+         (contact_handle or row["contact_handle"] or "").strip()[:160],
+         (subject or row["subject"] or "(no subject)").strip()[:180],
+         1 if has_new_inbound else 0, 1 if has_new_unread else 0,
+         latest_at, row["id"], oid))
+    conn.commit()
+    return {
+        "thread_id": row["id"],
+        "inserted_thread": inserted_thread,
+        "inserted_messages": len(inserted),
+        "latest_at": max(item["created_at"] for item in clean_messages),
+    }
+
+
 def get_marketing_thread(user_id, thread_id):
     oid = user_org_id(user_id)
     return get_db().execute(
         "SELECT t.*, s.channel, s.label AS source_label, "
         "s.identifier AS source_identifier, s.connection_mode, "
-        "s.status AS source_status, u.name AS assigned_name, "
+        "s.status AS source_status, c.id AS connection_id, c.provider, "
+        "c.status AS connection_status, u.name AS assigned_name, "
         "u.email AS assigned_email "
         "FROM marketing_threads t "
         "LEFT JOIN marketing_sources s ON s.id = t.source_id "
+        "LEFT JOIN marketing_connections c ON c.source_id = s.id "
         "LEFT JOIN users u ON u.id = t.assigned_to "
         "WHERE t.id = ? AND t.org_id = ?",
         (thread_id, oid)).fetchone()
@@ -2059,7 +2495,7 @@ def list_marketing_threads(user_id, status="open", channel="", query="",
         where.append("t.source_id = ?")
         args.append(source_id)
     if nct:
-        where.append("t.nct = ?")
+        where.append("(t.nct = ? OR COALESCE(t.nct, '') = '')")
         args.append(nct)
     query = (query or "").strip().lower()[:100]
     if query:
@@ -2075,9 +2511,11 @@ def list_marketing_threads(user_id, status="open", channel="", query="",
         "s.identifier AS source_identifier, s.connection_mode, "
         "u.name AS assigned_name, "
         "COALESCE((SELECT m.body FROM marketing_messages m "
-        "WHERE m.thread_id = t.id ORDER BY m.id DESC LIMIT 1), '') AS preview, "
+        "WHERE m.thread_id = t.id ORDER BY m.created_at DESC, m.id DESC "
+        "LIMIT 1), '') AS preview, "
         "COALESCE((SELECT m.kind FROM marketing_messages m "
-        "WHERE m.thread_id = t.id ORDER BY m.id DESC LIMIT 1), '') AS last_kind, "
+        "WHERE m.thread_id = t.id ORDER BY m.created_at DESC, m.id DESC "
+        "LIMIT 1), '') AS last_kind, "
         "(SELECT COUNT(*) FROM marketing_messages m "
         "WHERE m.thread_id = t.id) AS message_count "
         "FROM marketing_threads t "
@@ -2092,7 +2530,7 @@ def marketing_thread_counts(user_id, nct=""):
     oid = user_org_id(user_id)
     where, args = ["org_id = ?"], [oid]
     if nct:
-        where.append("nct = ?")
+        where.append("(nct = ? OR COALESCE(nct, '') = '')")
         args.append(nct)
     row = get_db().execute(
         "SELECT COUNT(*) AS total, "
@@ -2116,7 +2554,8 @@ def list_marketing_messages(user_id, thread_id):
     return get_db().execute(
         "SELECT m.*, u.name AS user_name FROM marketing_messages m "
         "LEFT JOIN users u ON u.id = m.author_user_id "
-        "WHERE m.thread_id = ? AND m.org_id = ? ORDER BY m.id",
+        "WHERE m.thread_id = ? AND m.org_id = ? "
+        "ORDER BY m.created_at, m.id",
         (thread_id, thread["org_id"])).fetchall()
 
 
@@ -2130,7 +2569,8 @@ def mark_marketing_thread_read(user_id, thread_id):
     return bool(cur.rowcount)
 
 
-def add_marketing_message(user_id, thread_id, body, kind="outbound"):
+def add_marketing_message(user_id, thread_id, body, kind="outbound", *,
+                          delivery_status=None, external_ref=""):
     if kind not in ("outbound", "note"):
         return None
     thread = get_marketing_thread(user_id, thread_id)
@@ -2140,20 +2580,32 @@ def add_marketing_message(user_id, thread_id, body, kind="outbound"):
     user = get_db().execute(
         "SELECT name, email FROM users WHERE id = ?", (user_id,)).fetchone()
     author = ((user["name"] or user["email"]) if user else "Team member")
-    delivery = "internal" if kind == "note" else "saved"
+    delivery = "internal" if kind == "note" else (
+        delivery_status if delivery_status in ("saved", "sent") else "saved")
+    message_ref = (external_ref or "").strip()[:255] if kind == "outbound" else ""
     ts = now()
     conn = get_db()
     cur = conn.execute(
-        "INSERT INTO marketing_messages "
-        "(org_id, thread_id, kind, body, author_user_id, author_name, "
-        "delivery_status, created_at) VALUES (?,?,?,?,?,?,?,?)",
-        (thread["org_id"], thread_id, kind, body, user_id, author,
-         delivery, ts))
+        "INSERT OR IGNORE INTO marketing_messages "
+        "(org_id, thread_id, external_ref, kind, body, author_user_id, "
+        "author_name, delivery_status, created_at) VALUES (?,?,?,?,?,?,?,?,?)",
+        (thread["org_id"], thread_id, message_ref, kind, body, user_id,
+         author, delivery, ts))
+    message_id = cur.lastrowid
+    if not cur.rowcount and message_ref:
+        existing = conn.execute(
+            "SELECT id FROM marketing_messages WHERE thread_id = ? "
+            "AND external_ref = ?", (thread_id, message_ref)).fetchone()
+        message_id = existing["id"] if existing else None
+    if not message_id:
+        conn.rollback()
+        return None
     conn.execute(
         "UPDATE marketing_threads SET unread = 0, status = 'open', "
-        "updated_at = ? WHERE id = ?", (ts, thread_id))
+        "updated_at = ? WHERE id = ? AND org_id = ?",
+        (ts, thread_id, thread["org_id"]))
     conn.commit()
-    return cur.lastrowid
+    return message_id
 
 
 def assign_marketing_thread(user_id, thread_id, assignee_id=None):
@@ -2223,6 +2675,9 @@ def seed_demo_marketing_hub(user_id):
         "DELETE FROM marketing_messages WHERE thread_id IN "
         "(SELECT id FROM marketing_threads WHERE org_id = ?)", (oid,))
     conn.execute("DELETE FROM marketing_threads WHERE org_id = ?", (oid,))
+    # Connection rows reference sources. The shared demo must never retain real
+    # provider credentials, and deleting these rows first preserves FK ordering.
+    conn.execute("DELETE FROM marketing_connections WHERE org_id = ?", (oid,))
     conn.execute("DELETE FROM marketing_sources WHERE org_id = ?", (oid,))
 
     ts = now()

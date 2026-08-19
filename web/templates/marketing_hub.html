@@ -83,12 +83,37 @@
             </span>
             {% if source.unread_count %}<span class="mh-count">{{ source.unread_count }}</span>{% endif %}
           </a>
+          {% if source.connection_mode == 'live' and source.connection_id %}
+            {% if source.connection_status == 'connected' %}
+            <div class="mh-source-state mh-source-live-state">
+              <span class="mh-sync-meta" data-gmail-status>
+                <span class="mh-status-dot"></span>
+                <span data-gmail-status-text>{{ 'Synced ' ~ source.sync_time_label if source.last_successful_sync_at else source.sync_time_label }}</span>
+              </span>
+              <form method="post" action="{{ url_for('marketing_connection_sync', connection_id=source.connection_id) }}"
+                    data-gmail-sync data-last-sync="{{ source.last_successful_sync_at }}">
+                <button type="submit" title="Check {{ source.label }} for new email">{{ ic.icon('refresh') }} Sync</button>
+              </form>
+              <form method="post" action="{{ url_for('marketing_connection_disconnect', connection_id=source.connection_id) }}">
+                <button type="submit" title="Disconnect {{ source.label }}">Disconnect</button>
+              </form>
+            </div>
+            <small class="mh-source-error" data-gmail-error {{ 'hidden' if not source.last_error_message }}>{{ source.last_error_message|truncate(90) }}</small>
+            {% else %}
+            <div class="mh-source-state">
+              <a href="{{ url_for('marketing_gmail_connect') }}" title="Reconnect {{ source.label }}">
+                <span class="mh-status-dot"></span>{{ 'Needs attention' if source.connection_status in ('error', 'needs_reauth') else 'Reconnect Gmail' }}
+              </a>
+            </div>
+            {% endif %}
+          {% else %}
           <form method="post" action="{{ url_for('marketing_source_status', source_id=source.id) }}" class="mh-source-state">
             <input type="hidden" name="status" value="{{ 'connected' if source.status != 'connected' else 'disconnected' }}">
             <button type="submit" title="{{ 'Reconnect' if source.status != 'connected' else 'Disconnect' }} {{ source.label }}">
               <span class="mh-status-dot"></span>{{ 'Reconnect' if source.status != 'connected' else 'Demo connected' }}
             </button>
           </form>
+          {% endif %}
         </div>
         {% else %}
         <div class="mh-source-empty">
@@ -156,6 +181,9 @@
             {% set assignee = member_by_id.get(thread.assigned_to) %}
             {{ member_avatar(assignee, 'is-tiny') }}
             <span>{{ assignee.display_name if assignee else 'Unassigned' }}</span>
+            <span class="mh-connection-tag {{ 'is-live' if thread.connection_mode == 'live' else 'is-demo' }}">
+              {{ 'Live' if thread.connection_mode == 'live' else 'Demo' }}
+            </span>
             {% if thread.study_label and not active_nct %}<span class="mh-study-tag" title="{{ thread.study_label }}">{{ ic.icon('file') }} {{ thread.study_label|truncate(26) }}</span>{% endif %}
             {% if thread.status == 'resolved' %}<span class="mh-resolved-tag">{{ ic.icon('check') }} Resolved</span>{% endif %}
           </div>
@@ -173,6 +201,7 @@
 
     <section class="mh-conversation" id="conversation" aria-label="Active conversation">
       {% if active %}
+      {% set gmail_delivery_ready = active.connection_mode == 'live' and active.provider == 'gmail' and active.connection_status == 'connected' and active.external_ref %}
       <header class="mh-conversation-head">
         <div class="mh-contact-main">
           <span class="mh-contact-avatar is-large">{{ (active.contact_name or active.contact_handle or '?')[:1]|upper }}</span>
@@ -228,6 +257,8 @@
             <div class="mh-message-bubble">{{ message.body }}</div>
             {% if message.kind == 'outbound' and message.delivery_status == 'saved' %}
             <small class="mh-delivery">{{ ic.icon('info') }} Saved in workspace, not delivered externally</small>
+            {% elif message.kind == 'outbound' and message.delivery_status == 'sent' %}
+            <small class="mh-delivery is-sent">{{ ic.icon('check') }} Sent via Gmail</small>
             {% endif %}
           </article>
           {% endif %}
@@ -246,11 +277,15 @@
             <span>
               {% if active.connection_mode == 'demo' %}
               {{ ic.icon('info') }} Demo connection: this reply will be saved here only.
+              {% elif gmail_delivery_ready %}
+              {{ ic.icon('send') }} Sends from {{ active.source_identifier }} to {{ active.contact_handle }}.
+              {% elif active.connection_status != 'connected' %}
+              {{ ic.icon('info') }} Reconnect Gmail before sending a reply.
               {% else %}
-              Replying from {{ active.source_identifier }}
+              {{ ic.icon('info') }} Sync this conversation from Gmail before replying.
               {% endif %}
             </span>
-            {{ ui.btn('Save reply' if active.connection_mode == 'demo' else 'Send reply', 'primary', icon='send', type='submit') }}
+            {{ ui.btn('Save demo reply' if active.connection_mode == 'demo' else 'Send with Gmail', 'primary', icon='send', type='submit', disabled=active.connection_mode != 'demo' and not gmail_delivery_ready) }}
           </div>
         </form>
 
@@ -274,16 +309,32 @@
 </div>
 
 {% call ui.modal('sourceModal', 'Connect an account', icon='cloud-sync') %}
+<section class="mh-gmail-connect">
+  <div class="mh-gmail-mark">{{ ic.icon('google', 'brand-ico') }}</div>
+  <div class="mh-gmail-copy">
+    <span class="mh-live-pill"><i></i> Live connection</span>
+    <h3>Connect Gmail</h3>
+    <p>Bring recent email into this shared inbox and keep it updated for your whole team.</p>
+    <div class="mh-scope-list"><span>{{ ic.icon('check') }} Sync inbox</span><span>{{ ic.icon('check') }} Team access</span></div>
+  </div>
+  <div class="mh-gmail-action">
+    {% if gmail_oauth_ready %}
+      {{ ui.btn('Connect Gmail', 'primary', 'sm', icon='google', href=url_for('marketing_gmail_connect')) }}
+    {% else %}
+      {{ ui.btn('Google setup required', 'ghost', 'sm', disabled=True) }}
+    {% endif %}
+    <small>Google OAuth - No password shared</small>
+  </div>
+</section>
+
+<div class="mh-connect-divider"><span>Demo channels</span></div>
+
 <form method="post" action="{{ url_for('marketing_source_add') }}" class="mh-modal-form" id="sourceForm">
   <div class="field">
-    <label>What do you want to connect?</label>
+    <label>Preview another channel</label>
     <div class="mh-channel-picker">
       <label>
-        <input type="radio" name="channel" value="email" checked>
-        <span>{{ channel_icon('email') }}<b>Email</b><small>Shared inbox</small></span>
-      </label>
-      <label>
-        <input type="radio" name="channel" value="instagram">
+        <input type="radio" name="channel" value="instagram" checked>
         <span>{{ channel_icon('instagram') }}<b>Instagram</b><small>Direct messages</small></span>
       </label>
       <label>
@@ -294,21 +345,21 @@
   </div>
   <div class="field">
     <label for="sourceLabel">Account label</label>
-    <input id="sourceLabel" name="label" maxlength="80" placeholder="Recruitment inbox" required>
+    <input id="sourceLabel" name="label" maxlength="80" placeholder="Community DMs" required>
     <span class="mh-field-help">Use a name your teammates will recognize.</span>
   </div>
   <div class="field">
-    <label for="sourceIdentifier" id="sourceIdentifierLabel">Email address</label>
-    <input id="sourceIdentifier" name="identifier" maxlength="160" placeholder="recruitment@example.com" required>
-    <span class="mh-field-help" id="sourceIdentifierHelp">Shared with your whole team once connected.</span>
+    <label for="sourceIdentifier" id="sourceIdentifierLabel">Instagram handle</label>
+    <input id="sourceIdentifier" name="identifier" maxlength="160" placeholder="@youraccount" required>
+    <span class="mh-field-help" id="sourceIdentifierHelp">Creates a safe demo source without contacting Instagram.</span>
   </div>
   <div class="mh-oauth-preview">
-    {{ ic.icon('shield-check') }}
-    <span><b>No password needed</b><small>Live sync connects through the provider's secure OAuth.</small></span>
+    {{ ic.icon('info') }}
+    <span><b>Demo source</b><small>Use this to stage conversations. Instagram and Google Ads are not synced yet.</small></span>
   </div>
   <div class="mh-modal-actions">
     {{ ui.btn('Cancel', 'ghost', extra='data-ui-close') }}
-    {{ ui.btn('Add account', 'primary', icon='plus', type='submit') }}
+    {{ ui.btn('Add demo account', 'primary', icon='plus', type='submit') }}
   </div>
 </form>
 {% endcall %}
@@ -440,9 +491,8 @@
     var help = document.getElementById('sourceIdentifierHelp');
     var accountLabel = document.getElementById('sourceLabel');
     var copy = {
-      email: ['Email address', 'recruitment@example.com', 'Recruitment inbox', 'Shared with your whole team once connected.'],
-      instagram: ['Instagram handle', '@youraccount', 'Community DMs', 'DMs land in this shared queue once connected.'],
-      google_ads: ['Account name or customer ID', '123-456-7890', 'Patient search ads', 'Ad alerts land in this shared queue once connected.']
+      instagram: ['Instagram handle', '@youraccount', 'Community DMs', 'Creates a safe demo source without contacting Instagram.'],
+      google_ads: ['Account name or customer ID', '123-456-7890', 'Patient search ads', 'Creates a safe demo source without contacting Google Ads.']
     };
     sourceForm.querySelectorAll('input[name="channel"]').forEach(function (radio) {
       radio.addEventListener('change', function () {
@@ -458,6 +508,82 @@
 
   var messageList = document.getElementById('messageList');
   if (messageList) messageList.scrollTop = messageList.scrollHeight;
+
+  var gmailForms = Array.prototype.slice.call(
+    document.querySelectorAll('[data-gmail-sync]'));
+  var csrfMeta = document.querySelector('meta[name="csrf-token"]');
+  var csrfToken = csrfMeta ? csrfMeta.getAttribute('content') : '';
+
+  function syncGmail(form, interactive) {
+    if (form.getAttribute('data-syncing') === '1') return Promise.resolve(null);
+    form.setAttribute('data-syncing', '1');
+    var button = form.querySelector('button');
+    var card = form.closest('.mh-source-wrap');
+    var status = card ? card.querySelector('[data-gmail-status-text]') : null;
+    var error = card ? card.querySelector('[data-gmail-error]') : null;
+    if (button) {
+      button.disabled = true;
+      button.classList.add('is-syncing');
+    }
+    if (status && interactive) status.textContent = 'Syncing...';
+    if (error) error.hidden = true;
+    return fetch(form.action, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: {
+        'Accept': 'application/json',
+        'X-Requested-With': 'XMLHttpRequest',
+        'X-CSRF-Token': csrfToken
+      }
+    }).then(function (response) {
+      return response.json().catch(function () { return {}; }).then(function (data) {
+        if (!response.ok) throw data;
+        return data;
+      });
+    }).then(function (data) {
+      if (status) status.textContent = 'Synced now';
+      form.setAttribute('data-last-sync', new Date().toISOString());
+      return data;
+    }).catch(function (failure) {
+      if (status) status.textContent = failure.error === 'gmail_reconnect_required'
+        ? 'Reconnect required' : 'Sync retry needed';
+      if (error) {
+        error.textContent = failure.message || 'Gmail could not sync right now.';
+        error.hidden = false;
+      }
+      return null;
+    }).finally(function () {
+      form.removeAttribute('data-syncing');
+      if (button) {
+        button.disabled = false;
+        button.classList.remove('is-syncing');
+      }
+    });
+  }
+
+  gmailForms.forEach(function (form) {
+    form.addEventListener('submit', function (event) {
+      event.preventDefault();
+      syncGmail(form, true).then(function (data) {
+        if (data && data.imported_messages > 0) window.location.assign(data.redirect_url);
+      });
+    });
+  });
+
+  function pollGmail() {
+    if (document.visibilityState === 'hidden' || !gmailForms.length) return;
+    Promise.all(gmailForms.map(function (form) { return syncGmail(form, false); }))
+      .then(function (results) {
+        var imported = results.find(function (item) {
+          return item && item.imported_messages > 0;
+        });
+        if (imported) window.location.assign(imported.redirect_url);
+      });
+  }
+  if (gmailForms.length) {
+    window.setTimeout(pollGmail, 1500);
+    window.setInterval(pollGmail, 60000);
+  }
 })();
 </script>
 {% endblock %}

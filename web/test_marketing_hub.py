@@ -97,6 +97,7 @@ def test_marketing_hub_flow():
         messages = db.list_marketing_messages(owner_id, thread_id)
         assert [message["kind"] for message in messages] == [
             "inbound", "outbound", "note"]
+        assert messages[1]["delivery_status"] == "saved"
         assert db.get_marketing_thread(owner_id, thread_id)["assigned_to"] == cover_id
 
     coverage = _post(client, "/marketing-hub/coverage", {
@@ -136,9 +137,31 @@ def test_marketing_hub_flow():
     print("PASS: persistent inbox, replies, notes, assignment, handoff, isolation")
 
 
+def test_demo_reseed_removes_connection_before_source():
+    with webapp.app.app_context():
+        demo_id = db.create_user(
+            "dejosama@fieveclinical.com", "disabled", "Demo Owner",
+            verified=True)
+        connected = db.connect_marketing_account(
+            demo_id, provider="gmail", channel="email",
+            external_account_id="discarded-demo-account",
+            account_identifier="discarded@example.com",
+            access_token_encrypted="encrypted-placeholder",
+            granted_scopes=[], token_expires_at="2099-01-01T00:00:00+00:00")
+        assert connected
+        db.seed_demo_marketing_hub(demo_id)
+        assert db.get_db().execute(
+            "SELECT COUNT(*) FROM marketing_connections WHERE org_id = ?",
+            (db.user_org_id(demo_id),)).fetchone()[0] == 0
+        assert any(source["identifier"] == "recruit@fieveclinical.com"
+                   for source in db.list_marketing_sources(demo_id))
+    print("PASS: demo reseed preserves marketing connection FK ordering")
+
+
 def main():
     try:
         test_marketing_hub_flow()
+        test_demo_reseed_removes_connection_before_source()
         print("PASS: marketing hub tests")
     finally:
         try:

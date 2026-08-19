@@ -22,6 +22,12 @@ services:
     envVars:
       - key: SECRET_KEY
         generateValue: true      # Render generates a stable random secret
+      - key: GOOGLE_CLIENT_ID
+        sync: false              # Google OAuth web client
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: OAUTH_TOKEN_ENCRYPTION_KEY
+        sync: false              # Fernet key for encrypted provider tokens
       - key: BEHIND_PROXY
         value: "1"               # trust Render's HTTPS proxy
       - key: WEB_MAX_MATCH

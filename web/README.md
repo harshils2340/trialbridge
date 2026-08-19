@@ -33,6 +33,38 @@ Open http://127.0.0.1:5000, create an account, and start searching.
 Without `LLM_API_KEY` the app still fetches trials and screens by age/sex, but
 skips the per-trial eligibility reasoning.
 
+The app automatically loads local variables from the ignored repository-root
+`.env`; variables already exported by the process take precedence.
+
+### Gmail OAuth for the marketing hub
+
+Set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` in the root `.env`. For local
+development, configure the Google OAuth web client with:
+
+- Authorized JavaScript origin: `http://127.0.0.1:5000`
+- Authorized redirect URI: `http://127.0.0.1:5000/integrations/gmail/callback`
+
+For production, also set `OAUTH_TOKEN_ENCRYPTION_KEY` to a stable Fernet key:
+
+```bash
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
+
+If that key is omitted, token encryption uses a domain-separated key derived
+from the stable Flask `SECRET_KEY`. Changing either encryption key invalidates
+stored tokens and requires users to reconnect their accounts.
+
+This flow stores refresh-ready credentials, imports the latest inbox threads,
+and advances Gmail's `historyId` for idempotent incremental sync. The marketing
+  hub checks for new mail when it opens, polls once per minute while visible, and
+  also provides a manual **Sync** action. An expired history cursor falls back to a
+  bounded full sync. Replies to imported Gmail conversations are sent from the
+  connected account and kept in the original Gmail thread. A reply is only marked
+  sent locally after Gmail confirms it; demo sources continue to save replies in
+  the workspace only. Pub/Sub push delivery is not yet enabled. When started from
+  the public demo, the verified Google identity creates or resumes a private
+  workspace so credentials are never attached to shared demo data.
+
 ## Integrated E2E smoke (patient -> site ATS)
 
 From `matcher/web`:
@@ -145,7 +177,10 @@ commented `disk:` block in `render.yaml`).
 | `NOTIFY_SMS` | `1` enables optional Twilio SMS for patient-facing notifications |
 | `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER` | Twilio REST credentials + sender number (E.164) |
 | `SMS_DEFAULT_COUNTRY_CODE` | Default country code when normalizing 10-digit numbers (`+1` default) |
-| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Enable patient "Continue with Google" OAuth |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Enable Google sign-in and Gmail OAuth in the marketing hub |
+| `OAUTH_TOKEN_ENCRYPTION_KEY` | Recommended stable Fernet key for provider tokens at rest |
+| `GMAIL_INITIAL_THREAD_LIMIT` | Latest inbox threads imported by a full sync (default `20`, maximum `50`) |
+| `GMAIL_THREAD_MESSAGE_LIMIT` | Messages retained from each imported Gmail thread (default `50`, maximum `100`) |
 | `GOOGLE_CALENDAR_SYNC` | `1` enables best-effort Google Calendar push on visit booking |
 | `GOOGLE_CALENDAR_ID`, `GOOGLE_CALENDAR_ACCESS_TOKEN` | Calendar destination + auth token for visit push |
 | `GOOGLE_CALENDAR_TIMEZONE` | Optional timezone for pushed events (default `UTC`) |
