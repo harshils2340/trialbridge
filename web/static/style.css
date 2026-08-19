@@ -9392,16 +9392,47 @@ body.fs-page { background:
 /* Today reads as a clean, self-contained card floating above the list (rounded,
    bordered, soft shadow) rather than a flat full-bleed band - so the calendar
    feels like a distinct, polished module. */
-.gm-today { grid-column: 1 / -1; margin: 14px 16px 4px; padding: 14px 16px;
+.gm-today { grid-column: 1 / -1; margin: 12px 16px 2px; padding: 11px 16px;
   background: var(--surface); border: 1px solid var(--border);
   border-radius: var(--radius); box-shadow: var(--shadow); }
-.gm-today .today-lane { height: 66px; border-radius: var(--radius);
+/* Shorter lane than the full calendar page - this is a glance strip, not the
+   planner. */
+.gm-today .today-lane { height: 48px; border-radius: var(--radius);
   background: var(--bg); box-shadow: inset 0 1px 2px rgba(2, 6, 23, .04); }
-.gm-today .today-ev { border-radius: 9px; }
+.gm-today .today-ev { border-radius: 8px; }
 .gm-today .today-h { margin-bottom: 10px; }
+.gm-today .today-body { padding-top: 2px; }
 .gm-today .today-next-card { border-radius: var(--radius); }
 /* Rendered as <a> here (a block opens that patient's thread), not <button>. */
 .gm-today .today-next-card { text-decoration: none; }
+
+/* Collapse toggle: a quiet chevron that flips the strip to a one-liner. */
+.today-toggle { display: inline-flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; padding: 0; margin-right: 2px; border: 0;
+  border-radius: var(--radius-sm); background: transparent; color: var(--muted);
+  cursor: pointer; -webkit-appearance: none; appearance: none; }
+.today-toggle:hover { background: var(--surface-2); color: var(--ink); }
+.today-toggle .ico { width: 16px; height: 16px; transition: transform .15s ease; }
+
+/* Inline "next up" summary: only visible when the strip is slim (nothing today)
+   or the coordinator has collapsed it, so a hidden schedule still surfaces the
+   next thing. */
+.today-inline { display: none; align-items: center; gap: 5px; font-size: 13px;
+  color: var(--muted); }
+.today-inline .ico { width: 15px; height: 15px; color: var(--ok); vertical-align: -2px; }
+
+/* Slim: no visits today -> header only, no timeline, no wasted lane. */
+.gm-today.is-slim { padding: 9px 16px; }
+.gm-today.is-slim .today-inline { display: inline-flex; }
+.gm-today.is-slim .today-h { margin-bottom: 0; }
+
+/* Collapsed by choice: keep the header line, hide the timeline body, show the
+   one-line summary, and rotate the chevron shut. */
+.gm-today.is-collapsed { padding-bottom: 9px; }
+.gm-today.is-collapsed .today-body { display: none; }
+.gm-today.is-collapsed .today-h { margin-bottom: 0; }
+.gm-today.is-collapsed .today-inline { display: inline-flex; }
+.gm-today.is-collapsed .today-toggle .ico { transform: rotate(-90deg); }
 
 /* Left rail: views + studies (labels) */
 .gm-side { border-right: 1px solid var(--border); padding: 14px 10px;

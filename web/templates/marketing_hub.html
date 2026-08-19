@@ -42,14 +42,6 @@
     </div>
   </header>
 
-  <div class="mh-demo-note" role="status">
-    <span class="mh-demo-note-ic">{{ ic.icon('info') }}</span>
-    <div>
-      <b>The shared workspace is live. External connectors are in demo mode.</b>
-      <span>Accounts, assignments, notes, replies, and handoffs are saved. Provider OAuth is still required before messages can sync or send outside BridgeMD.</span>
-    </div>
-  </div>
-
   <section class="mh-pulse" aria-label="Inbox summary">
     <a href="{{ url_for('marketing_hub', status='open') }}" class="mh-pulse-item {{ 'has-work' if counts.unread else '' }}">
       <span class="mh-pulse-icon">{{ ic.icon('inbox') }}</span>
@@ -87,7 +79,7 @@
       <a class="mh-all-inbox {{ 'is-active' if not source_filter and not channel_filter else '' }}"
          href="{{ url_for('marketing_hub', status=status_filter, q=search_query) }}">
         <span class="mh-channel-ic is-all">{{ ic.icon('inbox') }}</span>
-        <span><b>All conversations</b><small>Every connected account</small></span>
+        <span><b>All conversations</b><small>Every account</small></span>
         {% if counts.unread %}<span class="mh-count">{{ counts.unread }}</span>{% endif %}
       </a>
 
@@ -130,7 +122,7 @@
         {% if settings.vacation_mode %}
         <p>{{ primary.display_name if primary else 'The primary owner' }} is away{% if settings.away_until %} until {{ settings.away_until }}{% endif %}. New conversations route to {{ active_owner.display_name }}.</p>
         {% else %}
-        <p>Choose a teammate before you leave and keep every conversation moving.</p>
+        <p>Set a cover teammate for time off.</p>
         {% endif %}
         <button type="button" data-ui-open="coverageModal">Manage coverage {{ ic.icon('arrow-right') }}</button>
       </div>
@@ -182,7 +174,7 @@
         <div class="mh-thread-empty">
           <span>{{ ic.icon('inbox') }}</span>
           <h3>{{ 'Nothing found' if search_query else 'You are all caught up' }}</h3>
-          <p>{{ 'Try a different search or account.' if search_query else 'New conversations will appear here for the whole team.' }}</p>
+          <p>{{ 'Try a different search or account.' if search_query else 'New messages land here for the whole team.' }}</p>
           {% if counts.sources %}{{ ui.btn('Add test conversation', 'ghost', 'sm', icon='plus', extra='data-ui-open="testThreadModal"') }}{% endif %}
         </div>
         {% endfor %}
@@ -318,11 +310,11 @@
   <div class="field">
     <label for="sourceIdentifier" id="sourceIdentifierLabel">Email address</label>
     <input id="sourceIdentifier" name="identifier" maxlength="160" placeholder="recruitment@example.com" required>
-    <span class="mh-field-help" id="sourceIdentifierHelp">Messages sent to this address will share one queue after OAuth is configured.</span>
+    <span class="mh-field-help" id="sourceIdentifierHelp">Shared with your whole team once connected.</span>
   </div>
   <div class="mh-oauth-preview">
     {{ ic.icon('shield-check') }}
-    <span><b>Demo connection for now</b><small>No password is requested or stored. Live access will use the provider's OAuth consent screen.</small></span>
+    <span><b>No password needed</b><small>Live sync connects through the provider's secure OAuth.</small></span>
   </div>
   <div class="mh-modal-actions">
     {{ ui.btn('Cancel', 'ghost', extra='data-ui-close') }}
@@ -458,9 +450,9 @@
     var help = document.getElementById('sourceIdentifierHelp');
     var accountLabel = document.getElementById('sourceLabel');
     var copy = {
-      email: ['Email address', 'recruitment@example.com', 'Recruitment inbox', 'Messages sent to this address will share one queue after OAuth is configured.'],
-      instagram: ['Instagram handle', '@youraccount', 'Community DMs', 'Instagram Direct messages will appear here after Meta OAuth is configured.'],
-      google_ads: ['Account name or customer ID', '123-456-7890', 'Patient search ads', 'Performance and policy alerts will appear here after Google Ads OAuth is configured.']
+      email: ['Email address', 'recruitment@example.com', 'Recruitment inbox', 'Shared with your whole team once connected.'],
+      instagram: ['Instagram handle', '@youraccount', 'Community DMs', 'DMs land in this shared queue once connected.'],
+      google_ads: ['Account name or customer ID', '123-456-7890', 'Patient search ads', 'Ad alerts land in this shared queue once connected.']
     };
     sourceForm.querySelectorAll('input[name="channel"]').forEach(function (radio) {
       radio.addEventListener('change', function () {

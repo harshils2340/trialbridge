@@ -22,15 +22,27 @@
      miss a visit while working threads - including while you're deep in one,
      which is exactly when you'd otherwise lose track of the clock. ── #}
   {% if today %}
-  <div class="gm-today">
+  <div class="gm-today{% if not today.track %} is-slim{% endif %}" id="gmToday">
     <div class="today-h">
       <div class="today-h-l">
+        {% if today.track %}
+        <button type="button" class="today-toggle" id="gmTodayToggle"
+                aria-label="Show or hide today's schedule" aria-expanded="true"
+                title="Hide schedule">{{ ic.icon('chevron-down') }}</button>
+        {% endif %}
         <span class="today-title">Today</span>
         <span class="today-date">{{ today.label }}</span>
         {% if today.n %}<span class="today-count">{{ today.n }} visit{{ 's' if today.n != 1 }}{% if not active_nct %} · all trials{% endif %}</span>{% endif %}
+        {# One-line summary shown when the strip is slim (nothing today) or
+           collapsed - so a hidden schedule still tells you the next thing. #}
+        <span class="today-inline">
+          {%- if today.next_up %}· Next {{ today.next_up.time }} · {{ today.next_up.name }}
+          {%- else %}· {{ ic.icon('check') }} You're clear for today{% endif -%}
+        </span>
       </div>
       <a class="today-open" href="{{ url_for('calendar_page') }}">Open calendar {{ ic.icon('arrow-right') }}</a>
     </div>
+    {% if today.track %}
     <div class="today-body">
       <div class="today-track">
         <div class="today-hours">
@@ -66,6 +78,7 @@
         {% endif %}
       </div>
     </div>
+    {% endif %}
   </div>
   {% endif %}
 
@@ -515,6 +528,28 @@
   });
 
   afterPaint();
+
+  /* ── Today strip: collapsible + remembered. It's a glanceable safety net, but
+     an empty or already-seen day shouldn't eat the inbox. When there are visits,
+     a chevron collapses the timeline to a one-line "next up" summary; the choice
+     persists so the strip respects how each coordinator likes to work. ────── */
+  (function () {
+    var strip = document.getElementById('gmToday');
+    var btn = document.getElementById('gmTodayToggle');
+    if (!strip || !btn) return;
+    var KEY = 'bmd.today.collapsed';
+    function setCollapsed(on) {
+      strip.classList.toggle('is-collapsed', on);
+      btn.setAttribute('aria-expanded', on ? 'false' : 'true');
+      btn.title = on ? 'Show schedule' : 'Hide schedule';
+    }
+    try { if (localStorage.getItem(KEY) === '1') setCollapsed(true); } catch (e) {}
+    btn.addEventListener('click', function () {
+      var on = !strip.classList.contains('is-collapsed');
+      setCollapsed(on);
+      try { localStorage.setItem(KEY, on ? '1' : '0'); } catch (e) {}
+    });
+  })();
 })();
 </script>
 {% endblock %}
