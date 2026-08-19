@@ -8976,6 +8976,11 @@ body.fs-page { background:
 .mh-thread-row-foot { display: flex; align-items: center; gap: 5px; margin-top: 9px; color: var(--faint); font-size: 8.5px; }
 .mh-resolved-tag { display: inline-flex; align-items: center; gap: 3px; margin-left: auto; color: #187052; font-weight: 700; }
 .mh-resolved-tag .ico { width: 10px; }
+.mh-study-tag { display: inline-flex; align-items: center; gap: 3px; max-width: 100%;
+  overflow: hidden; padding: 1px 8px; border-radius: var(--radius-pill);
+  background: var(--accent-soft); color: var(--accent); font-weight: 700;
+  white-space: nowrap; }
+.mh-study-tag .ico { width: 10px; flex-shrink: 0; }
 .mh-thread-empty { display: flex; min-height: 330px; flex-direction: column; align-items: center; justify-content: center; padding: 28px; color: var(--muted); text-align: center; }
 .mh-thread-empty > span { width: 46px; height: 46px; display: inline-flex; align-items: center; justify-content: center; border-radius: 14px; background: var(--surface-2); color: var(--faint); }
 .mh-thread-empty > span .ico { width: 20px; }

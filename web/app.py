@@ -4392,7 +4392,12 @@ def marketing_hub():
         channel = ""
     query = (request.args.get("q") or "").strip()[:100]
 
-    sources = [dict(row) for row in db.list_marketing_sources(g.user["id"])]
+    # Scope the whole inbox to the trial chosen in the top switcher, so switching
+    # studies shows a different set of people - each trial reads as its own inbox.
+    active_nct, _studies = _active_scope()
+
+    sources = [dict(row) for row in db.list_marketing_sources(
+        g.user["id"], nct=active_nct)]
     members = []
     for row in db.list_org_members(g.user["id"]):
         member = dict(row)
@@ -4406,7 +4411,7 @@ def marketing_hub():
         source_filter = None
     thread_rows = db.list_marketing_threads(
         g.user["id"], status=status, channel=channel, query=query,
-        source_id=source_filter)
+        source_id=source_filter, nct=active_nct)
     threads = []
     for row in thread_rows:
         item = dict(row)
@@ -4446,7 +4451,7 @@ def marketing_hub():
     })
     primary = member_by_id.get(settings["primary_user_id"])
     cover = member_by_id.get(settings["cover_user_id"])
-    counts = db.marketing_thread_counts(g.user["id"])
+    counts = db.marketing_thread_counts(g.user["id"], nct=active_nct)
     counts["sources"] = sum(1 for source in sources
                             if source["status"] == "connected")
 
@@ -4456,7 +4461,7 @@ def marketing_hub():
         members=members, member_by_id=member_by_id, settings=dict(settings),
         active_owner=active_owner, primary=primary, cover=cover, counts=counts,
         status_filter=status, channel_filter=channel, search_query=query,
-        source_filter=source_filter,
+        source_filter=source_filter, active_nct=active_nct,
         channel_labels=db.MARKETING_CHANNEL_LABELS,
         today=dt.date.today().isoformat())
 

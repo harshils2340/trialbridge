@@ -1065,6 +1065,8 @@ CREATE TABLE IF NOT EXISTS marketing_threads (
     assigned_to    INTEGER,
     unread         INTEGER NOT NULL DEFAULT 1,
     priority       TEXT NOT NULL DEFAULT 'normal',
+    nct            TEXT DEFAULT '',  -- study this conversation is about ('' = general)
+    study_label    TEXT DEFAULT '',
     created_at     TEXT NOT NULL,
     updated_at     TEXT NOT NULL,
     FOREIGN KEY (org_id) REFERENCES organizations(id),
@@ -1296,6 +1298,10 @@ def site_token_active(lead):
 # New columns added after the first release - applied idempotently so existing
 # databases upgrade without a manual migration step.
 _MIGRATIONS = {
+    "marketing_threads": {
+        "nct": "TEXT DEFAULT ''",
+        "study_label": "TEXT DEFAULT ''",
+    },
     "referrals": {
         "token": "TEXT",
         "coordinator_email": "TEXT DEFAULT ''",
@@ -1863,18 +1869,25 @@ def get_marketing_source(user_id, source_id):
         (source_id, oid)).fetchone()
 
 
-def list_marketing_sources(user_id):
+def list_marketing_sources(user_id, nct=""):
     oid = user_org_id(user_id)
+    # When a trial is active, per-account badges count only that trial's threads,
+    # so the sidebar stays in step with the filtered conversation list.
+    nct_open = " AND t.nct = ?" if nct else ""
+    nct_unread = " AND t.nct = ?" if nct else ""
+    args = [oid]
+    if nct:
+        args = [nct, nct, oid]
     return get_db().execute(
         "SELECT s.*, "
         "(SELECT COUNT(*) FROM marketing_threads t "
-        " WHERE t.source_id = s.id AND t.status = 'open') AS open_count, "
+        " WHERE t.source_id = s.id AND t.status = 'open'" + nct_open + ") AS open_count, "
         "(SELECT COUNT(*) FROM marketing_threads t "
-        " WHERE t.source_id = s.id AND t.unread = 1) AS unread_count "
+        " WHERE t.source_id = s.id AND t.unread = 1" + nct_unread + ") AS unread_count "
         "FROM marketing_sources s WHERE s.org_id = ? "
         "ORDER BY CASE s.channel WHEN 'email' THEN 0 WHEN 'instagram' THEN 1 "
         "ELSE 2 END, s.created_at",
-        (oid,)).fetchall()
+        tuple(args)).fetchall()
 
 
 def create_marketing_source(user_id, channel, label, identifier,
@@ -2032,7 +2045,7 @@ def get_marketing_thread(user_id, thread_id):
 
 
 def list_marketing_threads(user_id, status="open", channel="", query="",
-                           source_id=None):
+                           source_id=None, nct=""):
     oid = user_org_id(user_id)
     where = ["t.org_id = ?"]
     args = [oid]
@@ -2045,6 +2058,9 @@ def list_marketing_threads(user_id, status="open", channel="", query="",
     if source_id:
         where.append("t.source_id = ?")
         args.append(source_id)
+    if nct:
+        where.append("t.nct = ?")
+        args.append(nct)
     query = (query or "").strip().lower()[:100]
     if query:
         where.append(
@@ -2072,14 +2088,19 @@ def list_marketing_threads(user_id, status="open", channel="", query="",
     return get_db().execute(sql, tuple(args)).fetchall()
 
 
-def marketing_thread_counts(user_id):
+def marketing_thread_counts(user_id, nct=""):
     oid = user_org_id(user_id)
+    where, args = ["org_id = ?"], [oid]
+    if nct:
+        where.append("nct = ?")
+        args.append(nct)
     row = get_db().execute(
         "SELECT COUNT(*) AS total, "
         "SUM(CASE WHEN status = 'open' THEN 1 ELSE 0 END) AS open_count, "
         "SUM(CASE WHEN status = 'resolved' THEN 1 ELSE 0 END) AS resolved_count, "
         "SUM(CASE WHEN unread = 1 THEN 1 ELSE 0 END) AS unread_count "
-        "FROM marketing_threads WHERE org_id = ?", (oid,)).fetchone()
+        "FROM marketing_threads WHERE " + " AND ".join(where),
+        tuple(args)).fetchone()
     return {
         "total": int(row["total"] or 0),
         "open": int(row["open_count"] or 0),
@@ -2183,10 +2204,16 @@ def seed_demo_marketing_hub(user_id):
     if not demo_user or (demo_user["email"] or "").lower() != _MARKETING_DEMO_EMAIL:
         return
     oid = user_org_id(user_id)
-    if conn.execute(
-            "SELECT 1 FROM marketing_sources WHERE org_id = ? "
-            "AND lower(identifier) = lower(?) LIMIT 1",
-            (oid, _MARKETING_DEMO_SENTINEL)).fetchone():
+    seeded = conn.execute(
+        "SELECT 1 FROM marketing_sources WHERE org_id = ? "
+        "AND lower(identifier) = lower(?) LIMIT 1",
+        (oid, _MARKETING_DEMO_SENTINEL)).fetchone()
+    # Re-seed once for orgs seeded before conversations were tagged to trials,
+    # so switching the top study scoper shows a different set of people.
+    tagged = conn.execute(
+        "SELECT 1 FROM marketing_threads WHERE org_id = ? AND nct != '' LIMIT 1",
+        (oid,)).fetchone()
+    if seeded and tagged:
         get_marketing_handoff(user_id)
         return
 
@@ -2246,18 +2273,20 @@ def seed_demo_marketing_hub(user_id):
             "%Y-%m-%d %H:%M")
 
     def _seq(source_id, contact, handle, subject, assignee, status, unread,
-             messages):
+             messages, study=("", "")):
         """messages: list of (kind, by, body, minutes_ago).
-        kind: inbound|outbound|note ; by: 'contact'|'system'|<user_id>."""
+        kind: inbound|outbound|note ; by: 'contact'|'system'|<user_id>.
+        study: (nct, label) so switching the top trial scopes the inbox."""
+        nct, study_label = study
         mins = [m[3] for m in messages]
         created, updated = _ago(max(mins)), _ago(min(mins))
         cur = conn.execute(
             "INSERT INTO marketing_threads "
             "(org_id, source_id, contact_name, contact_handle, subject, status, "
-            "assigned_to, unread, created_at, updated_at) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?)",
+            "assigned_to, unread, nct, study_label, created_at, updated_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
             (oid, source_id, contact, handle, subject, status, assignee,
-             1 if unread else 0, created, updated))
+             1 if unread else 0, nct, study_label, created, updated))
         tid = cur.lastrowid
         for kind, by, body, minutes in messages:
             if kind == "inbound":
@@ -2278,13 +2307,40 @@ def seed_demo_marketing_hub(user_id):
 
     me = user_id
 
+    # Tie conversations to real claimed trials so the top switcher scopes the
+    # inbox - each trial reads as its own set of people. Ensure demo studies
+    # exist first, then match by theme (with round-robin fallbacks).
+    try:
+        seed_demo_leads()
+    except Exception:
+        pass
+    seed_demo_claims(user_id)
+    claims = list_team_studies(user_id)
+    _pairs = [(c["nct"], c["title"] or c["nct"]) for c in claims]
+
+    def _pick(*kws):
+        for nct, title in _pairs:
+            low = (title or "").lower()
+            if any(k in low for k in kws):
+                return (nct, title)
+        return None
+
+    def _fb(i):
+        return _pairs[i % len(_pairs)] if _pairs else ("", "")
+
+    # Pick psilocybin first: its title contains "depression", so MDD keywords
+    # must stay specific (mdd/insomnia/seltorexant) to land on a different trial.
+    psi = _pick("psilocybin", "comp360") or _fb(0)
+    mig = _pick("migraine", "ubrogepant") or _fb(1)
+    mdd = _pick("mdd", "insomnia", "seltorexant", "azetukalner") or _fb(2)
+
     # ── Recruitment inbox (email) ──────────────────────────────────────────
     _seq(recruit_id, "Nadia Brooks", "nadia.brooks@gmail.com",
          "Do you offer evening screening appointments?", me, "open", True,
          [("inbound", "contact",
            "Hi — I saw your migraine study online. I work until 5 most days, so "
            "are evening screening appointments possible? Also, is parking "
-           "covered when I come in?", 6)])
+           "covered when I come in?", 6)], study=mig)
     _seq(recruit_id, "Marcus Reed", "marcus.reed@outlook.com",
          "Is travel reimbursed for study visits?", jordan_id, "open", False,
          [("inbound", "contact",
@@ -2295,8 +2351,8 @@ def seed_demo_marketing_hub(user_id):
            "it's paid the same week. Want me to hold a screening slot for you?",
            41),
           ("note", casey_id,
-           "He's a strong fit for the migraine cohort — flagging so we prioritize "
-           "the callback.", 39)])
+           "He's a strong fit — flagging so we prioritize the callback.", 39)],
+         study=mdd)
     _seq(recruit_id, "Dr. Sam Patel", "spatel@riversidefamilymed.com",
          "Referring a patient who may qualify", me, "open", True,
          [("inbound", "contact",
@@ -2305,22 +2361,22 @@ def seed_demo_marketing_hub(user_id):
            "out?", 96),
           ("note", me,
            "@Casey can you send the approved clinic one-pager and set up a warm "
-           "handoff for the patient?", 88)])
+           "handoff for the patient?", 88)], study=mig)
     _seq(recruit_id, "Priya Anand", "priya.anand@gmail.com",
-         "Compensation for the migraine study", casey_id, "resolved", False,
+         "Compensation and visit schedule", casey_id, "resolved", False,
          [("inbound", "contact",
            "How much is the compensation, and when is it paid?", 1520),
           ("outbound", casey_id,
            "Hi Priya — participants receive up to $1,200 across the study, paid "
            "per completed visit. I've emailed the full schedule. Let me know if "
-           "you'd like to book screening!", 1505)])
+           "you'd like to book screening!", 1505)], study=psi)
 
     # ── Migraine study inbox (email) ───────────────────────────────────────
     _seq(migraine_id, "Lauren Fitzgerald", "lauren.f@yahoo.com",
          "Eligible with 16 migraine days a month?", me, "open", True,
          [("inbound", "contact",
            "I get migraines about 16 days a month and I'm 34. Would I qualify "
-           "for this study?", 19)])
+           "for this study?", 19)], study=mig)
     _seq(migraine_id, "Tomás Rivera", "trivera@gmail.com",
          "Need to reschedule my screening visit", jordan_id, "open", False,
          [("inbound", "contact",
@@ -2329,7 +2385,8 @@ def seed_demo_marketing_hub(user_id):
           ("outbound", jordan_id,
            "No problem at all, Tomás. I have Tuesday 10:00am or Wednesday 2:00pm "
            "open — which works better?", 205),
-          ("inbound", "contact", "Tuesday 10am is perfect, thank you!", 150)])
+          ("inbound", "contact", "Tuesday 10am is perfect, thank you!", 150)],
+         study=mig)
     _seq(migraine_id, "Grace Kim", "grace.kim@icloud.com",
          "Withdrawing my application", casey_id, "resolved", False,
          [("inbound", "contact",
@@ -2337,14 +2394,14 @@ def seed_demo_marketing_hub(user_id):
            2950),
           ("outbound", casey_id,
            "Completely understand, Grace — thank you for letting us know. The "
-           "door's open if anything changes down the road.", 2940)])
+           "door's open if anything changes down the road.", 2940)], study=mig)
 
     # ── Instagram DMs ──────────────────────────────────────────────────────
     _seq(instagram_id, "Alicia Vance", "@mig_warrior", "New DM", casey_id,
          "open", True,
          [("inbound", "contact",
            "saw your ad on my feed 🙌 how do i sign up for the migraine study??",
-           13)])
+           13)], study=mig)
     _seq(instagram_id, "Mina Chen", "@healthwithmina",
          "Community partnership question", casey_id, "open", False,
          [("inbound", "contact",
@@ -2352,7 +2409,7 @@ def seed_demo_marketing_hub(user_id):
            "sharing your study with my followers?", 72),
           ("note", casey_id,
            "Legit micro-influencer, ~18k local followers. Worth a call — could be "
-           "a cheap referral channel.", 66)])
+           "a cheap referral channel.", 66)], study=mdd)
     _seq(instagram_id, "Rob Torres", "@rob.torres.tx",
          "Do I need a referral?", me, "open", False,
          [("inbound", "contact",
@@ -2360,11 +2417,12 @@ def seed_demo_marketing_hub(user_id):
            "directly?", 330),
           ("outbound", me,
            "You can apply directly — no referral needed! I'll send a quick link "
-           "to check if you're eligible. 👍", 322)])
+           "to check if you're eligible. 👍", 322)], study=psi)
     _seq(instagram_id, "Sam W.", "@skeptical_sam", "Is this real?", jordan_id,
          "open", True,
          [("inbound", "contact",
-           "is this legit or a scam lol. how do i know my info is safe?", 145)])
+           "is this legit or a scam lol. how do i know my info is safe?", 145)],
+         study=mdd)
 
     # ── Google Ads alerts ──────────────────────────────────────────────────
     _seq(ads_id, "Google Ads", "Automated alert",
@@ -2372,7 +2430,7 @@ def seed_demo_marketing_hub(user_id):
          [("inbound", "system",
            "One ad in 'Migraine Search' was disapproved for a landing page "
            "policy issue. Affected ad is not serving. Review and resubmit to "
-           "resume delivery.", 9)])
+           "resume delivery.", 9)], study=mig)
     _seq(ads_id, "Google Ads", "Automated alert",
          "Cost per application up 22% this week", jordan_id, "open", False,
          [("inbound", "system",
@@ -2380,7 +2438,7 @@ def seed_demo_marketing_hub(user_id):
            "average. Review search terms and budget allocation.", 58),
           ("note", jordan_id,
            "Added 6 negative keywords and trimmed broad match. Watching CPA "
-           "through the weekend.", 44)])
+           "through the weekend.", 44)], study=mig)
     _seq(ads_id, "Google Ads", "Automated alert",
          "Budget 90% spent — Migraine Search", jordan_id, "resolved", False,
          [("inbound", "system",
@@ -2388,7 +2446,7 @@ def seed_demo_marketing_hub(user_id):
            "remaining.", 1810),
           ("note", jordan_id,
            "Topped up budget by $500 for the month — approved by Danny-Elle.",
-           1790)])
+           1790)], study=mig)
 
     conn.execute(
         "INSERT INTO marketing_handoffs "

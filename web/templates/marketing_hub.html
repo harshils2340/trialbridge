@@ -156,6 +156,7 @@
             {% set assignee = member_by_id.get(thread.assigned_to) %}
             {{ member_avatar(assignee, 'is-tiny') }}
             <span>{{ assignee.display_name if assignee else 'Unassigned' }}</span>
+            {% if thread.study_label and not active_nct %}<span class="mh-study-tag" title="{{ thread.study_label }}">{{ ic.icon('file') }} {{ thread.study_label|truncate(26) }}</span>{% endif %}
             {% if thread.status == 'resolved' %}<span class="mh-resolved-tag">{{ ic.icon('check') }} Resolved</span>{% endif %}
           </div>
         </a>
@@ -176,7 +177,7 @@
         <div class="mh-contact-main">
           <span class="mh-contact-avatar is-large">{{ (active.contact_name or active.contact_handle or '?')[:1]|upper }}</span>
           <span>
-            <small>{{ channel_labels.get(active.channel, 'Message') }}{% if active.source_label %} via {{ active.source_label }}{% endif %}</small>
+            <small>{{ channel_labels.get(active.channel, 'Message') }}{% if active.source_label %} via {{ active.source_label }}{% endif %}{% if active.study_label %} · {{ active.study_label }}{% endif %}</small>
             <h2>{{ active.contact_name or active.contact_handle or 'Unknown contact' }}</h2>
             <p>{{ active.contact_handle or active.source_identifier }}</p>
           </span>
