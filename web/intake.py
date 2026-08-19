@@ -37,7 +37,16 @@ MAX_BODY_CHARS = 8000
 # small set the inbox badges + attribution understand. Email is the default.
 _CHANNEL_ALIASES = {
     "email": "email_intake", "email_intake": "email_intake", "mail": "email_intake",
-    "meta": "meta", "facebook": "meta", "fb": "meta", "instagram": "meta", "ig": "meta",
+    # Keep the Meta family distinct so the inbox shows where a lead really came
+    # from: a paid lead-ad form (meta) reads differently than an Instagram DM or a
+    # Facebook Messenger chat, and routing can send each to a different teammate.
+    "meta": "meta", "metaads": "meta", "leadad": "meta", "leadads": "meta",
+    "instagram": "instagram", "ig": "instagram", "instagramdm": "instagram",
+    "igdm": "instagram", "instagramdirect": "instagram",
+    "messenger": "messenger", "fbmessenger": "messenger", "fbdm": "messenger",
+    "facebook": "facebook", "fb": "facebook",
+    "whatsapp": "whatsapp", "wa": "whatsapp",
+    "sms": "sms", "text": "sms",
     "google": "google", "googleads": "google", "adwords": "google",
     "reddit": "reddit",
     "ctgov": "ctgov", "clinicaltrials": "ctgov", "clinicaltrials.gov": "ctgov",

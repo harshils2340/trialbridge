@@ -5895,8 +5895,11 @@ _DEMO_SOURCES = ["Meta campaign", "Reddit r/ADHD", "Email intake", "Google",
 _SOURCE_LABELS = {
     "referral": "Physician referral", "invite": "Physician referral",
     "physician": "Physician referral", "emr": "EMR referral",
-    "csv_import": "CSV import", "intake": "Email intake", "web": "Web form",
-    "reddit": "Reddit", "meta": "Meta campaign", "google": "Google",
+    "csv_import": "CSV import", "intake": "Email intake",
+    "email": "Email intake", "email_intake": "Email intake", "web": "Web form",
+    "instagram": "Instagram DM", "instagram_dm": "Instagram DM",
+    "messenger": "Messenger", "facebook": "Facebook", "whatsapp": "WhatsApp",
+    "sms": "SMS", "reddit": "Reddit", "meta": "Meta ad", "google": "Google",
 }
 
 
@@ -6606,9 +6609,15 @@ _CHANNEL_META = {
     "intake": ("Email", "info"),
     "referral": ("Physician", "violet"),
     "csv_import": ("Import", "neutral"),
-    "meta": ("Instagram / Meta", "violet"),
-    "instagram": ("Instagram / Meta", "violet"),
-    "facebook": ("Instagram / Meta", "violet"),
+    # The Meta family, kept distinct so a coordinator sees whether someone filled
+    # a paid ad form, slid into the IG DMs, or messaged the Facebook page.
+    "meta": ("Meta ad", "violet"),
+    "instagram": ("Instagram DM", "violet"),
+    "instagram_dm": ("Instagram DM", "violet"),
+    "messenger": ("Messenger", "info"),
+    "facebook": ("Facebook", "info"),
+    "whatsapp": ("WhatsApp", "ok"),
+    "sms": ("SMS", "ok"),
     "google": ("Google Ads", "warn"),
     "reddit": ("Reddit", "warn"),
     "ctgov": ("ClinicalTrials.gov", "info"),

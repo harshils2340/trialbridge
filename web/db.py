@@ -3634,8 +3634,8 @@ def set_lead_assignee(lead_id, user_id):
 # Auto-routing rules (channel/study -> teammate)
 # --------------------------------------------------------------------------- #
 # Canonical channels a rule can match, in the order shown in the UI.
-ROUTING_CHANNELS = ("any", "email_intake", "meta", "google", "ctgov",
-                    "reddit", "referral")
+ROUTING_CHANNELS = ("any", "email_intake", "instagram", "messenger", "facebook",
+                    "meta", "google", "ctgov", "reddit", "referral")
 
 
 def list_routing_rules(user_id):
@@ -6212,13 +6212,16 @@ def seed_demo_leads():
         def at(days_ago):
             return (base - dt.timedelta(days=days_ago)).strftime("%Y-%m-%d %H:%M")
 
-        # Spread applicants across realistic acquisition channels so the source
-        # mix + campaign attribution on the tracker read like a live site, not a
-        # single "demo" bucket. Organic channels dominate; paid channels (meta/
-        # google/reddit) are the ones later tied to a campaign (campaign-tracked).
-        sources = ["ctgov", "referral", "web", "meta", "ctgov", "google",
-                   "web", "referral", "reddit", "ctgov", "emr", "meta",
-                   "web", "google", "ctgov", "referral", "web", "reddit"]
+        # Spread applicants across the real acquisition channels a site actually
+        # juggles: email inquiries about the trial, Instagram DMs and Facebook
+        # Messenger chats off social ads, Meta lead-ad forms, plus CT.gov,
+        # physician referrals and web forms. This is the whole point of the
+        # inbox - every source landing in one triage list - so the demo has to
+        # show that mix, not a single bucket.
+        sources = ["email_intake", "instagram", "ctgov", "messenger", "referral",
+                   "meta", "instagram", "email_intake", "facebook", "ctgov",
+                   "web", "instagram", "email_intake", "google", "messenger",
+                   "referral", "facebook", "ctgov"]
 
         for i, s in enumerate(_demo_lead_specs()):
             created = at(s["days"])
