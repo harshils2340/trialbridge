@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% import "_icons.html" as ic %}
+{% import "_ui.html" as ui %}
+{% block title %}IRB & approvals · BridgeMD for sites{% endblock %}
+
+{% block body %}
+<div class="app-head">
+  <div>
+    <h1>IRB &amp; approvals</h1>
+    <p>Recruitment materials are advertising, so the ethics board has to approve them before you can use them. Build the package here, submit it for review, and track it through to an approved, stamped version.</p>
+  </div>
+  {% if studies %}{{ ui.btn('New submission', variant='primary', icon='plus', extra='data-ui-open="irb-new"') }}{% endif %}
+</div>
+
+{% if not has_any %}
+<div class="app-card pad">
+  {{ ui.empty('No submissions yet', 'Assemble your flyers, ads and screening scripts into a package, submit it to your IRB, and BridgeMD tracks the review and records the approved version so campaigns only run once they are cleared.', 'shield-check', action=ui.btn('New submission', variant='primary', icon='plus', extra='data-ui-open="irb-new"') if studies else '') }}
+</div>
+{% else %}
+
+<div class="irb-flow">
+  <div class="irb-flow-step"><span class="irb-flow-n">1</span><div><b>Build the package</b><span>Flyers, ads, screening scripts, letters &mdash; each with a version.</span></div></div>
+  <div class="irb-flow-arrow">{{ ic.icon('chevron-right') }}</div>
+  <div class="irb-flow-step"><span class="irb-flow-n">2</span><div><b>Submit for review</b><span>Initial, a modification, or annual continuing review.</span></div></div>
+  <div class="irb-flow-arrow">{{ ic.icon('chevron-right') }}</div>
+  <div class="irb-flow-step"><span class="irb-flow-n">3</span><div><b>Board reviews</b><span>They approve, or send back modifications to fix and resubmit.</span></div></div>
+  <div class="irb-flow-arrow">{{ ic.icon('chevron-right') }}</div>
+  <div class="irb-flow-step is-done"><span class="irb-flow-n">{{ ic.icon('check') }}</span><div><b>Approved &amp; live</b><span>Stamped version on file with an expiry &mdash; campaigns can run.</span></div></div>
+</div>
+
+<div class="app-stats">
+  <div class="app-stat"><div class="l">Under review</div><div class="n">{{ (counts.get('submitted',0) + counts.get('in_review',0)) }}</div></div>
+  <div class="app-stat warn"><div class="l">Revisions requested</div><div class="n">{{ counts.get('revisions', 0) }}</div></div>
+  <div class="app-stat ok"><div class="l">Approved</div><div class="n">{{ counts.get('approved', 0) }}</div></div>
+  <div class="app-stat"><div class="l">Draft</div><div class="n">{{ counts.get('draft', 0) }}</div></div>
+</div>
+
+<div class="app-card irb-list">
+  {% for r in rows %}
+  {% set s = r.s %}
+  <a class="irb-row" href="{{ url_for('irb_detail', sub_id=s.id) }}">
+    <span class="irb-ico">{{ ic.icon('shield-check') }}</span>
+    <div class="irb-main">
+      <div class="irb-title">{{ s.title }}
+        <span class="irb-type">{{ sub_types.get(s.submission_type, s.submission_type) }}</span>
+      </div>
+      <div class="irb-sub">
+        <span>{{ r.study }}</span>
+        {% if s.irb_name %}<span class="dot">&middot;</span><span>{{ s.irb_name }}</span>{% endif %}
+        <span class="dot">&middot;</span><span>{{ r.mats|length }} material{{ '' if r.mats|length == 1 else 's' }}</span>
+      </div>
+    </div>
+    <div class="irb-side">
+      {% if r.expiring %}<span class="irb-expiry warn">Expires in {{ r.days_left }}d</span>
+      {% elif s.status == 'approved' and r.days_left is not none %}<span class="irb-expiry">Approved {{ s.approved_version }} &middot; exp {{ s.expires_at[:10] }}</span>
+      {% endif %}
+      {{ ui.badge(status_labels.get(s.status, s.status), status_tone.get(s.status, 'neutral')) }}
+      <span class="irb-arrow">{{ ic.icon('chevron-right') }}</span>
+    </div>
+  </a>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% call ui.modal('irb-new', 'New IRB submission', icon='shield-check') %}
+<form method="post" action="{{ url_for('irb_create') }}" class="cal-form">
+  <div class="field"><label>Package name</label>
+    <input type="text" name="title" placeholder="Recruitment materials &ndash; initial review" required
+           autocomplete="off">
+  </div>
+  <div class="field"><label>Study</label>
+    <select name="nct" required>
+      <option value="">Pick a claimed study&hellip;</option>
+      {% for s in studies %}<option value="{{ s.nct }}">{{ (s.title or s.nct)[:60] }}</option>{% endfor %}
+    </select>
+  </div>
+  <div class="row">
+    <div class="field"><label>Submission type</label>
+      <select name="submission_type">
+        {% for k, v in sub_types.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="field"><label>Reviewing IRB / REB</label>
+      <select name="irb_name">
+        {% for i in known_irbs %}<option value="{{ i }}">{{ i }}</option>{% endfor %}
+      </select>
+    </div>
+  </div>
+  <div class="cal-form-foot">
+    <span class="cal-hint">You&rsquo;ll add the materials on the next screen.</span>
+    {{ ui.btn('Create package', 'primary', type='submit', icon='plus') }}
+  </div>
+</form>
+{% endcall %}
+{% endblock %}

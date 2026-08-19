@@ -15,11 +15,15 @@
 <div class="app-card pad">
   {{ ui.empty('Claim a study to build its schedule', 'Once you run a trial, draft its schedule of events here — from the protocol — then apply it to each enrolled participant in one click.', 'list', action=ui.btn('Go to Settings', variant='primary', icon='gear', href=url_for('site_setup'))) }}
 </div>
-{% elif not nct %}
-<div class="app-card pad">
-  {{ ui.empty('Pick a study', 'Choose a study in the switcher at the top to view or build its schedule of events.', 'list') }}
-</div>
 {% else %}
+
+{% if show_picker %}
+<div class="soe-studies" aria-label="Choose a study">
+  {% for t in trials %}
+  <a class="ui-chip{{ ' is-active' if t.nct == nct else '' }}" href="{{ url_for('soe_page', nct=t.nct) }}">{{ t.title[:46] }}</a>
+  {% endfor %}
+</div>
+{% endif %}
 
 <div class="app-card-title" style="margin:2px 0 10px;">{{ ic.icon('sparkle') }} <b>Draft from the protocol</b> <span class="app-sub" style="font-weight:400;color:var(--faint);">{{ active_title }}</span></div>
 <div class="app-card pad" style="margin-bottom:18px;">

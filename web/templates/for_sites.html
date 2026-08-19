@@ -1,9 +1,9 @@
 {% extends "public_base.html" %}
 {% import "_icons.html" as ic %}
-{% block title %}BridgeMD for research sites & sponsors: the coordinator's operating system{% endblock %}
-{% block description %}Run recruitment, intake, pre-screening, scheduling and the sponsor paperwork around your trials in one place. See the real product and book a demo for your site or CRO.{% endblock %}
-{% block og_title %}BridgeMD: the operating system for clinical trial sites{% endblock %}
-{% block og_description %}Recruit, pre-screen, schedule and enroll, plus the sponsor paperwork, in one integrated workspace. Ask your protocol anything, without leaking it.{% endblock %}
+{% block title %}BridgeMD: the inbox built for clinical trial coordinators{% endblock %}
+{% block description %}Every patient inquiry — email, Facebook & Instagram ads, ClinicalTrials.gov, referrals — in one inbox, auto-sorted and routed to the right coordinator. Free for research sites.{% endblock %}
+{% block og_title %}BridgeMD: the inbox built for clinical trial coordinators{% endblock %}
+{% block og_description %}One inbox for every study inquiry, from every channel — auto-triaged and auto-assigned so nothing gets missed. Free for research sites.{% endblock %}
 {% block canonical %}<link rel="canonical" href="{{ sites_home_url if sites_home_url.startswith('http') else request.base_url }}">{% endblock %}
 
 {% import "_fs_chrome.html" as chrome with context %}
@@ -15,406 +15,181 @@
 {% block body %}
 
 <!-- ───────────────────────── Hero ───────────────────────── -->
-<section class="fs-hero">
-  <div class="fs-hero-in">
-    <div class="fs-hero-copy">
-      <span class="fs-eyebrow">{{ ic.icon('shield') }} The operating system for research sites</span>
-      <h1>Your site's<br><span class="fs-grad">unfair advantage.</span></h1>
-      <p class="fs-sub">The operating system that triages, pre-screens, schedules and handles the
-        sponsor paperwork for you. Run more studies without more hours, and keep patients, PIs and
-        sponsors all in sync.</p>
-      <div class="fs-cta">
-        <a class="fs-btn fs-btn-live" href="{{ url_for('study_home') }}">Explore the live workspace {{ ic.icon('arrow-right') }}</a>
-        <a class="fs-btn fs-btn-primary" href="{{ cal_link }}" target="_blank" rel="noopener">Book a demo {{ ic.icon('arrow-right') }}</a>
-        <a class="fs-btn fs-btn-ghost" href="{{ url_for('marketing_hub') }}">Open marketing hub {{ ic.icon('arrow-right') }}</a>
+<section class="fsx-hero">
+  <div class="fsx-hero-in">
+    <span class="fsx-eyebrow">{{ ic.icon('inbox') }} Free for research sites</span>
+    <h1>The inbox built for<br><span class="fsx-grad">clinical trial coordinators.</span></h1>
+    <p class="fsx-sub">Every patient who contacts your site — from email, Facebook &amp; Instagram ads,
+      ClinicalTrials.gov and referrals — lands in one inbox, sorted by what it needs and handed to the
+      right coordinator automatically. Less admin. Nothing missed.</p>
+    <div class="fsx-cta">
+      <a class="fsx-btn fsx-btn-primary" href="{{ cal_link }}" target="_blank" rel="noopener">Book a demo {{ ic.icon('arrow-right') }}</a>
+      <a class="fsx-btn fsx-btn-ghost" href="#how">See how it works</a>
+      <a class="fsx-btn fsx-btn-ghost" href="{{ url_for('marketing_hub') }}">Open marketing hub {{ ic.icon('arrow-right') }}</a>
+    </div>
+    <p class="fsx-trust">Free for your site &middot; HIPAA-minded, BAA on request &middot; No per-referral fees</p>
+  </div>
+  <div class="fsx-shot">
+    <div class="fsx-shot-bar"><span></span><span></span><span></span><b>app.bridgemd.health · inbox</b></div>
+    <img src="{{ static_url('shots/inbox_hero.png') }}" width="1800" height="950"
+         alt="The BridgeMD inbox: every study inquiry in one place, auto-sorted and assigned" loading="eager">
+  </div>
+</section>
+
+<!-- ───────────────── The payoff, in four numbers ───────────────── -->
+<section class="fsx-proof" aria-label="What changes for your team">
+  <div class="fsx-proof-in">
+    <div class="fsx-proof-stat"><b>5 &rarr; 1</b>
+      <span>inboxes your team watches — email, Meta ads, CT.gov &amp; referrals in one place</span></div>
+    <div class="fsx-proof-stat"><b>Minutes</b>
+      <span>to first reply, not days — the urgent inquiries never sink to the bottom</span></div>
+    <div class="fsx-proof-stat"><b>Zero</b>
+      <span>inquiries lost between apps — every one is sorted and assigned on arrival</span></div>
+    <div class="fsx-proof-stat"><b>~10 min</b>
+      <span>to get set up — forward your email, add your studies, done</span></div>
+  </div>
+</section>
+
+<!-- ───────────────── The four pillars ───────────────── -->
+<section class="fsx-section" id="how">
+  <div class="fsx-head">
+    <p class="fsx-kicker">What it does</p>
+    <h2>Four things, done for you.</h2>
+    <p class="fsx-lead">No dashboards to learn. It's an inbox — it just handles the busywork underneath.</p>
+  </div>
+
+  <div class="fsx-features">
+    {# 1. Centralized intake #}
+    <div class="fsx-feature">
+      <div class="fsx-feature-tx">
+        <span class="fsx-feature-ic">{{ ic.icon('inbox') }}</span>
+        <h3>Every inquiry, one inbox</h3>
+        <p>Stop juggling five inboxes, ad dashboards, and voicemails. Email, Facebook &amp; Instagram
+          lead ads, ClinicalTrials.gov, and referrals all land in the same place — deduplicated and
+          tagged by where they came from.</p>
       </div>
-      <div class="fs-seals" aria-label="Privacy and compliance posture">
-        <a class="fs-seal-item" href="#security">
-          <span class="fs-seal-medal">{{ ic.icon('shield-check') }}</span>
-          <span class="fs-seal-txt">
-            <span class="fs-seal2">HIPAA</span>
-            <span class="fs-seal-st">{{ ic.icon('check') }} Safe Harbor</span>
-          </span>
-        </a>
-        <a class="fs-seal-item" href="#security">
-          <span class="fs-seal-medal">{{ ic.icon('lock') }}</span>
-          <span class="fs-seal-txt">
-            <span class="fs-seal2">GDPR</span>
-            <span class="fs-seal-st">{{ ic.icon('check') }} Aligned</span>
-          </span>
-        </a>
-        <a class="fs-seal-item" href="#security">
-          <span class="fs-seal-medal">{{ ic.icon('shield') }}</span>
-          <span class="fs-seal-txt">
-            <span class="fs-seal2">PHIPA</span>
-            <span class="fs-seal-st">{{ ic.icon('check') }} Aligned</span>
-          </span>
-        </a>
-        <a class="fs-seal-item" href="#security">
-          <span class="fs-seal-medal">{{ ic.icon('file-check') }}</span>
-          <span class="fs-seal-txt">
-            <span class="fs-seal2">PIPEDA</span>
-            <span class="fs-seal-st">{{ ic.icon('check') }} Aligned</span>
-          </span>
-        </a>
-        <a class="fs-seal-item is-progress" href="#security">
-          <span class="fs-seal-medal">{{ ic.icon('award') }}</span>
-          <span class="fs-seal-txt">
-            <span class="fs-seal2">SOC&nbsp;2 Type&nbsp;II</span>
-            <span class="fs-seal-st prog">{{ ic.icon('clock') }} In progress</span>
-          </span>
-        </a>
+      <div class="fsx-feature-viz" aria-hidden="true">
+        <div class="fsx-srcs">
+          <span class="fsx-src">{{ ic.icon('mail') }} Email</span>
+          <span class="fsx-src">{{ ic.icon('inbox') }} Meta ads</span>
+          <span class="fsx-src">{{ ic.icon('search') }} CT.gov</span>
+          <span class="fsx-src">{{ ic.icon('user') }} Referral</span>
+        </div>
+        <div class="fsx-funnel">{{ ic.icon('chevron-down') }}</div>
+        <div class="fsx-onebox">{{ ic.icon('inbox') }} <b>One inbox</b></div>
       </div>
     </div>
 
-    {# The film: one scene at a time, each a moving visual (not a screenshot):
-       sources converging, a protocol Q&A typing itself, a document syncing to every
-       role, a campaign posting and paying back. It auto-advances and pauses on hover. #}
-    <div class="fs-hero-visual">
-      <div class="fs-hv" id="fsHv">
-        <div class="fs-hv-tabs" role="tablist" aria-label="What the workspace covers">
-          <button class="fs-hv-tab is-active" role="tab" aria-selected="true" data-hv="intake" type="button">
-            {{ ic.icon('inbox') }}<span>Intake</span></button>
-          <button class="fs-hv-tab" role="tab" aria-selected="false" data-hv="ask" type="button">
-            {{ ic.icon('sparkle') }}<span>AI copilot</span></button>
-          <button class="fs-hv-tab" role="tab" aria-selected="false" data-hv="camp" type="button">
-            {{ ic.icon('megaphone') }}<span>Campaigns</span></button>
+    {# 2. An inbox per trial #}
+    <div class="fsx-feature fsx-rev">
+      <div class="fsx-feature-tx">
+        <span class="fsx-feature-ic">{{ ic.icon('star') }}</span>
+        <h3>A separate inbox for every trial</h3>
+        <p>Run ten studies without ten systems. Each trial is its own labeled view with a live count.
+          Click a study to see just its inquiries; click back to see everything. Switching trials is
+          one click, always in reach.</p>
+      </div>
+      <div class="fsx-feature-viz" aria-hidden="true">
+        <div class="fsx-labels">
+          <span class="fsx-lbl is-on"><i style="--d:var(--faint)"></i> All studies <b>102</b></span>
+          <span class="fsx-lbl"><i style="--d:#0d6c6a"></i> COMP360 Psilocybin <b>16</b></span>
+          <span class="fsx-lbl"><i style="--d:#9d3f6d"></i> Ubrogepant migraine <b>10</b></span>
+          <span class="fsx-lbl"><i style="--d:#97620f"></i> Seltorexant MDD <b>17</b></span>
         </div>
+      </div>
+    </div>
 
-        <div class="fs-hv-panels">
-          <div class="fs-hv-panel is-active" data-hv="intake" role="tabpanel">
-            <h3 class="fs-hv-head">Recruit from every source into one inbox</h3>
-            <p class="fs-hv-sub">Ads, referrals, ClinicalTrials.gov and your EHR, all in one queue.</p>
-            <div class="fs-conv" aria-hidden="true">
-              <div class="fs-conv-srcs">
-                <span class="fs-hv-chip">{{ ic.icon('meta', 'brand-ico') }} Meta</span>
-                <span class="fs-hv-chip">{{ ic.icon('google', 'brand-ico') }} Google</span>
-                <span class="fs-hv-chip">{{ ic.icon('reddit', 'brand-ico') }} Reddit</span>
-                <span class="fs-hv-chip">{{ ic.icon('ctgov', 'brand-ico') }} CT.gov</span>
-                <span class="fs-hv-chip">{{ ic.icon('user') }} Referral</span>
-                <span class="fs-hv-chip">{{ ic.icon('database') }} EHR</span>
-              </div>
-              <svg class="fs-conv-wire" viewBox="0 0 100 180" preserveAspectRatio="none" aria-hidden="true">
-                <path class="fs-conv-l" d="M0 15 C 60 15, 40 90, 100 90"/>
-                <path class="fs-conv-l" d="M0 45 C 60 45, 40 90, 100 90"/>
-                <path class="fs-conv-l" d="M0 75 C 60 75, 40 90, 100 90"/>
-                <path class="fs-conv-l" d="M0 105 C 60 105, 40 90, 100 90"/>
-                <path class="fs-conv-l" d="M0 135 C 60 135, 40 90, 100 90"/>
-                <path class="fs-conv-l" d="M0 165 C 60 165, 40 90, 100 90"/>
-              </svg>
-              <div class="fs-conv-down" aria-hidden="true">
-                <span class="fs-conv-down-line"></span>
-                <span class="fs-conv-down-badge">{{ ic.icon('chevron-down') }}</span>
-                <span class="fs-conv-down-line"></span>
-              </div>
-              <div class="fs-conv-inbox">
-                <div class="fs-conv-inbox-h">
-                  <span class="fs-conv-inbox-t">{{ ic.icon('inbox') }} <b>Inbox</b>
-                    <span class="fs-conv-badge">6 new</span></span>
-                </div>
-                <div class="fs-conv-tabs">
-                  <span class="fs-conv-tab is-on">All</span>
-                  <span class="fs-conv-tab">New</span>
-                  <span class="fs-conv-tab">Replies</span>
-                </div>
-                <div class="fs-conv-inbox-rows">
-                  <div class="fs-qrow is-unread"><i class="fs-qdot" aria-hidden="true"></i><span class="fs-qav">EB</span>
-                    <div class="fs-qmeta"><b>Ethan B.</b>
-                      <span>{{ ic.icon('ctgov', 'brand-ico') }} CT.gov &middot; new applicant</span></div>
-                    <span class="fs-qai is-ok">94% match</span></div>
-                  <div class="fs-qrow is-unread"><i class="fs-qdot" aria-hidden="true"></i><span class="fs-qav">LD</span>
-                    <div class="fs-qmeta"><b>Leo D.</b>
-                      <span>{{ ic.icon('meta', 'brand-ico') }} Meta &middot; replied</span></div>
-                    <span class="fs-qai is-ok">88% match</span></div>
-                  <div class="fs-qrow"><i class="fs-qdot is-off" aria-hidden="true"></i><span class="fs-qav">PK</span>
-                    <div class="fs-qmeta"><b>Priya K.</b>
-                      <span>{{ ic.icon('google', 'brand-ico') }} Google &middot; new applicant</span></div>
-                    <span class="fs-qai is-warn">61% review</span></div>
-                </div>
-                <div class="fs-conv-inbox-foot">{{ ic.icon('check') }}
-                  1 duplicate from Referral merged automatically</div>
-              </div>
-            </div>
-          </div>
-
-          <div class="fs-hv-panel" data-hv="ask" role="tabpanel" aria-hidden="true">
-            <h3 class="fs-hv-head">It triages your morning, then acts on your word</h3>
-            <div class="fs-ai">
-              <div class="fs-ai-scan">
-                <div class="fs-ai-scan-h"><b>Reviewing your trials</b>
-                  <span class="fs-ai-scan-n">3 need you today</span></div>
-                <div class="fs-ai-scan-bar" aria-hidden="true"><i></i></div>
-              </div>
-              <div class="fs-ai-acts">
-                <div class="fs-ai-act">
-                  <span class="fs-ai-rail" aria-hidden="true"><i class="fs-ai-spin"></i><em>{{ ic.icon('check') }}</em></span>
-                  <span class="fs-ai-ic">{{ ic.icon('chat') }}</span>
-                  <div class="fs-ai-tx"><b>Reply drafted for Leo D.</b>
-                    <span>Tirzepatide &middot; offers a screening visit Thu 10am</span></div>
-                  <span class="fs-ai-btn">Send</span>
-                </div>
-                <div class="fs-ai-act">
-                  <span class="fs-ai-rail" aria-hidden="true"><i class="fs-ai-spin"></i><em>{{ ic.icon('check') }}</em></span>
-                  <span class="fs-ai-ic">{{ ic.icon('file-check') }}</span>
-                  <div class="fs-ai-tx"><b>Ethan B. looks eligible</b>
-                    <span>Semaglutide &middot; eGFR &amp; HbA1c clear, cited &sect;5.2</span></div>
-                  <span class="fs-ai-btn ghost">Review</span>
-                </div>
-                <div class="fs-ai-act">
-                  <span class="fs-ai-rail" aria-hidden="true"><i class="fs-ai-spin"></i><em>{{ ic.icon('check') }}</em></span>
-                  <span class="fs-ai-ic">{{ ic.icon('users') }}</span>
-                  <div class="fs-ai-tx"><b>Re-consent 6 patients</b>
-                    <span>NASH &middot; Amendment 2 moved them to ICF v4</span></div>
-                  <span class="fs-ai-btn ghost">Start</span>
-                </div>
-              </div>
-              <div class="fs-cop">
-                <span class="fs-cop-lbl">Or just tell it what to do. It does it, not just answers.</span>
-                <div class="fs-cop-ask">
-                  {{ ic.icon('sparkle') }}
-                  <span class="fs-cop-ask-q" data-cop-typed></span><span class="fs-cop-ask-caret" aria-hidden="true"></span>
-                  <span class="fs-cop-ask-btn" aria-hidden="true">{{ ic.icon('send') }}</span>
-                </div>
-                <div class="fs-cop-steps" data-cop-steps aria-hidden="true"></div>
-              </div>
-            </div>
-          </div>
-
-          <div class="fs-hv-panel" data-hv="camp" role="tabpanel" aria-hidden="true">
-            <h3 class="fs-hv-head">Describe the trial once. We run the whole campaign.</h3>
-            <div class="fs-camp">
-              <div class="fs-camp-step">
-                <span class="fs-camp-n">1</span>
-                <div class="fs-camp-body">
-                  <p class="fs-camp-t">You describe the trial <em>once</em></p>
-                  <div class="fs-camp-paste">{{ ic.icon('file') }}
-                    <span>Type 2 diabetes &middot; adults 18&ndash;75 &middot; HbA1c 7&ndash;10 &middot; Toronto</span>
-                    <i class="fs-camp-caret" aria-hidden="true"></i></div>
-                </div>
-              </div>
-              <div class="fs-camp-step">
-                <span class="fs-camp-n">2</span>
-                <div class="fs-camp-body">
-                  <p class="fs-camp-t">BridgeMD picks the channel and writes the ad</p>
-                  <div class="fs-camp-card">
-                    <div class="fs-camp-rec-h">{{ ic.icon('sparkle') }} Meta + Google Search
-                      <em>best reach for T2D near you</em></div>
-                    <div class="fs-camp-ad">{{ ic.icon('megaphone') }}
-                      <span>&ldquo;Now enrolling: a Type 2 diabetes study&rdquo;</span>
-                      <b class="fs-camp-flag">IRB/REB-ready</b></div>
-                  </div>
-                </div>
-              </div>
-              <div class="fs-camp-step">
-                <span class="fs-camp-n">3</span>
-                <div class="fs-camp-body">
-                  <p class="fs-camp-t">It goes live for you</p>
-                  <div class="fs-camp-chans">
-                    <span class="fs-camp-chan">{{ ic.icon('meta', 'brand-ico') }} Meta
-                      <em>{{ ic.icon('check') }} Live</em></span>
-                    <span class="fs-camp-chan">{{ ic.icon('google', 'brand-ico') }} Google
-                      <em>{{ ic.icon('check') }} Live</em></span>
-                  </div>
-                </div>
-              </div>
-              <div class="fs-camp-step">
-                <span class="fs-camp-n">4</span>
-                <div class="fs-camp-body">
-                  <p class="fs-camp-t">Every dollar tracked to an enrolled patient</p>
-                  <div class="fs-camp-res">
-                    <span class="fs-camp-metric"><b>+14</b> applicants</span>
-                    <span class="fs-camp-metric"><b>$252</b> spent</span>
-                    <span class="fs-camp-metric is-key"><b>$18</b> per enrolled</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+    {# 3. Auto-triage #}
+    <div class="fsx-feature">
+      <div class="fsx-feature-tx">
+        <span class="fsx-feature-ic">{{ ic.icon('sparkle') }}</span>
+        <h3>Sorted the moment it arrives</h3>
+        <p>Every message is read and labeled by what it needs — scheduling, a question, documents, an
+          opt-out — and how urgent it is. Your team works the inbox top-down instead of digging, and
+          the important stuff never sinks to the bottom.</p>
+      </div>
+      <div class="fsx-feature-viz" aria-hidden="true">
+        <div class="fsx-rows">
+          <div class="fsx-row"><span class="fsx-av">SM</span><b>Sarah M.</b>
+            <span class="fsx-tag t-danger">High</span><span class="fsx-tag t-ok">Scheduling</span></div>
+          <div class="fsx-row"><span class="fsx-av">LK</span><b>Leo K.</b>
+            <span class="fsx-tag t-warn">Question</span></div>
+          <div class="fsx-row"><span class="fsx-av">JD</span><b>Jack D.</b>
+            <span class="fsx-tag t-info">Documents</span></div>
         </div>
+      </div>
+    </div>
 
+    {# 4. Auto-assign + coverage #}
+    <div class="fsx-feature fsx-rev">
+      <div class="fsx-feature-tx">
+        <span class="fsx-feature-ic">{{ ic.icon('users') }}</span>
+        <h3>The right coordinator, automatically</h3>
+        <p>Set it once: all email to your intake coordinator, all Instagram leads to your outreach lead.
+          New inquiries route straight to that person's inbox — no manual hand-offs. And when someone's
+          on vacation, send their whole queue to whoever's covering in one click.</p>
+      </div>
+      <div class="fsx-feature-viz" aria-hidden="true">
+        <div class="fsx-rule">{{ ic.icon('inbox') }} Meta ads {{ ic.icon('arrow-right') }}
+          <span class="fsx-who"><span class="fsx-av">PK</span> Priya</span></div>
+        <div class="fsx-cover">
+          <span class="fsx-who is-out"><span class="fsx-av">DJ</span> Danny <em>on vacation</em></span>
+          {{ ic.icon('arrow-right') }}
+          <span class="fsx-who"><span class="fsx-av">PK</span> Priya covers</span>
+        </div>
       </div>
     </div>
   </div>
 </section>
 
-<!-- ───────────────────────── Stats ───────────────────────── -->
-<section class="fs-stats">
-  <div class="fs-stats-in">
-    <div class="fs-stat">
-      <div class="fs-stat-k">Patients applied</div>
-      <div class="fs-stat-n" data-count="5218" data-suffix="+">5,218+</div>
-      <div class="fs-stat-l">patients have applied to trials through BridgeMD</div>
+<!-- ───────────────── How it works (3 steps) ───────────────── -->
+<section class="fsx-section fsx-steps-sec">
+  <div class="fsx-head">
+    <p class="fsx-kicker">Setup</p>
+    <h2>Running in about 10 minutes.</h2>
+    <p class="fsx-lead">Nothing to install. It works alongside the tools you already use.</p>
+  </div>
+  <div class="fsx-steps">
+    <div class="fsx-step">
+      <span class="fsx-step-n">1</span>
+      <h3>Connect your intake</h3>
+      <p>Forward your recruitment email to your BridgeMD address and point your ad lead forms at it. Add
+        your studies.</p>
     </div>
-    <div class="fs-stat">
-      <div class="fs-stat-k">Sites onboarded</div>
-      <div class="fs-stat-n" data-count="11" data-suffix="+">11+</div>
-      <div class="fs-stat-l">research sites now run their trials on BridgeMD</div>
+    <div class="fsx-step">
+      <span class="fsx-step-n">2</span>
+      <h3>It sorts &amp; routes</h3>
+      <p>Every new inquiry is triaged by what it needs and auto-assigned to the right coordinator by
+        your rules.</p>
     </div>
-    <div class="fs-stat">
-      <div class="fs-stat-k">On the team</div>
-      <div class="fs-stat-n" data-count="130" data-suffix="+">130+</div>
-      <div class="fs-stat-l">coordinators and PIs working in BridgeMD</div>
-    </div>
-    <div class="fs-stat">
-      <div class="fs-stat-k">Time saved</div>
-      <div class="fs-stat-n" data-count="9" data-suffix=" hrs/wk">9 hrs/wk</div>
-      <div class="fs-stat-l">of admin back per coordinator, on average</div>
+    <div class="fsx-step">
+      <span class="fsx-step-n">3</span>
+      <h3>Your team clears it</h3>
+      <p>One shared inbox, worked top-down. Cover for each other in a click. Nothing rots in a personal
+        inbox.</p>
     </div>
   </div>
 </section>
 
-<!-- ─────────── Product tour: real screens from the app ─────────── -->
-{# Each row ends with a focus slice (object-position) so the frame shows the
-   meaningful part of that screen at a legible scale, instead of the whole page. #}
-{% set tour = [
-  ('home',        'Homepage',
-   'Start each day on what needs you',
-   'New replies, new applicants, follow-ups due, and visits due today - one clear screen per trial.',
-   'left top'),
-  ('applicants',  'AI pre-screen',
-   'Every applicant is pre-screened before you open it',
-   'Applicants from every source land in one list - duplicates merged, source tagged, and each one already checked against your eligibility criteria.',
-   'left top'),
-  ('applicant',   'Scheduling',
-   'Accept once - booking and reminders run themselves',
-   'The patient gets your booking link, picks a time, and reminders go out automatically.',
-   'left top'),
-  ('calendar',    'Calendar',
-   'All your visits on one schedule',
-   'Visit windows, prep checklists, and reminders are built in. Visits at risk of falling outside the protocol window get flagged, and it syncs with the calendar you already use.',
-   'left top'),
-  ('updates',     'Sponsor updates',
-   'Turn every amendment into a checklist you can finish',
-   'Each sponsor update keeps its document versions and the exact steps your site owes - acknowledge, IRB, update consent, re-consent patients, retrain staff.',
-   'left top'),
-  ('payments',    'Payments',
-   'Pay participants in one click, and stay compliant',
-   'Stipends queue automatically when a visit is done, go out in one click, and are tracked for taxes (W-9/1099). Paid for time and travel, never per referral.',
-   'left top'),
-  ('recruitment', 'Reporting',
-   'See where enrollment drops off',
-   'Your full funnel, how long people sit at each stage, and cost per enrolled - with the biggest drop-off point called out for you.',
-   'left top'),
-  ('balance',     'Balance',
-   'Catch an unbalanced sample early',
-   'Compares the age, sex, and referral sources of your enrolled group against your targets, so you can close a gap while it is still easy to fix.',
-   'left top'),
-] %}
-<section id="demo" class="fs-section fs-section-wide">
-  <div class="fs-head">
-    <h2>See it for yourself.</h2>
-    <p class="fs-lead">Real screens from the product, with demo data. Click through the tabs.</p>
-  </div>
-
-  <div class="fs-switch">
-    <div class="fs-tabs" role="tablist">
-      {% for key, tab, title, body, pos in tour %}
-      <button class="fs-tab{{ ' is-active' if loop.first }}" data-panel="{{ key }}" role="tab" aria-selected="{{ 'true' if loop.first else 'false' }}">{{ tab }}</button>
-      {% endfor %}
+<!-- ───────────────── Pricing (free) ───────────────── -->
+<section class="fsx-section fsx-price-sec" id="pricing">
+  <div class="fsx-price">
+    <div class="fsx-price-tx">
+      <p class="fsx-kicker">Pricing</p>
+      <h2>Free for your site.</h2>
+      <p class="fsx-lead">Unlimited studies, unlimited teammates, every channel. We license to sponsors
+        and CROs — we never charge a site, and never charge per referral.</p>
+      <ul class="fsx-list">
+        <li>{{ ic.icon('check') }} Unlimited studies &amp; coordinators</li>
+        <li>{{ ic.icon('check') }} Every intake channel included</li>
+        <li>{{ ic.icon('check') }} Works with the tools you already use — REDCap, your calendar, email</li>
+        <li>{{ ic.icon('check') }} No per-referral fees, ever</li>
+      </ul>
     </div>
-
-    <div class="fs-panels">
-      {% for key, tab, title, body, pos in tour %}
-      <div class="fs-panel{{ ' is-active' if loop.first }}" data-panel="{{ key }}">
-        <div class="fs-panel-head"><b>{{ title }}</b><small>{{ body }}</small></div>
-        <div class="fs-browser">
-          <div class="fs-browser-bar">
-            <span></span><span></span><span></span>
-            <b>app.bridgemd.health · {{ tab|lower }}</b>
-            <div class="fs-browser-action">
-              <span class="fs-browser-chip">Live app</span>
-              <a class="fs-browser-open" href="{{ url_for('study_home') }}">
-                Explore live workspace {{ ic.icon('arrow-right') }}
-              </a>
-            </div>
-          </div>
-          <div class="fs-stage">
-            <img src="{{ static_url('shots/' ~ key ~ '.png') }}" width="1180" height="780"
-                 style="object-position: {{ pos }};"
-                 alt="BridgeMD: {{ title|lower }}" loading="lazy">
-          </div>
-        </div>
-        {# Phone only: the screen is held at a readable size, so it pans. #}
-        <p class="fs-swipe">{{ ic.icon('arrow-right') }} Drag the screen sideways to look around</p>
-      </div>
-      {% endfor %}
-    </div>
+    <a class="fsx-btn fsx-btn-primary fsx-btn-lg" href="{{ cal_link }}" target="_blank" rel="noopener">Book a demo {{ ic.icon('arrow-right') }}</a>
   </div>
-  <p class="fs-demo-note">{{ ic.icon('shield') }} Every screen is the real product, shown with demo
-    data. No real patients.</p>
 </section>
 
-<!-- ─────────────────── Why sites switch (comparison) ─────────────────── -->
-{# Honest, competitor-neutral: BridgeMD vs. the usual email + spreadsheets +
-   per-sponsor portals. Every row maps to a real screen shown in the tour. #}
-{# icon, task, the usual setup, BridgeMD, mechanism/proof tag. Copy is
-   domain-specific on purpose - credibility comes from precision, not stats. #}
-{# viz, icon, task, plain-English headline, plain proof tag. Real logos where
-   they apply (calendar apps, card brand); simple CSS motion otherwise. #}
-{% set compare = [
-  ('merge',    'users',     'Applications', 'All applicants in one inbox',    'No duplicates'),
-  ('score',    'crosshair', 'Screening',    'See who fits your study',        'Checked against your criteria'),
-  ('book',     'clock',     'Booking',      'Patients pick their own time',   'Reminders sent for you'),
-  ('sync',     'calendar',  'Calendar',     'Syncs with your calendar',       'Google, Outlook, Apple'),
-  ('versions', 'refresh',   'Amendments',   'Keep up with sponsor changes',   'Consent + re-consent tracked'),
-  ('pay',      'dollar',    'Payments',     'Pay participants in one click',  'Gift cards, tax-tracked'),
-  ('bars',     'activity',  'Reporting',    'See where people drop off',      'Full funnel, one view'),
-  ('shield',   'shield',    'Pricing',      'Free for your site',             'No per-referral fees'),
-] %}
-{% macro fsviz(v) %}
-<div class="fs-viz" aria-hidden="true">
-  {% if v == 'merge' %}
-  <div class="fsv fsv-inbox"><span class="fsv-in-card"><i></i><i></i><i></i><b>3</b></span></div>
-  {% elif v == 'score' %}
-  <div class="fsv fsv-score"><span class="fsv-pct">86%</span><span class="fsv-bar"><i></i></span></div>
-  {% elif v == 'book' %}
-  <div class="fsv fsv-book"><span class="fsv-cal"><i></i><i></i><i class="on"></i><i></i><i></i><i></i></span><span class="fsv-ping"></span></div>
-  {% elif v == 'sync' %}
-  <div class="fsv fsv-sync">
-    <span class="fsv-app" title="Google Calendar"><img src="{{ static_url('logos/google-calendar.svg') }}" alt="Google Calendar" width="26" height="26"></span>
-    <span class="fsv-app" title="Outlook"><img src="{{ static_url('logos/microsoft-outlook.svg') }}" alt="Outlook" width="26" height="26"></span>
-    <span class="fsv-app" title="Apple Calendar"><img src="{{ static_url('logos/apple.svg') }}" alt="Apple" width="22" height="26"></span>
-  </div>
-  {% elif v == 'versions' %}
-  <div class="fsv fsv-ver"><span class="v">v2.0</span><span class="v">v3.0</span><span class="v v3">v4.0</span></div>
-  {% elif v == 'pay' %}
-  <div class="fsv fsv-pay">
-    <span class="fsv-gc">
-      <svg viewBox="0 0 36 24" width="30" height="20"><circle cx="15" cy="12" r="7" fill="#EB001B"/><circle cx="21" cy="12" r="7" fill="#F79E1B" fill-opacity=".9"/></svg>
-      <b>$75</b>
-    </span>
-    <span class="fsv-arrow">{{ ic.icon('arrow-right') }}</span>
-    <span class="fsv-chip paid">{{ ic.icon('check') }} Sent</span>
-  </div>
-  {% elif v == 'bars' %}
-  <div class="fsv fsv-bars"><i></i><i></i><i></i><i></i></div>
-  {% elif v == 'shield' %}
-  <div class="fsv fsv-shield">{{ ic.icon('shield') }}</div>
-  {% endif %}
-</div>
-{% endmacro %}
-<section class="fs-section fs-cmp" id="why">
-  <div class="fs-head">
-    <p class="fs-kicker">Why sites switch</p>
-    <h2>One system beats ten tabs.</h2>
-    <p class="fs-lead">Ten tabs of email, spreadsheets and portals - replaced by one system.</p>
-  </div>
-  <div class="fs-caps">
-    {% for viz, icon, task, new, proof in compare %}
-    <div class="fs-cap">
-      {{ fsviz(viz) }}
-      <div class="fs-cap-b">
-        <div class="fs-cap-h">
-          <span class="fs-cap-ic">{{ ic.icon(icon) }}</span>
-          <span class="fs-cap-task">{{ task }}</span>
-        </div>
-        <p class="fs-cap-new">{{ new }}</p>
-        <span class="fs-cap-proof">{{ ic.icon('check') }} {{ proof }}</span>
-      </div>
-    </div>
-    {% endfor %}
-  </div>
-</section>
 
 <!-- ─────────────────── Security & Legal ─────────────────── -->
 <section class="fs-section fs-secure" id="security">
@@ -466,7 +241,7 @@
       <ul class="fs-list">
         <li>{{ ic.icon('check') }} Works across every study you run, not just one</li>
         <li>{{ ic.icon('check') }} Custom setups for sites, CROs and sponsors</li>
-        <li>{{ ic.icon('check') }} Fits alongside REDCap, your CTMS and calendar</li>
+        <li>{{ ic.icon('check') }} Fits alongside the tools you already run — REDCap, calendar, email</li>
         <li>{{ ic.icon('check') }} Free for your site, no per-referral fees</li>
       </ul>
     </div>
@@ -499,255 +274,18 @@
 
 <script>
 (function () {
-  // Product switcher. It auto-walks the real product screens so a visitor who
-  // just scrolls still sees each one, and stops for good the moment they pick a
-  // tab themselves.
-  var tabs = Array.prototype.slice.call(document.querySelectorAll('.fs-tab'));
-  var panels = Array.prototype.slice.call(document.querySelectorAll('.fs-panel'));
-  var stack = document.querySelector('.fs-switch');
-  var DWELL = 5600;
-  var idx = 0, timer = null, taken = false;
-  var still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-  function show(n) {
-    idx = (n + tabs.length) % tabs.length;
-    tabs.forEach(function (t, i) {
-      t.classList.toggle('is-active', i === idx);
-      t.setAttribute('aria-selected', i === idx ? 'true' : 'false');
-    });
-    panels.forEach(function (p, i) { p.classList.toggle('is-active', i === idx); });
-  }
-  function queue() {
-    if (timer) { clearTimeout(timer); timer = null; }
-    if (still || taken) return;
-    timer = setTimeout(function () { show(idx + 1); queue(); }, DWELL);
-  }
-  tabs.forEach(function (t, n) {
-    t.addEventListener('click', function () {
-      taken = true;
-      if (timer) { clearTimeout(timer); timer = null; }
-      show(n);
-    });
-  });
-  if (stack && 'IntersectionObserver' in window) {
-    new IntersectionObserver(function (entries) {
-      entries.forEach(function (e) {
-        if (e.isIntersecting) queue();
-        else if (timer) { clearTimeout(timer); timer = null; }
-      });
-    }, { threshold: 0.3 }).observe(stack);
-  } else {
-    queue();
-  }
-
-  // Hero film: one animated scene at a time. It auto-advances, the active tab's
-  // underline doubles as the timer, it pauses while you read it, and hands over
-  // once you pick a tab. Each scene animates itself via CSS on .is-active.
-  (function () {
-    var hv = document.getElementById('fsHv');
-    if (!hv) return;
-    var hvTabs = Array.prototype.slice.call(hv.querySelectorAll('.fs-hv-tab'));
-    var hvPanels = Array.prototype.slice.call(hv.querySelectorAll('.fs-hv-panel'));
-    var STEP = 5000;
-    var at = 0, tick = null, held = false;
-
-    function paint(n) {
-      at = (n + hvTabs.length) % hvTabs.length;
-      hvTabs.forEach(function (t, i) {
-        t.classList.toggle('is-active', i === at);
-        t.setAttribute('aria-selected', i === at ? 'true' : 'false');
-      });
-      // Re-toggle .is-active so each scene's CSS animations replay on every visit.
-      hvPanels.forEach(function (p, i) {
-        p.classList.remove('is-active');
-        void p.offsetWidth;
-        p.classList.toggle('is-active', i === at);
-        p.setAttribute('aria-hidden', i === at ? 'false' : 'true');
-      });
-      // Restart the copilot command bar from scratch whenever its scene opens, and
-      // clear it otherwise, so switching in never lands on a pre-run query.
-      if (window.__fsCop) {
-        var active = hvPanels[at] && hvPanels[at].getAttribute('data-hv');
-        if (active === 'ask') window.__fsCop.play(); else window.__fsCop.reset();
-      }
-    }
-    function run() {
-      if (tick) { clearInterval(tick); tick = null; }
-      if (still || held) { hv.classList.remove('is-live'); return; }
-      hv.classList.add('is-live');
-      tick = setInterval(function () { paint(at + 1); }, STEP);
-    }
-    hvTabs.forEach(function (t, n) {
-      t.addEventListener('click', function () {
-        held = true;
-        hv.classList.remove('is-paused', 'is-live');
-        if (tick) { clearInterval(tick); tick = null; }
-        paint(n);
-      });
-      t.addEventListener('keydown', function (e) {
-        if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
-        e.preventDefault();
-        held = true;
-        if (tick) { clearInterval(tick); tick = null; }
-        paint(at + (e.key === 'ArrowRight' ? 1 : -1));
-        hvTabs[at].focus();
-      });
-    });
-    hv.addEventListener('mouseenter', function () {
-      if (held) return;
-      hv.classList.add('is-paused');
-      if (tick) { clearInterval(tick); tick = null; }
-    });
-    hv.addEventListener('mouseleave', function () {
-      if (held) return;
-      hv.classList.remove('is-paused');
-      run();
-    });
-    paint(0);
-    if ('IntersectionObserver' in window) {
-      new IntersectionObserver(function (entries) {
-        entries.forEach(function (e) {
-          if (e.isIntersecting) {
-            run();
-          } else {
-            if (tick) { clearInterval(tick); tick = null; hv.classList.remove('is-live'); }
-          }
-        });
-      }, { threshold: 0.25 }).observe(hv);
-    } else {
-      run();
-    }
-  })();
-
-  // Copilot command bar: type a command, then show the copilot DOING it, step by
-  // step (found it -> made it -> sent), each ticking from a spinner to a check,
-  // then the final result. So it reads as real work, not a canned confirmation.
-  (function () {
-    var el = document.querySelector('[data-cop-typed]');
-    var steps = document.querySelector('[data-cop-steps]');
-    if (!el) return;
-    var CHECK = {{ ic.icon('check') | tojson }};
-    var cmds = [
-      ['Send Leo the Thursday 10am screening slot',
-        ['Found an open Thursday 10am slot', 'Drafted the message to Leo', 'Sent, reminder scheduled']],
-      ['Book screening for everyone marked eligible',
-        ['Found 4 eligible applicants', 'Booked 4 screening visits', 'Sent calendar invites']],
-      ['Start re-consent for Amendment 2',
-        ['Found 6 affected patients', 'Attached ICF v4', 'Queued re-consent for 6 patients']],
-      ['Post the T2D campaign to Meta & Google',
-        ['Wrote the ad copy', 'Checked IRB-approved wording', 'Posted, live on 2 channels']]
-    ];
-    var reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    var qi = 0, token = 0, timers = [];
-    function clearTimers() { timers.forEach(clearTimeout); timers = []; }
-    function A(ms, fn) { var t = setTimeout(fn, ms); timers.push(t); return t; }
-    function clearSteps() { if (steps) steps.innerHTML = ''; }
-    function addStep(label) {
-      if (!steps) return null;
-      var row = document.createElement('div'); row.className = 'fs-cop-step';
-      row.innerHTML = '<i class="fs-cop-step-spin"></i>' +
-        '<span class="fs-cop-step-check">' + CHECK + '</span>' +
-        '<span class="fs-cop-step-lbl">' + label + '</span>';
-      steps.appendChild(row); return row;
-    }
-    // reset() cancels any in-flight run (bumping the token invalidates pending
-    // callbacks) and clears the bar, so a scene switch never shows a stale result.
-    function reset() { token++; clearTimers(); el.textContent = ''; clearSteps(); }
-    function runSteps(list, i, my, done) {
-      if (my !== token) return;
-      if (i >= list.length) { done(); return; }
-      var row = addStep(list[i]);
-      A(640, function () {
-        if (my !== token) return;
-        if (row) row.classList.add('is-done');
-        A(220, function () { runSteps(list, i + 1, my, done); });
-      });
-    }
-    // play() always starts from a blank bar: type the command, then run its steps.
-    function play() {
-      reset();
-      var my = token;
-      var c = cmds[qi % cmds.length]; qi++;
-      if (reduced) {
-        el.textContent = c[0];
-        c[1].forEach(function (s) { var r = addStep(s); if (r) r.classList.add('is-done'); });
-        return;
-      }
-      var text = c[0], k = 0;
-      (function add() {
-        if (my !== token) return;
-        if (k < text.length) { el.textContent += text[k++]; A(30 + Math.random() * 38, add); }
-        else A(380, function () {
-          if (my !== token) return;
-          runSteps(c[1], 0, my, function () {});
-        });
-      })();
-    }
-    // Driven by the film controller: it calls play() when the copilot scene opens
-    // and reset() when it leaves, so nothing runs until you're actually looking.
-    window.__fsCop = { play: play, reset: reset };
-  })();
-
-  // Lightweight count-up for the stat numbers. Prefix/suffix (e.g. "~", "+",
-  // " hrs") are data-driven so the final label matches the server-rendered one.
-  function countUp(el) {
-    var target = parseInt(el.getAttribute('data-count'), 10);
-    if (isNaN(target)) return;
-    var pre = el.getAttribute('data-prefix') || '';
-    var suf = el.getAttribute('data-suffix') || '';
-    // \u00A0 is a non-breaking space; keep the unit glued to the number.
-    pre = pre.replace(/&nbsp;/g, '\u00A0'); suf = suf.replace(/&nbsp;/g, '\u00A0');
-    // Nothing to animate for 0 or 1: counting "0 -> 1" just flashes a broken-looking
-    // "0" for ~1s. Render those immediately; only larger numbers count up.
-    // Thousands separators so 5000 reads "5,000" both mid-count and at rest.
-    function fmt(n) { return n.toLocaleString('en-US'); }
-    if (target <= 1) { el.textContent = pre + fmt(target) + suf; return; }
-    var start = null, dur = 900;
-    function step(ts) {
-      if (!start) start = ts;
-      var p = Math.min((ts - start) / dur, 1);
-      el.textContent = pre + fmt(Math.floor(p * target)) + suf;
-      if (p < 1) requestAnimationFrame(step);
-      else el.textContent = pre + fmt(target) + suf;
-    }
-    requestAnimationFrame(step);
-  }
-  var seen = false;
-  var band = document.querySelector('.fs-stats');
-  function maybe() {
-    if (seen || !band) return;
-    var r = band.getBoundingClientRect();
-    if (r.top < window.innerHeight && r.bottom > 0) {
-      seen = true;
-      document.querySelectorAll('.fs-stat-n[data-count]').forEach(countUp);
-    }
-  }
-  window.addEventListener('scroll', maybe, { passive: true });
-  maybe();
-
-  // Scroll-reveal: fade blocks up as they enter view. We add the .fs-reveal class
-  // from JS (not markup) so that if JS is off, nothing is ever hidden. Staggered
-  // slightly within each row so grids cascade instead of popping all at once.
-  var revealSel = '.fs-head, .fs-stat, .fs-contact-card, .fs-before, .fs-frame, .fs-dt';
-  var blocks = Array.prototype.slice.call(document.querySelectorAll(revealSel));
   var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  if (blocks.length && 'IntersectionObserver' in window && !reduce) {
-    blocks.forEach(function (b) { b.classList.add('fs-reveal'); });
-    var revObs = new IntersectionObserver(function (entries, obs) {
-      entries.forEach(function (e) {
-        if (!e.isIntersecting) return;
-        var el = e.target;
-        var sibs = Array.prototype.slice.call(el.parentNode.children).filter(function (c) {
-          return c.classList && c.classList.contains('fs-reveal');
-        });
-        el.style.transitionDelay = (Math.max(0, sibs.indexOf(el)) * 70) + 'ms';
-        el.classList.add('is-in');
-        obs.unobserve(el);
-      });
-    }, { threshold: 0.12, rootMargin: '0px 0px -8% 0px' });
-    blocks.forEach(function (b) { revObs.observe(b); });
-  }
-
+  var blocks = Array.prototype.slice.call(
+    document.querySelectorAll('.fsx-head, .fsx-feature, .fsx-step, .fs-frame, .fs-dt, .fs-contact-card'));
+  if (!blocks.length || reduce || !('IntersectionObserver' in window)) return;
+  blocks.forEach(function (b) { b.classList.add('fs-reveal'); });
+  var obs = new IntersectionObserver(function (entries, o) {
+    entries.forEach(function (e) {
+      if (!e.isIntersecting) return;
+      e.target.classList.add('is-in'); o.unobserve(e.target);
+    });
+  }, { threshold: 0.12, rootMargin: '0px 0px -8% 0px' });
+  blocks.forEach(function (b) { obs.observe(b); });
 })();
 </script>
 {% endblock %}

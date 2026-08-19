@@ -434,15 +434,47 @@
       inperson: { type: 'text',  ph: 'Study site or room', hint: '' },
       phone:    { type: 'tel',   ph: 'Patient phone number',
                   hint: 'The patient will be called at this number.' },
-      zoom:     { type: 'url',   ph: 'Paste the Zoom meeting link',
-                  hint: 'Sent to the patient with their reminder.' },
-      meet:     { type: 'url',   ph: 'Paste the Google Meet link',
-                  hint: 'Sent to the patient with their reminder.' }
+      zoom:     { type: 'url',   ph: '', hint: '' },
+      meet:     { type: 'url',   ph: '', hint: '' }
     };
+    // Simulated conferencing links — mimic "Add Google Meet / Zoom" in one click.
+    function rc(set, n) { var s = ''; for (var i = 0; i < n; i++) s += set[Math.floor(Math.random() * set.length)]; return s; }
+    function genMeet() { var a = 'abcdefghijkmnopqrstuvwxyz'; return 'https://meet.google.com/' + rc(a, 3) + '-' + rc(a, 4) + '-' + rc(a, 3); }
+    function genZoom() { var d = '0123456789'; var a = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz0123456789'; return 'https://us06web.zoom.us/j/' + rc(d, 11) + '?pwd=' + rc(a, 10); }
+    var pending = 0;  // guards stale timeouts when the user clicks quickly
     function mode() { var on = document.querySelector('.cal-mode-i.is-on'); return on ? on.getAttribute('data-mode') : 'inperson'; }
+    function conferenceLabel(m) { return m === 'meet' ? 'Google Meet' : 'Zoom'; }
+
+    function createLink(m) {
+      var label = conferenceLabel(m);
+      var mine = ++pending;
+      loc.readOnly = true;
+      loc.value = '';
+      loc.placeholder = '';
+      hint.hidden = false;
+      hint.innerHTML = '<span class="cw-spin" aria-hidden="true"></span> Creating ' + label + ' link\u2026';
+      setTimeout(function () {
+        if (mine !== pending || mode() !== m) return;  // user switched away
+        var link = (m === 'meet') ? genMeet() : genZoom();
+        loc.value = link; autofilled = link;
+        hint.innerHTML = '<span class="cal-where-ok">' + (window.__calCheck || '\u2713') + '</span> '
+          + label + ' link created \u2014 added to the invite and sent with the reminder. '
+          + '<button type="button" class="cal-where-regen">New link</button>';
+      }, 450);
+    }
+
     function apply(m, focusIt) {
       var c = CFG[m] || CFG.inperson;
       loc.type = c.type; loc.placeholder = c.ph;
+      if (m === 'zoom' || m === 'meet') {
+        // Only (re)generate if the field is empty or still holds a value we made.
+        if (loc.value === '' || loc.value === autofilled) { createLink(m); }
+        else { loc.readOnly = false; hint.hidden = false;
+               hint.textContent = 'Sent to the patient with their reminder.'; }
+        return;
+      }
+      loc.readOnly = false;
+      pending++;  // cancel any in-flight link generation
       hint.textContent = c.hint; hint.hidden = !c.hint;
       // Only auto-fill / clear the field if the user hasn't typed their own value.
       if (loc.value === '' || loc.value === autofilled) {
@@ -454,8 +486,16 @@
           loc.value = ''; autofilled = '';
         }
       }
-      if (focusIt) loc.focus();
+      if (focusIt && !loc.readOnly) loc.focus();
     }
+
+    // "New link" — regenerate a fresh conferencing link on demand.
+    hint.addEventListener('click', function (e) {
+      var btn = e.target.closest && e.target.closest('.cal-where-regen');
+      if (!btn) return;
+      var m = mode();
+      if (m === 'zoom' || m === 'meet') { autofilled = loc.value; createLink(m); }
+    });
     chips.forEach(function (ch) {
       ch.addEventListener('click', function () {
         chips.forEach(function (x) { x.classList.remove('is-on'); });

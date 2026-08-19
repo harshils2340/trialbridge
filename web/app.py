@@ -197,11 +197,13 @@ CAL_LINK = os.environ.get("CAL_LINK", "https://cal.com/harshil-shah-7tkvs7/30min
 # (Excludes owner-only /app/analytics.) Patient/clinician/public paths are never
 # auto-impersonated, so they stay public/gated exactly as before.
 _STUDY_TEAM_DEMO_PREFIXES = (
+    "/app/inbox", "/app/onboarding",
     "/app/leads", "/app/messages", "/app/site", "/app/dashboard",
     "/app/balance", "/app/campaign", "/app/intake", "/app/home",
     "/app/applicant", "/app/matching", "/app/documents", "/app/copilot",
     "/app/team", "/app/calendar", "/app/soe", "/app/payments", "/app/updates",
-    "/marketing-hub", "/files/lead", "/files/team")
+    "/app/irb", "/app/scope", "/marketing-hub",
+    "/files/lead", "/files/team")
 
 # Health-records / EHR sync (SMART Health IT) is hidden for now — the connector
 # is still a sandbox and not patient-ready. Flip RECORDS_UI=1 to re-enable the
@@ -405,7 +407,7 @@ def ops_readiness():
 # --------------------------------------------------------------------------- #
 # NO_LOGIN (defined near the top with the production guard) enables the no-login
 # demo shell. It is forced off in production so the ATS is never anonymous.
-_DEMO_EMAIL = "demo@bridgemd.local"
+_DEMO_EMAIL = "dejosama@fieveclinical.com"
 _DEMO_PATIENT_EMAIL = "demo.patient@bridgemd.local"
 _DEMO_PATIENT_NAME = os.environ.get("DEMO_PATIENT_NAME", "Harshil Test User").strip() or "Harshil Test User"
 DEMO_SESSION_KEY = "demo_mode"
@@ -467,7 +469,7 @@ def _ensure_demo_user():
     u = db.get_user_by_email(_DEMO_EMAIL)
     if not u:
         pw = generate_password_hash("demo-no-login", method="pbkdf2:sha256")
-        db.create_user(_DEMO_EMAIL, pw, "Demo Clinician", "", "")
+        db.create_user(_DEMO_EMAIL, pw, "Danny-Elle Josama", "", "")
         u = db.get_user_by_email(_DEMO_EMAIL)
     return u
 
@@ -520,7 +522,7 @@ def _seed_demo_surfaces(user_id=None):
     # without this they all show the "claim your studies" empty state.
     try:
         db.seed_demo_claims(user_id)
-        db.ensure_demo_claim_volume(user_id, minimum_rows=18)
+        db.ensure_demo_claim_volume(user_id, minimum_rows=108)
     except Exception:
         app.logger.exception("demo claim seeding failed")
     try:
@@ -536,9 +538,22 @@ def _seed_demo_surfaces(user_id=None):
     except Exception:
         app.logger.exception("demo lead attribution seeding failed")
     try:
+        db.seed_demo_irb_submissions(user_id)
+    except Exception:
+        app.logger.exception("demo IRB submission seeding failed")
+    try:
         db.seed_demo_engagement(user_id)
     except Exception:
         app.logger.exception("demo engagement seeding failed")
+    try:
+        # De-clone any existing demo DB seeded by the old (repetitive) copy.
+        db.diversify_demo_replies()
+    except Exception:
+        app.logger.exception("demo reply diversify failed")
+    try:
+        db.seed_demo_team(user_id)
+    except Exception:
+        app.logger.exception("demo team seeding failed")
     try:
         db.seed_demo_referrals(user_id)
     except Exception:
@@ -551,6 +566,14 @@ def _seed_demo_surfaces(user_id=None):
         db.seed_demo_collaboration(user_id)
     except Exception:
         app.logger.exception("demo collaboration seeding failed")
+    try:
+        db.seed_demo_case_notes(user_id)
+    except Exception:
+        app.logger.exception("demo case-note seeding failed")
+    try:
+        db.seed_demo_trial_documents(user_id)
+    except Exception:
+        app.logger.exception("demo trial-document seeding failed")
     try:
         _seed_demo_documents()
     except Exception:
@@ -977,7 +1000,7 @@ _HIDDEN_PHYSICIAN_ENDPOINTS = frozenset({
 @app.before_request
 def _hide_physician_surface():
     if request.endpoint in _HIDDEN_PHYSICIAN_ENDPOINTS:
-        return redirect(url_for("study_home") if g.user else url_for("home"))
+        return redirect(url_for("team_inbox") if g.user else url_for("home"))
 
 
 @app.before_request
@@ -1136,6 +1159,21 @@ def _notify(to_addr, subject, body):
                           allow_sms=False)
 
 
+def _notify_async(to_addr, subject, body):
+    """Fire-and-forget variant of _notify: the SMTP send runs on a daemon thread
+    so heads-up emails (new candidate, owner alert, site DM copy) never make an
+    interactive request wait on the mail provider. The message is already built
+    in the request; only the network send is deferred."""
+    def _run():
+        try:
+            _NOTIFIER.send(to_email=to_addr, subject=subject, email_body=body,
+                           allow_sms=False)
+        except Exception:
+            app.logger.exception("async notify failed")
+    threading.Thread(target=_run, daemon=True).start()
+    return True
+
+
 def _notify_patient(to_email, to_phone, subject, email_body, sms_body):
     """Patient-facing notify: email by default, optional SMS when env-enabled."""
     return _NOTIFIER.send(
@@ -1147,6 +1185,34 @@ def _notify_patient(to_email, to_phone, subject, email_body, sms_body):
     )
 
 
+def _notify_patient_async(to_email, to_phone, subject, email_body, sms_body):
+    """Fire the SMTP/Twilio send on a daemon thread so an interactive request
+    (e.g. sending a chat message, booking a visit) never blocks on the mail/SMS
+    provider. Message text is already built in the request; only the network send
+    is deferred. The no-op path stays instant (notifier short-circuits when off)."""
+    def _run():
+        try:
+            _NOTIFIER.send(to_email=to_email, to_phone=to_phone, subject=subject,
+                           email_body=email_body, sms_body=sms_body)
+        except Exception:
+            app.logger.exception("async patient notify failed")
+    threading.Thread(target=_run, daemon=True).start()
+
+
+def _gcal_sync_async(lead, visit, invite_url):
+    """Push the visit to the site's connected Google Calendar off the request
+    path - it's a best-effort network POST and must never make booking feel slow."""
+    def _run():
+        try:
+            sync = calendar_invites.maybe_sync_google_event(lead, visit, invite_url)
+            if sync.get("attempted") and not sync.get("ok"):
+                app.logger.warning("google calendar sync failed: %s",
+                                   sync.get("detail", "unknown"))
+        except Exception:
+            app.logger.exception("async google calendar sync failed")
+    threading.Thread(target=_run, daemon=True).start()
+
+
 def _notify_site_new_candidate(token):
     """Tell the study site a new de-identified candidate is waiting (with the
     secure review link). Recipient: the lead's site email, else SITE_NOTIFY_EMAIL."""
@@ -1156,7 +1222,7 @@ def _notify_site_new_candidate(token):
     to_addr = db.site_contact_for_nct(lead["nct"]) or SITE_NOTIFY_EMAIL
     link = _abs_url("candidate_page", token=lead["site_token"])
     subject, body = mailer.build_candidate_message(lead, link)
-    return _notify(to_addr, subject, body)
+    return _notify_async(to_addr, subject, body)
 
 
 def _dedup_email_list(raw, exclude=None):
@@ -1201,7 +1267,7 @@ def _notify_owner_new_application(token, exclude_emails=None):
     link = _abs_url("applicant_detail", lead_id=lead["id"])
     inbox = _abs_url("operator_inbox")
     subject, body = mailer.build_owner_new_application(lead, link, inbox=inbox)
-    return _notify(", ".join(recipients), subject, body)
+    return _notify_async(", ".join(recipients), subject, body)
 
 
 def _notify_applicant(token, kind):
@@ -1212,7 +1278,8 @@ def _notify_applicant(token, kind):
         return False
     link = _abs_url("applications")
     subject, body = mailer.build_applicant_message(lead, kind, link)
-    return _notify_patient(lead["email"], lead["phone"], subject, body, "")
+    _notify_patient_async(lead["email"], lead["phone"], subject, body, "")
+    return True
 
 
 def _notify_applicant_by_id(lead_id, kind):
@@ -1227,7 +1294,8 @@ def _notify_applicant_apply_confirmation(token):
     if not lead or (not lead["email"] and not lead["phone"]):
         return False
     subject, body = mailer.build_apply_confirmation(lead, _abs_url("applications"))
-    return _notify_patient(lead["email"], lead["phone"], subject, body, "")
+    _notify_patient_async(lead["email"], lead["phone"], subject, body, "")
+    return True
 
 
 def _notify_applicant_schedule(lead):
@@ -1238,7 +1306,65 @@ def _notify_applicant_schedule(lead):
     subject, body = mailer.build_schedule_message(
         lead, lead["schedule_url"], _abs_url("applications"))
     sms = mailer.build_schedule_sms(lead, lead["schedule_url"])
-    return _notify_patient(lead["email"], lead["phone"], subject, body, sms)
+    _notify_patient_async(lead["email"], lead["phone"], subject, body, sms)
+    return True
+
+
+def _lead_source_key(lead):
+    """The lead's normalized channel key (instagram|messenger|email_intake|...)."""
+    try:
+        return (lead["source"] or "").strip().lower()
+    except (KeyError, IndexError, TypeError):
+        return ""
+
+
+def _connector_send_async(url, secret, lead, body):
+    """POST an outbound reply to the site's connector so it lands back on the
+    social channel the lead came from (IG DM, Messenger, ...). Best-effort and
+    off-thread: the message is already saved in-thread, so a slow/broken
+    connector never blocks the coordinator. Signed with the site's secret."""
+    try:
+        ext = lead["external_ref"]
+    except (KeyError, IndexError, TypeError):
+        ext = ""
+    payload = json.dumps({
+        "lead_id": lead["id"],
+        "nct": lead["nct"],
+        "channel": _lead_source_key(lead),
+        "external_ref": ext or "",
+        "to_name": lead["name"] or "",
+        "body": body,
+        "sent_at": db.now(),
+    }).encode("utf-8")
+    headers = {"Content-Type": "application/json"}
+    if secret:
+        headers["X-BridgeMD-Signature"] = hmac.new(
+            secret.encode("utf-8"), payload, hashlib.sha256).hexdigest()
+    req = urllib.request.Request(url, data=payload, headers=headers, method="POST")
+
+    def _go():
+        try:
+            with urllib.request.urlopen(req, timeout=15) as r:
+                r.read()
+        except Exception:
+            app.logger.warning("connector send failed for lead %s", lead["id"])
+
+    threading.Thread(target=_go, daemon=True).start()
+    return True
+
+
+def _deliver_reply(lead, body, connector=None):
+    """Route a coordinator's reply to wherever the lead can actually receive it:
+    a social-channel lead (IG/FB/Messenger/WhatsApp) goes out through the site's
+    connector; everyone else gets the usual email/SMS. Falls back to email if a
+    social lead has no connector configured yet, so nothing is silently dropped."""
+    src = _lead_source_key(lead)
+    if src in db.CONNECTOR_CHANNELS:
+        url, secret = connector if connector is not None \
+            else db.get_site_connector(g.user["id"])
+        if url:
+            return _connector_send_async(url, secret, lead, body)
+    return _notify_applicant_message(lead, body)
 
 
 def _notify_applicant_message(lead, body):
@@ -1248,7 +1374,8 @@ def _notify_applicant_message(lead, body):
     subject, msg = mailer.build_dm_message(
         lead, body, _abs_url("applications"), to="patient")
     sms = mailer.build_dm_sms(lead, link, to="patient")
-    return _notify_patient(lead["email"], lead["phone"], subject, msg, sms)
+    _notify_patient_async(lead["email"], lead["phone"], subject, msg, sms)
+    return True
 
 
 def _notify_site_message(lead, body):
@@ -1257,7 +1384,7 @@ def _notify_site_message(lead, body):
     to_addr = db.site_contact_for_nct(lead["nct"]) or SITE_NOTIFY_EMAIL
     link = _abs_url("candidate_page", token=lead["site_token"])
     subject, msg = mailer.build_dm_message(lead, body, link, to="site")
-    return _notify(to_addr, subject, msg)
+    return _notify_async(to_addr, subject, msg)
 
 
 def _notify_applicant_visit(lead, when, location, invite_url=""):
@@ -1266,7 +1393,8 @@ def _notify_applicant_visit(lead, when, location, invite_url=""):
     subject, body = mailer.build_visit_message(
         lead, when, location, _abs_url("applications"), invite_url=invite_url)
     sms = mailer.build_reminder_sms(lead, when, location, _abs_url("applications"))
-    return _notify_patient(lead["email"], lead["phone"], subject, body, sms)
+    _notify_patient_async(lead["email"], lead["phone"], subject, body, sms)
+    return True
 
 
 def _notify_alert(alert, new_matches):
@@ -1387,7 +1515,7 @@ def inject_globals():
     # three POVs (patient / clinician / study team) without signing in.
     path = request.path or "/"
     if (path.startswith("/app/leads") or path.startswith("/app/dashboard")
-            or path.startswith("/app/inbox")
+            or path.startswith("/app/inbox") or path.startswith("/app/onboarding")
             or path.startswith("/app/site") or path.startswith("/app/messages")
             or path.startswith("/app/analytics") or path.startswith("/app/home")
             or path.startswith("/app/balance")
@@ -1396,7 +1524,8 @@ def inject_globals():
             or path.startswith("/app/team") or path.startswith("/app/calendar")
             or path.startswith("/app/payments") or path.startswith("/app/updates")
             or path.startswith("/app/campaign") or path.startswith("/app/intake")
-            or path.startswith("/app/soe") or path.startswith("/marketing-hub")):
+            or path.startswith("/app/soe") or path.startswith("/app/irb")
+            or path.startswith("/marketing-hub")):
         pov = "study"
     elif path.startswith("/app") or path.startswith("/referral"):
         pov = "clinician"
@@ -1451,7 +1580,7 @@ def inject_globals():
             nav_studies = []
         try:
             my_role = db.member_role(g.user["id"])
-            my_role_label = db.ORG_ROLE_LABELS.get(my_role, "")
+            my_role_label = db.member_role_label(g.user["id"])
             can_manage_team = db.can_manage_team(g.user["id"])
         except Exception:
             pass
@@ -1469,6 +1598,9 @@ def inject_globals():
             # site should keep its normal, production-style workspace.
             "active_site_demo": bool(g.user and _site_demo_enabled()
                                      and _is_demo_account(g.user)),
+            # Guided walkthrough (homepage tour banner + sidebar step guide) is
+            # temporarily hidden while it's being reworked. Flip to re-enable.
+            "walkthrough_enabled": False,
             "nav_study_ncts": nav_study_ncts,
             "nav_studies": nav_studies, "active_nct": active_nct,
             "active_study_label": active_study_label,
@@ -1558,7 +1690,7 @@ def _ensure_site_access_for_lead(lead_id):
 @app.route("/register", methods=["GET", "POST"])
 def register():
     if g.user:
-        return redirect(url_for("study_home"))
+        return redirect(url_for(_home_endpoint()))
     nxt = _safe_next(request.args.get("next", ""))
     if nxt:
         session[USER_NEXT_KEY] = nxt
@@ -1600,7 +1732,7 @@ def register():
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if g.user:
-        return redirect(url_for("study_home"))
+        return redirect(url_for(_home_endpoint()))
     nxt = _safe_next(request.args.get("next", ""))
     if nxt:
         session[USER_NEXT_KEY] = nxt
@@ -1822,7 +1954,8 @@ def _csrf_guard():
     if request.method != "POST":
         return None
     if request.endpoint in {"alerts_run", "reminders_run", "redcap_webhook",
-                            "ops_verify_claim"}:
+                            "ops_verify_claim", "inbound_email_webhook",
+                            "inbound_lead_webhook"}:
         return None
     sent = (request.form.get("_csrf_token", "")
             or request.headers.get("X-CSRF-Token", ""))
@@ -1988,9 +2121,31 @@ def _post_patient_login_redirect():
     return redirect(nxt if nxt.startswith("/") else url_for("home"))
 
 
+def _needs_onboarding(user_id):
+    """A brand-new workspace: no site profile and no studies yet. Such a user is
+    sent through the quick setup (forward address + first study) instead of an
+    empty inbox."""
+    try:
+        if db.get_site_profile(user_id):
+            return False
+        return not db.list_study_claims(user_id)
+    except Exception:
+        return False
+
+
+def _home_endpoint():
+    """Where a signed-in study-team user belongs: setup if their workspace is
+    brand-new, otherwise the inbox (the product's home)."""
+    if g.user and _needs_onboarding(g.user["id"]):
+        return "onboarding"
+    return "team_inbox"
+
+
 def _post_user_login_redirect():
     nxt = session.pop(USER_NEXT_KEY, "")
-    return redirect(nxt if nxt.startswith("/") else url_for("study_home"))
+    if nxt.startswith("/"):
+        return redirect(nxt)
+    return redirect(url_for(_home_endpoint()))
 
 
 @app.route("/account/signup", methods=["GET", "POST"])
@@ -4446,18 +4601,15 @@ def marketing_coverage():
 
 @app.route("/for-sites/<slug>")
 def for_sites_feature(slug):
-    """Detail page for one pillar of the coordinator OS (intake, pre-screen,
-    scheduling, documents). Content lives in sites_features.py so every page
-    carries the same honest sections: what it does, what it does NOT do, how it
-    works, and the legal position. 404 on an unknown slug rather than rendering
-    an empty shell."""
-    feature = sites_features.get(slug)
-    if feature is None:
+    """Retired. These four pages pitched the old "coordinator OS" (intake,
+    pre-screen, scheduling, documents) and directly contradicted what the
+    product now is: one inbox. Rather than leave contradictory pages reachable
+    (and indexed), every slug 301s to the hub. The content is still in
+    sites_features.py and for_sites_feature.html if a pillar earns its own page
+    again - restore by rendering instead of redirecting."""
+    if sites_features.get(slug) is None:
         abort(404)
-    _log_event("view_for_sites_feature", slug)
-    return render_template(
-        "for_sites_feature.html", feature=feature, legal_contact=LEGAL_CONTACT,
-        cal_link=CAL_LINK)
+    return redirect(url_for("for_sites") + "#how", code=301)
 
 
 @app.route("/blog")
@@ -4518,7 +4670,7 @@ def demo_request():
         "What they're recruiting for / notes:",
         message or "-",
     ])
-    _notify(OWNER_NOTIFY_EMAIL, subject, body)
+    _notify_async(OWNER_NOTIFY_EMAIL, subject, body)
     flash("Thanks - we'll email you shortly to schedule your live demo.", "success")
     return redirect(return_to)
 
@@ -4997,6 +5149,31 @@ def inbound_email_webhook():
     result = intake_mod.handle_inbound_email(payload)
     # Always 200 on a well-formed but unroutable message so the provider doesn't
     # retry forever; 200 with ok=false tells us it was dropped on purpose.
+    return jsonify(result), 200
+
+
+@app.route("/integrations/lead", methods=["POST"])
+def inbound_lead_webhook():
+    """Generic ad / lead-form capture (Instagram-Meta, Google, Reddit, Zapier,
+    Make). An automation posts {to: <intake address>, name, email, phone,
+    message, channel} and it lands in the same triaged inbox as email. One
+    endpoint covers every ad channel without per-platform OAuth. Same secret +
+    PHI/BAA rules as the email webhook (see matcher/COMPLIANCE.md)."""
+    secret = os.environ.get("INTAKE_WEBHOOK_SECRET", "")
+    if not secret:
+        abort(403)
+    provided = (request.headers.get("X-Intake-Token", "")
+                or request.args.get("secret", ""))
+    if not (provided and hmac.compare_digest(provided, secret)):
+        abort(403)
+    payload = request.get_json(silent=True) or {}
+    if not payload:
+        payload = {k: v for k, v in request.form.items()}
+    # Map a lead-form message onto the field the handler threads as the body.
+    if payload.get("message") and not payload.get("text"):
+        payload["text"] = payload.get("message")
+    payload.setdefault("channel", "meta")
+    result = intake_mod.handle_inbound_email(payload)
     return jsonify(result), 200
 
 
@@ -6028,13 +6205,19 @@ _DEMO_SOURCES = ["Meta campaign", "Reddit r/ADHD", "Email intake", "Google",
 _SOURCE_LABELS = {
     "referral": "Physician referral", "invite": "Physician referral",
     "physician": "Physician referral", "emr": "EMR referral",
-    "csv_import": "CSV import", "intake": "Email intake", "web": "Web form",
-    "reddit": "Reddit", "meta": "Meta campaign", "google": "Google",
+    "csv_import": "CSV import", "intake": "Email intake",
+    "email": "Email intake", "email_intake": "Email intake", "web": "Web form",
+    "instagram": "Instagram DM", "instagram_dm": "Instagram DM",
+    "messenger": "Messenger", "facebook": "Facebook", "whatsapp": "WhatsApp",
+    "sms": "SMS", "reddit": "Reddit", "meta": "Meta ad", "google": "Google",
 }
 
 
 def _initials(name):
-    parts = [p for p in (name or "").replace("#", "").split() if p]
+    # Drop trailing credentials ("Vanessa Fieve, JD, CCRC" -> "Vanessa Fieve") so
+    # avatars read as first+last initials, not the credential letters.
+    base = (name or "").split(",")[0]
+    parts = [p for p in base.replace("#", "").split() if p]
     if not parts:
         return "?"
     if len(parts) == 1:
@@ -6223,7 +6406,7 @@ def _decode_lead(row, recon=None):
 def leads():
     if _demo_mode_enabled():
         try:
-            db.ensure_demo_claim_volume(g.user["id"], minimum_rows=18)
+            db.ensure_demo_claim_volume(g.user["id"], minimum_rows=108)
         except Exception:
             app.logger.exception("demo claim volume seeding failed")
     rows = db.list_leads_for_user(g.user["id"])
@@ -6701,7 +6884,7 @@ def recruitment_balance_targets():
     return redirect(url_for("recruitment_balance", nct=nct or None))
 
 
-@app.route("/app/inbox")
+@app.route("/internal/inbox")
 @owner_required
 def operator_inbox():
     """Cross-study operator inbox: EVERY real application that lands, in one
@@ -6723,7 +6906,646 @@ def operator_inbox():
         "records": sum(1 for a in apps if a["records"]),
         "eligible": sum(1 for a in apps if a["verdict"] == "eligible"),
     }
-    return render_template("inbox.html", apps=apps, stats=stats)
+    return render_template("internal_inbox.html", apps=apps, stats=stats)
+
+
+# Where an applicant came from -> a friendly channel label + badge tone. The
+# unified inbox groups every channel (a site's forwarded mail, ad lead forms,
+# ClinicalTrials.gov, physician referrals, imports) into one triage list.
+_CHANNEL_META = {
+    "web": ("Website", "brand"),
+    "email_intake": ("Email", "info"),
+    "email": ("Email", "info"),
+    "intake": ("Email", "info"),
+    "referral": ("Physician", "violet"),
+    "csv_import": ("Import", "neutral"),
+    # The Meta family, kept distinct so a coordinator sees whether someone filled
+    # a paid ad form, slid into the IG DMs, or messaged the Facebook page.
+    "meta": ("Meta ad", "violet"),
+    "instagram": ("Instagram DM", "violet"),
+    "instagram_dm": ("Instagram DM", "violet"),
+    "messenger": ("Messenger", "info"),
+    "facebook": ("Facebook", "info"),
+    "whatsapp": ("WhatsApp", "ok"),
+    "sms": ("SMS", "ok"),
+    "google": ("Google Ads", "warn"),
+    "reddit": ("Reddit", "warn"),
+    "ctgov": ("ClinicalTrials.gov", "info"),
+    "campus": ("Campus", "neutral"),
+    "emr": ("EMR match", "neutral"),
+    "demo": ("Demo", "neutral"),
+}
+
+# Triage intent -> (label, badge tone). Mirrors intake.TRIAGE_INTENTS.
+_INTENT_META = {
+    "opt_out": ("Opt-out", "danger"),
+    "scheduling": ("Scheduling", "brand"),
+    "document": ("Document", "info"),
+    "question": ("Question", "warn"),
+    "new_inquiry": ("New inquiry", "ok"),
+    "spam": ("Spam", "neutral"),
+    "other": ("Other", "neutral"),
+}
+
+_PRIORITY_RANK = {"high": 0, "normal": 1, "low": 2, "": 1}
+
+
+def _channel_meta(source):
+    key = (source or "web").strip().lower()
+    return _CHANNEL_META.get(key, (key.replace("_", " ").title() or "Other",
+                                    "neutral"))
+
+
+# Maps a channel's display label to a brand/product icon in _icons.html, so the
+# inbox shows where a lead came from at a glance (the IG/FB mark, the CT.gov tile,
+# an envelope for email). Keyed on the label so it lines up with what's rendered.
+_CHANNEL_ICON = {
+    "Instagram DM": "instagram", "Messenger": "messenger", "Facebook": "facebook",
+    "WhatsApp": "whatsapp", "Meta ad": "meta", "Google Ads": "google",
+    "Google": "google", "Reddit": "reddit", "ClinicalTrials.gov": "ctgov",
+    "Email intake": "mail", "Email": "mail", "SMS": "phone", "Web form": "grid",
+    "Physician": "user", "Physician referral": "user", "EMR match": "activity",
+    "EMR referral": "activity",
+}
+
+
+def _channel_icon(label):
+    return _CHANNEL_ICON.get(label, "inbox")
+
+
+# Gmail-style inbox tabs: every thread falls into exactly ONE bucket, each a
+# different kind of work, so the queue you're in stays focused.
+#   active  -> people already in your pipeline (screening/enrolled): coordinate + retain
+#   ad      -> raw inbound from paid social/search: needs qualifying
+#   new     -> everything else: fresh inquiries needing a first touch
+# Trials are deliberately NOT a tab axis (they don't scale, and the study
+# switcher already scopes them); sources stay as the finer chip filter.
+_ACTIVE_STATUSES = {"eligible", "screening", "screened", "enrolled",
+                    "randomized", "active", "retained"}
+_AD_SOURCES = {"meta", "instagram", "facebook", "messenger", "whatsapp",
+               "google", "reddit"}
+_INBOX_TAB_META = [("new", "New inquiries", "mail"),
+                   ("ad", "Ad leads", "megaphone"),
+                   ("active", "Active patients", "users")]
+
+
+def _lead_category(status, source):
+    if (status or "").strip().lower() in _ACTIVE_STATUSES:
+        return "active"
+    if (source or "").strip().lower() in _AD_SOURCES:
+        return "ad"
+    return "new"
+
+
+# Ordered (needle-set, summary) rules for the inbox gist. First match wins, so put
+# the specific asks (reschedule, documents) before the generic ones (question).
+# Each summary is a short, plain-English subject line - what the person WANTS, the
+# way an assistant would put it - since real emails/DMs have no useful subject.
+_SUMMARY_RULES = [
+    (("reschedule", "move my", "change my appointment", "change the time",
+      "push my", "different day", "another day", "can't make"),
+     "Wants to reschedule their visit"),
+    (("schedule", "book", "available", "free on", "come in", "appointment",
+      "screening visit", "set up a time", "monday", "tuesday", "wednesday",
+      "thursday", "friday", "morning", "afternoon"),
+     "Wants to book a screening visit"),
+    (("insurance card", "insurance and consent", "consent form and"),
+     "Sent their insurance card and consent form"),
+    (("consent form", "signed consent", "consent"),
+     "Sent the signed consent form"),
+    (("insurance",), "Sent their insurance details"),
+    (("uploaded", "upload", "attached", "here are the", "here's the",
+      "the forms", "completed forms", "fill out", "paperwork", "document"),
+     "Sending documents for their file"),
+    (("reimburse", "compensat", "get paid", "payment", "stipend", "how much",
+      "cost me", "travel cost", "pay for"),
+     "Asking about pay and reimbursement"),
+    (("do i qualify", "am i eligible", "eligible", "qualify", "am i a fit",
+      "good candidate"),
+     "Asking whether they qualify"),
+    (("placebo", "sugar pill"), "Asking about the placebo"),
+    (("my own doctor", "my doctor", "my regular", "primary care", "my care",
+      "affect the care", "my gp"),
+     "Asking how it affects their regular care"),
+    (("still enrolling", "still recruiting", "still open", "spots left",
+      "any openings", "still accepting"),
+     "Asking if the study is still enrolling"),
+    (("stop", "unsubscribe", "opt out", "opt-out", "don't contact",
+      "do not contact", "remove me"),
+     "Wants to stop getting messages"),
+    (("how long", "how many visits", "what should i bring", "what to expect",
+      "how does it work", "what happens"),
+     "Asking what taking part involves"),
+    (("interested", "sign me up", "want to join", "would like to join",
+      "want to take part", "count me in"),
+     "Interested and wants to take part"),
+]
+
+
+def _message_summary(msg, channel_label):
+    """A short, plain-English gist of a thread - the AI-style 'subject' shown in
+    the inbox in place of the (repetitive) trial title. Deterministic keyword
+    rules so it's free and instant; reads like a one-line assistant summary."""
+    if not msg:
+        return "New applicant \u00b7 no message yet"
+    body = (msg["body"] or "").strip()
+    if msg["sender"] == "site":
+        return "You replied \u2014 waiting on their response"
+    if not body:
+        return "New applicant \u00b7 no message yet"
+    t = body.lower()
+    for needles, summary in _SUMMARY_RULES:
+        if any(n in t for n in needles):
+            return summary
+    if "?" in body:
+        return "Has a question about the study"
+    if any(a in t for a in ("thank", "sounds good", "will do", "perfect",
+                            "got it", "see you", "great")):
+        return "Confirmed \u2014 no action needed"
+    # Fallback: the first sentence/clause, trimmed to a subject-ish length.
+    first = re.split(r"(?<=[.!?])\s+", body)[0]
+    first = re.sub(r"\s+", " ", first).strip(" .")
+    if len(first) > 70:
+        first = first[:67].rstrip() + "\u2026"
+    return first[:1].upper() + first[1:] if first else "New message"
+
+
+def _triage_inbox_row(r, msg, unread, assignee_name):
+    """Flatten a lead + its latest message into one triage-inbox row."""
+    keys = set(r.keys())
+
+    def g_(k, d=""):
+        return (r[k] if k in keys else d)
+
+    def _verdict():
+        raw = g_("eligibility", "")
+        if not raw:
+            return ""
+        try:
+            v = json.loads(raw)
+            return (v.get("verdict") or "").lower() if isinstance(v, dict) else ""
+        except (ValueError, TypeError):
+            return ""
+
+    ch_label, ch_tone = _channel_meta(g_("source"))
+    intent = (g_("triage_intent") or "").strip()
+    if not intent:
+        intent = "new_inquiry"
+    intent_label, intent_tone = _INTENT_META.get(
+        intent, (intent.replace("_", " ").capitalize(), "neutral"))
+    priority = (g_("triage_priority") or "normal").strip()
+    last_at = (msg["created_at"] if msg else "") or g_("updated_at") or g_("created_at")
+    awaiting = bool(msg) and msg["sender"] == "patient"
+    return {
+        "id": g_("id"),
+        "name": g_("name") or "Anonymous",
+        "initials": _initials(g_("name") or g_("email") or "?"),
+        "email": g_("email"),
+        "phone": g_("phone"),
+        "nct": g_("nct"),
+        "title": g_("title") or g_("condition") or g_("nct") or "—",
+        "summary": _message_summary(msg, ch_label),
+        "category": _lead_category(g_("status"), g_("source")),
+        "condition": g_("condition"),
+        "status": g_("status") or "new",
+        "revealed": bool(g_("revealed", 0)),
+        "channel": ch_label,
+        "channel_tone": ch_tone,
+        "channel_icon": _channel_icon(ch_label),
+        "intent": intent,
+        "intent_label": intent_label,
+        "intent_tone": intent_tone,
+        "priority": priority,
+        "verdict": _verdict(),
+        "opt_out": bool(g_("contact_opt_out", 0)),
+        "preview": (msg["body"] if msg else "") or "No messages yet",
+        "preview_mine": bool(msg) and msg["sender"] == "site",
+        "awaiting": awaiting,
+        "unread": bool(unread),
+        "when": _inbox_time_label(last_at),
+        "last_at": last_at or "",
+        "assignee": assignee_name or "",
+        "assigned_user_id": g_("assigned_user_id"),
+    }
+
+
+@app.route("/app/inbox")
+@login_required
+def team_inbox():
+    """The product: one shared, AI-triaged inbox across every study and every
+    channel (forwarded email, ad lead forms, ClinicalTrials.gov, referrals,
+    imports). Each thread is labeled with what it's about + how urgent, so a
+    team can clear it top-down. Scoped to the team's claimed studies; assignment
+    keeps two coordinators from double-replying. KPI: Tier-2 efficiency ->
+    contacted -> screened (nothing rots in a personal inbox)."""
+    team_studies = db.list_team_studies(g.user["id"])
+    valid_ncts = {s["nct"] for s in team_studies}
+    # Trial switcher: a ?nct= click sets the scope; "" == All studies. The inbox
+    # DEFAULTS to All (unlike the rest of the app) so it opens showing everything
+    # - it's an inbox first, a per-trial view second.
+    _p = request.args.get("nct")
+    if _p is not None:
+        session["active_nct"] = _p if _p in valid_ncts else ""
+    active_nct = session.get("active_nct", "") or ""
+    if active_nct and active_nct not in valid_ncts:
+        active_nct = ""
+    members = db.list_org_members(g.user["id"])
+    name_by_id = {m["user_id"]: (m["name"] or m["email"] or "Teammate")
+                  for m in members}
+    rows = db.list_leads_for_user(g.user["id"])
+    # Open-thread counts per study (across ALL studies, for the switcher tabs) -
+    # computed before the scope filter so every tab shows its own count.
+    tab_counts = {}
+    total_open = 0
+    for r in rows:
+        if r["status"] in db.LEAD_CLOSED:
+            continue
+        total_open += 1
+        key = r["nct"] or ""
+        tab_counts[key] = tab_counts.get(key, 0) + 1
+    inbox = []
+    for r in rows:
+        # Scope filter. Under a specific trial, show only that trial's threads;
+        # un-studied inbound (nct == "") shows under "All studies".
+        if active_nct and r["nct"] != active_nct:
+            continue
+        if r["status"] in db.LEAD_CLOSED:
+            continue
+        msg = db.last_message(r["id"])
+        # Lazy triage: label any thread that has an inbound message but no triage
+        # yet (e.g. captured before triage existed), from its latest patient
+        # message. Persisted so it only runs once per new message.
+        if msg and msg["sender"] == "patient" and not (r["triage_intent"] or ""):
+            try:
+                _intent, _prio = intake_mod.classify_message(msg["body"])
+                db.set_lead_triage(r["id"], _intent, _prio)
+                r = db.get_lead(r["id"])
+            except Exception:
+                pass
+        unread = db.lead_unread_for_site(r["id"])
+        assignee = name_by_id.get(r["assigned_user_id"] if "assigned_user_id"
+                                  in r.keys() else None, "")
+        inbox.append(_triage_inbox_row(r, msg, unread, assignee))
+    # Sort: unread first, then priority (high->low), then awaiting a reply, then
+    # most-recent activity. Puts the most urgent unhandled thread on top.
+    inbox.sort(key=lambda a: (
+        not a["unread"], _PRIORITY_RANK.get(a["priority"], 1),
+        not a["awaiting"], a["last_at"]), reverse=False)
+    # Secondary recency sort within equal urgency (most recent first).
+    inbox.sort(key=lambda a: a["last_at"], reverse=True)
+    inbox.sort(key=lambda a: (
+        not a["unread"], _PRIORITY_RANK.get(a["priority"], 1), not a["awaiting"]))
+    stats = {
+        "total": len(inbox),
+        "unread": sum(1 for a in inbox if a["unread"]),
+        "high": sum(1 for a in inbox if a["priority"] == "high"),
+        "unassigned": sum(1 for a in inbox if not a["assignee"]),
+    }
+    intents = []
+    for key in intake_mod.TRIAGE_INTENTS:
+        n = sum(1 for a in inbox if a["intent"] == key)
+        if n:
+            label, tone = _INTENT_META.get(key, (key, "neutral"))
+            intents.append({"key": key, "label": label, "tone": tone, "n": n})
+    # Gmail-style inbox tabs (coarse bucket per thread). "All" first, then each
+    # non-empty bucket. Hidden entirely when there's only one bucket in play, so
+    # a single-mode inbox doesn't grow a pointless tab strip.
+    cat_counts = {}
+    for a in inbox:
+        cat_counts[a["category"]] = cat_counts.get(a["category"], 0) + 1
+    inbox_tabs = [{"key": "all", "label": "All", "icon": "inbox", "n": len(inbox)}]
+    for key, label, icon in _INBOX_TAB_META:
+        if cat_counts.get(key):
+            inbox_tabs.append({"key": key, "label": label, "icon": icon,
+                               "n": cat_counts[key]})
+    if len(inbox_tabs) <= 2:
+        inbox_tabs = []
+    # Source filters: the channels a coordinator can click to see just that ad
+    # type (IG DMs, Facebook, email, CT.gov ...) - "check my ad responses without
+    # leaving the app". When a trial is selected AND it declares connected
+    # sources, we show exactly those (each with its live count, even zero, so an
+    # empty channel reads as "no new responses" rather than vanishing). Otherwise
+    # we show whatever sources are actually present, ordered by volume.
+    counts, tones = {}, {}
+    for a in inbox:
+        counts[a["channel"]] = counts.get(a["channel"], 0) + 1
+        tones.setdefault(a["channel"], a["channel_tone"])
+    connected = db.get_claim_connected_sources(g.user["id"], active_nct) \
+        if active_nct else []
+    channels, shown = [], set()
+    # A trial's connected channels come first, each with its live count - shown
+    # even at zero so "no new Instagram responses" reads as an answer, not a gap.
+    for key in connected:
+        lbl, tone = _channel_meta(key)
+        channels.append({"label": lbl, "tone": tone, "icon": _channel_icon(lbl),
+                         "n": counts.get(lbl, 0)})
+        shown.add(lbl)
+    # Then any source actually present but not in the connected set, so no lead is
+    # ever unfilterable (busiest first). With no connected set, this is the whole
+    # list (the "All studies" / unconfigured behavior).
+    extra = sorted((lbl for lbl in counts if lbl not in shown),
+                   key=lambda l: -counts[l])
+    for lbl in extra:
+        channels.append({"label": lbl, "tone": tones.get(lbl, "neutral"),
+                         "icon": _channel_icon(lbl), "n": counts[lbl]})
+    # Trial switcher tabs: All studies + one per study, each with its open count.
+    tabs = [{"nct": "", "title": "All studies", "count": total_open,
+             "active": not active_nct}]
+    for s in team_studies:
+        tabs.append({
+            "nct": s["nct"],
+            "title": summarize.tidy_title(s["title"]) or s["nct"],
+            "count": tab_counts.get(s["nct"], 0),
+            "active": active_nct == s["nct"]})
+    unstudied = tab_counts.get("", 0)
+    # Upcoming visits, surfaced right on the inbox so nothing gets missed (the
+    # calendar's only genuinely useful view for day-to-day work). Today through
+    # the next ~2 weeks, scoped to the active trial, grouped by day.
+    upcoming, upcoming_days, today = _inbox_upcoming(active_nct)
+    # Reading pane. ?open=<lead_id> opens that thread INLINE, next to the list -
+    # the way email works. It's a real URL (not client-only state) so a thread
+    # deep-links, the back button works, and the composer's existing ajax
+    # refresh (which refetches location.href and swaps .thread) keeps working.
+    open_thread = _inbox_open_thread(request.args.get("open"))
+    return render_template("team_inbox.html", inbox=inbox, stats=stats,
+                           intents=intents, channels=channels,
+                           inbox_tabs=inbox_tabs, members=members,
+                           me_id=g.user["id"], tabs=tabs, active_nct=active_nct,
+                           unstudied=unstudied, upcoming=upcoming,
+                           upcoming_days=upcoming_days, today=today,
+                           pane=open_thread)
+
+
+def _inbox_open_thread(raw_id):
+    """Context for the inline reading pane, or None when no thread is open.
+
+    Opening a thread marks it read for the site side, exactly like email: the
+    unread dot and the workspace badge clear once a human has actually looked at
+    it. Returns None (rather than 404ing the whole inbox) for a missing or
+    out-of-scope id, so a stale link just lands on the plain inbox."""
+    try:
+        lead_id = int(raw_id or 0)
+    except (TypeError, ValueError):
+        return None
+    if not lead_id:
+        return None
+    lead = db.get_lead(lead_id)
+    ncts = set(db.user_claimed_ncts(g.user["id"]))
+    if not lead or (lead["nct"] and lead["nct"] not in ncts
+                    and not _is_demo_account(g.user) and not _is_owner()):
+        return None
+    it = _decode_lead(lead, db.latest_reconciliation(lead_id))
+    view = _queue_item(it)
+    view["initials"] = _initials(lead["name"] or view["code"])
+    try:
+        db.mark_thread_read(lead_id, "site")
+    except Exception:
+        app.logger.exception("mark_thread_read failed")
+    # How the thread is rendered depends on the channel it came in on: an email
+    # inquiry reads like an email (subject line, From, formal composer), while an
+    # ad/social lead (IG DM, Messenger, ...) reads like a DM chat. Same data,
+    # channel-native chrome - so a coordinator handles each the way the sender
+    # experiences it, without leaving the app.
+    src = _lead_source_key(lead)
+    ch_label, ch_tone = _channel_meta(src)
+    mode = "chat" if src in _AD_SOURCES else "email"
+    return {
+        "it": it,
+        "l": lead,
+        "view": view,
+        "notes": db.list_notes(lead_id),
+        "channel_key": src,
+        "channel_label": ch_label,
+        "channel_tone": ch_tone,
+        "channel_icon": _channel_icon(ch_label),
+        "mode": mode,
+        "default_schedule": (db.get_claim_schedule_url(g.user["id"], lead["nct"])
+                             or db.get_site_calendar_url(g.user["id"])),
+    }
+
+
+def _day_track(visits_today, now_dt):
+    """Lay today's visits on one hour track for the inbox's Today strip: the whole
+    day legible at a glance, with a live "now" line and a next-up card.
+
+    Same layout math as the dashboard's timeline: the window ADAPTS to the day's
+    actual visits (plus padding) so blocks stay wide and readable instead of
+    squished into a fixed 7a-7p strip. Returns the dict the template renders."""
+    raw = []
+    for v in visits_today:
+        vd = _cal_parse_dt(v["visit_at"])
+        if vd:
+            raw.append((vd, v))
+    raw.sort(key=lambda x: x[0])
+    now_h = now_dt.hour + now_dt.minute / 60.0
+    if raw:
+        starts = [vd.hour + vd.minute / 60.0 for vd, _ in raw]
+        ends = [vd.hour + vd.minute / 60.0 + max(20, int(v["duration_min"] or 30)) / 60.0
+                for vd, v in raw]
+        day_start = max(6, int(min(starts + [now_h])) - 1)
+        day_end = min(21, int(min(21, max(ends + [now_h]))) + 2)
+        if day_end - day_start < 6:          # keep a sane minimum span
+            day_end = min(21, day_start + 6)
+    else:
+        day_start, day_end = 8, 18
+    span = max(1.0, (day_end - day_start) * 60.0)
+    track, next_up = [], None
+    for vd, v in raw:
+        start_min = (vd.hour * 60 + vd.minute) - day_start * 60
+        dur = max(20, int(v["duration_min"] or 30))
+        left = max(0.0, min(97.0, 100.0 * start_min / span))
+        width = max(9.0, min(100.0 - left, 100.0 * dur / span))
+        ev = {"left": round(left, 2), "width": round(width, 2),
+              "lead_id": v["lead_id"], "name": v["lead_name"],
+              "kind": v["kind_label"], "time": v["time_label"],
+              "trial": (v["trial_title"] or v["nct"] or "")[:28],
+              "flag": v["flag"], "flag_label": v["flag_label"],
+              "past": vd < now_dt,
+              "iso": vd.strftime("%Y-%m-%dT%H:%M:%S"),
+              "end_iso": (vd + dt.timedelta(minutes=dur)).strftime("%Y-%m-%dT%H:%M:%S")}
+        track.append(ev)
+        if vd >= now_dt and next_up is None:
+            next_up = ev
+    now_min = (now_dt.hour * 60 + now_dt.minute) - day_start * 60
+    step = 1 if (day_end - day_start) <= 8 else 2
+    ticks = [{"label": f"{((h + 11) % 12) + 1}{'a' if h < 12 else 'p'}",
+              "left": round(100.0 * (h - day_start) * 60 / span, 2)}
+             for h in range(day_start, day_end + 1, step)]
+    return {
+        "track": track,
+        "next_up": next_up,
+        "now_pct": (round(100.0 * now_min / span, 2)
+                    if 0 <= now_min <= span else None),
+        "ticks": ticks,
+        "label": _short_date(now_dt, with_weekday=True),
+        "n": len(track),
+    }
+
+
+def _inbox_upcoming(active_nct, days=14, limit=12):
+    """Compact upcoming-visits agenda for the inbox side panel. Returns
+    (flat_list, grouped_by_day, today_track). Scoped to active_nct; demo-seeded
+    in demo mode. Never raises - a calendar hiccup must not break the inbox."""
+    try:
+        now_dt = _user_now()
+        today = now_dt.date()
+        end = today + dt.timedelta(days=days)
+        if _demo_mode_enabled():
+            _seed_demo_calendar_if_demo(
+                [{"lead": r} for r in db.list_leads_for_user(g.user["id"])])
+        raw = db.list_calendar_visits(
+            g.user["id"], today.strftime("%Y-%m-%d 00:00"),
+            end.strftime("%Y-%m-%d 23:59"))
+        visits = [_visit_view(v, now_dt) for v in raw]
+        if active_nct:
+            visits = [v for v in visits if v["nct"] == active_nct]
+        visits = [v for v in visits
+                  if v["visit_at"] and v["status"] not in ("cancelled", "completed")]
+        visits.sort(key=lambda v: v["visit_at"])
+        # Today's strip is built from EVERY visit today (before the agenda's
+        # display limit), so a busy day never silently loses blocks.
+        today_str = today.strftime("%Y-%m-%d")
+        today_track = _day_track([v for v in visits if v["date"] == today_str],
+                                 now_dt)
+        visits = visits[:limit]
+        grouped = []
+        by_day = {}
+        for v in visits:
+            by_day.setdefault(v["date"], []).append(v)
+        for day in sorted(by_day):
+            grouped.append({"date": day, "label": by_day[day][0]["rel"]
+                            or by_day[day][0]["date_label"], "visits": by_day[day]})
+        return visits, grouped, today_track
+    except Exception:
+        app.logger.exception("inbox upcoming failed")
+        return [], [], None
+
+
+@app.route("/app/inbox/<int:lead_id>/assign", methods=["POST"])
+@login_required
+def inbox_assign(lead_id):
+    """Claim/assign a thread to a teammate (or unassign). Shared-workspace glue."""
+    _ensure_site_access_for_lead(lead_id)
+    back = _safe_next(request.form.get("next", "")) or url_for("team_inbox")
+    raw = (request.form.get("user_id") or "").strip()
+    if raw == "me":
+        uid = g.user["id"]
+    elif raw in ("", "none", "0"):
+        uid = None
+    else:
+        try:
+            uid = int(raw)
+        except ValueError:
+            uid = None
+        # Only allow assigning to a real teammate.
+        if uid is not None and uid not in {
+                m["user_id"] for m in db.list_org_members(g.user["id"])}:
+            uid = None
+    db.set_lead_assignee(lead_id, uid)
+    flash("Assigned." if uid else "Unassigned.", "success")
+    return redirect(back)
+
+
+@app.route("/app/inbox/cover", methods=["POST"])
+@login_required
+def inbox_cover():
+    """Vacation / coverage handoff: reassign a teammate's entire open queue to
+    someone else (or to yourself) in one click. The #1 shared-workspace need -
+    when a coordinator is out, their threads can't go cold."""
+    back = _safe_next(request.form.get("next", "")) or url_for("team_inbox")
+    members = {m["user_id"] for m in db.list_org_members(g.user["id"])}
+
+    def _resolve(raw):
+        raw = (raw or "").strip()
+        if raw == "me":
+            return g.user["id"]
+        if raw in ("", "none", "0"):
+            return None
+        try:
+            return int(raw)
+        except ValueError:
+            return None
+
+    from_id = _resolve(request.form.get("from_user_id"))
+    to_id = _resolve(request.form.get("to_user_id"))
+    if not from_id or from_id not in members:
+        flash("Pick whose threads to cover.", "error")
+        return redirect(back)
+    n = db.reassign_open_leads(g.user["id"], from_id, to_id)
+    if to_id:
+        who = next((m["name"] or m["email"] for m in db.list_org_members(g.user["id"])
+                    if m["user_id"] == to_id), "a teammate")
+        flash(f"Reassigned {n} thread{'' if n == 1 else 's'} to {who}.", "success")
+    else:
+        flash(f"Unassigned {n} thread{'' if n == 1 else 's'}.", "success")
+    return redirect(back)
+
+
+@app.route("/app/inbox/bulk", methods=["POST"])
+@login_required
+def inbox_bulk():
+    """Gmail-style bulk actions over selected threads: assign to a teammate, or
+    mark done (close). Every id is access-checked against the actor's workspace.
+    KPI: Tier-2 efficiency - clear a queue in one gesture instead of one-by-one."""
+    back = _safe_next(request.form.get("next", "")) or url_for("team_inbox")
+    action = (request.form.get("action") or "").strip()
+    lead_ids = []
+    for x in request.form.getlist("lead_ids"):
+        try:
+            lead_ids.append(int(x))
+        except (TypeError, ValueError):
+            pass
+    if not lead_ids:
+        flash("Select at least one thread first.", "error")
+        return redirect(back)
+    # Fail closed: only act on leads this user can actually see.
+    visible = {r["id"] for r in db.list_leads_for_user(g.user["id"])}
+    lead_ids = [i for i in lead_ids if i in visible]
+    n = 0
+    if action == "assign":
+        members = {m["user_id"] for m in db.list_org_members(g.user["id"])}
+        raw = (request.form.get("user_id") or "").strip()
+        if raw == "me":
+            uid = g.user["id"]
+        elif raw in ("", "none", "0"):
+            uid = None
+        else:
+            try:
+                uid = int(raw)
+            except ValueError:
+                uid = None
+            if uid is not None and uid not in members:
+                uid = None
+        for lid in lead_ids:
+            db.set_lead_assignee(lid, uid)
+            n += 1
+        who = "you" if raw == "me" else (
+            next((m["name"] or m["email"] for m in db.list_org_members(g.user["id"])
+                  if m["user_id"] == uid), "a teammate") if uid else None)
+        flash(f"Assigned {n} thread{'' if n == 1 else 's'}"
+              + (f" to {who}." if who else " (unassigned)."), "success")
+    elif action == "done":
+        for lid in lead_ids:
+            db.update_lead_status(lid, "closed", note="marked done from inbox")
+            n += 1
+        flash(f"Marked {n} thread{'' if n == 1 else 's'} done.", "success")
+    else:
+        flash("Unknown action.", "error")
+    return redirect(back)
+
+
+@app.route("/app/inbox/<int:lead_id>/draft.json")
+@login_required
+def inbox_draft(lead_id):
+    """AI-drafted first-contact reply for a thread (decision-support; a human
+    approves + sends). Returns a plain string the composer prefills."""
+    _ensure_site_access_for_lead(lead_id)
+    try:
+        draft = intake_mod.draft_outreach(lead_id)
+    except Exception:
+        app.logger.exception("inbox draft failed")
+        draft = ""
+    return jsonify({"ok": bool(draft), "draft": draft})
 
 
 @app.route("/app/search-index.json")
@@ -6755,16 +7577,22 @@ def search_index():
 
 
 def _set_active_study(claims):
-    """Resolve the study-switcher selection. A valid `nct` query param sets it;
-    otherwise the last choice persists in the session. There is no "all studies"
-    view - a specific study is always active, defaulting to the first one."""
+    """Resolve the study-switcher selection, matching `_active_scope`. A valid
+    `nct` query param focuses that study; anything else (incl. empty) means
+    "All studies" (`""`). When the user has never chosen, demo/multi-study builds
+    default to All studies so pages open on the whole book of business; a real
+    single-site account focuses its first study as a workspace."""
     valid = {c["nct"] for c in claims}
     param = request.args.get("nct")
-    if param is not None and param in valid:
-        session["active_nct"] = param
-    cur = session.get("active_nct", "")
-    if cur in valid:
-        return cur
+    if param is not None:
+        session["active_nct"] = param if param in valid else ""
+        return session["active_nct"]
+    if "active_nct" in session:
+        cur = session.get("active_nct") or ""
+        return cur if cur in valid else ""
+    if claims and (_demo_mode_enabled() or _site_demo_enabled()
+                   or _is_demo_account(g.user)):
+        return ""  # demo opens on All studies
     first = claims[0]["nct"] if claims else ""
     if first:
         session["active_nct"] = first
@@ -6794,6 +7622,12 @@ def study_home():
     enrolled -> retained, ordered by urgency: respond to people waiting, decide on
     new applicants, nudge the ones going quiet, prep visits, clear approvals.
     Vanity totals live on Recruitment; this page is only what you DO today."""
+    # Retired as a surface: the inbox is the product's home now, so /app/home (and
+    # every old url_for('study_home') link/bookmark/notification) sends you to the
+    # inbox, carrying the study scope through. The worklist's live bits (Today
+    # visits, needs-reply) already live on the inbox. Everything below is kept only
+    # so the route still imports cleanly; delete once no caller needs it.
+    return redirect(url_for("team_inbox", nct=(request.args.get("nct") or None)))
     claims = db.list_study_claims(g.user["id"])
     # Trial-workspace mode: when a specific study is selected in the top switcher,
     # Home becomes THAT trial's workspace and every queue is scoped to it. A
@@ -7821,10 +8655,7 @@ def _share_visit_invite(lead, visit_id, when, kind, location):
         sysmsg += f" Add it to your calendar: {invite_url} We'll remind you beforehand."
         db.add_message(lead["id"], "system", sysmsg)
         _notify_applicant_visit(lead, when, location, invite_url=invite_url)
-        sync = calendar_invites.maybe_sync_google_event(lead, visit, invite_url)
-        if sync.get("attempted") and not sync.get("ok"):
-            app.logger.warning("google calendar sync failed: %s",
-                               sync.get("detail", "unknown"))
+        _gcal_sync_async(lead, visit, invite_url)
     except Exception:
         app.logger.exception("visit invite share failed")
 
@@ -8324,10 +9155,12 @@ def _seed_demo_calendar_if_demo(items):
         (-7, "treatment", "missed",
          "No-show; reached by phone, rebooked. Watch adherence."),
     ]
+    # Team notes attributed to the real coordinators so the case chart shows the
+    # staff collaborating, not an anonymous "Coordinator".
     _notes = [
-        "Prefers morning visits; works afternoons.",
-        "Daughter (caregiver) usually attends - add to reminders.",
-        "Mild nausea reported week 1; resolved. Monitor at next dose.",
+        ("Kara Walsh", "Prefers morning visits; works afternoons."),
+        ("Danny Josama", "Daughter (caregiver) usually attends - add to reminders."),
+        ("Kara Walsh", "Mild nausea reported week 1; resolved. Monitor at next dose."),
     ]
     for lead in cands[:3]:
         try:
@@ -8340,8 +9173,8 @@ def _seed_demo_calendar_if_demo(items):
                     agenda=_AGENDA.get(kind, ""),
                     duration_min=60 if kind in ("baseline", "treatment") else 30)
                 db.set_visit_status(vid, status)
-            for body in _notes[:2]:
-                db.add_note(lead["id"], body, author="Coordinator")
+            for author, body in _notes[:2]:
+                db.add_note(lead["id"], body, author=author)
         except Exception:
             app.logger.exception("demo context seeding failed")
 
@@ -9024,6 +9857,156 @@ def _soe_template():
     ]
 
 
+def _soe_template_for(title="", condition=""):
+    """A realistic, indication-shaped schedule of events per study, so each demo
+    trial's Protocol schedule reads like its real protocol - not one generic
+    skeleton. Grounded in the actual designs of Fieve's active trials (antidepressant
+    RCTs with MADRS/C-SSRS, a single-dose psilocybin trial with prep + dosing +
+    integration, and acute-migraine trials with an e-diary run-in). Coordinators
+    still edit freely. Demo-only shaping (COMPLIANCE.md)."""
+    t = (str(title) + " " + str(condition)).lower()
+
+    # Single-dose psychedelic (COMP360 psilocybin in TRD): prep -> dosing day ->
+    # integration -> follow-ups. Distinct from a daily-drug RCT.
+    if "psilocybin" in t or "comp360" in t or "treatment-resistant" in t:
+        return [
+            {"name": "Screening", "day_offset": -21, "window_before": 7,
+             "window_after": 0, "duration_min": 120,
+             "procedures": "Informed consent\nMINI / diagnosis\nMADRS\nC-SSRS\n"
+                           "Antidepressant taper plan\nLabs (CBC, chemistry)\nECG"},
+            {"name": "Preparation session", "day_offset": -1, "window_before": 3,
+             "window_after": 0, "duration_min": 90,
+             "procedures": "Prep session with study therapist\nMADRS\nC-SSRS\n"
+                           "Confirm washout complete"},
+            {"name": "Dosing day", "day_offset": 0, "window_before": 0,
+             "window_after": 0, "duration_min": 420,
+             "procedures": "Administer COMP360\n6-8h monitored session (2 therapists)\n"
+                           "Vitals hourly\nC-SSRS post-session"},
+            {"name": "Integration (Day 2)", "day_offset": 1, "window_before": 0,
+             "window_after": 1, "duration_min": 90,
+             "procedures": "Integration session\nMADRS\nC-SSRS\nAdverse-event review"},
+            {"name": "Week 1", "day_offset": 8, "window_before": 2, "window_after": 2,
+             "duration_min": 60,
+             "procedures": "Integration session\nMADRS\nC-SSRS\nAE review"},
+            {"name": "Week 3 (primary endpoint)", "day_offset": 21,
+             "window_before": 3, "window_after": 3, "duration_min": 75,
+             "procedures": "MADRS (primary endpoint)\nCGI-S\nC-SSRS\nAE review"},
+            {"name": "Week 6", "day_offset": 42, "window_before": 3, "window_after": 3,
+             "duration_min": 60, "procedures": "MADRS\nC-SSRS\nAE review"},
+            {"name": "Week 12 follow-up", "day_offset": 84, "window_before": 5,
+             "window_after": 5, "duration_min": 60,
+             "procedures": "MADRS\nC-SSRS\nFinal AE review"},
+        ]
+
+    # Acute migraine (Elismetrep, Ubrogepant): screening -> e-diary run-in ->
+    # treat an attack -> post-treatment diary review.
+    if "migraine" in t:
+        if "long-term" in t or "safety" in t:
+            return [
+                {"name": "Screening", "day_offset": -14, "window_before": 7,
+                 "window_after": 0, "duration_min": 75,
+                 "procedures": "Informed consent\nMigraine history (IHS)\n"
+                               "Eligibility review\nLabs\nDispense e-diary"},
+                {"name": "Baseline / Day 1", "day_offset": 0, "window_before": 0,
+                 "window_after": 0, "duration_min": 60,
+                 "procedures": "Confirm attack frequency\nDispense study medication "
+                               "for intermittent use\nTrain on e-diary"},
+                {"name": "Month 1", "day_offset": 28, "window_before": 5,
+                 "window_after": 5, "duration_min": 45,
+                 "procedures": "e-diary review\nAE review\nMedication accountability"},
+                {"name": "Month 3", "day_offset": 84, "window_before": 7,
+                 "window_after": 7, "duration_min": 60,
+                 "procedures": "e-diary review\nLabs\nAE review"},
+                {"name": "Month 6", "day_offset": 168, "window_before": 7,
+                 "window_after": 7, "duration_min": 60,
+                 "procedures": "e-diary review\nLabs\nECG\nAE review"},
+                {"name": "Month 12 / End of Treatment", "day_offset": 364,
+                 "window_before": 7, "window_after": 7, "duration_min": 75,
+                 "procedures": "Final e-diary review\nLabs\nECG\nAE review\n"
+                               "Medication accountability"},
+                {"name": "Safety Follow-up", "day_offset": 392, "window_before": 7,
+                 "window_after": 7, "duration_min": 30,
+                 "procedures": "AE review\nCon-meds review"},
+            ]
+        return [
+            {"name": "Screening", "day_offset": -21, "window_before": 7,
+             "window_after": 0, "duration_min": 75,
+             "procedures": "Informed consent\nMigraine history (IHS criteria)\n"
+                           "Eligibility review\nLabs\nDispense e-diary"},
+            {"name": "Baseline / run-in", "day_offset": 0, "window_before": 0,
+             "window_after": 0, "duration_min": 60,
+             "procedures": "Confirm ~2-8 attacks/month\nTrain on e-diary + study-med "
+                           "use\nDispense study medication"},
+            {"name": "Treat an attack", "day_offset": 14, "window_before": 14,
+             "window_after": 14, "duration_min": 30,
+             "procedures": "Dose at onset of a moderate/severe attack\n"
+                           "Record pain + most-bothersome symptom at 2h and 24h"},
+            {"name": "Post-treatment", "day_offset": 21, "window_before": 3,
+             "window_after": 5, "duration_min": 45,
+             "procedures": "e-diary review\nPain freedom at 2h\nAE review"},
+            {"name": "End of Study", "day_offset": 35, "window_before": 5,
+             "window_after": 5, "duration_min": 45,
+             "procedures": "Final e-diary review\nAE review\nMedication accountability"},
+        ]
+
+    # Long-term open-label extension in MDD: monthly-ish visits out to ~1 year.
+    if "open-label" in t or "extension" in t or "x-nova-ole" in t or " ole" in t:
+        return [
+            {"name": "OLE enrollment / Day 1", "day_offset": 0, "window_before": 0,
+             "window_after": 0, "duration_min": 75,
+             "procedures": "Open-label consent\nMADRS\nC-SSRS\n"
+                           "Dispense open-label study drug"},
+            {"name": "Month 1", "day_offset": 28, "window_before": 5,
+             "window_after": 5, "duration_min": 45,
+             "procedures": "MADRS\nC-SSRS\nAE review\nDrug accountability"},
+            {"name": "Month 3", "day_offset": 84, "window_before": 7,
+             "window_after": 7, "duration_min": 60,
+             "procedures": "MADRS\nC-SSRS\nLabs\nAE review"},
+            {"name": "Month 6", "day_offset": 168, "window_before": 7,
+             "window_after": 7, "duration_min": 60,
+             "procedures": "MADRS\nC-SSRS\nLabs\nECG\nAE review"},
+            {"name": "Month 9", "day_offset": 252, "window_before": 7,
+             "window_after": 7, "duration_min": 45,
+             "procedures": "MADRS\nC-SSRS\nAE review"},
+            {"name": "Month 12 / End of Treatment", "day_offset": 364,
+             "window_before": 7, "window_after": 7, "duration_min": 90,
+             "procedures": "MADRS\nC-SSRS\nLabs\nECG\nFinal PRO\nDrug accountability"},
+            {"name": "Safety Follow-up", "day_offset": 392, "window_before": 7,
+             "window_after": 7, "duration_min": 30,
+             "procedures": "AE review\nC-SSRS\nCon-meds review"},
+        ]
+
+    # Default: antidepressant RCT (Azetukalner X-NOVA3, Seltorexant) - a 6-week
+    # double-blind schedule with MADRS/C-SSRS at each visit.
+    return [
+        {"name": "Screening", "day_offset": -28, "window_before": 14,
+         "window_after": 0, "duration_min": 120,
+         "procedures": "Informed consent\nMINI / eligibility\nMADRS\nC-SSRS\n"
+                       "Medical history\nLabs (CBC, chemistry)\nECG\n"
+                       "Urine drug screen"},
+        {"name": "Baseline / Randomization (Day 1)", "day_offset": 0,
+         "window_before": 0, "window_after": 0, "duration_min": 90,
+         "procedures": "Confirm eligibility\nMADRS\nC-SSRS\nRandomize\n"
+                       "Dispense study drug\nDispense e-diary"},
+        {"name": "Week 1", "day_offset": 7, "window_before": 2, "window_after": 2,
+         "duration_min": 45,
+         "procedures": "MADRS\nC-SSRS\nAE review\nCompliance check"},
+        {"name": "Week 2", "day_offset": 14, "window_before": 2, "window_after": 2,
+         "duration_min": 45,
+         "procedures": "MADRS\nC-SSRS\nAE review\nDrug accountability"},
+        {"name": "Week 4", "day_offset": 28, "window_before": 3, "window_after": 3,
+         "duration_min": 60,
+         "procedures": "MADRS\nC-SSRS\nLabs\nAE review\nDispense study drug"},
+        {"name": "Week 6 / End of double-blind (primary)", "day_offset": 42,
+         "window_before": 3, "window_after": 3, "duration_min": 90,
+         "procedures": "MADRS (primary endpoint)\nCGI-S\nC-SSRS\nLabs\nECG\n"
+                       "Drug accountability"},
+        {"name": "Safety Follow-up", "day_offset": 70, "window_before": 7,
+         "window_after": 7, "duration_min": 30,
+         "procedures": "AE review\nC-SSRS\nCon-meds review"},
+    ]
+
+
 def _soe_normalize(v):
     procs = v.get("procedures")
     if isinstance(procs, list):
@@ -9077,13 +10060,18 @@ def _seed_demo_soe_if_demo():
             or _site_demo_enabled()):
         return
     try:
-        ncts = sorted(db.user_claimed_ncts(g.user["id"]))
+        studies = db.list_team_studies(g.user["id"])
     except Exception:
         return
-    for nct in ncts:
+    for s in studies:
+        nct = s["nct"]
+        if not nct:
+            continue
         try:
             if not db.soe_visit_count(g.user["id"], nct):
-                db.replace_soe_visits(g.user["id"], nct, _soe_template())
+                tmpl = _soe_template_for(s["title"] or "", s["condition"]
+                                         if "condition" in s.keys() else "")
+                db.replace_soe_visits(g.user["id"], nct, tmpl)
         except Exception:
             app.logger.exception("demo SoE seeding failed")
 
@@ -9094,9 +10082,18 @@ def soe_page():
     _seed_demo_soe_if_demo()
     nct_filter, studies = _active_scope()
     trials = [{"nct": s["nct"], "title": s["title"] or s["nct"]} for s in studies]
-    # A schedule belongs to one study: use the active scope, or the only study.
-    active = nct_filter or (trials[0]["nct"] if len(trials) == 1 else "")
+    # A schedule belongs to ONE study. Let this page pick a study on its own (chips)
+    # so it's never blank under the global "All studies" scope: on-page pick wins,
+    # then the global scope, then just default to the first trial.
+    valid = {t["nct"] for t in trials}
+    req_nct = (request.args.get("nct") or "").strip()
+    active = (req_nct if req_nct in valid else "") or nct_filter or (
+        trials[0]["nct"] if trials else "")
     active_title = next((t["title"] for t in trials if t["nct"] == active), active)
+    # Only offer the on-page study picker as a fallback when the top-bar switcher is
+    # on "All studies". If a specific trial is already selected there, assume it and
+    # don't show a redundant legend — switching happens from the top bar.
+    show_picker = (not nct_filter) and len(trials) > 1
     visits = db.list_soe_visits(g.user["id"], active) if active else []
     # Enrolled/in-progress participants we can apply the schedule to.
     apply_leads = []
@@ -9108,6 +10105,7 @@ def soe_page():
                     {"id": r["id"], "name": r["name"] or f"Applicant #{r['id']}"})
     return render_template(
         "soe.html", trials=trials, nct=active, active_title=active_title,
+        show_picker=show_picker,
         visits=visits, apply_leads=apply_leads, has_llm=bool(mt.LLM_API_KEY),
         today=dt.date.today().strftime("%Y-%m-%d"))
 
@@ -9183,6 +10181,261 @@ def soe_apply():
         return redirect(url_for("calendar_page"))
     flash("No schedule to apply yet - build it first.", "warn")
     return redirect(url_for("soe_page"))
+
+
+@app.route("/app/documents")
+@login_required
+def documents_page():
+    """Regulatory binder + patient forms: the ICH-GCP essential documents a site
+    routes, reviews, and signs, grouped by category with a full audit trail. The
+    whole shared workspace sees the same binder, so any teammate can pick up where
+    another left off. Read + approve/return; e-signatures happen in the validated
+    vendor and the approval is recorded here (see COMPLIANCE.md)."""
+    active_nct, _team = _active_scope()
+    docs = db.list_documents(g.user["id"], nct=active_nct or None)
+    counts = db.document_counts(g.user["id"])
+    # name -> email so the audit trail shows the real teammate who acted.
+    staff = {}
+    for m in db.list_org_members(g.user["id"]):
+        if m["name"]:
+            staff[m["name"]] = m["email"]
+    order = ["consent", "patient", "regulatory", "site"]
+    groups = []
+    for cat in order:
+        items = [d for d in docs if d["category"] == cat]
+        if not items:
+            continue
+        rows = []
+        for d in items:
+            rows.append({
+                "doc": d,
+                "events": db.list_document_events(d["id"]),
+            })
+        groups.append({
+            "key": cat,
+            "label": db.DOC_CATEGORY_LABELS.get(cat, cat.title()),
+            "rows": rows,
+        })
+    return render_template(
+        "documents.html", groups=groups, counts=counts, staff=staff,
+        status_labels=db.DOC_STATUS_LABELS, has_any=bool(docs))
+
+
+@app.route("/app/documents/<int:doc_id>/action", methods=["POST"])
+@login_required
+def document_action(doc_id):
+    """Advance a document's status (review / approve / send back) and append an
+    audit event attributed to the acting teammate. Stays on the Documents page."""
+    doc = db.get_document(doc_id)
+    if not doc or doc["user_id"] not in db.org_member_ids(g.user["id"]):
+        abort(404)
+    status = (request.form.get("status") or "").strip()
+    note = (request.form.get("note") or "").strip()
+    if status not in db.DOC_STATUSES:
+        flash("Unknown document action.", "error")
+        return redirect(url_for("documents_page"))
+    role_label = db.ORG_ROLE_LABELS.get(db.member_role(g.user["id"]), "Team")
+    for m in db.list_org_members(g.user["id"]):
+        if m["user_id"] == g.user["id"] and m["role_label"]:
+            role_label = m["role_label"]
+            break
+    meaning = "Approval" if status in ("approved", "signed") else ""
+    db.set_document_status(
+        doc_id, status, actor=(g.user["name"] or "You"),
+        actor_role=role_label, meaning=meaning, note=note)
+    msg = {"approved": "Approved and logged to the binder.",
+           "returned": "Sent back for changes.",
+           "in_review": "Marked in review."}.get(status, "Document updated.")
+    flash(msg, "success")
+    return redirect(url_for("documents_page"))
+
+
+def _current_member_role_label():
+    """The acting teammate's display title for an audit trail (falls back to the
+    base role)."""
+    label = db.ORG_ROLE_LABELS.get(db.member_role(g.user["id"]), "Team")
+    for m in db.list_org_members(g.user["id"]):
+        if m["user_id"] == g.user["id"] and m["role_label"]:
+            return m["role_label"]
+    return label
+
+
+def _irb_or_404(sub_id):
+    sub = db.get_irb_submission(sub_id)
+    if not sub or sub["user_id"] not in db.org_member_ids(g.user["id"]):
+        abort(404)
+    return sub
+
+
+def _irb_days_left(expires_at):
+    exp = (expires_at or "").strip()[:10]
+    if not exp:
+        return None
+    try:
+        d = dt.datetime.strptime(exp, "%Y-%m-%d").date()
+    except ValueError:
+        return None
+    return (d - dt.date.today()).days
+
+
+@app.route("/app/irb")
+@login_required
+def irb_page():
+    """IRB & approvals: recruitment materials are advertising and need ethics-board
+    approval BEFORE use (COMPLIANCE.md §5). This is where a coordinator assembles a
+    submission package, submits it (initial / modification / continuing review),
+    tracks the review, and records the approved version + expiry. Approval here
+    flips the linked campaign's gate so - and only so - it can go live."""
+    active_nct, studies = _active_scope()
+    subs = db.list_irb_submissions_for_user(g.user["id"],
+                                            ncts=[active_nct] if active_nct else None)
+    title_by_nct = {s["nct"]: (s["title"] or s["nct"]) for s in studies}
+    rows = []
+    for s in subs:
+        days = _irb_days_left(s["expires_at"])
+        rows.append({
+            "s": s,
+            "study": title_by_nct.get(s["nct"], s["nct"]),
+            "mats": db.list_irb_items(s["id"]),
+            "days_left": days,
+            "expiring": (days is not None and days <= 45 and s["status"] == "approved"),
+        })
+    return render_template(
+        "irb.html", rows=rows, counts=db.irb_counts(g.user["id"]),
+        studies=studies, status_labels=db.IRB_STATUS_LABELS,
+        status_tone=db.IRB_STATUS_TONE, sub_types=db.IRB_SUBMISSION_TYPES,
+        known_irbs=db.KNOWN_IRBS, has_any=bool(subs))
+
+
+@app.route("/app/irb/new", methods=["POST"])
+@login_required
+def irb_create():
+    nct = (request.form.get("nct") or "").strip()
+    title = (request.form.get("title") or "").strip()
+    if not title or not nct:
+        flash("Name the package and pick the study it recruits for.", "error")
+        return redirect(url_for("irb_page"))
+    if nct not in _site_claims():
+        flash("You can only submit materials for studies you've claimed.", "error")
+        return redirect(url_for("irb_page"))
+    irb_name = (request.form.get("irb_name") or "").strip()
+    irb_kind = "local" if irb_name.lower().startswith("local") else "central"
+    sub_type = (request.form.get("submission_type") or "initial").strip()
+    if sub_type not in db.IRB_SUBMISSION_TYPES:
+        sub_type = "initial"
+    pi = ""
+    for m in db.list_org_members(g.user["id"]):
+        if (m["role"] or "") == "pi":
+            pi = m["name"] or ""
+            break
+    sid = db.create_irb_submission(
+        g.user["id"], nct, title, irb_name=irb_name, irb_kind=irb_kind,
+        submission_type=sub_type, pi_name=pi,
+        protocol_version=(request.form.get("protocol_version") or "").strip())
+    flash("Package created. Add your materials, then submit it for review.", "success")
+    return redirect(url_for("irb_detail", sub_id=sid))
+
+
+@app.route("/app/irb/<int:sub_id>")
+@login_required
+def irb_detail(sub_id):
+    sub = _irb_or_404(sub_id)
+    items = db.list_irb_items(sub_id)
+    events = db.list_irb_events(sub_id)
+    staff = {m["name"]: m["email"] for m in db.list_org_members(g.user["id"])
+             if m["name"]}
+    # Campaign creatives on this study you can pull straight into the package.
+    linked = {i["campaign_id"] for i in items if i["campaign_id"]}
+    camps = [c for c in db.list_campaigns_for_user(g.user["id"], ncts=[sub["nct"]])
+             if c["id"] not in linked]
+    return render_template(
+        "irb_detail.html", sub=sub, items=items, events=events, staff=staff,
+        campaigns=camps, days_left=_irb_days_left(sub["expires_at"]),
+        status_labels=db.IRB_STATUS_LABELS, status_tone=db.IRB_STATUS_TONE,
+        sub_types=db.IRB_SUBMISSION_TYPES, item_kinds=db.IRB_ITEM_KINDS,
+        today=dt.date.today().strftime("%Y-%m-%d"),
+        one_year=(dt.date.today() + dt.timedelta(days=365)).strftime("%Y-%m-%d"))
+
+
+@app.route("/app/irb/<int:sub_id>/item", methods=["POST"])
+@login_required
+def irb_item(sub_id):
+    sub = _irb_or_404(sub_id)
+    action = (request.form.get("action") or "add").strip()
+    if action == "remove":
+        try:
+            db.remove_irb_item(int(request.form.get("item_id") or 0), sub_id)
+        except (TypeError, ValueError):
+            pass
+        return redirect(url_for("irb_detail", sub_id=sub_id))
+    camp_id = request.form.get("campaign_id")
+    if camp_id:
+        c = db.get_campaign(int(camp_id))
+        if c and c["user_id"] in db.org_member_ids(g.user["id"]):
+            db.add_irb_item(
+                sub_id, kind="campaign", campaign_id=c["id"],
+                label=(c["name"] or "Campaign creative"),
+                version="v1.0",
+                detail=(c["headline"] or "")[:200] or "Campaign ad creative.")
+            flash("Added the campaign creative to the package.", "success")
+        return redirect(url_for("irb_detail", sub_id=sub_id))
+    label = (request.form.get("label") or "").strip()
+    if not label:
+        flash("Give the material a name.", "error")
+        return redirect(url_for("irb_detail", sub_id=sub_id))
+    kind = (request.form.get("kind") or "material").strip()
+    if kind not in db.IRB_ITEM_KINDS:
+        kind = "material"
+    db.add_irb_item(sub_id, kind=kind, label=label,
+                    version=(request.form.get("version") or "v1.0").strip(),
+                    detail=(request.form.get("detail") or "").strip())
+    flash("Material added to the package.", "success")
+    return redirect(url_for("irb_detail", sub_id=sub_id))
+
+
+@app.route("/app/irb/<int:sub_id>/status", methods=["POST"])
+@login_required
+def irb_status(sub_id):
+    sub = _irb_or_404(sub_id)
+    status = (request.form.get("status") or "").strip().lower()
+    note = (request.form.get("note") or "").strip()
+    ok, reason = db.advance_irb_status(
+        sub_id, status, actor=(g.user["name"] or "You"),
+        actor_role=_current_member_role_label(), note=note,
+        submission_ref=(request.form.get("submission_ref") or "").strip(),
+        approved_version=(request.form.get("approved_version") or "").strip(),
+        expires_at=(request.form.get("expires_at") or "").strip())
+    if not ok:
+        flash(reason or "Could not update the submission.", "error")
+    else:
+        msg = {
+            "submitted": "Marked submitted to the IRB.",
+            "in_review": "Marked under review.",
+            "revisions": "Logged the IRB's requested revisions.",
+            "approved": "Approved and logged. Linked campaigns are now cleared to "
+                        "go live.",
+            "expired": "Marked expired. Linked campaigns were paused.",
+        }.get(status, "Submission updated.")
+        flash(msg, "success")
+    return redirect(url_for("irb_detail", sub_id=sub_id))
+
+
+@app.route("/app/irb/<int:sub_id>/packet")
+@login_required
+def irb_packet(sub_id):
+    """The submission packet as a clean, printable cover sheet + materials list +
+    version history - the format you attach or upload to the IRB (print to PDF)."""
+    sub = _irb_or_404(sub_id)
+    prof = db.get_site_profile(g.user["id"]) or {}
+    try:
+        org_name = (prof["org_name"] or "").strip()
+    except (KeyError, TypeError):
+        org_name = ""
+    return render_template(
+        "irb_packet.html", sub=sub, items=db.list_irb_items(sub_id),
+        events=db.list_irb_events(sub_id), org_name=org_name,
+        sub_types=db.IRB_SUBMISSION_TYPES, item_kinds=db.IRB_ITEM_KINDS,
+        generated=dt.datetime.now().strftime("%Y-%m-%d %H:%M"))
 
 
 @app.route("/app/updates")
@@ -9931,6 +11184,36 @@ def recruitment_summary_json():
     }), 200
 
 
+def _team_context():
+    """Shared workspace roster + pending invites, shaped for the team UI. Used by
+    both the standalone Team page and the Team tab inside Settings so the roster
+    shows inline without a second click."""
+    members = db.list_org_members(g.user["id"])
+    members = [{
+        "user_id": m["user_id"], "name": m["name"], "email": m["email"],
+        "role": m["role"], "custom_label": m["role_label"] or "",
+        "role_label": (m["role_label"] or db.ORG_ROLE_LABELS.get(m["role"], m["role"])),
+        "is_me": m["user_id"] == g.user["id"],
+    } for m in members]
+    members.sort(key=lambda m: not m["is_me"])  # "you" first
+    invites = [{
+        "token": i["token"], "email": i["email"],
+        "role_label": (i["role_label"] or db.ORG_ROLE_LABELS.get(i["role"], i["role"])),
+        "url": url_for("team_join", token=i["token"], _external=True),
+    } for i in db.list_org_invites(g.user["id"])]
+    return {"members": members, "invites": invites,
+            "roles": db.ORG_ROLES, "role_labels": db.ORG_ROLE_LABELS}
+
+
+def _team_return():
+    """Return to wherever a team action was submitted from (Settings Team tab or
+    the standalone Team page), so acting inline never bounces the user away."""
+    ref = request.referrer or ""
+    if "/app/site" in ref:
+        return url_for("site_setup") + "#team"
+    return url_for("team_page")
+
+
 def _render_site_setup(instruments=None, active_tab=None):
     """Render site setup, including per-site REDCap connection state.
 
@@ -9944,10 +11227,46 @@ def _render_site_setup(instruments=None, active_tab=None):
     simulated = _demo_mode_enabled() and not cfg.connected
     if instruments is None:
         instruments = list(redcap.SIMULATED_INSTRUMENTS) if simulated else []
+    claims = db.list_study_claims(g.user["id"])
+    # Auto-routing: channel picker labels + existing rules (with display labels).
+    route_channels = [{"key": "any", "label": "Any channel"}]
+    for _key in db.ROUTING_CHANNELS:
+        if _key == "any":
+            continue
+        route_channels.append({"key": _key, "label": _channel_meta(_key)[0]})
+    _study_titles = {c["nct"]: (c["title"] or c["nct"]) for c in claims}
+    # Per-study connected sources: which channels each trial recruits through.
+    # Drives the inbox's per-trial source filters. Presented as a checkbox grid.
+    connectable_channels = [{"key": k, "label": _channel_meta(k)[0],
+                             "icon": _channel_icon(_channel_meta(k)[0])}
+                            for k in db.CONNECTABLE_CHANNELS]
+    study_sources = []
+    for c in claims:
+        study_sources.append({
+            "nct": c["nct"], "title": c["title"] or c["nct"],
+            "connected": set(db.get_claim_connected_sources(g.user["id"], c["nct"])),
+        })
+    connector_url = db.get_site_connector(g.user["id"])[0]
+    routing_rules = []
+    for r in db.list_routing_rules(g.user["id"]):
+        clabel, ctone = ("Any channel", "neutral") if r["channel"] == "any" \
+            else _channel_meta(r["channel"])
+        routing_rules.append({
+            "id": r["id"],
+            "channel_label": clabel, "channel_tone": ctone,
+            "study_label": _study_titles.get(r["nct"], r["nct"]) if r["nct"]
+            else "Any study",
+            "assignee_name": r["assignee_name"], "assignee_email": r["assignee_email"],
+        })
     return render_template(
         "site_setup.html",
         profile=profile,
-        claims=db.list_study_claims(g.user["id"]),
+        claims=claims,
+        route_channels=route_channels,
+        routing_rules=routing_rules,
+        connectable_channels=connectable_channels,
+        study_sources=study_sources,
+        connector_url=connector_url,
         posted=db.list_site_posted_studies(user_id=g.user["id"]),
         redcap_on=cfg.connected,
         redcap_token_set=bool(cfg.api_token),
@@ -9956,7 +11275,8 @@ def _render_site_setup(instruments=None, active_tab=None):
         redcap_intake_enabled=cfg.intake_enabled,
         redcap_instruments=instruments,
         redcap_simulated=simulated,
-        active_tab=active_tab)
+        active_tab=active_tab,
+        **_team_context())
 
 
 @app.route("/app/site", methods=["GET", "POST"])
@@ -9983,6 +11303,76 @@ def site_setup():
         flash("Site profile saved.", "success")
         return redirect(url_for("site_setup"))
     return _render_site_setup()
+
+
+@app.route("/app/site/routing/add", methods=["POST"])
+@login_required
+def routing_rule_add():
+    """Create an auto-routing rule (channel/study -> teammate). Any inquiry that
+    matches will be auto-assigned to that person's inbox. KPI: Tier-2 efficiency
+    -> contacted -> screened (no unassigned pile). Manage-team gated."""
+    if not db.can_manage_team(g.user["id"]):
+        flash("Only full-access members can manage routing.", "error")
+        return redirect(url_for("site_setup") + "#routing")
+    f = request.form
+    try:
+        assignee_id = int(f.get("assignee_id") or 0)
+    except (TypeError, ValueError):
+        assignee_id = 0
+    rid = db.add_routing_rule(g.user["id"], f.get("channel", "any"),
+                              f.get("nct", ""), assignee_id)
+    flash("Routing rule added." if rid else "Couldn't add that rule.",
+          "success" if rid else "error")
+    return redirect(url_for("site_setup") + "#routing")
+
+
+@app.route("/app/site/routing/delete", methods=["POST"])
+@login_required
+def routing_rule_delete():
+    if not db.can_manage_team(g.user["id"]):
+        flash("Only full-access members can manage routing.", "error")
+        return redirect(url_for("site_setup") + "#routing")
+    try:
+        rule_id = int(request.form.get("rule_id") or 0)
+    except (TypeError, ValueError):
+        rule_id = 0
+    ok = db.delete_routing_rule(g.user["id"], rule_id)
+    flash("Routing rule removed." if ok else "Rule not found.",
+          "success" if ok else "error")
+    return redirect(url_for("site_setup") + "#routing")
+
+
+@app.route("/app/site/sources", methods=["POST"])
+@login_required
+def study_sources_save():
+    """Save which channels a study recruits through. Empty = every source. Drives
+    the inbox's per-trial source filters so each trial shows only the logos it
+    actually gets leads from. KPI: Tier-2 efficiency - a coordinator scans the
+    right ad channels for that trial, not a mixed pile."""
+    nct = (request.form.get("nct") or "").strip()
+    sources = request.form.getlist("sources")
+    if db.set_claim_connected_sources(g.user["id"], nct, sources):
+        flash("Connected sources updated.", "success")
+    else:
+        flash("Couldn't update sources.", "error")
+    return redirect(url_for("site_setup") + "#routing")
+
+
+@app.route("/app/site/connector", methods=["POST"])
+@login_required
+def site_connector_save():
+    """Save the outbound reply connector so coordinators can answer IG/FB/Messenger
+    leads from the app (the reply is POSTed to this webhook, which delivers it back
+    to the channel). Secret is write-only; blank keeps the stored value."""
+    if not db.can_manage_team(g.user["id"]):
+        flash("Only full-access members can manage the connector.", "error")
+        return redirect(url_for("site_setup") + "#routing")
+    f = request.form
+    secret_raw = f.get("connector_secret", "")
+    secret = secret_raw.strip() if secret_raw.strip() else None
+    db.set_site_connector(g.user["id"], f.get("connector_webhook_url", ""), secret)
+    flash("Reply connector saved.", "success")
+    return redirect(url_for("site_setup") + "#routing")
 
 
 @app.route("/app/site/redcap", methods=["POST"])
@@ -10285,7 +11675,7 @@ def message_lead(lead_id):
     body = request.form.get("body", "").strip()
     if body:
         db.add_message(lead_id, "site", body)
-        _notify_applicant_message(lead, body)
+        _deliver_reply(lead, body)
         flash("Message sent.", "success")
     else:
         flash("Write a message first.", "error")
@@ -10346,7 +11736,7 @@ def copilot_act():
             if not text:
                 return jsonify({"ok": False, "error": "The message is empty."}), 400
             db.add_message(lead_id, "site", text)
-            _notify_applicant_message(lead, text)
+            _deliver_reply(lead, text)
             db.mark_copilot_action(token, "confirmed")
             lbl = payload.get("label") or "the applicant"
             return jsonify({"ok": True, "answer": f"Sent to {lbl}.",
@@ -12823,25 +14213,88 @@ def intake_import():
     return redirect(url_for("intake_page"))
 
 
+@app.route("/app/onboarding")
+@login_required
+def onboarding():
+    """Quick setup for a new site: (1) forward your recruitment mail to your
+    catch-all intake address, (2) optionally add a study so triage can pre-screen,
+    (3) optionally invite teammates. Then the shared inbox starts filling - no
+    CTMS rollout, no verification wall (owned mail shows immediately). KPI:
+    activation -> time-to-first-triaged-inquiry."""
+    catchall = db.get_or_create_catchall_address(g.user["id"])
+    studies = db.list_study_claims(g.user["id"])
+    profile = db.get_site_profile(g.user["id"])
+    members = db.list_org_members(g.user["id"])
+    lead_webhook = url_for("inbound_lead_webhook", _external=True)
+    return render_template(
+        "onboarding.html",
+        catchall_full=intake_mod.full_intake_address(catchall["address"]),
+        lead_webhook=lead_webhook,
+        studies=studies, profile=profile, members=members,
+        can_manage_team=db.can_manage_team(g.user["id"]))
+
+
+@app.route("/app/onboarding/site", methods=["POST"])
+@login_required
+def onboarding_site():
+    """Save the workspace name/contact (marks onboarding 'started')."""
+    f = request.form
+    org = (f.get("org_name") or "").strip()
+    if not org:
+        flash("Add your site or clinic name.", "error")
+        return redirect(url_for("onboarding"))
+    db.upsert_site_profile(
+        g.user["id"], org, (f.get("contact_name") or g.user["name"] or "").strip(),
+        (f.get("contact_email") or g.user["email"] or "").strip(),
+        (f.get("contact_phone") or "").strip())
+    flash("Workspace saved.", "success")
+    return redirect(url_for("onboarding"))
+
+
+@app.route("/app/onboarding/study", methods=["POST"])
+@login_required
+def onboarding_study():
+    """Add a study so triage can pre-screen against its criteria. Creates a
+    site-owned study (safe: it's the team's own record, not a claim on a public
+    trial's applicant pool), so there's no verification wait."""
+    f = request.form
+    title = (f.get("title") or "").strip()
+    if not title:
+        flash("Give the study a name.", "error")
+        return redirect(url_for("onboarding"))
+    db.create_site_posted_study(g.user["id"], {
+        "title": title,
+        "condition": (f.get("condition") or "").strip(),
+        "eligibility": (f.get("eligibility") or "").strip(),
+        "location": (f.get("location") or "").strip(),
+    })
+    flash("Study added - triage will pre-screen inquiries against it.", "success")
+    return redirect(url_for("onboarding"))
+
+
+@app.route("/app/onboarding/invite", methods=["POST"])
+@login_required
+def onboarding_invite():
+    """Invite a teammate into the shared workspace during setup."""
+    if not db.can_manage_team(g.user["id"]):
+        flash("Only a coordinator or PI can invite teammates.", "error")
+        return redirect(url_for("onboarding"))
+    email = (request.form.get("email") or "").strip()
+    if not email:
+        flash("Enter a teammate's email.", "error")
+        return redirect(url_for("onboarding"))
+    role, label = _resolve_team_role(request.form)
+    db.create_org_invite(g.user["id"], email, role, role_label=label)
+    flash(f"Invite sent to {email}.", "success")
+    return redirect(url_for("onboarding"))
+
+
 @app.route("/app/team")
 @login_required
 def team_page():
     """The shared workspace roster: everyone on the trial with full visibility.
     Coordinators/PIs can invite teammates and set roles; students see the team."""
-    members = db.list_org_members(g.user["id"])
-    members = [{
-        "user_id": m["user_id"], "name": m["name"], "email": m["email"],
-        "role": m["role"], "custom_label": m["role_label"] or "",
-        "role_label": (m["role_label"] or db.ORG_ROLE_LABELS.get(m["role"], m["role"])),
-        "is_me": m["user_id"] == g.user["id"],
-    } for m in members]
-    invites = [{
-        "token": i["token"], "email": i["email"],
-        "role_label": (i["role_label"] or db.ORG_ROLE_LABELS.get(i["role"], i["role"])),
-        "url": url_for("team_join", token=i["token"], _external=True),
-    } for i in db.list_org_invites(g.user["id"])]
-    return render_template("team.html", members=members, invites=invites,
-                           roles=db.ORG_ROLES, role_labels=db.ORG_ROLE_LABELS)
+    return render_template("team.html", **_team_context())
 
 
 def _resolve_team_role(form):
@@ -12872,7 +14325,7 @@ def team_invite():
     token = db.create_org_invite(g.user["id"], email, role, role_label=label)
     link = url_for("team_join", token=token, _external=True)
     flash(f"Invite link ready - share it with your teammate: {link}", "ok")
-    return redirect(url_for("team_page"))
+    return redirect(_team_return())
 
 
 @app.route("/app/team/role", methods=["POST"])
@@ -12886,7 +14339,7 @@ def team_set_role():
         flash("Role updated.", "ok")
     else:
         flash("Couldn't update that role.", "error")
-    return redirect(url_for("team_page"))
+    return redirect(_team_return())
 
 
 @app.route("/app/team/remove", methods=["POST"])
@@ -12900,7 +14353,7 @@ def team_remove():
     else:
         flash("Couldn't remove that member (can't remove the last coordinator).",
               "error")
-    return redirect(url_for("team_page"))
+    return redirect(_team_return())
 
 
 @app.route("/app/team/invite/revoke", methods=["POST"])
@@ -12910,7 +14363,7 @@ def team_revoke_invite():
         abort(403)
     db.revoke_org_invite(g.user["id"], request.form.get("token", "").strip())
     flash("Invite revoked.", "ok")
-    return redirect(url_for("team_page"))
+    return redirect(_team_return())
 
 
 @app.route("/app/team/join/<token>")
@@ -12921,12 +14374,12 @@ def team_join(token):
     inv = db.get_org_invite(token)
     if not inv or (inv["accepted_at"] or "").strip():
         flash("That invite link is invalid or already used.", "error")
-        return redirect(url_for("study_home"))
+        return redirect(url_for("team_inbox"))
     if db.accept_org_invite(g.user["id"], token):
         flash("You've joined the team - you now share this workspace.", "ok")
     else:
         flash("Couldn't join that team.", "error")
-    return redirect(url_for("study_home"))
+    return redirect(url_for("team_inbox"))
 
 
 @app.route("/app/campaign", methods=["GET", "POST"])
@@ -13150,10 +14603,7 @@ def candidate_visit(token):
         sysmsg += " We'll remind you beforehand."
         db.add_message(lead["id"], "system", sysmsg)
         _notify_applicant_visit(lead, when, location, invite_url=invite_url)
-        sync = calendar_invites.maybe_sync_google_event(lead, visit, invite_url)
-        if sync.get("attempted") and not sync.get("ok"):
-            app.logger.warning("google calendar sync failed: %s",
-                               sync.get("detail", "unknown"))
+        _gcal_sync_async(lead, visit, invite_url)
         flash("Visit booked and shared with the applicant.", "ok")
     else:
         flash("Pick a date and time for the visit.", "error")

@@ -10,12 +10,15 @@ services:
     rootDir: web
     healthCheckPath: /healthz
     buildCommand: pip install -r requirements.txt
-    # 512 MB free plan. Base app is ~31 MB/worker, so 2 workers is cheap and
-    # keeps recycling seamless (no blip). --max-requests recycles each worker
-    # periodically so per-worker SEO/study/CT.gov caches can't accumulate past
-    # the limit under crawler load (the OOM trigger). --threads adds concurrency
-    # for the I/O-bound LLM/CT.gov waits (GIL is released on I/O).
-    startCommand: gunicorn app:app --workers 2 --threads 2 --max-requests 500 --max-requests-jitter 100 --timeout 120 --bind 0.0.0.0:$PORT
+    # 512 MB instance. Each gunicorn worker holds a FULL copy of the interpreter
+    # + all in-memory caches, so on a small box 1 worker with many threads uses
+    # far less RAM than 2 workers while keeping throughput: the workload is
+    # I/O-bound (CT.gov + LLM waits) and the GIL is released on I/O, so threads
+    # cover concurrency. --max-requests recycles the worker periodically so
+    # per-worker SEO/study/CT.gov caches can't accumulate past the limit under
+    # crawler load (the OOM trigger). Bump to --workers 2 only after upgrading
+    # the instance memory.
+    startCommand: gunicorn app:app --workers 1 --threads 8 --max-requests 300 --max-requests-jitter 60 --timeout 120 --bind 0.0.0.0:$PORT
     envVars:
       - key: SECRET_KEY
         generateValue: true      # Render generates a stable random secret
@@ -85,7 +88,7 @@ services:
       # the demo dataset changes materially — otherwise seed_demo_* no-ops
       # forever because the disk already has rows from the first boot.
       - key: DB_PATH
-        value: /var/data/bridgemd-fieve3.db
+        value: /var/data/bridgemd-fieve11.db
     disk:
       name: bridgemd-data
       mountPath: /var/data

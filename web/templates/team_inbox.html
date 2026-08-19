@@ -1,0 +1,520 @@
+{% extends "base.html" %}
+{% block title %}Inbox · BridgeMD{% endblock %}
+{% import "_icons.html" as ic %}
+{% import "_ui.html" as ui %}
+
+{% macro verdict_badge(v) %}
+  {% if v == 'eligible' %}{{ ui.badge('Eligible', 'ok') }}
+  {% elif v in ('likely', 'likely eligible') %}{{ ui.badge('Likely', 'info') }}
+  {% elif v == 'possible' %}{{ ui.badge('Possible', 'warn') }}
+  {% elif v in ('ineligible', 'not eligible', 'excluded') %}{{ ui.badge('Ineligible', 'danger') }}
+  {% endif %}
+{% endmacro %}
+
+{% block body %}
+{# Two layouts, one page: with no thread open it's list + Upcoming (the calendar
+   peek). Open a thread and the third column becomes the reading pane, exactly
+   like email - the list narrows, nothing navigates away. #}
+<div class="gm{% if pane %} is-open{% endif %}">
+
+  {# ── Today: the whole day on one hour track, with a live "now" line and the
+     next visit called out. Spans the full width above the inbox so you can't
+     miss a visit while working threads - including while you're deep in one,
+     which is exactly when you'd otherwise lose track of the clock. ── #}
+  {% if today %}
+  <div class="gm-today">
+    <div class="today-h">
+      <div class="today-h-l">
+        <span class="today-title">Today</span>
+        <span class="today-date">{{ today.label }}</span>
+        {% if today.n %}<span class="today-count">{{ today.n }} visit{{ 's' if today.n != 1 }}{% if not active_nct %} · all trials{% endif %}</span>{% endif %}
+      </div>
+      <a class="today-open" href="{{ url_for('calendar_page') }}">Open calendar {{ ic.icon('arrow-right') }}</a>
+    </div>
+    <div class="today-body">
+      <div class="today-track">
+        <div class="today-hours">
+          {% for h in today.ticks %}<span class="today-hour" style="left:{{ h.left }}%">{{ h.label }}</span>{% endfor %}
+        </div>
+        <div class="today-lane">
+          {% for h in today.ticks %}<span class="today-grid" style="left:{{ h.left }}%"></span>{% endfor %}
+          {% if today.now_pct is not none %}<span class="today-now" style="left:{{ today.now_pct }}%"><span class="today-now-dot"></span></span>{% endif %}
+          {% for e in today.track %}
+          {# Clicking a block opens that patient's thread inline - in an inbox the
+             conversation is what you actually need next. #}
+          <a class="today-ev gm-open flag-{{ e.flag }}{{ ' is-past' if e.past }}"
+             style="left:{{ e.left }}%;width:{{ e.width }}%"
+             href="{{ url_for('team_inbox', open=e.lead_id, nct=active_nct or none) }}"
+             title="{{ e.time }} · {{ e.name }} · {{ e.kind }} · {{ e.trial }}{% if e.flag in ('overdue','deviation','closing') %} · {{ e.flag_label }}{% endif %}">
+            <b>{{ e.name }}</b><em>{{ e.time }} · {{ e.kind }}</em>
+          </a>
+          {% endfor %}
+          {% if not today.track %}<div class="today-empty">Nothing scheduled today.</div>{% endif %}
+        </div>
+      </div>
+      <div class="today-next">
+        <div class="today-next-lbl">Next up</div>
+        {% if today.next_up %}
+        <a class="today-next-card gm-open flag-{{ today.next_up.flag }}"
+           href="{{ url_for('team_inbox', open=today.next_up.lead_id, nct=active_nct or none) }}">
+          <div class="today-next-time">{{ ic.icon('clock') }} {{ today.next_up.time }}</div>
+          <div class="today-next-name">{{ today.next_up.name }}</div>
+          <div class="today-next-kind">{{ today.next_up.kind }}{% if today.next_up.trial %} · {{ today.next_up.trial }}{% endif %}{% if today.next_up.flag in ('overdue','deviation','closing') %} · <span class="today-next-flag">{{ today.next_up.flag_label }}</span>{% endif %}</div>
+        </a>
+        {% else %}
+        <div class="today-next-empty">{{ ic.icon('check') }} You're clear for today.</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  {# ───────────────────── The inbox: one clean column ──────────────────────
+     No label rail, no second search, no overflowing tab strip: the study picker
+     is the top-bar dropdown (never cooks when the dock is open), the search is in
+     the top bar, and views + intents live on one filter row. #}
+  <section class="gm-main">
+
+    {# Gmail-style category tabs: one coarse bucket per thread (New inquiries ·
+       Ad leads · Active patients), so each queue is a different kind of work.
+       Trials aren't a tab (the study switcher handles those); sources stay as the
+       finer chip filter below. Hidden when there's only one bucket. #}
+    {% if inbox_tabs %}
+    <div class="gm-cats" role="tablist" aria-label="Inbox">
+      {% for t in inbox_tabs %}
+      <button type="button" class="gm-cat{% if t.key == 'all' %} is-on{% endif %}"
+              role="tab" aria-selected="{{ 'true' if t.key == 'all' else 'false' }}"
+              data-cat="{{ t.key }}">
+        {{ ic.icon(t.icon) }}<span>{{ t.label }}</span>
+        {% if t.n %}<span class="gm-cat-n">{{ t.n }}</span>{% endif %}
+      </button>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {# One filter row, with real hierarchy so it stops reading as a wall of pills:
+       (1) a single segmented control for the view (mutually-exclusive lens),
+       (2) light "refine" chips for topic + source that scroll on their own,
+       (3) a "More" menu for team ACTIONS (cover, routing) - which are not filters
+       and shouldn't sit among them. #}
+    <div class="gm-filters">
+      <label class="gm-check" title="Select all"><input type="checkbox" id="gmAll"></label>
+
+      <div class="gm-seg" role="group" aria-label="View">
+        <button type="button" class="gm-seg-b is-on" data-filter="view" data-view="all" aria-pressed="true">All</button>
+        <button type="button" class="gm-seg-b" data-filter="view" data-view="unread" aria-pressed="false">Unread{% if stats.unread %} <span class="gm-n">{{ stats.unread }}</span>{% endif %}</button>
+        {% if members and members|length > 1 %}
+        <button type="button" class="gm-seg-b" data-filter="view" data-view="mine" aria-pressed="false">Mine</button>
+        <button type="button" class="gm-seg-b" data-filter="view" data-view="unassigned" aria-pressed="false">Unassigned{% if stats.unassigned %} <span class="gm-n">{{ stats.unassigned }}</span>{% endif %}</button>
+        {% endif %}
+        {% if stats.high %}
+        <button type="button" class="gm-seg-b" data-filter="view" data-view="high" aria-pressed="false">High <span class="gm-n">{{ stats.high }}</span></button>
+        {% endif %}
+      </div>
+
+      {# Refine by topic + source. "New inquiry" is dropped: it's the default for
+         nearly every thread, so as a filter it just repeats "All". Sources carry
+         their brand mark so the channel reads at a glance. #}
+      <div class="gm-chips-scroll">
+        {% for it in intents if it.key != 'new_inquiry' %}
+        <button type="button" class="chip" data-filter="intent" data-intent="{{ it.key }}" aria-pressed="false">{{ it.label }} <span class="gm-n">{{ it.n }}</span></button>
+        {% endfor %}
+        {% if channels and channels|length > 1 %}
+        {% for c in channels %}
+        <button type="button" class="chip chip-src" data-filter="channel" data-channel="{{ c.label }}" aria-pressed="false" title="{{ c.label }}">{{ ic.icon(c.icon, 'brand-ico') }} {{ c.label }} <span class="gm-n">{{ c.n }}</span></button>
+        {% endfor %}
+        {% endif %}
+      </div>
+
+      {% if members and members|length > 1 %}
+      <details class="gm-more">
+        <summary class="gm-more-btn" title="Team actions">More {{ ic.icon('chevron-down') }}</summary>
+        <div class="gm-more-menu">
+          <button type="button" data-ui-open="coverModal">{{ ic.icon('users') }} Cover a teammate</button>
+          <a href="{{ url_for('site_setup') }}#routing">{{ ic.icon('arrow-right') }} Auto-routing rules</a>
+        </div>
+      </details>
+      {% endif %}
+    </div>
+
+    {# Bulk action bar - appears once threads are selected (Gmail behavior). #}
+    <form class="gm-bulk" id="gmBulk" method="post" action="{{ url_for('inbox_bulk') }}" hidden>
+      <input type="hidden" name="next" value="{{ url_for('team_inbox', nct=active_nct or none) }}">
+      <span class="gm-bulk-count"><b id="gmBulkN">0</b> selected</span>
+      <span class="spacer"></span>
+      {% if members and members|length > 1 %}
+      <select name="user_id" class="gm-bulk-assignee" aria-label="Assign selected to">
+        <option value="">Assign to…</option>
+        <option value="me">Me</option>
+        <option value="none">Unassign</option>
+        {% for m in members %}<option value="{{ m.user_id }}">{{ m.name or m.email }}{% if m.user_id == me_id %} (me){% endif %}</option>{% endfor %}
+      </select>
+      <button type="submit" name="action" value="assign" class="btn ghost sm">Assign</button>
+      {% endif %}
+      <button type="submit" name="action" value="done" class="btn ghost sm">{{ ic.icon('check') }} Mark done</button>
+    </form>
+
+    {% if not inbox %}
+    <div class="gm-empty-wrap">
+      {{ ui.empty('Inbox zero',
+         'New inquiries land here the moment they arrive from any channel. Forward your recruitment email to your intake address, or connect your ad forms, to route them in.',
+         'inbox') }}
+    </div>
+    {% else %}
+    <ul class="gm-list" id="inboxList">
+      {% for a in inbox %}
+      <li class="gm-row{% if a.unread %} is-unread{% endif %}{% if pane and pane.l['id'] == a.id %} is-open{% endif %}"
+          data-id="{{ a.id }}"
+          data-intent="{{ a.intent }}"
+          data-channel="{{ a.channel }}"
+          data-cat="{{ a.category }}"
+          data-unread="{{ '1' if a.unread else '0' }}"
+          data-high="{{ '1' if a.priority == 'high' else '0' }}"
+          data-assignee="{{ a.assigned_user_id or '' }}"
+          data-text="{{ ((a.name ~ ' ' ~ a.email ~ ' ' ~ a.phone ~ ' ' ~ a.title ~ ' ' ~ a.nct ~ ' ' ~ a.condition ~ ' ' ~ a.preview)|lower) }}">
+        <label class="gm-check" onclick="event.stopPropagation();">
+          <input type="checkbox" class="gm-pick" value="{{ a.id }}">
+        </label>
+        <span class="gm-star{% if a.priority == 'high' %} on{% endif %}" title="{{ 'High priority' if a.priority == 'high' else 'Priority' }}">{{ ic.icon('star') }}</span>
+        <a class="gm-open" href="{{ url_for('team_inbox', open=a.id, nct=active_nct or none) }}">
+          <span class="gm-from">{{ a.name }}{% if a.unread %}<span class="gm-dot" title="Unread"></span>{% endif %}</span>
+          <span class="gm-body">
+            {# The "subject" is a plain-English, AI-style gist of the thread (what
+               the person wants) - not the trial title, which repeats down the whole
+               list and tells a coordinator nothing. The study is on the badge /
+               study switcher; the raw message is the snippet. #}
+            <span class="gm-subj">{{ a.summary }}</span>
+            <span class="gm-snip">{% if a.preview_mine %}<span class="gm-you">You:</span> {% endif %}{{ a.preview|truncate(120) }}</span>
+          </span>
+          <span class="gm-tags">
+            {% if a.priority == 'high' %}{{ ui.badge('High', 'danger') }}{% endif %}
+            {{ ui.badge(a.intent_label, a.intent_tone) }}
+            <span class="gm-src" title="Source: {{ a.channel }}">{{ ic.icon(a.channel_icon, 'brand-ico') }}<span>{{ a.channel }}</span></span>
+            {{ verdict_badge(a.verdict) }}
+            {% if a.opt_out %}{{ ui.badge('Opted out', 'danger') }}{% endif %}
+          </span>
+        </a>
+        <span class="gm-right">
+          <span class="gm-when">{{ a.when }}</span>
+          {% if a.assignee %}<span class="gm-assignee" title="Assigned to {{ a.assignee }}">{{ a.assignee }}</span>{% endif %}
+        </span>
+        <span class="gm-actions" onclick="event.stopPropagation();">
+          <form method="post" action="{{ url_for('inbox_assign', lead_id=a.id) }}" class="gm-assign">
+            <input type="hidden" name="next" value="{{ url_for('team_inbox', nct=active_nct or none) }}">
+            <select name="user_id" onchange="this.form.submit()" title="Assign teammate">
+              <option value="none"{% if not a.assigned_user_id %} selected{% endif %}>Unassigned</option>
+              {% for m in members %}
+              <option value="{{ m.user_id }}"{% if a.assigned_user_id == m.user_id %} selected{% endif %}>{{ m.name or m.email }}{% if m.user_id == me_id %} (me){% endif %}</option>
+              {% endfor %}
+            </select>
+          </form>
+          <form method="post" action="{{ url_for('inbox_bulk') }}" class="gm-doneone" title="Mark done">
+            <input type="hidden" name="next" value="{{ url_for('team_inbox', nct=active_nct or none) }}">
+            <input type="hidden" name="lead_ids" value="{{ a.id }}">
+            <button type="submit" name="action" value="done" class="gm-iconbtn">{{ ic.icon('check') }}</button>
+          </form>
+        </span>
+      </li>
+      {% endfor %}
+    </ul>
+    <div id="inboxEmpty" class="gm-empty-wrap" style="display:none;">{{ ui.empty('No matches', 'Try a different search or filter.', 'search') }}</div>
+    {% endif %}
+  </section>
+
+  {# ─── Right of the list: the open thread, inline like email. The workspace's
+     third pane (the assistant) lives one level up as the app dock, so the inbox
+     itself stays two panes: list + reading pane. Upcoming visits are covered by
+     the Today strip above and the assistant's live brief. ── #}
+  {% if pane %}
+  {% include "_thread_pane.html" %}
+  {% endif %}
+</div>
+
+{% if members and members|length > 1 %}
+{% call ui.modal('coverModal', 'Cover a teammate') %}
+<p class="onb-hint">Someone out on vacation? Move their entire open queue to another teammate so nothing goes cold.</p>
+<form method="post" action="{{ url_for('inbox_cover') }}" class="onb-form">
+  <input type="hidden" name="next" value="{{ url_for('team_inbox') }}">
+  <div class="row">
+    <label class="field">
+      <span>Cover for</span>
+      <select name="from_user_id" required>
+        <option value="">Select teammate…</option>
+        {% for m in members %}<option value="{{ m.user_id }}">{{ m.name or m.email }}{% if m.user_id == me_id %} (me){% endif %}</option>{% endfor %}
+      </select>
+    </label>
+    <label class="field">
+      <span>Reassign to</span>
+      <select name="to_user_id">
+        <option value="me">Me</option>
+        <option value="none">Unassign</option>
+        {% for m in members %}<option value="{{ m.user_id }}">{{ m.name or m.email }}</option>{% endfor %}
+      </select>
+    </label>
+  </div>
+  {{ ui.btn('Reassign queue', 'primary', 'sm', type='submit') }}
+</form>
+{% endcall %}
+{% endif %}
+
+<script>
+(function () {
+  var q = document.getElementById('inboxSearch');
+  var rows = Array.prototype.slice.call(document.querySelectorAll('#inboxList .gm-row'));
+  var viewChips = Array.prototype.slice.call(document.querySelectorAll('.gm-filters [data-filter="view"]'));
+  var intentChips = Array.prototype.slice.call(document.querySelectorAll('.gm-filters [data-filter="intent"]'));
+  var channelChips = Array.prototype.slice.call(document.querySelectorAll('.gm-filters [data-filter="channel"]'));
+  var catTabs = Array.prototype.slice.call(document.querySelectorAll('.gm-cats .gm-cat'));
+  var empty = document.getElementById('inboxEmpty'), count = document.getElementById('inboxCount');
+  var meId = '{{ me_id }}';
+  var activeIntent = '', activeView = 'all', activeChannel = '', activeCat = 'all';
+
+  function okView(r) {
+    if (activeView === 'mine') return (r.dataset.assignee || '') === meId;
+    if (activeView === 'unread') return r.dataset.unread === '1';
+    if (activeView === 'unassigned') return (r.dataset.assignee || '') === '';
+    if (activeView === 'high') return r.dataset.high === '1';
+    return true;
+  }
+  function apply() {
+    var term = (q.value || '').toLowerCase().trim(), shown = 0;
+    rows.forEach(function (r) {
+      var okText = !term || r.dataset.text.indexOf(term) >= 0;
+      var okIntent = !activeIntent || r.dataset.intent === activeIntent;
+      var okChannel = !activeChannel || r.dataset.channel === activeChannel;
+      var okCat = activeCat === 'all' || r.dataset.cat === activeCat;
+      var ok = okText && okIntent && okChannel && okCat && okView(r);
+      r.style.display = ok ? '' : 'none'; if (ok) shown++;
+    });
+    if (empty) empty.style.display = shown ? 'none' : 'block';
+    if (count) count.textContent = shown + (shown === 1 ? ' thread' : ' threads');
+  }
+  function press(chip, group) {
+    group.forEach(function (x) {
+      var on = x === chip;
+      x.classList.toggle('is-on', on);
+      x.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+  }
+  if (q) q.addEventListener('input', apply);
+  // The inbox search lives in the top bar now and is the only search here, so
+  // give it the usual shortcuts: Cmd/Ctrl-K and "/" focus it.
+  document.addEventListener('keydown', function (e) {
+    var k = (e.key || '').toLowerCase();
+    var typing = /^(input|textarea|select)$/i.test((e.target.tagName || '')) ||
+                 e.target.isContentEditable;
+    if (((e.metaKey || e.ctrlKey) && k === 'k') || (k === '/' && !typing)) {
+      if (!q) return;
+      e.preventDefault(); q.focus(); q.select();
+    }
+  });
+  // View chips: single-select, always one active (default All).
+  viewChips.forEach(function (c) {
+    c.addEventListener('click', function () {
+      activeView = c.dataset.view; press(c, viewChips); apply();
+    });
+  });
+  // Intent chips: single-select, but clicking the active one clears it (back to
+  // all topics), so it's a quick toggle not a trap.
+  intentChips.forEach(function (c) {
+    c.addEventListener('click', function () {
+      if (activeIntent === c.dataset.intent) {
+        activeIntent = ''; press(null, intentChips);
+      } else {
+        activeIntent = c.dataset.intent; press(c, intentChips);
+      }
+      apply();
+    });
+  });
+  // Source chips: same quick-toggle. Click Instagram to see only IG threads,
+  // click it again to clear. One source at a time keeps the count honest.
+  channelChips.forEach(function (c) {
+    c.addEventListener('click', function () {
+      if (activeChannel === c.dataset.channel) {
+        activeChannel = ''; press(null, channelChips);
+      } else {
+        activeChannel = c.dataset.channel; press(c, channelChips);
+      }
+      apply();
+    });
+  });
+  // Category tabs (Gmail Primary/Social style): single-select bucket, always one
+  // active. Sets aria-selected for a11y and re-runs the same combined filter.
+  catTabs.forEach(function (t) {
+    t.addEventListener('click', function () {
+      activeCat = t.dataset.cat;
+      catTabs.forEach(function (x) {
+        var on = x === t;
+        x.classList.toggle('is-on', on);
+        x.setAttribute('aria-selected', on ? 'true' : 'false');
+      });
+      apply();
+    });
+  });
+
+  // "More" actions menu (native <details>): close it after a pick, and on any
+  // outside click, so it behaves like a normal dropdown.
+  var more = document.querySelector('.gm-more');
+  if (more) {
+    more.querySelectorAll('.gm-more-menu a, .gm-more-menu button').forEach(function (el) {
+      el.addEventListener('click', function () { more.removeAttribute('open'); });
+    });
+    document.addEventListener('click', function (e) {
+      if (more.open && !more.contains(e.target)) more.removeAttribute('open');
+    });
+  }
+
+  // Selection + bulk bar.
+  var picks = Array.prototype.slice.call(document.querySelectorAll('.gm-pick'));
+  var all = document.getElementById('gmAll');
+  var bulk = document.getElementById('gmBulk'), bulkN = document.getElementById('gmBulkN');
+  function selected() { return picks.filter(function (p) { return p.checked; }); }
+  function syncBulk() {
+    var sel = selected();
+    // Mirror selected ids into hidden inputs on the bulk form.
+    if (bulk) {
+      bulk.querySelectorAll('input[name="lead_ids"]').forEach(function (i) { i.remove(); });
+      sel.forEach(function (p) {
+        var h = document.createElement('input');
+        h.type = 'hidden'; h.name = 'lead_ids'; h.value = p.value;
+        bulk.appendChild(h);
+      });
+      bulk.hidden = sel.length === 0;
+    }
+    if (bulkN) bulkN.textContent = sel.length;
+    sel.forEach(function () {});
+    picks.forEach(function (p) { p.closest('.gm-row').classList.toggle('is-picked', p.checked); });
+    if (all) all.checked = sel.length > 0 && sel.length === picks.length;
+  }
+  picks.forEach(function (p) { p.addEventListener('change', syncBulk); });
+  if (all) all.addEventListener('change', function () {
+    picks.forEach(function (p) {
+      if (p.closest('.gm-row').style.display !== 'none') p.checked = all.checked;
+    });
+    syncBulk();
+  });
+
+  apply();
+
+  /* ── Reading pane: open a thread in place, like email ────────────────────
+     Rows are real links to ?open=<id>, so this all works with JS off (full
+     page load). With JS we fetch that same URL and swap just the pane, so the
+     list keeps its scroll position and nothing flashes. */
+  var wrap = document.querySelector('.gm');
+
+  function markRead(id) {
+    var row = document.querySelector('.gm-row[data-id="' + id + '"]');
+    if (!row) return;
+    row.classList.remove('is-unread');
+    row.dataset.unread = '0';
+    var dot = row.querySelector('.gm-dot');
+    if (dot) dot.remove();
+  }
+  function markActive(id) {
+    document.querySelectorAll('.gm-row').forEach(function (r) {
+      r.classList.toggle('is-open', r.dataset.id === String(id));
+    });
+  }
+  function afterPaint() {
+    if (window.__attachCsrf) window.__attachCsrf();
+    if (window.__hydrateTimes) window.__hydrateTimes();
+    // Open on the latest message, like email/DM clients do: the pane itself is
+    // the scroller (the inner thread has overflow:visible), so scroll THAT to the
+    // bottom, otherwise a tall decision/screening block hides the conversation.
+    document.querySelectorAll('#gmPane .gm-pane-scroll').forEach(function (s) {
+      s.scrollTop = s.scrollHeight;
+    });
+  }
+  function paint(html, id) {
+    var doc = new DOMParser().parseFromString(html, 'text/html');
+    var neu = doc.getElementById('gmPane');
+    if (!neu) return false;
+    var cur = document.getElementById('gmPane');
+    var agenda = document.querySelector('.gm-agenda');
+    if (cur) cur.replaceWith(neu);
+    else if (agenda) agenda.replaceWith(neu);
+    else wrap.appendChild(neu);
+    if (wrap) wrap.classList.add('is-open');
+    markActive(id);
+    markRead(id);
+    afterPaint();
+    return true;
+  }
+  function open(url, id, push) {
+    fetch(url, { credentials: 'same-origin' })
+      .then(function (r) { return r.text(); })
+      .then(function (html) {
+        if (!paint(html, id)) { location.href = url; return; }
+        if (push) history.pushState({ open: id }, '', url);
+      })
+      .catch(function () { location.href = url; });
+  }
+
+  document.addEventListener('click', function (e) {
+    var link = e.target.closest('.gm-open');
+    if (!link) return;
+    // Let modified clicks (new tab/window) behave natively.
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+    e.preventDefault();
+    var row = link.closest('.gm-row');
+    open(link.getAttribute('href'), row ? row.dataset.id : '', true);
+  });
+
+  // Closing the pane restores the Upcoming column - that's a fresh render, so
+  // just navigate (cheap, and keeps one source of truth for that column).
+  document.addEventListener('click', function (e) {
+    if (e.target.closest('.gm-pane-x')) {
+      var a = e.target.closest('.gm-pane-x');
+      if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+      e.preventDefault();
+      location.href = a.getAttribute('href');
+    }
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape') return;
+    // First Esc steps out of the reply box, a second one closes the thread - so
+    // Esc never discards what you were typing.
+    var el = document.activeElement;
+    if (el && el.matches('textarea, input, select')) { el.blur(); return; }
+    var x = document.querySelector('.gm-pane-x');
+    if (x) location.href = x.getAttribute('href');
+  });
+  window.addEventListener('popstate', function () {
+    // Back/forward across threads: re-render from the URL we landed on.
+    var id = new URLSearchParams(location.search).get('open');
+    if (!id) { location.reload(); return; }
+    open(location.href, id, false);
+  });
+
+  /* ── Composer: autogrow, Enter to send, quick replies. Delegated, so it also
+     works on a pane that was swapped in by fetch(). ─────────────────────── */
+  function grow(box) {
+    box.style.height = 'auto';
+    box.style.height = Math.min(box.scrollHeight, 160) + 'px';
+  }
+  document.addEventListener('input', function (e) {
+    if (e.target.matches('[data-composer]')) grow(e.target);
+  });
+  document.addEventListener('keydown', function (e) {
+    if (!e.target.matches('[data-composer]')) return;
+    if (e.key !== 'Enter' || e.shiftKey || e.isComposing) return;
+    e.preventDefault();
+    if (!e.target.value.trim()) return;
+    var form = e.target.closest('form');
+    if (form.requestSubmit) form.requestSubmit(); else form.submit();
+    setTimeout(function () { grow(e.target); }, 250);
+  });
+  document.addEventListener('click', function (e) {
+    var chip = e.target.closest('[data-quick] .ui-chip');
+    if (!chip) return;
+    var box = document.querySelector('#gmPane [data-composer]');
+    if (!box) return;
+    box.value = chip.getAttribute('data-msg') || '';
+    box.focus();
+    grow(box);
+  });
+
+  afterPaint();
+})();
+</script>
+{% endblock %}

@@ -6,7 +6,7 @@
 {% block body %}
 <div class="app-head">
   <div>
-    <h1>Campaigns</h1>
+    <h1>Recruitment</h1>
     <p>Your recruiting ad campaigns, with spend and enrollment per post.</p>
   </div>
   {% if claims %}
@@ -14,6 +14,12 @@
   {% else %}
   {{ ui.btn('Claim a study first', variant='ghost', icon='award', href=url_for('site_setup')) }}
   {% endif %}
+</div>
+
+<div class="app-subnav">
+  <a href="{{ url_for('recruitment_dashboard') }}">{{ ui.chip('Overview', icon='activity') }}</a>
+  <a href="{{ url_for('recruitment_balance') }}">{{ ui.chip('Enrollment balance', icon='users') }}</a>
+  <a href="{{ url_for('campaign_list') }}">{{ ui.chip('Campaigns', active=True, icon='megaphone') }}</a>
 </div>
 
 <div class="app-card">

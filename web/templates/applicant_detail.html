@@ -206,37 +206,54 @@
         <div class="stamp"><span>Applied {{ view.last_activity }} · via {{ view.source }}</span></div>
         {% for m in it.messages %}
         {% set cls = 'msg-out' if m['sender'] == 'site' else ('msg-sys' if m['sender'] == 'system' else 'msg-in') %}
-        <div class="{{ cls }}">
-          <div class="bubble">{{ m['body'] }}<div class="m">{{ m['created_at'][5:16] if m['created_at'] else '' }}</div></div>
+        <div class="{{ cls }}" data-ts="{{ m['created_at'] }}">
+          <div class="bubble">{{ m['body'] }}</div>
         </div>
         {% else %}
         <div class="app-sub" style="font-size:13px;color:var(--faint);text-align:center;">No messages yet.</div>
         {% endfor %}
       </div>
       {% if l['revealed'] %}
-      <div class="app-chips" id="quickReplies" style="margin-bottom:10px;">
+      <div class="app-chips chat-suggest" id="quickReplies">
         <button type="button" class="ui-chip" data-msg="Hi {{ first }}, just checking in on your interest in the study - happy to answer any questions.">Check in</button>
         <button type="button" class="ui-chip" data-msg="Friendly reminder to book your screening visit using the link we sent - let me know if you need another time.">Booking reminder</button>
         <button type="button" class="ui-chip" data-msg="Are you still available for your screening visit? If not, we can easily reschedule.">Reschedule</button>
         <button type="button" class="ui-chip" data-msg="Thanks so much - we've received everything we need for now and will follow up with next steps shortly.">Thanks</button>
       </div>
-      <form method="post" action="{{ url_for('message_lead', lead_id=l['id']) }}" class="composer" data-ajax data-ajax-refresh=".thread">
-        <textarea name="body" id="composerBody" placeholder="Write a message…" required data-ajax-clear></textarea>
-        <div class="bar">
-          <span class="bar-sp sp"></span>
-          {{ ui.btn('Send', 'primary', 'sm', type='submit', icon='send') }}
-        </div>
+      <form method="post" action="{{ url_for('message_lead', lead_id=l['id']) }}" class="chatbar" data-ajax data-ajax-quiet data-ajax-refresh=".thread" data-optimistic=".thread">
+        <template data-optimistic-tpl><div class="msg-out" data-ts="{{'{{time}}'}}"><div class="bubble">{{'{{body}}'}}</div></div></template>
+        <textarea name="body" id="composerBody" class="chatbar-input" rows="1"
+                  placeholder="Message {{ first }}…" required data-ajax-clear
+                  aria-label="Write a message to {{ first }}"></textarea>
+        <button type="submit" class="chatbar-send" aria-label="Send message" title="Send — Enter">{{ ic.icon('send') }}</button>
       </form>
+      <div class="chatbar-hint"><kbd>Enter</kbd> to send · <kbd>Shift</kbd>+<kbd>Enter</kbd> for a new line</div>
       <script>
       (function () {
         var box = document.getElementById('composerBody');
+        if (!box) return;
+        var form = box.closest('form');
+        function grow() {
+          box.style.height = 'auto';
+          box.style.height = Math.min(box.scrollHeight, 160) + 'px';
+        }
         document.querySelectorAll('#quickReplies .ui-chip').forEach(function (c) {
           c.addEventListener('click', function () {
-            if (!box) return;
             box.value = c.getAttribute('data-msg') || '';
-            box.focus();
+            box.focus(); grow();
           });
         });
+        box.addEventListener('input', grow);
+        // Enter sends (like texting); Shift+Enter makes a new line.
+        box.addEventListener('keydown', function (e) {
+          if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
+            e.preventDefault();
+            if (!box.value.trim()) return;
+            if (form.requestSubmit) form.requestSubmit(); else form.submit();
+          }
+        });
+        // After an AJAX send the box is cleared - shrink it back down.
+        form.addEventListener('submit', function () { setTimeout(grow, 250); });
         // Jump the thread to the newest message on load.
         var thread = document.querySelector('.thread');
         if (thread) thread.scrollTop = thread.scrollHeight;
@@ -285,10 +302,11 @@
           <div class="note-meta">{{ n['author'] or 'Team' }} · {{ n['created_at'][:16] }}</div>
         </div>
         {% else %}
-        <div class="app-sub" style="font-size:13px;color:var(--faint);">No notes yet. Jot context only your team sees.</div>
+        <div class="app-sub" data-ajax-empty style="font-size:13px;color:var(--faint);">No notes yet. Jot context only your team sees.</div>
         {% endfor %}
       </div>
-      <form method="post" action="{{ url_for('add_lead_note', lead_id=l['id']) }}" class="note-form" data-ajax data-ajax-refresh=".note-list">
+      <form method="post" action="{{ url_for('add_lead_note', lead_id=l['id']) }}" class="note-form" data-ajax data-ajax-quiet data-ajax-refresh=".note-list" data-optimistic=".note-list">
+        <template data-optimistic-tpl><div class="note-item"><div class="note-body">{{'{{body}}'}}</div><div class="note-meta">You · just now</div></div></template>
         <textarea name="body" placeholder="Add a private note…" required data-ajax-clear></textarea>
         {{ ui.btn('Add note', 'ghost', 'sm', type='submit', icon='plus') }}
       </form>

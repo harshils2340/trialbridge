@@ -36,7 +36,8 @@
 {% else %}
 <div class="home-hero">
   <div>
-    <h1>{{ greeting }}{% if user['name'] %}, {{ user['name'].split()[0] }}{% endif %}</h1>
+    {% set site_name = org['org_name'] if org else '' %}
+    <h1>{{ greeting }}{% if site_name %}, {{ site_name }}{% elif user['name'] %}, {{ user['name'].split()[0] }}{% endif %}</h1>
     <p class="home-hero-sub">
       {% if todo_total %}You have <b>{{ todo_total }}</b> {{ 'thing' if todo_total == 1 else 'things' }} to do today.
       {% else %}You're all caught up. Nice work.{% endif %}
@@ -44,6 +45,18 @@
     </p>
   </div>
 </div>
+{% endif %}
+
+{% if active_site_demo and walkthrough_enabled and not workspace %}
+<section class="demo-welcome" aria-label="How to explore this live demo">
+  <div class="demo-welcome-icon">{{ ic.icon('sparkle') }}</div>
+  <div>
+    <span>LIVE PRODUCT TOUR</span>
+    <h2>See how a site moves a candidate from interest to enrollment.</h2>
+    <p>Start with the work that needs attention today, then follow the guided steps in the sidebar. This is a fully interactive workspace using fictional data.</p>
+  </div>
+  <a class="btn btn-primary" href="#today-work">Start the tour {{ ic.icon('arrow-right') }}</a>
+</section>
 {% endif %}
 
 {# ── "Today" timeline: the whole day on one hour track (Google/Metamate-style),

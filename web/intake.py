@@ -33,6 +33,32 @@ INTAKE_EMAIL_DOMAIN = os.environ.get("INTAKE_EMAIL_DOMAIN", "intake.bridgemd.com
 MAX_BODY_CHARS = 8000
 
 
+# Channel a captured lead came from. Maps loose provider/adapter labels onto the
+# small set the inbox badges + attribution understand. Email is the default.
+_CHANNEL_ALIASES = {
+    "email": "email_intake", "email_intake": "email_intake", "mail": "email_intake",
+    # Keep the Meta family distinct so the inbox shows where a lead really came
+    # from: a paid lead-ad form (meta) reads differently than an Instagram DM or a
+    # Facebook Messenger chat, and routing can send each to a different teammate.
+    "meta": "meta", "metaads": "meta", "leadad": "meta", "leadads": "meta",
+    "instagram": "instagram", "ig": "instagram", "instagramdm": "instagram",
+    "igdm": "instagram", "instagramdirect": "instagram",
+    "messenger": "messenger", "fbmessenger": "messenger", "fbdm": "messenger",
+    "facebook": "facebook", "fb": "facebook",
+    "whatsapp": "whatsapp", "wa": "whatsapp",
+    "sms": "sms", "text": "sms",
+    "google": "google", "googleads": "google", "adwords": "google",
+    "reddit": "reddit",
+    "ctgov": "ctgov", "clinicaltrials": "ctgov", "clinicaltrials.gov": "ctgov",
+    "referral": "referral", "physician": "referral", "zapier": "email_intake",
+}
+
+
+def _normalize_channel(raw):
+    key = (raw or "").strip().lower().replace(" ", "").replace("-", "")
+    return _CHANNEL_ALIASES.get(key, "email_intake")
+
+
 def full_intake_address(local_part):
     """Bare token -> full email a site forwards to."""
     lp = (local_part or "").strip().lower()
@@ -76,20 +102,49 @@ def handle_inbound_email(payload):
 
         sender_name, sender_email = parse_from(
             payload.get("from") or payload.get("From") or "")
+        # Ad lead forms / Zapier send name+email as discrete fields, not a
+        # From header - accept either shape.
+        sender_email = sender_email or (payload.get("email") or "").strip().lower()
+        sender_name = sender_name or (payload.get("name") or "").strip()
         subject = (payload.get("subject") or payload.get("Subject")
                    or "").strip()
         text = (payload.get("text") or payload.get("body")
                 or payload.get("TextBody") or "")
         body = (subject + "\n\n" + text).strip()[:MAX_BODY_CHARS] or "(no content)"
 
+        # Channel attribution: the provider/adapter tells us where this came from
+        # (an ad lead form, ClinicalTrials.gov, a referral). Defaults to email.
+        source = _normalize_channel(payload.get("channel")
+                                    or payload.get("source"))
+
         # notes are only applied when a NEW lead is created; match_or_create_lead
-        # ignores them when threading onto an existing applicant.
+        # ignores them when threading onto an existing applicant. owner_user_id
+        # ties the lead to the workspace that owns this intake address, so it
+        # shows in that team's inbox even with no study claimed yet.
         lead_id, token, created = db.match_or_create_lead(
             addr["nct"], email=sender_email, name=sender_name,
-            notes=(text or "")[:2000], source="email_intake")
+            phone=(payload.get("phone") or "").strip(),
+            notes=(text or "")[:2000], source=source,
+            owner_user_id=addr["user_id"])
 
         # Thread the message into the existing per-lead inbox as a patient message.
         db.add_message(lead_id, "patient", body)
+
+        # Triage what this message is about + how urgent, so the shared inbox can
+        # be worked top-down. Decision-support only; a human still replies.
+        try:
+            intent, priority = classify_message(body)
+            db.set_lead_triage(lead_id, intent, priority)
+        except Exception:
+            pass
+
+        # Auto-route: if the owning org has a rule for this channel/study, assign
+        # the thread to that teammate so it lands in THEIR inbox with no manual
+        # triage. Never overrides an existing human assignment.
+        try:
+            db.apply_routing_rules(lead_id, channel=source, nct=addr["nct"])
+        except Exception:
+            pass
 
         prescreen = None
         try:
@@ -102,6 +157,64 @@ def handle_inbound_email(payload):
                 "prescreen": prescreen}
     except Exception as e:  # pragma: no cover - defensive: never break the webhook
         return {"ok": False, "reason": "error", "detail": str(e)[:200]}
+
+
+# Inbox triage intents, most-urgent first. The label a coordinator sees maps to
+# these keys (see the inbox template). Kept small and explicit on purpose - the
+# point is to sort a shared inbox, not to build a taxonomy.
+TRIAGE_INTENTS = ("opt_out", "scheduling", "document", "question",
+                  "new_inquiry", "spam", "other")
+
+_INTENT_KEYWORDS = {
+    # Opt-out / STOP is a compliance signal - always surface it first so a human
+    # honors it fast. (The actual opt-out flag is set elsewhere; this just flags
+    # the thread.)
+    "opt_out": ("unsubscribe", "stop contacting", "stop texting", "stop emailing",
+                "remove me", "opt out", "opt-out", "do not contact",
+                "don't contact", "take me off", "no longer interested"),
+    # Only genuine scheduling cues. "available" and "visit" were too broad -
+    # "is parking available?" / "how many visits?" are questions, not scheduling.
+    "scheduling": ("schedule", "reschedule", "appointment", "book", "booking",
+                   "availability", "come in", "time slot", "when can i",
+                   "what time", "which day", "what day", "set up my", "morning",
+                   "afternoon", "evening", "next week", "this week", "confirm my"),
+    "document": ("attached", "attachment", "consent form", "insurance card",
+                 "id card", "upload", "sending my", "here is my", "here's my",
+                 "paperwork", "form filled", "signed", "completed forms",
+                 "forms you sent", "fill out"),
+    "question": ("question", "how does", "how do", "is this", "are there",
+                 "side effect", "what is", "what are", "do i qualify", "eligible",
+                 "cost", "paid", "compensation", "how much", "?"),
+}
+
+
+def classify_message(text):
+    """Return (intent, priority) for an inbound message. Keyword rules first
+    (deterministic + free); falls back to 'new_inquiry'/'normal'. Never raises.
+
+    intent  ∈ TRIAGE_INTENTS
+    priority ∈ {'high','normal','low'}
+    """
+    t = (text or "").lower().strip()
+    if not t:
+        return "new_inquiry", "normal"
+    # Order matters: opt-out and scheduling beat the generic question match.
+    # Priority is reserved for what's genuinely time-sensitive - opt-outs (a
+    # compliance clock) and scheduling (a slot that expires). A routine question
+    # or a fresh inquiry is normal, so "High" actually means something in the
+    # inbox instead of tagging every thread.
+    for intent in ("opt_out", "scheduling", "document"):
+        if any(k in t for k in _INTENT_KEYWORDS[intent]):
+            priority = "high" if intent in ("opt_out", "scheduling") else "normal"
+            return intent, priority
+    if any(k in t for k in _INTENT_KEYWORDS["question"]):
+        return "question", "normal"
+    # Very short, link-only, or salesy bodies read as spam, not a real applicant.
+    if len(t) < 12 or "http://" in t or "https://" in t and "unsubscribe" not in t:
+        if any(s in t for s in ("seo", "marketing", "backlink", "crypto",
+                                 "invoice attached", "wire transfer")):
+            return "spam", "low"
+    return "new_inquiry", "normal"
 
 
 def _patient_summary(lead):

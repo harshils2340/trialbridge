@@ -933,6 +933,66 @@ CREATE TABLE IF NOT EXISTS document_events (
 CREATE INDEX IF NOT EXISTS idx_trial_docs_user ON trial_documents(user_id, nct);
 CREATE INDEX IF NOT EXISTS idx_doc_events_doc ON document_events(document_id);
 
+-- IRB/REB recruitment-material submissions. Recruitment materials (ads, flyers,
+-- social posts, phone-screening scripts, patient-facing copy) are ADVERTISING and
+-- must be reviewed + approved by the study's ethics board BEFORE use (21 CFR 50/56;
+-- Health Canada REB / TCPS 2 - see COMPLIANCE.md §5). This models the real workflow
+-- a coordinator runs: assemble a package, submit it to the IRB (central like WCG /
+-- Advarra, or a local/academic board), track the review (initial | modification |
+-- continuing review), and record the APPROVED version + its expiry (approvals lapse
+-- on an annual continuing-review cycle). On approval we flip the linked campaigns'
+-- irb_approved gate so - and only so - they can go live. KPI: compresses the
+-- submit->approved cycle that blocks found/contacted, without weakening the gate.
+CREATE TABLE IF NOT EXISTS irb_submissions (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id         INTEGER NOT NULL,
+    nct             TEXT DEFAULT '',
+    title           TEXT DEFAULT '',
+    irb_name        TEXT DEFAULT '',            -- WCG IRB, Advarra, local board name
+    irb_kind        TEXT DEFAULT 'central',     -- central | local
+    submission_type TEXT DEFAULT 'initial',     -- initial | modification | continuing
+    status          TEXT NOT NULL DEFAULT 'draft', -- draft|submitted|in_review|revisions|approved|expired
+    pi_name         TEXT DEFAULT '',
+    protocol_version TEXT DEFAULT '',
+    submission_ref  TEXT DEFAULT '',            -- IRB tracking # (assigned on submit)
+    approved_version TEXT DEFAULT '',           -- the exact stamped version cleared for use
+    approved_at     TEXT DEFAULT '',
+    expires_at      TEXT DEFAULT '',            -- continuing-review expiration
+    notes           TEXT DEFAULT '',
+    created_at      TEXT NOT NULL,
+    updated_at      TEXT NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
+-- Line items in a submission package: each recruitment material (or a linked
+-- campaign creative) with its own version, so the packet lists exactly what the IRB
+-- is reviewing.
+CREATE TABLE IF NOT EXISTS irb_submission_items (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    submission_id INTEGER NOT NULL,
+    kind          TEXT DEFAULT 'material',  -- flyer|social|script|consent|protocol|campaign|material
+    campaign_id   INTEGER,                  -- set when the item IS a campaign's creative
+    label         TEXT DEFAULT '',
+    version       TEXT DEFAULT 'v1.0',
+    detail        TEXT DEFAULT '',          -- short description / copy preview
+    created_at    TEXT NOT NULL,
+    FOREIGN KEY (submission_id) REFERENCES irb_submissions(id)
+);
+-- Append-only audit trail for a submission (mirrors document_events): only INSERTs.
+CREATE TABLE IF NOT EXISTS irb_submission_events (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    submission_id INTEGER NOT NULL,
+    action        TEXT DEFAULT '',  -- created|item_added|submitted|in_review|revisions|approved|expired|note
+    meaning       TEXT DEFAULT '',
+    actor         TEXT DEFAULT '',
+    actor_role    TEXT DEFAULT '',
+    note          TEXT DEFAULT '',
+    created_at    TEXT NOT NULL,
+    FOREIGN KEY (submission_id) REFERENCES irb_submissions(id)
+);
+CREATE INDEX IF NOT EXISTS idx_irb_sub_user ON irb_submissions(user_id, nct);
+CREATE INDEX IF NOT EXISTS idx_irb_items_sub ON irb_submission_items(submission_id);
+CREATE INDEX IF NOT EXISTS idx_irb_events_sub ON irb_submission_events(submission_id);
+
 -- Team workspace: a study team is an ORGANIZATION. Every study-team user belongs
 -- to exactly one org (their lab/site). All members share FULL VISIBILITY of the
 -- org's applicants, documents, and campaigns (like a shared Google-Doc space);
@@ -1048,6 +1108,29 @@ CREATE INDEX IF NOT EXISTS idx_marketing_threads_org
     ON marketing_threads(org_id, status, updated_at);
 CREATE INDEX IF NOT EXISTS idx_marketing_messages_thread
     ON marketing_messages(thread_id, id);
+
+-- Auto-routing rules (the "Cursor for your inbox" glue). When a new inquiry
+-- lands, we match it against an org's rules top-down and auto-assign the thread
+-- to a teammate, so it shows up in THEIR inbox with zero manual triage. A rule
+-- matches on channel (email/meta/google/ctgov/referral/... or 'any') AND
+-- optionally a study (nct, '' = any study). First match wins (lowest position).
+-- KPI: Tier-2 efficiency -> contacted -> screened (no unassigned pile, no lag
+-- deciding who owns an inquiry). Internal staff routing only - no PHI leaves the
+-- org, no referral/payment logic.
+CREATE TABLE IF NOT EXISTS routing_rules (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    org_id      INTEGER NOT NULL,
+    channel     TEXT NOT NULL DEFAULT 'any',   -- any | email_intake | meta | google | ctgov | reddit | referral
+    nct         TEXT NOT NULL DEFAULT '',      -- '' = any study
+    assignee_id INTEGER NOT NULL,              -- teammate the thread routes to
+    position    INTEGER NOT NULL DEFAULT 0,    -- eval order, lowest first
+    active      INTEGER NOT NULL DEFAULT 1,
+    created_by  INTEGER,
+    created_at  TEXT NOT NULL,
+    FOREIGN KEY (org_id) REFERENCES organizations(id),
+    FOREIGN KEY (assignee_id) REFERENCES users(id)
+);
+CREATE INDEX IF NOT EXISTS idx_routing_rules_org ON routing_rules(org_id, active, position);
 
 -- Copilot action proposals. The assistant never acts on its own: it writes a
 -- PROPOSED action here, the human confirms it in the rail, and only then is it
@@ -1254,9 +1337,21 @@ _MIGRATIONS = {
         "redcap_field_map": "TEXT DEFAULT ''",
         "redcap_intake_instrument": "TEXT DEFAULT ''",
         "redcap_intake_enabled": "INTEGER DEFAULT 0",
+        # Connector-first outbound: where a reply to a social channel (IG DM,
+        # Messenger, Facebook, WhatsApp) is POSTed so a Zapier/Make/native
+        # connector delivers it back to that channel. Lets a coordinator reply to
+        # ad responses WITHOUT leaving the app. The secret signs the payload so
+        # the receiving connector can verify it's really us (never rendered back).
+        "connector_webhook_url": "TEXT DEFAULT ''",
+        "connector_secret": "TEXT DEFAULT ''",
     },
     "study_claims": {
         "notify_email": "TEXT DEFAULT ''",
+        # Which recruitment channels THIS study is connected to (CSV of channel
+        # keys from ROUTING_CHANNELS, e.g. "instagram,facebook,email_intake").
+        # Empty = every source. Drives the inbox's per-trial source filters so a
+        # trial only shows the logos/channels it actually recruits through.
+        "connected_sources": "TEXT DEFAULT ''",
         # Existing rows backfill to verified (1) so current demos keep working;
         # new self-serve claims are inserted with verified=0 (pending approval).
         "verified": "INTEGER NOT NULL DEFAULT 1",
@@ -1323,6 +1418,31 @@ _MIGRATIONS = {
         # The specific placement (posting location) that produced this applicant,
         # so a site sees which channel/place actually converts to enrolled.
         "placement_id": "INTEGER",
+        # Inbox triage (decision-support only, a human still acts). intent is what
+        # the latest inbound message is ABOUT (new_inquiry|scheduling|question|
+        # document|opt_out|spam|other); priority is how urgently it needs a human
+        # (high|normal|low). Set by the AI triage pass on inbound + backfill.
+        "triage_intent": "TEXT DEFAULT ''",
+        "triage_priority": "TEXT DEFAULT ''",
+        "triage_at": "TEXT DEFAULT ''",
+        # Shared workspace: which teammate owns this thread right now (NULL =
+        # unassigned). Any org member can pick it up; keeps two coordinators from
+        # double-replying to the same applicant.
+        "assigned_user_id": "INTEGER",
+        # Workspace ownership. Historically a lead was reachable only via a
+        # VERIFIED claim on its NCT; that gate stops an account harvesting a
+        # public trial's applicants. But the inbox product also captures a site's
+        # OWN forwarded/imported mail, which may have no study yet. owner_user_id
+        # ties such a lead directly to the workspace that received it, so it shows
+        # in that team's inbox with zero study setup - and NEVER leaks to anyone
+        # else (scoping is org-membership based).
+        "owner_user_id": "INTEGER",
+        # Channel-side identifier to address an outbound reply back to (Instagram
+        # username, Messenger PSID, WhatsApp number, ...). Populated by the intake
+        # connector for social leads; the connector uses it to route our reply to
+        # the right person on the right platform. Email/phone stay in their own
+        # columns; this is for channels email/SMS can't reach.
+        "external_ref": "TEXT DEFAULT ''",
     },
     "lead_visits": {
         # Lifecycle so the calendar can show/flag state, not just a date.
@@ -1569,6 +1689,18 @@ def member_role(user_id):
         "SELECT role FROM memberships WHERE org_id = ? AND user_id = ?",
         (oid, user_id)).fetchone()
     return (row["role"] if row else "") or ""
+
+
+def member_role_label(user_id):
+    """This user's display title - the custom role_label if set (e.g. 'Site
+    Director / President'), else the base-role label ('Coordinator')."""
+    oid = user_org_id(user_id)
+    row = get_db().execute(
+        "SELECT role, role_label FROM memberships WHERE org_id = ? AND user_id = ?",
+        (oid, user_id)).fetchone()
+    if not row:
+        return ""
+    return (row["role_label"] or ORG_ROLE_LABELS.get(row["role"], "")) or ""
 
 
 def can_manage_team(user_id):
@@ -2540,6 +2672,55 @@ def get_site_calendar_url(user_id):
         return ""
 
 
+def set_site_connector(user_id, url, secret=None):
+    """Save the outbound reply connector. `secret=None` leaves the stored secret
+    untouched (so a coordinator can edit the URL without re-typing it); pass ""
+    to clear it. The secret is write-only - never rendered back to the page."""
+    if not get_site_profile(user_id):
+        upsert_site_profile(user_id, "", "", "", "")
+    url = (url or "").strip()
+    if url and not url.startswith(("http://", "https://")):
+        url = "https://" + url
+    db = get_db()
+    if secret is None:
+        db.execute("UPDATE site_profiles SET connector_webhook_url = ?, "
+                   "updated_at = ? WHERE user_id = ?", (url, now(), user_id))
+    else:
+        db.execute("UPDATE site_profiles SET connector_webhook_url = ?, "
+                   "connector_secret = ?, updated_at = ? WHERE user_id = ?",
+                   (url, (secret or "").strip(), now(), user_id))
+    db.commit()
+    return True
+
+
+def get_site_connector(user_id):
+    """(url, secret) for the team's outbound reply connector - resolved via the
+    user's org so any teammate's replies use the same connector."""
+    prof = get_site_profile(user_id)
+    if not prof:
+        return "", ""
+
+    def _v(row, key):
+        try:
+            return (row[key] or "") if row else ""
+        except (KeyError, IndexError, TypeError):
+            return ""
+    return _v(prof, "connector_webhook_url"), _v(prof, "connector_secret")
+
+
+def get_connector_for_nct(nct):
+    """The outbound connector (url, secret) of the team that owns this NCT, so a
+    reply to a social lead can be delivered even when sent from a shared inbox."""
+    prof = get_site_profile_for_nct(nct)
+    if not prof:
+        return "", ""
+    try:
+        return (prof["connector_webhook_url"] or "",
+                prof["connector_secret"] or "")
+    except (KeyError, IndexError, TypeError):
+        return "", ""
+
+
 def get_site_profile_for_nct(nct):
     """The site profile of the team that claimed this NCT (first claim wins).
 
@@ -3215,6 +3396,70 @@ def get_claim_schedule_url(user_id, nct):
     return (row["schedule_url"] if row else "") or ""
 
 
+# Connectable channels a study can recruit through (canonical, order = UI order).
+# Mirrors ROUTING_CHANNELS (minus the "any" wildcard) plus the direct-message
+# channels that carry inbound but aren't routing targets, so "connected sources"
+# and routing stay aligned on one vocabulary.
+CONNECTABLE_CHANNELS = ("email_intake", "instagram", "messenger", "facebook",
+                        "whatsapp", "meta", "google", "reddit", "ctgov",
+                        "referral")
+# Channels that email/SMS can't reach - a reply to these must go out through the
+# connector webhook, not the mailer. Used by the outbound reply router.
+CONNECTOR_CHANNELS = frozenset(("instagram", "messenger", "facebook", "whatsapp",
+                                "meta", "reddit"))
+
+
+def _norm_sources(sources):
+    """Coerce a list/CSV of channel keys to an ordered, de-duped tuple of valid
+    connectable channels (drops anything unknown so bad input can't poison a
+    filter)."""
+    if isinstance(sources, str):
+        sources = sources.split(",")
+    seen, out = set(), []
+    for s in (sources or []):
+        k = (s or "").strip().lower()
+        if k in CONNECTABLE_CHANNELS and k not in seen:
+            seen.add(k)
+            out.append(k)
+    return tuple(out)
+
+
+def set_claim_connected_sources(user_id, nct, sources):
+    """Save which channels a study recruits through (empty = every source)."""
+    nct = _norm_nct(nct)
+    if not nct:
+        return False
+    csv = ",".join(_norm_sources(sources))
+    db = get_db()
+    db.execute("UPDATE study_claims SET connected_sources = ? "
+               "WHERE user_id = ? AND nct = ?", (csv, user_id, nct))
+    db.commit()
+    return True
+
+
+def get_claim_connected_sources(user_id, nct):
+    """The study's connected channels as a list of keys ([] = every source).
+    Falls back to any same-org claim on this NCT, so a teammate viewing a shared
+    trial's inbox sees the same connected sources the owner configured."""
+    nct = _norm_nct(nct)
+    if not nct:
+        return []
+    row = get_db().execute(
+        "SELECT connected_sources FROM study_claims WHERE user_id = ? AND nct = ?",
+        (user_id, nct)).fetchone()
+    csv = (row["connected_sources"] if row else "") or ""
+    if not csv:
+        oid = user_org_id(user_id)
+        if oid:
+            row = get_db().execute(
+                "SELECT sc.connected_sources FROM study_claims sc "
+                "JOIN users u ON u.id = sc.user_id "
+                "WHERE u.org_id = ? AND sc.nct = ? AND sc.connected_sources != '' "
+                "LIMIT 1", (oid, nct)).fetchone()
+            csv = (row["connected_sources"] if row else "") or ""
+    return list(_norm_sources(csv))
+
+
 def list_pending_claims():
     """All unverified claims awaiting approval (for an admin/ops review)."""
     return get_db().execute(
@@ -3399,6 +3644,12 @@ def create_lead(data):
          (ts if opt_in else ""), (data.get("registry_consent_version", "") if opt_in else ""),
          ts, ts))
     lead_id = cur.lastrowid
+    # Workspace ownership (inbox product): tie the lead to the receiving team so
+    # it shows with no study/claim needed. Set separately to avoid reshaping the
+    # big INSERT above.
+    if data.get("owner_user_id"):
+        db.execute("UPDATE leads SET owner_user_id = ? WHERE id = ?",
+                   (data.get("owner_user_id"), lead_id))
     db.execute(
         "INSERT INTO lead_events (lead_id, status, note, actor, created_at) "
         "VALUES (?,?,?,?,?)",
@@ -3468,6 +3719,14 @@ def get_or_create_intake_address(user_id, nct, label=""):
         "SELECT * FROM intake_addresses WHERE address = ?", (addr,)).fetchone()
 
 
+def get_or_create_catchall_address(user_id, label="All inquiries"):
+    """The site's single catch-all intake address (nct = ''). This is what a new
+    site forwards its whole recruitment mailbox to on day one - no study needed.
+    Inbound mail here creates workspace-owned leads that show in the inbox
+    immediately; the coordinator can attach a study later."""
+    return get_or_create_intake_address(user_id, "", label=label)
+
+
 def resolve_intake_address(address):
     """Map an inbound address (full email or bare local-part) to its active
     intake row, or None. Used by the inbound-email webhook to route mail to the
@@ -3515,16 +3774,24 @@ def set_lead_campaign(lead_id, campaign_id):
 
 def match_or_create_lead(nct, email="", name="", title="", condition="",
                          phone="", notes="", source="intake", consent=0,
-                         campaign_id=None):
+                         campaign_id=None, owner_user_id=None):
     """Find an existing applicant for (nct, email) or create one. Returns
     (lead_id, token, created: bool). This is the single entrypoint every capture
     channel (inbound email, CSV import, campaign landing) routes through, so
-    dedupe and attribution stay consistent."""
+    dedupe and attribution stay consistent. owner_user_id ties a lead to the
+    workspace that received it (inbox product; may have no study yet)."""
     existing = find_lead_by_nct_email(nct, email) if email else None
     if existing:
         # Backfill attribution if we now know the campaign and didn't before.
         if campaign_id and not existing["campaign_id"]:
             set_lead_campaign(existing["id"], campaign_id)
+        # Backfill ownership if this lead predates the inbox product.
+        if owner_user_id and not (
+                "owner_user_id" in existing.keys() and existing["owner_user_id"]):
+            get_db().execute(
+                "UPDATE leads SET owner_user_id = ? WHERE id = ?",
+                (owner_user_id, existing["id"]))
+            get_db().commit()
         return existing["id"], existing["token"], False
     token = create_lead({
         "nct": (nct or "").strip(),
@@ -3536,6 +3803,7 @@ def match_or_create_lead(nct, email="", name="", title="", condition="",
         "notes": notes,
         "consent": 1 if consent else 0,
         "source": source or "intake",
+        "owner_user_id": owner_user_id,
     })
     lead = get_lead_by_token(token)
     if campaign_id:
@@ -3634,13 +3902,27 @@ def list_leads():
 
 
 def list_leads_for_user(user_id):
+    """Every lead this team can see: those on a study the team has VERIFIED-
+    claimed (the CTMS path) PLUS those directly OWNED by a team member's
+    workspace (the inbox path - forwarded/imported mail that may have no study
+    yet). Union means a self-serve site sees its own inbound with zero claim
+    setup, while cross-org leakage stays impossible (both filters are scoped to
+    this user's org members)."""
+    members = org_member_ids(user_id)
     claims = sorted(user_claimed_ncts(user_id))
-    if not claims:
+    where = []
+    args = []
+    if claims:
+        where.append(f"nct IN ({','.join('?' * len(claims))})")
+        args.extend(claims)
+    if members:
+        where.append(f"owner_user_id IN ({','.join('?' * len(members))})")
+        args.extend(members)
+    if not where:
         return []
-    qs = ",".join("?" * len(claims))
     return get_db().execute(
-        f"SELECT * FROM leads WHERE nct IN ({qs}) "
-        "ORDER BY updated_at DESC, id DESC", claims).fetchall()
+        f"SELECT * FROM leads WHERE {' OR '.join(where)} "
+        "ORDER BY updated_at DESC, id DESC", args).fetchall()
 
 
 def list_leads_by_applicant(applicant_token):
@@ -3948,6 +4230,158 @@ def lead_unread_for_site(lead_id):
         "SELECT COUNT(*) n FROM messages WHERE lead_id = ? AND sender = 'patient' "
         "AND read_site = 0", (lead_id,)).fetchone()
     return r["n"] if r else 0
+
+
+def last_message(lead_id):
+    """Most recent message on a thread (any sender), or None. Used by the inbox
+    to show a one-line preview without loading the whole thread."""
+    return get_db().execute(
+        "SELECT * FROM messages WHERE lead_id = ? ORDER BY id DESC LIMIT 1",
+        (lead_id,)).fetchone()
+
+
+# --------------------------------------------------------------------------- #
+# Inbox triage + shared-workspace assignment
+#
+# Triage is DECISION SUPPORT only: it labels what a thread is about and how
+# urgent it is so a coordinator can clear the inbox top-down. A human always
+# acts - we never auto-reply or auto-close from a triage label. Assignment lets
+# a team share one inbox without stepping on each other.
+# --------------------------------------------------------------------------- #
+def set_lead_triage(lead_id, intent="", priority=""):
+    db = get_db()
+    db.execute(
+        "UPDATE leads SET triage_intent = ?, triage_priority = ?, triage_at = ? "
+        "WHERE id = ?",
+        ((intent or "").strip(), (priority or "").strip(), now(), lead_id))
+    db.commit()
+
+
+def set_lead_assignee(lead_id, user_id):
+    """Assign (user_id) or unassign (None) a thread to a teammate."""
+    db = get_db()
+    db.execute("UPDATE leads SET assigned_user_id = ?, updated_at = ? WHERE id = ?",
+               (user_id, now(), lead_id))
+    db.commit()
+
+
+# --------------------------------------------------------------------------- #
+# Auto-routing rules (channel/study -> teammate)
+# --------------------------------------------------------------------------- #
+# Canonical channels a rule can match, in the order shown in the UI.
+ROUTING_CHANNELS = ("any", "email_intake", "instagram", "messenger", "facebook",
+                    "meta", "google", "ctgov", "reddit", "referral")
+
+
+def list_routing_rules(user_id):
+    """All routing rules for this user's org, in evaluation order. Joins the
+    assignee's display name so the UI/inbox can show who a channel routes to."""
+    oid = user_org_id(user_id)
+    return get_db().execute(
+        "SELECT r.*, u.name AS assignee_name, u.email AS assignee_email "
+        "FROM routing_rules r JOIN users u ON u.id = r.assignee_id "
+        "WHERE r.org_id = ? ORDER BY r.position, r.id", (oid,)).fetchall()
+
+
+def add_routing_rule(actor_user_id, channel, nct, assignee_id):
+    """Create a rule routing (channel, nct) -> assignee. Scoped to the actor's
+    org; the assignee must be a same-org member. Returns the new rule id or None."""
+    oid = user_org_id(actor_user_id)
+    if assignee_id not in set(org_member_ids(actor_user_id)):
+        return None
+    channel = channel if channel in ROUTING_CHANNELS else "any"
+    nct = (nct or "").strip()
+    db = get_db()
+    nextpos = db.execute(
+        "SELECT COALESCE(MAX(position), 0) + 1 AS p FROM routing_rules "
+        "WHERE org_id = ?", (oid,)).fetchone()["p"]
+    cur = db.execute(
+        "INSERT INTO routing_rules (org_id, channel, nct, assignee_id, position, "
+        "active, created_by, created_at) VALUES (?,?,?,?,?,1,?,?)",
+        (oid, channel, nct, assignee_id, nextpos, actor_user_id, now()))
+    db.commit()
+    return cur.lastrowid
+
+
+def delete_routing_rule(actor_user_id, rule_id):
+    """Remove a rule (org-scoped so no cross-team deletes)."""
+    oid = user_org_id(actor_user_id)
+    db = get_db()
+    cur = db.execute("DELETE FROM routing_rules WHERE id = ? AND org_id = ?",
+                     (rule_id, oid))
+    db.commit()
+    return cur.rowcount > 0
+
+
+def match_routing_rule(org_id, channel, nct):
+    """Return the assignee_id for the first active rule matching (channel, nct),
+    or None. A rule with channel/nct 'any'/'' is a wildcard; more specific rules
+    should be ordered before wildcards (lower position). First match wins."""
+    channel = (channel or "").strip()
+    nct = (nct or "").strip()
+    rows = get_db().execute(
+        "SELECT channel, nct, assignee_id FROM routing_rules "
+        "WHERE org_id = ? AND active = 1 ORDER BY position, id", (org_id,)
+    ).fetchall()
+    for r in rows:
+        if r["channel"] not in ("any", channel):
+            continue
+        if r["nct"] and r["nct"] != nct:
+            continue
+        return r["assignee_id"]
+    return None
+
+
+def apply_routing_rules(lead_id, channel="", nct=""):
+    """Auto-assign a freshly captured lead per its owner org's routing rules.
+    No-op if the lead is already assigned (never steal a human's claim) or no
+    rule matches. Returns the assigned user_id, or None. Never raises."""
+    try:
+        lead = get_lead(lead_id)
+        if not lead:
+            return None
+        if "assigned_user_id" in lead.keys() and lead["assigned_user_id"]:
+            return None
+        owner = lead["owner_user_id"] if "owner_user_id" in lead.keys() else None
+        if not owner:
+            return None
+        oid = user_org_id(owner)
+        assignee = match_routing_rule(
+            oid, channel or (lead["source"] if "source" in lead.keys() else ""),
+            nct or lead["nct"])
+        if not assignee:
+            return None
+        set_lead_assignee(lead_id, assignee)
+        return assignee
+    except Exception:
+        return None
+
+
+def reassign_open_leads(actor_user_id, from_user_id, to_user_id):
+    """Coverage / vacation handoff: move every OPEN thread currently assigned to
+    `from_user_id` over to `to_user_id` (or None to just unassign), in one call.
+    Scoped to the actor's own workspace (owned leads OR verified-claim studies)
+    and to same-org members, so no one can reassign another team's threads.
+    Returns the number of threads moved."""
+    members = set(org_member_ids(actor_user_id))
+    if from_user_id not in members:
+        return 0
+    if to_user_id is not None and to_user_id not in members:
+        return 0
+    claims = sorted(user_claimed_ncts(actor_user_id))
+    scope = ["owner_user_id IN (%s)" % ",".join("?" * len(members))]
+    args = list(members)
+    if claims:
+        scope.append("nct IN (%s)" % ",".join("?" * len(claims)))
+        args.extend(claims)
+    closed = tuple(LEAD_CLOSED)
+    q = (f"UPDATE leads SET assigned_user_id = ?, updated_at = ? "
+         f"WHERE assigned_user_id = ? AND ({' OR '.join(scope)}) "
+         f"AND status NOT IN ({','.join('?' * len(closed))})")
+    db = get_db()
+    cur = db.execute(q, [to_user_id, now(), from_user_id, *args, *closed])
+    db.commit()
+    return cur.rowcount
 
 
 # --------------------------------------------------------------------------- #
@@ -5428,21 +5862,37 @@ def _demo_lead_specs():
     # across review/active/done instead of a tiny sample.
     # Study lookup (nct, title, condition) keyed by a short code, so the volume
     # roster below stays readable. All applicants are at the one site (Fieve, NYC).
+    # Fieve Clinical Research's real, currently-active trials (verified on
+    # ClinicalTrials.gov by NCT + facility). Titles are shortened for the UI but
+    # the NCTs are exact, so the site recognizes each study as their own.
     _S = {
         "aze": ("NCT07076407",
                 "Azetukalner vs Placebo in Major Depressive Disorder (X-NOVA3)",
                 "Major Depressive Disorder"),
+        "azeo": ("NCT06922110",
+                 "Azetukalner Open-Label Extension in Major Depressive Disorder (X-NOVA-OLE)",
+                 "Major Depressive Disorder"),
         "sel": ("NCT06559306",
                 "Adjunctive Seltorexant in MDD With Insomnia Symptoms",
                 "Major Depressive Disorder"),
-        "mig": ("NCT07645924",
-                "Elismetrep (K-304) for the Acute Treatment of Migraine",
-                "Migraine"),
+        "selm": ("NCT07573176",
+                 "Seltorexant Monotherapy in Major Depressive Disorder",
+                 "Major Depressive Disorder"),
         "trd": ("NCT05711940",
                 "COMP360 Psilocybin in Treatment-Resistant Depression",
                 "Treatment-Resistant Depression"),
+        "mig": ("NCT07645924",
+                "Elismetrep (K-304) for the Acute Treatment of Migraine",
+                "Migraine"),
+        "migl": ("NCT07674654",
+                 "Elismetrep (K-304) Long-Term Safety in Acute Migraine",
+                 "Acute Migraine"),
+        "umm": ("NCT06417775",
+                "Ubrogepant for Menstrual Migraine",
+                "Menstrual Migraine"),
     }
-    # (first, last, sex, age, status, records, study-code)
+    # (first, last, sex, age, status, records, study-code). Spread across all 8
+    # active Fieve trials. Menstrual-migraine (umm) applicants are female by design.
     _rows = [
         ("Ava", "Chen", "female", "41", "prescreen", 1, "aze"),
         ("Noah", "Bernstein", "male", "49", "prescreen", 0, "sel"),
@@ -5454,7 +5904,7 @@ def _demo_lead_specs():
         ("Leo", "Kaplan", "male", "54", "enrolled", 1, "trd"),
         ("Chloe", "Nguyen", "female", "31", "closed", 0, "mig"),
         ("Mason", "Rivera", "male", "58", "eligible", 1, "trd"),
-        ("Ella", "Brooks", "female", "39", "prescreen", 0, "aze"),
+        ("Ella", "Brooks", "female", "39", "prescreen", 0, "azeo"),
         ("James", "Sullivan", "male", "50", "prescreen", 1, "sel"),
         ("Zoe", "Feldman", "female", "45", "eligible", 1, "aze"),
         ("Lucas", "Park", "male", "37", "screening", 0, "mig"),
@@ -5462,31 +5912,36 @@ def _demo_lead_specs():
         ("Olivia", "Bennett", "female", "38", "eligible", 1, "sel"),
         ("Henry", "Cohen", "male", "63", "screening", 1, "trd"),
         ("Amelia", "Rosen", "female", "56", "enrolled", 1, "aze"),
-        ("Jack", "Donovan", "male", "60", "eligible", 1, "sel"),
+        ("Jack", "Donovan", "male", "60", "eligible", 1, "selm"),
         ("Charlotte", "Diaz", "female", "26", "eligible", 1, "mig"),
         ("Benjamin", "Foster", "male", "48", "screening", 1, "trd"),
-        ("Harper", "Reed", "female", "35", "enrolled", 1, "mig"),
+        ("Harper", "Reed", "female", "35", "enrolled", 1, "migl"),
         ("Daniel", "Goldberg", "male", "52", "eligible", 1, "sel"),
         ("Aria", "Morgan", "female", "40", "eligible", 1, "aze"),
-        ("William", "Perry", "male", "51", "screening", 1, "aze"),
-        ("Scarlett", "Klein", "female", "53", "eligible", 1, "sel"),
+        ("William", "Perry", "male", "51", "screening", 1, "azeo"),
+        ("Scarlett", "Klein", "female", "53", "eligible", 1, "selm"),
         ("Michael", "Torres", "male", "59", "enrolled", 1, "trd"),
+        ("Rosa", "Delacruz", "female", "34", "eligible", 1, "umm"),
+        ("Nadia", "Haddad", "female", "29", "screening", 1, "umm"),
+        ("Tara", "Okonkwo", "female", "44", "prescreen", 1, "umm"),
+        ("Bianca", "Lozano", "female", "37", "enrolled", 1, "umm"),
+        ("Gina", "Petrov", "female", "31", "prescreen", 0, "umm"),
         # More fresh inbound requests (prescreen) so the "New" queue reads busy
         # across every trial, not a couple of stragglers.
         ("Nora", "Whitfield", "female", "34", "prescreen", 1, "aze"),
         ("Elijah", "Barnes", "male", "45", "prescreen", 0, "sel"),
         ("Priya", "Nair", "female", "29", "prescreen", 1, "mig"),
         ("Caleb", "Fisher", "male", "57", "prescreen", 0, "trd"),
-        ("Maya", "Stein", "female", "42", "prescreen", 1, "aze"),
-        ("Oscar", "Delgado", "male", "39", "prescreen", 1, "mig"),
-        ("Ruth", "Abramson", "female", "61", "prescreen", 0, "sel"),
+        ("Maya", "Stein", "female", "42", "prescreen", 1, "azeo"),
+        ("Oscar", "Delgado", "male", "39", "prescreen", 1, "migl"),
+        ("Ruth", "Abramson", "female", "61", "prescreen", 0, "selm"),
         ("Simon", "Yang", "male", "47", "prescreen", 1, "trd"),
         ("Talia", "Rosenthal", "female", "31", "prescreen", 1, "aze"),
         ("Devon", "Pierce", "male", "53", "prescreen", 0, "mig"),
         ("Hannah", "Blum", "female", "38", "prescreen", 1, "sel"),
-        ("Andre", "Costa", "male", "44", "prescreen", 1, "aze"),
+        ("Andre", "Costa", "male", "44", "prescreen", 1, "azeo"),
         ("Vera", "Lindqvist", "female", "50", "prescreen", 0, "trd"),
-        ("Marco", "Santos", "male", "36", "prescreen", 1, "mig"),
+        ("Marco", "Santos", "male", "36", "prescreen", 1, "migl"),
     ]
     extra = [(f, l, sx, ag, st, rc, _S[k][0], _S[k][1], _S[k][2], loc, site)
              for (f, l, sx, ag, st, rc, k) in _rows]
@@ -5529,7 +5984,7 @@ def _demo_lead_specs():
             "site": site,
             "name": f"{first} {last[0]}.",
             "email": f"candidate.{first.lower()}.{last.lower()}@example.com",
-            "phone": f"+1 416 555 {1200 + idx:04d}",
+            "phone": f"+1 212 555 {1200 + idx:04d}",
             "age": age,
             "sex": sex,
             "screener": screener,
@@ -5676,6 +6131,190 @@ def document_counts(user_id):
     return {r["status"]: r["n"] for r in rows}
 
 
+# --------------------------------------------------------------------------- #
+# IRB / REB recruitment-material submissions
+# --------------------------------------------------------------------------- #
+# The review workflow, in the order a real submission moves. `revisions` = the IRB
+# returned "modifications required" (you edit and resubmit). `expired` = the annual
+# continuing-review lapsed (materials can no longer be used until renewed).
+IRB_STATUSES = ("draft", "submitted", "in_review", "revisions", "approved", "expired")
+IRB_STATUS_LABELS = {
+    "draft": "Draft", "submitted": "Submitted", "in_review": "Under review",
+    "revisions": "Revisions requested", "approved": "Approved", "expired": "Expired",
+}
+IRB_STATUS_TONE = {
+    "draft": "neutral", "submitted": "info", "in_review": "info",
+    "revisions": "danger", "approved": "ok", "expired": "warn",
+}
+IRB_SUBMISSION_TYPES = {
+    "initial": "Initial review",
+    "modification": "Modification / amendment",
+    "continuing": "Continuing review",
+}
+# The big central boards most US sites use, plus a local/academic escape hatch.
+KNOWN_IRBS = ("WCG IRB", "Advarra IRB", "Advarra CIRBI", "Sterling IRB",
+              "Local / academic IRB")
+IRB_ITEM_KINDS = {
+    "flyer": "Flyer / poster", "social": "Social media ad", "script": "Phone screening script",
+    "letter": "Recruitment letter / email", "consent": "Consent form", "protocol": "Protocol",
+    "campaign": "Campaign creative", "material": "Recruitment material",
+}
+
+
+def create_irb_submission(user_id, nct, title, irb_name="", irb_kind="central",
+                          submission_type="initial", pi_name="",
+                          protocol_version="", notes=""):
+    db = get_db()
+    ts = now()
+    cur = db.execute(
+        "INSERT INTO irb_submissions (user_id, nct, title, irb_name, irb_kind, "
+        "submission_type, status, pi_name, protocol_version, notes, created_at, "
+        "updated_at) VALUES (?,?,?,?,?,?,'draft',?,?,?,?,?)",
+        (user_id, _norm_nct(nct), (title or "").strip(), (irb_name or "").strip(),
+         (irb_kind or "central"), (submission_type or "initial"),
+         (pi_name or "").strip(), (protocol_version or "").strip(),
+         (notes or "").strip(), ts, ts))
+    db.commit()
+    sid = cur.lastrowid
+    add_irb_event(sid, "created", meaning="Package created")
+    return sid
+
+
+def get_irb_submission(sub_id):
+    return get_db().execute("SELECT * FROM irb_submissions WHERE id = ?",
+                            (sub_id,)).fetchone()
+
+
+def list_irb_submissions_for_user(user_id, ncts=None):
+    members = org_member_ids(user_id)
+    mqs = ",".join("?" * len(members))
+    ncts = sorted({_norm_nct(x) for x in (ncts or []) if x})
+    if ncts:
+        qs = ",".join("?" * len(ncts))
+        return get_db().execute(
+            f"SELECT * FROM irb_submissions WHERE user_id IN ({mqs}) AND nct IN ({qs}) "
+            "ORDER BY updated_at DESC, id DESC", members + ncts).fetchall()
+    return get_db().execute(
+        f"SELECT * FROM irb_submissions WHERE user_id IN ({mqs}) "
+        "ORDER BY updated_at DESC, id DESC", members).fetchall()
+
+
+def add_irb_item(submission_id, kind="material", label="", version="v1.0",
+                 detail="", campaign_id=None):
+    db = get_db()
+    db.execute(
+        "INSERT INTO irb_submission_items (submission_id, kind, campaign_id, label, "
+        "version, detail, created_at) VALUES (?,?,?,?,?,?,?)",
+        (submission_id, kind, campaign_id, (label or "").strip(),
+         (version or "v1.0").strip(), (detail or "").strip(), now()))
+    db.execute("UPDATE irb_submissions SET updated_at = ? WHERE id = ?",
+               (now(), submission_id))
+    db.commit()
+    return True
+
+
+def list_irb_items(submission_id):
+    return get_db().execute(
+        "SELECT * FROM irb_submission_items WHERE submission_id = ? ORDER BY id",
+        (submission_id,)).fetchall()
+
+
+def remove_irb_item(item_id, submission_id):
+    db = get_db()
+    db.execute("DELETE FROM irb_submission_items WHERE id = ? AND submission_id = ?",
+               (item_id, submission_id))
+    db.execute("UPDATE irb_submissions SET updated_at = ? WHERE id = ?",
+               (now(), submission_id))
+    db.commit()
+    return True
+
+
+def add_irb_event(submission_id, action, meaning="", actor="", actor_role="",
+                  note=""):
+    """Append (never mutate) one audit row for a submission action."""
+    db = get_db()
+    db.execute(
+        "INSERT INTO irb_submission_events (submission_id, action, meaning, actor, "
+        "actor_role, note, created_at) VALUES (?,?,?,?,?,?,?)",
+        (submission_id, action, meaning, actor, actor_role, note, now()))
+    db.commit()
+    return True
+
+
+def list_irb_events(submission_id):
+    return get_db().execute(
+        "SELECT * FROM irb_submission_events WHERE submission_id = ? ORDER BY id DESC",
+        (submission_id,)).fetchall()
+
+
+def _irb_linked_campaign_ids(submission_id):
+    rows = get_db().execute(
+        "SELECT DISTINCT campaign_id FROM irb_submission_items "
+        "WHERE submission_id = ? AND campaign_id IS NOT NULL", (submission_id,)
+    ).fetchall()
+    return [r["campaign_id"] for r in rows if r["campaign_id"]]
+
+
+def advance_irb_status(submission_id, status, actor="", actor_role="", note="",
+                       submission_ref="", approved_version="", expires_at=""):
+    """Move a submission through its review states AND append an audit event. The
+    compliance side-effects live here so no route can bypass them:
+      - `approved`  -> flip every linked campaign's irb_approved gate ON (they can
+        now go live), stamping the cleared version + expiry.
+      - `revisions`/`expired` -> revoke the gate on linked campaigns and PAUSE any
+        that were live, so unapproved/lapsed creative can't keep running.
+    Returns (ok, reason)."""
+    status = (status or "").strip().lower()
+    if status not in IRB_STATUSES:
+        return False, "invalid status"
+    sub = get_irb_submission(submission_id)
+    if not sub:
+        return False, "not found"
+    db = get_db()
+    ts = now()
+    fields = ["status = ?", "updated_at = ?"]
+    args = [status, ts]
+    if submission_ref:
+        fields.append("submission_ref = ?"); args.append(submission_ref.strip())
+    if status == "approved":
+        fields.append("approved_at = ?"); args.append(ts)
+        fields.append("approved_version = ?")
+        args.append((approved_version or "").strip() or "v1.0")
+        if expires_at:
+            fields.append("expires_at = ?"); args.append(expires_at.strip())
+    args.append(submission_id)
+    db.execute(f"UPDATE irb_submissions SET {', '.join(fields)} WHERE id = ?", args)
+    db.commit()
+
+    meaning = IRB_STATUS_LABELS.get(status, status)
+    add_irb_event(submission_id, status, meaning=meaning, actor=actor,
+                  actor_role=actor_role, note=note)
+
+    # Propagate to the campaign gate.
+    cids = _irb_linked_campaign_ids(submission_id)
+    if status == "approved":
+        for cid in cids:
+            approve_campaign(cid, approved=True)
+    elif status in ("revisions", "expired"):
+        for cid in cids:
+            approve_campaign(cid, approved=False)
+            c = get_campaign(cid)
+            if c and (c["status"] or "") == "active":
+                db.execute("UPDATE campaigns SET status = 'paused', updated_at = ? "
+                           "WHERE id = ?", (now(), cid))
+        db.commit()
+    return True, ""
+
+
+def irb_counts(user_id):
+    members = org_member_ids(user_id)
+    qs = ",".join("?" * len(members))
+    rows = get_db().execute(
+        f"SELECT status, COUNT(*) n FROM irb_submissions WHERE user_id IN ({qs}) "
+        "GROUP BY status", members).fetchall()
+    return {r["status"]: r["n"] for r in rows}
+
+
 def _demo_doc_specs():
     """The standard ICH-GCP essential-documents set + patient consent forms a PI
     and coordinator actually route and sign, staged across statuses so the demo
@@ -5695,29 +6334,29 @@ def _demo_doc_specs():
          "Release to obtain outside records confirming the diagnosis before "
          "screening.", True),
         ("regulatory", "form_1572", "FDA Form 1572 - Statement of Investigator",
-         "investigator", "Dr. A. Patel", "v1.0", "pending", 1,
+         "investigator", "Paul Eder, MD", "v1.0", "pending", 1,
          "The PI's commitment to conduct the trial per the protocol and 21 CFR 312.",
          False),
         ("regulatory", "doa_log", "Delegation of Authority Log", "investigator",
-         "Dr. A. Patel", "v3", "in_review", 2,
+         "Paul Eder, MD", "v3", "in_review", 2,
          "Which team members are authorized for which trial tasks - the PI must "
          "review and sign.", False),
         ("regulatory", "fin_disclosure", "Financial Disclosure (FDA 3455)",
-         "investigator", "Dr. A. Patel", "v1.0", "pending", 3,
+         "investigator", "Paul Eder, MD", "v1.0", "pending", 3,
          "Investigator conflict-of-interest disclosure required by the sponsor.",
          False),
-        ("regulatory", "irb_approval", "IRB/REB Approval Letter + Approved ICF",
-         "coordinator", "REB Office", "2026-A", "approved", None,
+        ("regulatory", "irb_approval", "IRB Approval Letter + Approved ICF",
+         "coordinator", "WCG IRB", "2026-A", "approved", None,
          "Ethics board approval of the protocol and the current consent version.",
          False),
         ("regulatory", "protocol_amend", "Protocol Amendment 3 - Signature Page",
-         "investigator", "Dr. A. Patel", "Amd 3", "pending", 1,
+         "investigator", "Paul Eder, MD", "Amd 3", "pending", 1,
          "PI acknowledgement and sign-off on the latest protocol amendment.", False),
         ("site", "ib_ack", "Investigator's Brochure - Acknowledgement",
-         "investigator", "Dr. A. Patel", "Ed 7", "in_review", 4,
+         "investigator", "Paul Eder, MD", "Ed 7", "in_review", 4,
          "Confirms the PI reviewed the current IB safety information.", False),
         ("site", "gcp_cert", "GCP Training Certificate", "coordinator",
-         "J. Chen, CRC", "2026", "approved", None,
+         "Kara Walsh, MPH", "2026", "approved", None,
          "Good Clinical Practice training on file for the coordinator.", False),
         ("site", "lab_cert", "Lab Certification (CLIA/CAP) + Normal Ranges",
          "coordinator", "Central Lab", "2026", "approved", None,
@@ -5759,19 +6398,19 @@ def seed_demo_trial_documents(user_id):
                                  summary=summary)
         # Backfill a believable audit trail for non-pending docs.
         if status in ("in_review", "approved", "returned", "signed"):
-            add_document_event(doc_id, "sent", actor="J. Chen, CRC",
+            add_document_event(doc_id, "sent", actor="Kara Walsh, MPH",
                                actor_role="Coordinator", note="Routed for review")
         if is_patient:
             add_document_event(doc_id, "received", actor=(pname or "Applicant"),
                                actor_role="Patient", note="Returned by participant")
         if status == "approved":
             add_document_event(
-                doc_id, "approved", meaning="Approval", actor="Dr. A. Patel",
+                doc_id, "approved", meaning="Approval", actor="Paul Eder, MD",
                 actor_role="Principal Investigator",
                 note="Reviewed and approved for the regulatory binder.")
         if status == "signed":
             add_document_event(
-                doc_id, "approved", meaning="Approval", actor="Dr. A. Patel",
+                doc_id, "approved", meaning="Approval", actor="Paul Eder, MD",
                 actor_role="Principal Investigator",
                 note="Signed via the validated e-signature vendor; approval "
                      "recorded here.")
@@ -5790,7 +6429,7 @@ def seed_demo_claims(user_id):
     rows = db.execute(
         "SELECT nct, MAX(title) title FROM leads WHERE nct != '' "
         "GROUP BY nct ORDER BY nct").fetchall()
-    for r in rows[:6]:
+    for r in rows[:8]:
         add_study_claim(user_id, r["nct"], r["title"] or "", verified=True)
         # Reusable per-study booking link + attach it to already-accepted demo
         # applicants so the scheduling flow shows as live (link already sent).
@@ -5799,6 +6438,14 @@ def seed_demo_claims(user_id):
         db.execute(
             "UPDATE leads SET schedule_url = ? WHERE nct = ? AND schedule_url = '' "
             "AND status IN ('eligible','screening','enrolled')", (link, r["nct"]))
+        # Connected sources = the channels this study's demo leads actually came
+        # in on, so each trial's inbox filters reflect a real, differing source
+        # mix (one trial runs IG+email, another adds Facebook/CT.gov, etc.).
+        srcs = [row["source"] for row in db.execute(
+            "SELECT DISTINCT source FROM leads WHERE nct = ?", (r["nct"],)).fetchall()]
+        connected = _norm_sources(srcs)
+        if connected:
+            set_claim_connected_sources(user_id, r["nct"], connected)
     # The coordinator's own account calendar (the app-wide default) + a video
     # link on applicants already in screening, so the calls flow shows as live.
     if not get_site_calendar_url(user_id):
@@ -6021,6 +6668,146 @@ def seed_demo_campaigns(user_id):
         create_placement(cid, label=place, channel=place_ch)
 
 
+def seed_demo_irb_submissions(user_id):
+    """Populate the IRB & approvals surface so the recruitment-compliance workflow
+    reads as live: submissions across every review state (approved w/ expiry, under
+    review, revisions requested, draft), each with a materials package, an audit
+    trail attributed to the site's real staff, and linked to the matching campaign
+    so approval visibly unlocks that campaign's gate. No-op once any submission
+    exists. Demo-only (see COMPLIANCE.md)."""
+    if not user_id:
+        return
+    db = get_db()
+    if db.execute("SELECT COUNT(*) n FROM irb_submissions WHERE user_id = ?",
+                  (user_id,)).fetchone()["n"]:
+        return
+    studies = list_team_studies(user_id)
+    if not studies:
+        return
+    title_by_nct = {s["nct"]: (s["title"] or s["nct"]) for s in studies}
+    ncts = [s["nct"] for s in studies]
+    camps = db.execute(
+        "SELECT id, nct FROM campaigns WHERE user_id = ?", (user_id,)).fetchall()
+    camp_by_nct = {}
+    for c in camps:
+        camp_by_nct.setdefault(c["nct"], c["id"])
+
+    base = dt.datetime.now()
+
+    def ds(days=0):
+        return (base + dt.timedelta(days=days)).strftime("%Y-%m-%d")
+
+    def dts(days=0, hours=0):
+        return (base + dt.timedelta(days=days, hours=hours)).strftime("%Y-%m-%d %H:%M")
+
+    def mk(nct, title, irb_name, irb_kind, sub_type, status, pi, proto,
+           ref, approved_ver, approved_days, expires_days, items, events):
+        cid = camp_by_nct.get(nct)
+        cur = db.execute(
+            "INSERT INTO irb_submissions (user_id, nct, title, irb_name, irb_kind, "
+            "submission_type, status, pi_name, protocol_version, submission_ref, "
+            "approved_version, approved_at, expires_at, notes, created_at, updated_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (user_id, _norm_nct(nct), title, irb_name, irb_kind, sub_type, status,
+             pi, proto, ref,
+             approved_ver, (dts(approved_days) if approved_days is not None else ""),
+             (ds(expires_days) if expires_days is not None else ""), "",
+             dts(-40), dts(0)))
+        sid = cur.lastrowid
+        for kind, label, ver, detail, link in items:
+            db.execute(
+                "INSERT INTO irb_submission_items (submission_id, kind, campaign_id, "
+                "label, version, detail, created_at) VALUES (?,?,?,?,?,?,?)",
+                (sid, kind, (cid if link else None), label, ver, detail, dts(-39)))
+        for edays, action, meaning, actor, role, note in events:
+            db.execute(
+                "INSERT INTO irb_submission_events (submission_id, action, meaning, "
+                "actor, actor_role, note, created_at) VALUES (?,?,?,?,?,?,?)",
+                (sid, action, meaning, actor, role, note, dts(edays)))
+        # An APPROVED package clears its linked campaign's gate. We deliberately do
+        # NOT revoke on other states here: a modification/continuing review runs
+        # against materials that are already approved and still live, so the seed
+        # leaves those campaigns as they are (the live status engine still revokes
+        # when a user actively marks revisions/expired on a real submission).
+        if cid and status == "approved":
+            approve_campaign(cid, approved=True)
+        db.commit()
+        return sid
+
+    KARA = ("Kara Walsh, MPH", "Clinical Research Coordinator")
+    DANNY = ("Danny-Elle Josama", "Clinical Research Coordinator")
+    MARG = ("Margaret Henderson, MD", "Director of Clinical Operations")
+    PAUL = ("Paul Eder, MD", "Principal Investigator")
+
+    # 1) COMP360 - APPROVED, with a live expiry (the happy path).
+    n0 = ncts[0]
+    mk(n0, "Recruitment materials \u2013 initial review", "WCG IRB", "central",
+       "initial", "approved", PAUL[0], "v3.0", "WCG #20260142", "v2.0", -58,
+       305,
+       [("flyer", "Waiting-room flyer / poster", "v2.0",
+         "One-page flyer for the clinic waiting room and community boards.", False),
+        ("social", "Instagram / Facebook ad", "v2.0",
+         "Neutral awareness ad - no benefit or payment claims.", True),
+        ("script", "Phone pre-screening script", "v2.0",
+         "What the coordinator reads when a respondent calls in.", False),
+        ("letter", "Patient-facing study brochure", "v2.0",
+         "Plain-language overview of the study, risks and time commitment.", False)],
+       [(-40, "created", "Package created", *KARA, ""),
+        (-38, "submitted", "Submitted to WCG IRB", *DANNY,
+         "Initial recruitment package for review."),
+        (-37, "in_review", "Under review", "WCG IRB", "Central IRB", ""),
+        (-31, "revisions", "Revisions requested", "WCG IRB", "Central IRB",
+         "Reviewer: remove the word 'free' and add the time commitment to the flyer."),
+        (-29, "submitted", "Resubmitted with revisions", *KARA,
+         "Flyer + brochure updated per the reviewer's comments."),
+        (-58 + 30, "approved", "Approved (v2.0)", "WCG IRB", "Central IRB",
+         "Stamped and cleared for use. Continuing review due before the expiry.")])
+
+    # 2) Ubrogepant / migraine - UNDER REVIEW (a modification of existing materials).
+    if len(ncts) > 1:
+        n1 = ncts[1]
+        mk(n1, "Social media ad set \u2013 modification", "Advarra IRB", "central",
+           "modification", "in_review", PAUL[0], "v2.0", "Advarra #PRO000451",
+           "", None, None,
+           [("social", "TikTok / Reels short-form ad", "v1.1",
+             "15-second video ad; adds a new channel to the approved set.", True),
+            ("social", "Reddit r/migraine post", "v1.1",
+             "Text post for the weekly recruitment thread.", False)],
+           [(-9, "created", "Package created", *DANNY, ""),
+            (-7, "submitted", "Submitted to Advarra", *DANNY,
+             "Modification: adds two social placements to the approved ad set."),
+            (-6, "in_review", "Under review", "Advarra IRB", "Central IRB",
+             "Assigned to expedited review.")])
+
+    # 3) MDD study - REVISIONS REQUESTED (the board sent modifications back).
+    if len(ncts) > 2:
+        n2 = ncts[2]
+        mk(n2, "Continuing review \u2013 recruitment package", "WCG IRB", "central",
+           "continuing", "revisions", PAUL[0], "v4.0", "WCG #20260233", "",
+           None, None,
+           [("flyer", "Updated waiting-room flyer", "v3.0",
+             "Refreshed flyer for the annual continuing review.", False),
+            ("script", "Phone pre-screening script", "v3.0",
+             "Adds the new insomnia sub-study screen questions.", False)],
+           [(-14, "created", "Package created", *KARA, ""),
+            (-12, "submitted", "Submitted for continuing review", *MARG,
+             "Annual continuing review of the recruitment materials."),
+            (-11, "in_review", "Under review", "WCG IRB", "Central IRB", ""),
+            (-4, "revisions", "Revisions requested", "WCG IRB", "Central IRB",
+             "Soften the 'compensation' language and restore fair-balance of risks "
+             "on the flyer, then resubmit.")])
+
+    # 4) A DRAFT still being assembled - shows the starting state.
+    if len(ncts) > 3:
+        n3 = ncts[3]
+        mk(n3, "Campus flyer \u2013 initial review", "Local / academic IRB", "local",
+           "initial", "draft", PAUL[0], "v1.0", "", None, None, None,
+           [("flyer", "NYU / Columbia community-board flyer", "v1.0",
+             "Printed flyer for campus community boards - drafting.", False)],
+           [(-2, "created", "Package created", *DANNY,
+             "Assembling materials before submitting to the local board.")])
+
+
 def seed_demo_lead_attribution(user_id):
     """Tie demo applicants that arrived from a paid channel (meta/google/reddit)
     back to the matching campaign, so the recruitment tracker shows real
@@ -6068,13 +6855,16 @@ def seed_demo_leads():
         def at(days_ago):
             return (base - dt.timedelta(days=days_ago)).strftime("%Y-%m-%d %H:%M")
 
-        # Spread applicants across realistic acquisition channels so the source
-        # mix + campaign attribution on the tracker read like a live site, not a
-        # single "demo" bucket. Organic channels dominate; paid channels (meta/
-        # google/reddit) are the ones later tied to a campaign (campaign-tracked).
-        sources = ["ctgov", "referral", "web", "meta", "ctgov", "google",
-                   "web", "referral", "reddit", "ctgov", "emr", "meta",
-                   "web", "google", "ctgov", "referral", "web", "reddit"]
+        # Spread applicants across the real acquisition channels a site actually
+        # juggles: email inquiries about the trial, Instagram DMs and Facebook
+        # Messenger chats off social ads, Meta lead-ad forms, plus CT.gov,
+        # physician referrals and web forms. This is the whole point of the
+        # inbox - every source landing in one triage list - so the demo has to
+        # show that mix, not a single bucket.
+        sources = ["email_intake", "instagram", "ctgov", "messenger", "referral",
+                   "meta", "instagram", "email_intake", "facebook", "ctgov",
+                   "web", "instagram", "email_intake", "google", "messenger",
+                   "referral", "facebook", "ctgov"]
 
         for i, s in enumerate(_demo_lead_specs()):
             created = at(s["days"])
@@ -6126,6 +6916,56 @@ def seed_demo_leads():
         con.close()
 
 
+# A varied pool of realistic applicant replies, mixed across triage intents
+# (scheduling / question / document) so the inbox reads like a real one and the
+# triage labels show genuine variety instead of a single repeated line. Indexed
+# by lead id at seed time so no two adjacent threads are identical.
+_DEMO_PATIENT_REPLIES = [
+    "Can we schedule my screening for Tuesday or Thursday afternoon?",
+    "Roughly how many visits are involved, and is there any compensation?",
+    "I've attached my insurance card and the signed consent form.",
+    "What should I bring on my first day, and how long will it take?",
+    "Will taking part affect the care I get from my own doctor?",
+    "Mornings are easier for me. Is next week open to book?",
+    "Is travel to the site reimbursed?",
+    "Thanks. I'll upload the completed forms you sent tonight.",
+    "Is the study still enrolling? I'd like to move forward.",
+    "I'm free Wednesday at 10am if that works to book a visit.",
+]
+
+# The old seed strings this pool replaces (used to de-clone existing demo DBs).
+_DEMO_OLD_REPLIES = (
+    "Thank you! Roughly how many visits are involved, and is parking available?",
+    "Great, thanks. What should I bring to the first visit?",
+    "Sounds good - mornings work best for me. Is Thursday possible?",
+    "Appreciate it! Will taking part affect my regular care?",
+)
+
+
+def diversify_demo_replies():
+    """Fix an already-seeded demo DB in place: the old seeder gave the first
+    applicant in every study the same canned reply, so the inbox read as a wall
+    of clones. Swap those known strings for the varied pool (keyed by lead id,
+    deterministic) and clear triage so labels/priority recompute with the current
+    classifier. Idempotent - once the old strings are gone it no-ops, and it only
+    ever touches the known seed strings, never a real conversation."""
+    db = get_db()
+    rows = db.execute(
+        "SELECT id, lead_id FROM messages WHERE sender = 'patient' AND body IN "
+        "(?,?,?,?) ORDER BY id", _DEMO_OLD_REPLIES).fetchall()
+    if not rows:
+        return
+    # Round-robin over the pool so the copy is spread evenly across the inbox
+    # (keying by lead id clustered several threads onto the same line).
+    for i, r in enumerate(rows):
+        body = _DEMO_PATIENT_REPLIES[i % len(_DEMO_PATIENT_REPLIES)]
+        db.execute("UPDATE messages SET body = ? WHERE id = ?", (body, r["id"]))
+    # Re-triage everything so the labels reflect the new bodies + fixed rules.
+    db.execute("UPDATE leads SET triage_intent = '', triage_priority = '', "
+               "triage_at = ''")
+    db.commit()
+
+
 def seed_demo_engagement(clinician_id):
     """Populate the retention/engagement surfaces (messages, visits, one physician
     referral) on top of the demo leads so a fresh demo shows the whole loop alive.
@@ -6147,13 +6987,17 @@ def seed_demo_engagement(clinician_id):
                 "INSERT OR IGNORE INTO study_claims (user_id, nct, title, created_at) "
                 "VALUES (?,?,?,?)",
                 (clinician_id, s["nct"], s["title"] or "", ts(days=-10)))
-        db.execute(
-            "INSERT OR IGNORE INTO site_profiles (user_id, org_name, contact_name, "
-            "contact_email, contact_phone, created_at, updated_at) "
-            "VALUES (?,?,?,?,?,?,?)",
-            (clinician_id, "Research Site", "Site Coordinator",
-             "coordinator@site.example", "+1 416 555 0199", ts(days=-10),
-             ts(days=-1)))
+        # Fill the org profile with the demo site's details. An earlier step
+        # (set_site_calendar_url) may have created a blank profile row, so an
+        # INSERT OR IGNORE would be skipped - upsert instead, but only when the
+        # org name is still empty so we never clobber a real edited profile.
+        _prof = db.execute(
+            "SELECT org_name FROM site_profiles WHERE user_id = ?",
+            (clinician_id,)).fetchone()
+        if not _prof or not ((_prof["org_name"] or "").strip()):
+            upsert_site_profile(
+                clinician_id, "Fieve Clinical Research", "Vanessa Fieve",
+                "info@fieveclinical.com", "+1 212 772 3570")
 
     # Ensure at least one visible booking link exists in demo so "calendar invite"
     # UX can be tested immediately on both study-team and patient surfaces.
@@ -6185,12 +7029,7 @@ def seed_demo_engagement(clinician_id):
         "Hi {first}, thanks for your interest. I've noted what happens next; let "
         "me know if anything is unclear.",
     ]
-    replies = [
-        "Thank you! Roughly how many visits are involved, and is parking available?",
-        "Great, thanks. What should I bring to the first visit?",
-        "Sounds good - mornings work best for me. Is Thursday possible?",
-        "Appreciate it! Will taking part affect my regular care?",
-    ]
+    replies = _DEMO_PATIENT_REPLIES
     follow = ("Absolutely - I'll send those details over now. Talk soon!")
     revealed = db.execute(
         "SELECT * FROM leads WHERE revealed = 1 ORDER BY id").fetchall()
@@ -6198,9 +7037,23 @@ def seed_demo_engagement(clinician_id):
     # A visit on the screening/enrolled candidates (drives reminders + patient
     # view). Seed this BEFORE the chat so the real conversation keeps the last
     # (highest-id) slot and drives the inbox preview / unread / awaiting cues.
+    # Place on clean, spread working-day slots (never now-relative minutes) so the
+    # schedule reads like a real clinic day, not a wall of identical timestamps.
+    def at_hour(days, hour):
+        return (base + dt.timedelta(days=days)).replace(
+            hour=hour, minute=0, second=0, microsecond=0).strftime("%Y-%m-%d %H:%M")
+
+    _slot_hours = [9, 10, 11, 13, 14, 15, 16]
+    _sched_days = [1, 2, 3, 4, 7]  # upcoming screening visits, spread out
+    _si = 0
     for ld in revealed:
         if ld["status"] in ("screening", "enrolled"):
-            when = ts(days=2, hours=3) if ld["status"] == "screening" else ts(days=-2)
+            if ld["status"] == "screening":
+                when = at_hour(_sched_days[_si % len(_sched_days)],
+                               _slot_hours[_si % len(_slot_hours)])
+            else:
+                when = at_hour(-2, _slot_hours[_si % len(_slot_hours)])
+            _si += 1
             db.execute("INSERT INTO lead_visits (lead_id, kind, visit_at, location, "
                        "note, reminded_at, created_at) VALUES (?,?,?,?,?,?,?)",
                        (ld["id"], "screening", when, ld["site"] or "Study site",
@@ -6220,19 +7073,26 @@ def seed_demo_engagement(clinician_id):
     by_trial = {}
     for ld in revealed:
         by_trial.setdefault(ld["nct"], []).append(ld)
+    ri = oi = 0  # running counters so copy spreads evenly, never per-trial clones
     for _nct, leads in by_trial.items():
         for idx, ld in enumerate(leads):
             first = ld["name"].split()[0] if ld["name"] else "there"
             kind = idx % 3
+            # Running counters (not per-trial idx) so the first applicant in
+            # every study doesn't get the identical line - that cloned wall was
+            # the thing that read as fake.
             db.execute("INSERT INTO messages (lead_id, sender, body, read_patient, "
                        "read_site, created_at) VALUES (?,?,?,?,?,?)",
-                       (ld["id"], "site", openers[idx % len(openers)].format(first=first),
+                       (ld["id"], "site",
+                        openers[oi % len(openers)].format(first=first),
                         1, 1, ts(hours=-30)))
+            oi += 1
             if kind != 1:  # patient wrote back
                 db.execute("INSERT INTO messages (lead_id, sender, body, read_patient, "
                            "read_site, created_at) VALUES (?,?,?,?,?,?)",
-                           (ld["id"], "patient", replies[idx % len(replies)],
+                           (ld["id"], "patient", replies[ri % len(replies)],
                             1, 0 if kind == 0 else 1, ts(hours=-26)))
+                ri += 1
             if kind == 2:  # we already replied -> waiting on the patient
                 db.execute("INSERT INTO messages (lead_id, sender, body, read_patient, "
                            "read_site, created_at) VALUES (?,?,?,?,?,?)",
@@ -6274,6 +7134,109 @@ def seed_demo_engagement(clinician_id):
     db.commit()
 
 
+def seed_demo_team(clinician_id):
+    """Seed the shared workspace's Team with the demo site's real staff so it
+    reads like their actual team is already set up. Idempotent by email, and it
+    points each teammate at the shared org so signing in lands them here too.
+    Demo-only (see COMPLIANCE.md); turn SITE_DEMO off before onboarding real
+    sites."""
+    if not clinician_id:
+        return
+    db = get_db()
+    oid = user_org_id(clinician_id)
+    # Name the shared workspace after the site.
+    db.execute("UPDATE organizations SET name = ? WHERE id = ?",
+               ("Fieve Clinical Research", oid))
+    # Fieve's real staff (from fieveclinical.com). Base role gates permissions:
+    # pi = signs/approves docs; coordinator = admin (manages team + approves);
+    # student = full day-to-day visibility, no sign-off/team management (fits the
+    # CRCs). role_label carries their actual title for display.
+    team = [
+        ("peder@fieveclinical.com", "Paul Eder, MD", "pi",
+         "Principal Investigator"),
+        ("swomack@fieveclinical.com", "Sharita D. Womack, PMHNP-BC", "pi",
+         "Sub-Investigator"),
+        ("vfieve@fieveclinical.com", "Vanessa Fieve, JD, CCRC", "coordinator",
+         "Site Director / President"),
+        ("mhenderson@fieveclinical.com", "Margaret Henderson, MD, CCRC",
+         "coordinator", "Director of Clinical Operations"),
+        ("dejosama@fieveclinical.com", "Danny-Elle Josama", "coordinator",
+         "Clinical Research Coordinator"),
+        ("kwalsh@fieveclinical.com", "Kara Walsh, MPH", "student",
+         "Clinical Research Coordinator"),
+    ]
+    for email, name, role, label in team:
+        email = email.lower().strip()
+        row = db.execute("SELECT id FROM users WHERE email = ?", (email,)).fetchone()
+        if row:
+            uid = row["id"]
+        else:
+            cur = db.execute(
+                "INSERT INTO users (email, password_hash, name, verified, "
+                "verified_at, created_at) VALUES (?,?,?,?,?,?)",
+                (email, "", name, 1, now(), now()))
+            uid = cur.lastrowid
+        db.execute("UPDATE users SET org_id = ? WHERE id = ?", (oid, uid))
+        db.execute("INSERT OR IGNORE INTO memberships (org_id, user_id, role, "
+                   "role_label, created_at) VALUES (?,?,?,?,?)",
+                   (oid, uid, role, label, now()))
+        db.execute("UPDATE memberships SET role = ?, role_label = ? "
+                   "WHERE org_id = ? AND user_id = ?", (role, label, oid, uid))
+    db.commit()
+
+
+def seed_demo_case_notes(clinician_id=None):
+    """Seed internal team notes on the first few candidates, attributed across the
+    site's real staff (CRCs, PI, Director of Ops) so each candidate chart reads
+    like the whole team is working the case together - not one anonymous
+    "Coordinator". Runs unconditionally (unlike the calendar seeder, which bails
+    once future visits exist), so this collaboration surface is never empty.
+    Idempotent per-lead. Demo-only (see COMPLIANCE.md)."""
+    db = get_db()
+    base = dt.datetime.now()
+
+    def ts(days=0, hours=0):
+        return (base + dt.timedelta(days=days, hours=hours)).strftime("%Y-%m-%d %H:%M")
+
+    # A small rotation of realistic, role-appropriate notes. Each candidate gets a
+    # short multi-author thread: logistics from a CRC, a clinical note from the
+    # PI, and an ops/compliance reminder - so the chart shows people collaborating.
+    threads = [
+        [("Kara Walsh, MPH", "Prefers morning visits - works afternoons. Booked "
+          "screening for Thu 10:30 and sent visit-prep."),
+         ("Paul Eder, MD", "Reviewed pre-screen - looks eligible. Confirm washout "
+          "on the SSRI before baseline; I'll sign consent at the visit."),
+         ("Danny Josama", "Daughter (caregiver) usually attends - added her to the "
+          "reminder list and shared parking info.")],
+        [("Danny Josama", "Reached out twice; prefers text. Confirmed for Friday "
+          "and sent the e-diary link."),
+         ("Kara Walsh, MPH", "Mild nausea reported week 1, resolved on its own. "
+          "Flagged to monitor at next dose."),
+         ("Margaret Henderson, MD", "Source is current through last visit. Keep "
+          "only IRB-approved materials in the patient thread, please.")],
+        [("Kara Walsh, MPH", "Insurance card on file, transport not needed - lives "
+          "10 min from site."),
+         ("Paul Eder, MD", "No exclusionary meds. Cleared to proceed to baseline."),
+         ("Danny Josama", "Rebooked the missed follow-up; confirmed adherence back "
+          "on track.")],
+    ]
+
+    revealed = db.execute(
+        "SELECT id FROM leads WHERE revealed = 1 AND name IS NOT NULL "
+        "AND name != '' ORDER BY id LIMIT 3").fetchall()
+    for idx, ld in enumerate(revealed):
+        if list_notes(ld["id"]):
+            continue  # keep idempotent; don't stack duplicate notes
+        thread = threads[idx % len(threads)]
+        # Oldest note first so the chart reads top-to-bottom chronologically.
+        for j, (author, body) in enumerate(thread):
+            db.execute(
+                "INSERT INTO lead_notes (lead_id, body, author, created_at) "
+                "VALUES (?,?,?,?)",
+                (ld["id"], body, author, ts(days=-6, hours=j * 5)))
+    db.commit()
+
+
 def seed_demo_collaboration(clinician_id=None):
     """Seed the collaboration layer (per-candidate to-do checklists + a starter
     internal team channel per trial) so a fresh demo shows conversations working.
@@ -6301,32 +7264,74 @@ def seed_demo_collaboration(clinician_id=None):
                     (ld["id"], title, who, status, "site", ts(hours=-24),
                      ts(hours=-6) if status == "done" else ""))
 
-    # Internal (staff-only) team channel per claimed trial, seeded once per NCT
-    # so every trial channel a coordinator opens has some content.
+    # Internal (staff-only) team channel per claimed trial. Seed a realistic
+    # multi-person thread attributed to the site's real staff so the channel
+    # reads like the team actually working the study together - recruiter triage,
+    # CRC scheduling, Director-of-Ops monitoring/compliance, and PI sign-off.
     if clinician_id:
         claims = db.execute(
             "SELECT nct, title FROM study_claims WHERE user_id = ?",
             (clinician_id,)).fetchall()
-        room_seed = [
-            ("Coordinator", "Kicking off recruitment for this cohort - dropped the "
-             "latest consent packet and the pre-screen checklist in here."),
-            ("Recruiter", "Two strong applicants came in overnight. Booking screening "
-             "calls for Thursday - I'll add the visit-prep doc."),
-            ("Coordinator", "Reminder: only IRB-approved materials go in patient "
-             "threads. Working drafts stay here in the team channel."),
-        ]
+        # Map the seeded staff to (user_id, chat display name) by email so each
+        # message links to the real member. Falls back to a name string if a
+        # teammate isn't present.
+        oid = user_org_id(clinician_id)
+        who = {}
+        for email, disp in (
+            ("vfieve@fieveclinical.com", "Vanessa Fieve"),
+            ("dejosama@fieveclinical.com", "Danny Josama"),
+            ("kwalsh@fieveclinical.com", "Kara Walsh"),
+            ("mhenderson@fieveclinical.com", "Margaret Henderson"),
+            ("peder@fieveclinical.com", "Dr. Eder"),
+        ):
+            r = db.execute(
+                "SELECT u.id FROM users u JOIN memberships m ON m.user_id = u.id "
+                "WHERE m.org_id = ? AND u.email = ?", (oid, email)).fetchone()
+            who[disp] = (r["id"] if r else None, disp)
+
+        def _rater(title):
+            t = (title or "").lower()
+            if "migraine" in t:
+                return "the e-diary / attack-frequency check"
+            if "treatment-resistant" in t or "trd" in t:
+                return "the MGH-ATRQ treatment-history review"
+            return "the MADRS + C-SSRS ratings"
+
         for c in claims:
             has = db.execute(
                 "SELECT COUNT(*) n FROM team_messages WHERE nct = ?",
                 (c["nct"],)).fetchone()["n"]
             if has:
                 continue
-            for i, (who, body) in enumerate(room_seed):
+            rater = _rater(c["title"])
+            thread = [
+                ("Vanessa Fieve",
+                 "Kicking this cohort off. Sponsor wants steady screening this "
+                 "month - let's keep screen-fail tight and source current.",
+                 -30),
+                ("Danny Josama",
+                 "Three new pre-screens came in overnight. Two look strong - moved "
+                 "them to review. Third has a washout question I flagged.", -27),
+                ("Kara Walsh",
+                 f"Booked the two strong ones for screening Thu-Fri. Sent visit-prep "
+                 f"+ consent and confirmed {rater} is set up.", -24),
+                ("Margaret Henderson",
+                 "Monitor visit next Wed - please have source current by Tue EOD. "
+                 "Reminder: only IRB-approved materials in patient threads; drafts "
+                 "stay here.", -22),
+                ("Dr. Eder",
+                 "Reviewed the two flagged charts - both eligible, cleared to "
+                 "screen. I'll sign consent at the visit.", -6),
+                ("Kara Walsh",
+                 "Thanks Dr. Eder - updating their status and prepping the rooms.",
+                 -5),
+            ]
+            for disp, body, hrs in thread:
+                uid, nm = who.get(disp, (None, disp))
                 db.execute(
                     "INSERT INTO team_messages (nct, sender_user_id, sender_name, "
                     "body, created_at) VALUES (?,?,?,?,?)",
-                    (c["nct"], clinician_id if i == 0 else None, who, body,
-                     ts(hours=-20 + i)))
+                    (c["nct"], uid, nm, body, ts(hours=hrs)))
     db.commit()
 
 
@@ -6355,7 +7360,79 @@ def ensure_demo_claim_volume(user_id, minimum_rows=18):
         return 0
     need = minimum_rows - have
     title_for = {c["nct"]: (c["title"] or f"Claimed study {c['nct']}") for c in claims}
-    statuses = ["prescreen", "prescreen", "eligible", "screening", "enrolled", "closed"]
+    # Pull each study's real context (condition/location/site) from an existing lead
+    # so filler applicants match the actual trial instead of a generic placeholder.
+    meta_for = {}
+    for _nct in ncts:
+        r = db.execute(
+            "SELECT condition, location, site FROM leads WHERE nct = ? AND "
+            "TRIM(COALESCE(condition,'')) != '' ORDER BY id LIMIT 1", (_nct,)).fetchone()
+        meta_for[_nct] = {
+            "condition": (r["condition"] if r else "") or "Major Depressive Disorder",
+            "location": (r["location"] if r else "") or "New York, NY",
+            "site": (r["site"] if r else "") or "Fieve Clinical Research",
+        }
+    # Real-sounding identities (first + last pools). Applicants are de-identified on
+    # the board until revealed, but real names make the ones you accept read right.
+    _firsts = ["Aiden", "Amara", "Andre", "Bianca", "Caleb", "Carmen", "Damon",
+               "Elena", "Felix", "Grace", "Hugo", "Imani", "Jonah", "Kayla",
+               "Liam", "Maya", "Nadia", "Omar", "Priya", "Quinn", "Rosa", "Sean",
+               "Tara", "Uma", "Victor", "Wendy", "Xavier", "Yara", "Zane", "Cole",
+               "Nina", "Reza", "Tessa", "Devon", "Gina", "Hassan"]
+    _lasts = ["Alvarez", "Bennett", "Chen", "Diaz", "Ellis", "Foster", "Gomez",
+              "Harris", "Ibrahim", "Jensen", "Khan", "Lopez", "Mensah", "Novak",
+              "Owens", "Patel", "Quinn", "Reyes", "Silva", "Tran", "Ueda",
+              "Vasquez", "Walsh", "Yousef", "Zimmer", "Brooks", "Nguyen", "Park",
+              "Cohen", "Adams", "Ford", "Rivera", "Hale", "Ortiz"]
+
+    def _elig_for(cond, status, idx):
+        c = (cond or "").lower()
+        if "migraine" in c:
+            met = ["Over 1-year migraine history (IHS criteria)", "Age within 18-75"]
+            unknown = ["Confirm 2-10 moderate/severe attacks per month"]
+            excl = "Currently in another interventional trial (washout needed)"
+        elif "insomnia" in c:
+            met = ["DSM-5 MDD with insomnia symptoms", "On a stable antidepressant"]
+            unknown = ["Confirm clinically significant insomnia (ISI)"]
+            excl = "Untreated obstructive sleep apnea on record"
+        elif "resistant" in c or "trd" in c:
+            met = ["MDD without psychotic features",
+                   "Two prior antidepressant failures on record"]
+            unknown = ["Confirm adequate trials via MGH-ATRQ"]
+            excl = "History of psychosis - protocol exclusion"
+        else:
+            met = ["Meets DSM-5-TR criteria for current MDD", "Age within 18-74"]
+            unknown = ["MADRS severity to confirm at screening"]
+            excl = "History of bipolar disorder - protocol exclusion"
+        # Vary the read so the board shows a real spread (strong fits, maybes, and a
+        # few clear no's) instead of every applicant reading the same.
+        if status == "closed":
+            return {"verdict": "unlikely", "met": met[:1], "unknown": [],
+                    "not_met": [excl],
+                    "rationale": "Not eligible - " + excl.lower() + "."}
+        strong = {"verdict": "likely_eligible", "met": met, "unknown": [],
+                  "not_met": [],
+                  "rationale": "Meets the core inclusion criteria on record."}
+        possible = {"verdict": "possible", "met": met, "unknown": unknown,
+                    "not_met": [],
+                    "rationale": "Meets core inclusion criteria; a few items to "
+                                 "confirm at the screening visit."}
+        # Accepted applicants should never read as a clear no; only the awaiting-
+        # review pool carries the borderline/unlikely reads.
+        if status in ("eligible", "screening", "enrolled"):
+            return strong if (idx % 2 == 0) else possible
+        bucket = idx % 5
+        if bucket in (0, 1):
+            return strong
+        if bucket == 4:
+            return {"verdict": "unlikely", "met": met[:1], "unknown": unknown,
+                    "not_met": [excl],
+                    "rationale": "Possible exclusion flagged - confirm before review."}
+        return possible
+    # Weighted funnel: most applicants still await review, fewer reach enrolled - a
+    # realistic recruitment shape rather than an even split across stages.
+    statuses = ["prescreen", "prescreen", "prescreen", "prescreen", "eligible",
+                "eligible", "screening", "enrolled", "closed", "prescreen"]
     ts = now()
     added = 0
     for i in range(need):
@@ -6373,19 +7450,28 @@ def ensure_demo_claim_volume(user_id, minimum_rows=18):
         elif status == "closed":
             decision = "declined"
             decision_reason = "Protocol mismatch after coordinator review"
+        meta = meta_for.get(nct, {})
+        cond = meta.get("condition") or "Major Depressive Disorder"
+        city = meta.get("location") or "New York, NY"
+        site_name = meta.get("site") or "Fieve Clinical Research"
+        sex = "female" if idx % 2 else "male"
+        # Sex-restricted studies (e.g. menstrual migraine) only enroll women.
+        if "menstrual" in (title_for.get(nct, "") or "").lower():
+            sex = "female"
+        age = str(24 + (idx * 7) % 50)
+        first = _firsts[(idx * 5) % len(_firsts)]
+        last = _lasts[(idx * 3) % len(_lasts)]
+        full = f"{first} {last[0]}."
         records_connected = 1 if (idx % 2 == 0) else 0
-        cond = "Type 2 Diabetes" if idx % 3 else "Obesity"
-        city = ["Toronto, ON", "Mississauga, ON", "Hamilton, ON", "Ottawa, ON"][idx % 4]
-        elig = {
-            "met": ["Age within protocol range", "Condition aligned with protocol intent"],
-            "unknown": ["One lab panel pending confirmation"],
-            "not_met": ["Potential protocol mismatch noted"] if status == "closed" else [],
-            "rationale": "Initial pre-screen completed; candidate queued for coordinator review.",
-        }
-        rec = _demo_record(cond, str(30 + (idx % 35)), "female" if idx % 2 else "male") \
-            if records_connected else ""
+        elig = _elig_for(cond, status, idx)
+        rec = _demo_record(cond, age, sex) if records_connected else ""
         vol_source = ["ctgov", "web", "referral", "google", "web", "meta",
                       "ctgov", "reddit", "referral", "web"][idx % 10]
+        # Spread creation across the past ~6 weeks so "last activity" reads naturally
+        # instead of every filler applicant landing at the same instant.
+        created = (dt.datetime.now()
+                   - dt.timedelta(days=(idx * 3) % 42, hours=(idx * 5) % 12)
+                   ).strftime("%Y-%m-%d %H:%M")
         db.execute(
             """INSERT INTO leads
                (token, site_token, site_token_expires_at, site_token_revoked,
@@ -6396,40 +7482,40 @@ def ensure_demo_claim_volume(user_id, minimum_rows=18):
                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (token, site_token, _site_token_expiry(), 0,
              f"seeded-volume-{idx}", nct, title_for.get(nct, nct), cond, city,
-             "Trial Site", f"Candidate {idx}", f"candidate.queue.{idx}@example.com",
-             f"+1 416 555 {2000 + idx:04d}", str(30 + (idx % 35)),
-             "female" if idx % 2 else "male", "", 1, vol_source, status,
+             site_name, full,
+             f"{first.lower()}.{last.lower()}{idx}@example.com",
+             f"+1 212 555 {2000 + idx:04d}", age, sex, "", 1, vol_source, status,
              json.dumps({"travel": "yes", "other_trial": "no",
                          "pregnancy": "no", "consent_capable": "yes"}),
              json.dumps(elig), records_connected, rec, decision,
-             decision_reason, ts if decision else "", revealed, ts, ts))
+             decision_reason, created if decision else "", revealed, created, created))
         lid = db.execute("SELECT last_insert_rowid() id").fetchone()["id"]
         db.execute(
             "INSERT INTO lead_events (lead_id, status, note, actor, created_at) "
-            "VALUES (?,?,?,?,?)", (lid, "submitted", "application received", "you", ts))
+            "VALUES (?,?,?,?,?)", (lid, "submitted", "application received", "you", created))
         db.execute(
             "INSERT INTO lead_events (lead_id, status, note, actor, created_at) "
-            "VALUES (?,?,?,?,?)", (lid, "prescreen", "ready for study-team review", "you", ts))
+            "VALUES (?,?,?,?,?)", (lid, "prescreen", "ready for study-team review", "you", created))
         if decision == "accepted":
             db.execute(
                 "INSERT INTO lead_events (lead_id, status, note, actor, created_at) "
                 "VALUES (?,?,?,?,?)",
-                (lid, "eligible", "accepted - likely eligible", "you", ts))
+                (lid, "eligible", "accepted - likely eligible", "you", created))
         if status == "screening":
             db.execute(
                 "INSERT INTO lead_events (lead_id, status, note, actor, created_at) "
                 "VALUES (?,?,?,?,?)",
-                (lid, "screening", "invited to screening visit", "site", ts))
+                (lid, "screening", "invited to screening visit", "site", created))
         if status == "enrolled":
             db.execute(
                 "INSERT INTO lead_events (lead_id, status, note, actor, created_at) "
                 "VALUES (?,?,?,?,?)",
-                (lid, "enrolled", "enrolled in study", "site", ts))
+                (lid, "enrolled", "enrolled in study", "site", created))
         if status == "closed":
             db.execute(
                 "INSERT INTO lead_events (lead_id, status, note, actor, created_at) "
                 "VALUES (?,?,?,?,?)",
-                (lid, "closed", decision_reason, "you", ts))
+                (lid, "closed", decision_reason, "you", created))
         added += 1
     if added:
         db.commit()
@@ -6451,6 +7537,10 @@ def seed_demo_patient_apps(applicant_token):
     if has_any and has_any["n"]:
         return
     ts = now()
+    # Clean upcoming clinic slot for the seeded screening visit (never now-relative
+    # minutes, which read as a fake wall of identical odd times on the schedule).
+    visit_when = (dt.datetime.now() + dt.timedelta(days=2)).replace(
+        hour=10, minute=0, second=0, microsecond=0).strftime("%Y-%m-%d %H:%M")
     demo_specs = [
         {
             "nct": "NCT07645924",
@@ -6527,7 +7617,7 @@ def seed_demo_patient_apps(applicant_token):
             db.execute(
                 "INSERT INTO lead_visits (lead_id, kind, visit_at, location, note, "
                 "reminded_at, created_at) VALUES (?,?,?,?,?,?,?)",
-                (lead_id, "screening", ts, s["site"],
+                (lead_id, "screening", visit_when, s["site"],
                  "Bring a photo ID and medication list.", "", ts))
     db.commit()
 

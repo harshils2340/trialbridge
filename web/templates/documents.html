@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% import "_icons.html" as ic %}
+{% import "_ui.html" as ui %}
+{% block title %}Documents · BridgeMD for sites{% endblock %}
+
+{% set st_tone = {'pending':'warn','in_review':'info','approved':'ok','returned':'danger','signed':'violet'} %}
+
+{% block body %}
+<div class="app-head">
+  <div>
+    <h1>Documents</h1>
+    <p>Your regulatory binder and patient forms - routed, reviewed and signed in one shared place. Everyone on the team sees the same binder.</p>
+  </div>
+</div>
+
+{% if not has_any %}
+<div class="app-card pad">
+  {{ ui.empty('No documents yet', 'Your essential documents and patient forms show up here as they are added and routed for review.', 'file') }}
+</div>
+{% else %}
+
+<div class="app-stats">
+  <div class="app-stat warn"><div class="l">Awaiting review</div><div class="n">{{ counts.get('pending', 0) }}</div></div>
+  <div class="app-stat"><div class="l">In review</div><div class="n">{{ counts.get('in_review', 0) }}</div></div>
+  <div class="app-stat"><div class="l">Approved</div><div class="n">{{ counts.get('approved', 0) }}</div></div>
+  <div class="app-stat"><div class="l">Signed</div><div class="n">{{ counts.get('signed', 0) }}</div></div>
+</div>
+
+{% for grp in groups %}
+<div class="app-card-title" style="margin:18px 0 10px;">{{ ic.icon('file') }} <b>{{ grp.label }}</b> <span class="app-sub" style="font-weight:400;color:var(--faint);">{{ grp.rows|length }}</span></div>
+<div class="app-card doc-list">
+  {% for r in grp.rows %}
+  {% set d = r.doc %}
+  <div class="doc-row">
+    <div class="doc-main">
+      <span class="doc-ico">{{ ic.icon('file') }}</span>
+      <div class="doc-info">
+        <div class="doc-title">{{ d.title }}{% if d.version %}<span class="doc-ver">{{ d.version }}</span>{% endif %}</div>
+        <div class="doc-sub">
+          {% if d.party_name %}<span class="doc-owner">{{ d.party_name }}{% if staff.get(d.party_name) %} · {{ staff[d.party_name] }}{% endif %}</span>{% endif %}
+          {% if d.summary %}<span class="doc-summary">{{ d.summary }}</span>{% endif %}
+        </div>
+      </div>
+    </div>
+    <div class="doc-side">
+      {% if d.status == 'pending' and d.due_at %}<span class="doc-due">Due {{ d.due_at[:10] }}</span>{% endif %}
+      {{ ui.badge(status_labels.get(d.status, d.status), st_tone.get(d.status, 'neutral')) }}
+      {{ ui.btn('Open', 'ghost', size='sm', icon='chevron-right', extra='data-ui-open="doc-%s"'|format(d.id)) }}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endfor %}
+
+{# ---- One audit-trail + action modal per document ---- #}
+{% for grp in groups %}{% for r in grp.rows %}{% set d = r.doc %}
+{% call ui.modal('doc-%s'|format(d.id), d.title, icon='file') %}
+  <div class="doc-modal-meta">
+    {{ ui.badge(status_labels.get(d.status, d.status), st_tone.get(d.status, 'neutral')) }}
+    {% if d.version %}<span class="doc-ver">{{ d.version }}</span>{% endif %}
+    {% if d.party_name %}<span class="doc-owner">{{ d.party_name }}{% if staff.get(d.party_name) %} · {{ staff[d.party_name] }}{% endif %}</span>{% endif %}
+  </div>
+  {% if d.summary %}<p class="doc-modal-sum">{{ d.summary }}</p>{% endif %}
+
+  <div class="doc-trail-h">Audit trail</div>
+  <ol class="doc-trail">
+    {% for ev in r.events %}
+    <li>
+      <span class="doc-trail-dot{{ ' is-approve' if ev.action in ['approved','signed'] else (' is-return' if ev.action == 'returned' else '') }}"></span>
+      <div class="doc-trail-body">
+        <div class="doc-trail-top"><b>{{ ev.meaning or ev.action|capitalize }}</b><span class="muted">{{ ev.created_at[:16] }}</span></div>
+        <div class="doc-trail-who">{{ ev.actor or 'System' }}{% if ev.actor_role %} · {{ ev.actor_role }}{% endif %}{% if staff.get(ev.actor) %} · {{ staff[ev.actor] }}{% endif %}</div>
+        {% if ev.note %}<div class="doc-trail-note">{{ ev.note }}</div>{% endif %}
+      </div>
+    </li>
+    {% endfor %}
+  </ol>
+
+  {% if d.status != 'signed' %}
+  <form method="post" action="{{ url_for('document_action', doc_id=d.id) }}" class="doc-act">
+    <textarea name="note" rows="2" placeholder="Add a note (optional) - e.g. reviewed against the approved protocol"></textarea>
+    <div class="doc-act-foot">
+      {{ ui.btn('Send back', 'ghost', size='sm', icon='arrow-left', type='submit', name='status', value='returned') }}
+      <span class="doc-act-gap"></span>
+      {{ ui.btn('Mark in review', 'ghost', size='sm', type='submit', name='status', value='in_review') }}
+      {{ ui.btn('Approve', 'primary', size='sm', icon='check', type='submit', name='status', value='approved') }}
+    </div>
+  </form>
+  <p class="doc-act-fine">Approve records an internal approval for the binder - not a binding 21 CFR Part 11 signature. E-signatures happen in your validated vendor and the approval is recorded here.</p>
+  {% else %}
+  <div class="doc-signed">{{ ic.icon('shield-check') }} Signed via the validated e-signature vendor. The approval is recorded in the trail above.</div>
+  {% endif %}
+{% endcall %}
+{% endfor %}{% endfor %}
+{% endif %}
+{% endblock %}

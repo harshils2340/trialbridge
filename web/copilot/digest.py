@@ -37,9 +37,11 @@ def daily_digest(user_id, per_section=5):
         items = payload.get("items") or []
         if not items:
             continue
+        # Tools cap their item list for brevity but report the true total; show the
+        # real number so the brief never contradicts the detailed answer.
         sections.append({
             "title": title,
-            "count": len(items),
+            "count": payload.get("total", len(items)),
             "summary": payload.get("summary", ""),
             "items": items[:per_section],
             "citations": payload.get("citations", []),

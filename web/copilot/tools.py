@@ -146,6 +146,7 @@ def pending_decisions(user_id, limit=8):
         "summary": (f"{len(pend)} applicant(s) are waiting on your decision. "
                     f"Highest match: {top['code']} ({top['verdict']}, "
                     f"score {top['score']})."),
+        "total": len(pend),
         "items": items,
         "citations": [{"label": i["code"], "url": i["url"]} for i in items],
     }
@@ -191,6 +192,7 @@ def stuck_in_screening(user_id, days=5, limit=8):
         "summary": (f"{len(stuck)} applicant(s) are stuck in screening. Sending a "
                     "booking link (or a nudge) is the fastest way to move "
                     "screened -> enrolled."),
+        "total": len(stuck),
         "items": items,
         "citations": [{"label": i["code"], "url": i["url"]} for i in items],
     }
@@ -310,6 +312,142 @@ def search_messages(user_id, term, limit=8):
         "items": items,
         "citations": [{"label": i["code"], "url": i["url"]} for i in items],
     }
+
+
+# --------------------------------------------------------------------------- #
+# Inbox tools - the messages waiting on a reply, each with a smart suggested
+# reply. This powers "help me draft replies to my new inboxes": Bridget reads
+# every new inbound message and proposes a grounded response the coordinator
+# reviews and sends in the thread. Efficiency lever -> screened/enrolled: a
+# same-day reply is the single biggest thing that keeps applicants from going
+# quiet, so shaving the drafting time feeds the contacted -> screened stage.
+# --------------------------------------------------------------------------- #
+def _reltime(raw):
+    """Human 'when' for a message timestamp: 'just now' / '20 min ago' / '3d ago'."""
+    t = _parse_ts(raw)
+    if not t:
+        return ""
+    secs = (dt.datetime.now() - t).total_seconds()
+    if secs < 90:
+        return "just now"
+    if secs < 3600:
+        return f"{max(1, int(secs // 60))} min ago"
+    if secs < 86400:
+        return f"{int(secs // 3600)}h ago"
+    days = int(secs // 86400)
+    return "yesterday" if days == 1 else f"{days}d ago"
+
+
+# Ordered most-specific -> least. Reschedule beats availability so "can we move
+# it, mornings are better" reads as a reschedule, not a confirmation.
+_RESCHED_HINTS = ("reschedul", "can't make", "cant make", "cannot make",
+                  "won't make", "wont make", "move it", "another time",
+                  "postpone", "push it", "different day", "can we change",
+                  "not going to make", "need to change")
+_AVAIL_HINTS = ("morning", "afternoon", "evening", "tomorrow", "monday",
+                "tuesday", "wednesday", "thursday", "friday", "saturday",
+                "sunday", "next week", "this week", "works for me",
+                "work for me", "works best", "i'm free", "im free",
+                "i'm available", "im available", "i am available", "available on",
+                "i can do", "how about", "sounds good", "that works")
+_QUESTION_HINTS = ("?", "how long", "how much", "do i need", "should i",
+                   "can i", "is there", "are there", "will i", "need to bring",
+                   "what time", "where is", "where do", "cost", "paid",
+                   "compensat", "insurance", "eligible")
+_THANKS_HINTS = ("thank you", "thanks", "appreciate", "perfect", "great, ",
+                 "awesome", "will do", "see you", "confirmed", "got it")
+
+
+def _suggest_reply(text, first):
+    """A grounded, context-aware reply to an applicant's last message.
+
+    Deterministic so it works with the LLM off (demo), and it reads the actual
+    message so it never sounds canned. The coordinator always reviews and sends."""
+    t = (text or "").lower()
+    who = first or "there"
+    if any(h in t for h in _RESCHED_HINTS):
+        return (f"No problem at all, {who} - we can reschedule. What days or times "
+                "work best for you over the next week or two? I'll get you booked "
+                "back in.")
+    if any(h in t for h in _AVAIL_HINTS):
+        return (f"That works, {who} - thanks for letting me know. I'll hold that "
+                "time and send you a calendar invite with the visit details. Talk "
+                "soon.")
+    if any(h in t for h in _QUESTION_HINTS):
+        return (f"Good question, {who}. Happy to walk you through it - I'll lay out "
+                "exactly what to expect, and let me know if anything is still "
+                "unclear.")
+    if any(h in t for h in _THANKS_HINTS):
+        return (f"You're very welcome, {who}! I'm here if anything else comes up - "
+                "just reply here anytime.")
+    return (f"Thanks for getting back to me, {who}. I'll take a look and follow up "
+            "with next steps shortly - reach out here if any questions come up in "
+            "the meantime.")
+
+
+def _needs_reply_leads(user_id):
+    """Applicants with an unread inbound message (the 'New' inbox), newest first.
+    Returns [(lead_row, last_inbound_msg, unread_count)]."""
+    out = []
+    for l in db.list_leads_for_user(user_id):
+        unread = db.lead_unread_for_site(l["id"])
+        if not unread:
+            continue
+        last_in = None
+        for m in db.get_messages(l["id"]):
+            if _row_get(m, "sender") == "patient":
+                last_in = m
+        if last_in is None:
+            continue
+        out.append((l, last_in, unread))
+    out.sort(key=lambda t: str(_row_get(t[1], "created_at")), reverse=True)
+    return out
+
+
+def needs_reply(user_id, limit=8):
+    """Your inbox: applicants waiting on a reply, with a suggested response for
+    each one that the coordinator reviews and sends in the thread."""
+    pending = _needs_reply_leads(user_id)
+    if not pending:
+        return {"summary": "Your inbox is clear - no applicants are waiting on a "
+                "reply right now.", "items": [],
+                "citations": [{"label": "Applicants", "url": "/app/applicants"}]}
+    items = []
+    for l, last_in, _unread in pending[:limit]:
+        revealed = bool(_row_get(l, "revealed"))
+        first = (lead_first_name(l) if revealed else "there")
+        body = _row_get(last_in, "body")
+        can = contactable(l)
+        items.append({
+            "code": label(l),
+            "when": _reltime(_row_get(last_in, "created_at")),
+            "snippet": (body[:140] if revealed else ""),
+            "draft": (_suggest_reply(body, first) if can else ""),
+            "blocked": ("" if can else "accept this applicant to reply"),
+            "study": _row_get(l, "nct"),
+            "url": _url(l),
+        })
+    n = len(pending)
+    draftable = sum(1 for it in items if it["draft"])
+    verb = "is" if n == 1 else "are"
+    parts = [f"{_n(n, 'applicant')} {verb} waiting on a reply."]
+    if draftable:
+        target = "each" if draftable == n else f"{draftable} of them"
+        parts.append(f"I've drafted a response to {target} - open one to review the "
+                     "message and send.")
+    return {
+        "summary": " ".join(parts),
+        "total": n,
+        "items": items,
+        "citations": [{"label": it["code"], "url": it["url"]} for it in items],
+    }
+
+
+def lead_first_name(lead):
+    """First name for a revealed lead, else a neutral 'there'."""
+    if _row_get(lead, "revealed") and _row_get(lead, "name"):
+        return str(lead["name"]).split(" ")[0]
+    return "there"
 
 
 # --------------------------------------------------------------------------- #
@@ -445,6 +583,7 @@ def visits_out_of_window(user_id):
     return {
         "summary": (f"{_n(len(hits), 'visit')} {verb} attention: overdue, out of "
                     "protocol window, or with a window closing in the next few days."),
+        "total": len(hits),
         "items": items,
         "citations": [{"label": "Calendar", "url": "/app/calendar"}],
     }
@@ -466,6 +605,7 @@ def reconsent_due(user_id):
         "summary": (f"{_n(len(hits), 'participant')} {verb} a re-consent visit "
                     "coming up. Make sure the current ICF version is ready for "
                     "each one."),
+        "total": len(hits),
         "items": [_visit_item(r) for r in hits[:10]],
         "citations": [{"label": "Calendar", "url": "/app/calendar"}],
     }
@@ -565,6 +705,7 @@ def documents_overview(user_id, limit=8):
     return {
         "summary": lead + ". Clearing these keeps sponsor and IRB paperwork "
                    "current so visits aren't held up.",
+        "total": len(actionable),
         "items": items,
         "citations": [{"label": "Documents", "url": "/app/documents"}],
     }
@@ -634,6 +775,7 @@ def record_matches(user_id, limit=8):
         "summary": (f"{_n(int(counts.get('new', len(new))), 'new candidate')} "
                     "matched from your records and ready to review. Reviewing and "
                     "reaching out is the top of your funnel."),
+        "total": int(counts.get('new', len(new))),
         "items": items,
         "citations": [{"label": "Matches", "url": "/app/matches"}],
     }
@@ -663,13 +805,25 @@ def message_draft(user_id, lead_id, intent="check_in"):
     if not lead:
         return None
     revealed = bool(_row_get(lead, "revealed"))
-    name = (lead["name"].split(" ")[0]
-            if revealed and _row_get(lead, "name") else "there")
-    key = "check_in"
+    name = lead_first_name(lead)
+    key = None
     for k in _DRAFT_TEMPLATES:
         if k in (intent or ""):
             key = k
             break
+    # A plain reply/check-in gets a context-aware answer to their last message -
+    # far smarter than a generic template. Booking/reschedule/thanks keep their
+    # purpose-built templates. Either way the coordinator reviews before sending.
+    if key in (None, "check_in"):
+        last_in = None
+        for m in db.get_messages(lead["id"]):
+            if _row_get(m, "sender") == "patient":
+                last_in = m
+        if last_in is not None:
+            return {"text": _suggest_reply(_row_get(last_in, "body"), name),
+                    "label": label(lead), "url": _url(lead), "revealed": revealed,
+                    "opted_out": bool(int(_row_get(lead, "contact_opt_out", 0) or 0))}
+    key = key or "check_in"
     return {"text": _DRAFT_TEMPLATES[key].format(name=name),
             "label": label(lead), "url": _url(lead), "revealed": revealed,
             "opted_out": bool(int(_row_get(lead, "contact_opt_out", 0) or 0))}

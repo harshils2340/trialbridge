@@ -26,13 +26,82 @@ SYSTEM_PROMPT = (
     "coordinator decides.\n"
     "3. Refer to applicants by their code/label exactly as given. Do not guess "
     "names or contact details.\n"
-    "4. Be concise and practical - a couple of sentences, plain language."
+    "4. Be concise: write a SINGLE short headline sentence stating the key number "
+    "or takeaway. Do NOT list individual applicants, visits, or documents by name - "
+    "the interface shows those to the user as a separate, scannable list beneath "
+    "your reply, so enumerating them is redundant."
 )
+
+
+def _display_items(items):
+    """Normalize a tool's structured rows into {title, detail, study, url} so the
+    UI can render a scannable list instead of a run-on sentence. Covers the shapes
+    every read tool returns (applicants, visits, documents, campaigns, funnel
+    stages, message hits); unknown keys are simply ignored."""
+    out = []
+    for it in items or []:
+        if not isinstance(it, dict):
+            continue
+        title = (it.get("code") or it.get("who") or it.get("name")
+                 or it.get("title") or it.get("label") or it.get("stage") or "Item")
+        bits = []
+        if it.get("kind") and it.get("who"):
+            bits.append(it["kind"])
+        if it.get("when"):
+            bits.append(it["when"])
+        if it.get("issue"):
+            bits.append(it["issue"])
+        if it.get("why"):
+            bits.append(it["why"])
+        if it.get("verdict"):
+            v = str(it["verdict"])
+            if it.get("score") is not None:
+                v += f" \u00b7 score {it['score']}"
+            bits.append(v)
+        elif it.get("score") is not None and it.get("matches") is None:
+            bits.append(f"score {it['score']}")
+        if it.get("status"):
+            s = str(it["status"]).replace("_", " ")
+            if it.get("version"):
+                s += f" \u00b7 {it['version']}"
+            bits.append(s)
+        if it.get("channel"):
+            c = str(it["channel"])
+            if it.get("enrolled") is not None:
+                c += f" \u00b7 {it['enrolled']} enrolled"
+            cpe = it.get("cost_per_enrolled")
+            if cpe is not None:
+                try:
+                    c += f" \u00b7 ${round(float(cpe)):,}/enrolled"
+                except (TypeError, ValueError):
+                    pass
+            bits.append(c)
+        if it.get("stage") and it.get("reached") is not None:
+            st = f"{it['reached']} reached"
+            if it.get("conv_from_prev") is not None:
+                st += f" \u00b7 {it['conv_from_prev']}% from previous"
+            bits.append(st)
+        if it.get("matches") is not None:
+            n = it["matches"]
+            bits.append(f"{n} mention" + ("" if n == 1 else "s"))
+        if it.get("snippet"):
+            bits.append("\u201c" + str(it["snippet"]).strip() + "\u201d")
+        if it.get("draft"):
+            bits.append("Suggested reply: \u201c" + str(it["draft"]).strip() + "\u201d")
+        elif it.get("blocked"):
+            bits.append(str(it["blocked"]))
+        out.append({
+            "title": str(title),
+            "detail": " \u00b7 ".join(b for b in bits if b),
+            "study": str(it.get("study") or ""),
+            "url": it.get("url"),
+        })
+    return out
 
 # Action-first starters shown in the empty rail - phrased as work to do, not
 # questions to ask (Bridget is an agent that acts, not a Q&A bot).
 STARTERS = [
-    "Triage my review queue",
+    "Draft replies to my inbox",
     "Send booking reminders to everyone stuck",
     "Find my biggest funnel leak",
 ]
@@ -56,7 +125,7 @@ _BULK_HINTS = ("everyone", "all of them", "each of", "each one", "stuck",
                "all applicants", "everybody")
 
 
-def _classify(query):
+def _classify(query, has_lead=False):
     """Return (intent, params) from keyword rules. Deterministic + cheap; the
     LLM is only used later to phrase the grounded answer, not to route.
 
@@ -70,6 +139,18 @@ def _classify(query):
     if ("search" in q or "find" in q or "mention" in q) and m:
         return "search_messages", {"term": m.group(2).strip()}
 
+    # --- Inbox / new replies (read + a suggested draft per applicant) ----------
+    # This is inbox triage, not a single-applicant send, so it must beat the
+    # generic 'draft/reply' branch below (which needs an applicant open).
+    if any(w in q for w in ("inbox", "inboxes", "new message", "new messages",
+                            "new reply", "new replies", "unanswered", "unread",
+                            "who messaged", "who wrote", "who replied",
+                            "needs a reply", "need a reply", "need replies",
+                            "waiting on a reply", "waiting for a reply",
+                            "reply to everyone", "replies to my", "reply to my",
+                            "catch up on")):
+        return "needs_reply", {}
+
     # --- Action intents (require an explicit send/booking/message verb) --------
     booking_word = any(w in q for w in ("book", "booking", "self-schedule",
                                         "calendly", "schedule link", "screening link"))
@@ -77,8 +158,14 @@ def _classify(query):
         if any(h in q for h in _BULK_HINTS):
             return "bulk_booking", {}
         return "send_booking", {}
-    if any(w in q for w in ("draft", "reply", "message", "write", "follow up",
-                            "followup", "nudge", "reschedule", "thank")):
+    if any(w in q for w in ("draft", "reply", "replies", "message", "write",
+                            "follow up", "followup", "nudge", "reschedule",
+                            "thank", "respond")):
+        # No applicant open -> they mean their inbox, not one person. Route to the
+        # inbox reader (which drafts per applicant) instead of dead-ending on
+        # "open an applicant first".
+        if not has_lead:
+            return "needs_reply", {}
         intent = "check_in"
         if "remind" in q:
             intent = "booking"
@@ -160,14 +247,15 @@ _PROPOSAL_INTRO = {
 
 def _help_payload():
     return {
-        "summary": ("I can help across your studies - the queue, calendar, "
-                    "documents, campaigns, and record matches. Try: \u201cwho's "
-                    "waiting on my decision?\u201d, \u201cwho's stuck in "
-                    "screening?\u201d, \u201chow's my funnel?\u201d, \u201cwhat "
-                    "documents are due?\u201d, \u201cwhich campaign enrolls "
-                    "cheapest?\u201d, \u201cwhat should I prep for tomorrow?\u201d, "
-                    "or open an applicant and ask \u201csummarize this "
-                    "applicant\u201d or \u201cdraft a follow-up\u201d."),
+        "summary": ("I can help across your studies - your inbox, the queue, "
+                    "calendar, documents, campaigns, and record matches. Try: "
+                    "\u201cdraft replies to my inbox\u201d, \u201cwho's waiting on "
+                    "my decision?\u201d, \u201cwho's stuck in screening?\u201d, "
+                    "\u201chow's my funnel?\u201d, \u201cwhat documents are "
+                    "due?\u201d, \u201cwhich campaign enrolls cheapest?\u201d, "
+                    "\u201cwhat should I prep for tomorrow?\u201d, or open an "
+                    "applicant and ask \u201csummarize this applicant\u201d or "
+                    "\u201cdraft a reply\u201d."),
         "items": [], "citations": [],
     }
 
@@ -203,7 +291,7 @@ def _plan_llm(query, ctx):
 
 def _plan(query, ctx):
     """Choose a tool: LLM planner first (if configured), keyword rules otherwise."""
-    return _plan_llm(query, ctx) or _classify(query)
+    return _plan_llm(query, ctx) or _classify(query, bool(ctx.get("has_lead")))
 
 
 def _ground_with_llm(query, payload):
@@ -257,6 +345,7 @@ def answer(user_id, query, context=None):
     text = _ground_with_llm(query, payload) or payload.get("summary", "")
     return {
         "answer": text,
+        "items": _display_items(payload.get("items")),
         "citations": payload.get("citations", []),
         "trace": tool.trace,
         "suggestions": [],

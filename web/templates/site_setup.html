@@ -17,6 +17,7 @@
     <button type="button" class="setup-tab" data-setup-tab="studies">{{ ic.icon('award') }} Studies{% if claims %} <span class="setup-count">{{ claims|length }}</span>{% endif %}</button>
     <button type="button" class="setup-tab" data-setup-tab="intake">{{ ic.icon('file') }} Intake &amp; screening</button>
     <button type="button" class="setup-tab" data-setup-tab="team">{{ ic.icon('users') }} Team</button>
+    <button type="button" class="setup-tab" data-setup-tab="routing">{{ ic.icon('inbox') }} Routing{% if routing_rules %} <span class="setup-count">{{ routing_rules|length }}</span>{% endif %}</button>
     {% if is_owner %}<button type="button" class="setup-tab" data-setup-tab="internal">{{ ic.icon('activity') }} Internal</button>{% endif %}
   </nav>
 </div>
@@ -325,13 +326,228 @@
 </div>{# /studies panel #}
 
 {# =============================== TEAM =============================== #}
+{% set role_tone = {'coordinator': 'brand', 'pi': 'violet', 'student': 'neutral'} %}
 <div class="setup-panel" data-setup-panel="team" hidden>
 <div class="app-card pad">
-  <div class="app-card-title">Team</div>
-  <p class="site-hint">Invite coordinators, PIs, and research students, and manage their roles and access.</p>
-  <a href="{{ url_for('team_page') }}" class="btn btn-ghost btn-sm">{{ ic.icon('users') }} Manage team</a>
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
+    <div>
+      <div class="app-card-title" style="margin-bottom:4px;">Team</div>
+      <p class="site-hint">Everyone shares this workspace. Roles only gate sign-off. Full-access members can approve documents and manage the team; others do day-to-day work.</p>
+    </div>
+    {% if can_manage_team %}{{ ui.btn('Invite teammate', 'primary', 'sm', icon='user-plus', extra='data-ui-open="inviteModal"') }}{% endif %}
+  </div>
+
+  <table class="app-table" style="margin-top:12px;">
+    <thead><tr><th>Member</th><th>Role</th><th></th></tr></thead>
+    <tbody>
+      {% for m in members %}
+      <tr>
+        <td>
+          <div class="who">
+            <span class="app-av brand">{{ (m.name or m.email or '?')[:1]|upper }}</span>
+            <div>
+              <b>{{ m.name or m.email }}{% if m.is_me %} <span class="app-sub" style="color:var(--faint);font-weight:600;">(you)</span>{% endif %}</b>
+              <span>{{ m.email }}</span>
+            </div>
+          </div>
+        </td>
+        <td>
+          {% if can_manage_team and not m.is_me %}
+          <form method="post" action="{{ url_for('team_set_role') }}" class="role-form">
+            <input type="hidden" name="user_id" value="{{ m.user_id }}">
+            <select name="role" class="js-role" data-autosubmit="1">
+              {% for r in roles %}<option value="{{ r }}" {{ 'selected' if r == m.role and not m.custom_label }}>{{ role_labels[r] }}</option>{% endfor %}
+              {% if m.custom_label %}<option value="__current" selected>{{ m.custom_label }}</option>{% endif %}
+              <option value="other">Other…</option>
+            </select>
+            <div class="role-custom" hidden>
+              <input type="text" name="custom_role" maxlength="40" placeholder="Role name (e.g. Data manager)" value="{{ m.custom_label }}">
+              <select name="access">
+                <option value="standard">Day-to-day only</option>
+                <option value="full">Approve &amp; manage</option>
+              </select>
+              {{ ui.btn('Save', 'primary', 'sm', type='submit') }}
+            </div>
+          </form>
+          {% else %}
+          {{ ui.badge(m.role_label, role_tone.get(m.role, 'neutral')) }}
+          {% endif %}
+        </td>
+        <td style="text-align:right;">
+          {% if can_manage_team and not m.is_me %}
+          <form method="post" action="{{ url_for('team_remove') }}" onsubmit="return confirm('Remove {{ m.name or m.email }} from this workspace?');" style="display:inline;">
+            <input type="hidden" name="user_id" value="{{ m.user_id }}">
+            {{ ui.btn('Remove', 'ghost', 'sm', type='submit') }}
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
 </div>
+
+{% if invites %}
+<div class="app-card pad">
+  <div class="app-card-title">Pending invites</div>
+  <table class="app-table">
+    <thead><tr><th>Invited</th><th>Role</th><th>Link</th><th></th></tr></thead>
+    <tbody>
+      {% for i in invites %}
+      <tr>
+        <td>{{ i.email or 'Anyone with the link' }}</td>
+        <td>{{ ui.badge(i.role_label, 'neutral') }}</td>
+        <td><input type="text" readonly value="{{ i.url }}" onclick="this.select()" style="width:100%;max-width:360px;font-size:12px;"></td>
+        <td style="text-align:right;">
+          {% if can_manage_team %}
+          <form method="post" action="{{ url_for('team_revoke_invite') }}" style="display:inline;">
+            <input type="hidden" name="token" value="{{ i.token }}">
+            {{ ui.btn('Revoke', 'ghost', 'sm', type='submit') }}
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% if can_manage_team %}
+{% call ui.modal('inviteModal', 'Invite a teammate') %}
+<form method="post" action="{{ url_for('team_invite') }}">
+  <div class="field">
+    <label>Their email (optional - the link works either way)</label>
+    <input type="email" name="email" placeholder="teammate@university.edu">
+  </div>
+  <div class="field">
+    <label>Role</label>
+    <select name="role" class="js-role">
+      <option value="student" selected>Research student (grad/undergrad)</option>
+      <option value="coordinator">Coordinator</option>
+      <option value="pi">Principal Investigator</option>
+      <option value="other">Other…</option>
+    </select>
+    <div class="role-custom" hidden>
+      <input type="text" name="custom_role" maxlength="40" placeholder="Role name (e.g. Data manager)">
+      <select name="access">
+        <option value="standard">Day-to-day only (no sign-off)</option>
+        <option value="full">Approve &amp; manage</option>
+      </select>
+    </div>
+  </div>
+  <p class="app-sub" style="color:var(--faint);font-size:12.5px;">We'll generate a join link to share. When they sign in and open it, they join this workspace with the role you picked.</p>
+  <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px;">
+    {{ ui.btn('Cancel', 'ghost', extra='data-ui-close') }}
+    {{ ui.btn('Create invite link', 'primary', type='submit', icon='user-plus') }}
+  </div>
+</form>
+{% endcall %}
+{% endif %}
 </div>{# /team panel #}
+
+{# ============================== ROUTING ============================== #}
+<div class="setup-panel" data-setup-panel="routing" hidden>
+<div class="app-card pad">
+  <div class="app-card-title" style="margin-bottom:4px;">Auto-routing</div>
+  <p class="site-hint">Send every new inquiry to the right person automatically. When a message arrives on a channel, it's assigned to the teammate you pick and shows up in <b>their</b> inbox — no manual triage. Example: all email → your intake coordinator, all Instagram/Meta leads → your outreach lead. Rules run top-down; the first match wins.</p>
+
+  {% if members|length < 2 and not routing_rules %}
+  <p class="site-hint" style="margin-top:8px;">Invite a teammate first (Team tab) to route inquiries to them. You can still create rules that route everything to yourself.</p>
+  {% endif %}
+
+  <form method="post" action="{{ url_for('routing_rule_add') }}" class="route-form" style="margin-top:14px;">
+    <span class="route-when">When a new</span>
+    <select name="channel" aria-label="Channel">
+      {% for c in route_channels %}<option value="{{ c.key }}">{{ c.label }}</option>{% endfor %}
+    </select>
+    <span class="route-when">inquiry arrives for</span>
+    <select name="nct" aria-label="Study">
+      <option value="">any study</option>
+      {% for c in claims %}<option value="{{ c.nct }}">{{ c.title or c.nct }}</option>{% endfor %}
+    </select>
+    <span class="route-when">assign it to</span>
+    <select name="assignee_id" aria-label="Teammate" required>
+      {% for m in members %}<option value="{{ m.user_id }}">{{ m.name or m.email }}{% if m.is_me %} (you){% endif %}</option>{% endfor %}
+    </select>
+    {{ ui.btn('Add rule', 'primary', 'sm', type='submit', icon='check') }}
+  </form>
+
+  {% if routing_rules %}
+  <table class="app-table" style="margin-top:16px;">
+    <thead><tr><th>Channel</th><th>Study</th><th></th><th>Assigned to</th><th></th></tr></thead>
+    <tbody>
+      {% for r in routing_rules %}
+      <tr>
+        <td>{{ ui.badge(r.channel_label, r.channel_tone) }}</td>
+        <td>{{ r.study_label }}</td>
+        <td style="color:var(--faint);">{{ ic.icon('arrow-right') }}</td>
+        <td>
+          <div class="who">
+            <span class="app-av brand">{{ (r.assignee_name or r.assignee_email or '?')[:1]|upper }}</span>
+            <div><b>{{ r.assignee_name or r.assignee_email }}</b></div>
+          </div>
+        </td>
+        <td style="text-align:right;">
+          <form method="post" action="{{ url_for('routing_rule_delete') }}" style="display:inline;">
+            <input type="hidden" name="rule_id" value="{{ r.id }}">
+            {{ ui.btn('Remove', 'ghost', 'sm', type='submit') }}
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  {{ ui.empty('No routing rules yet', 'Add a rule above and new inquiries route themselves to the right teammate.', 'inbox') }}
+  {% endif %}
+</div>
+
+{# ---------- Connected sources per study ---------- #}
+<div class="app-card pad" style="margin-top:18px;">
+  <div class="app-card-title" style="margin-bottom:4px;">Connected sources</div>
+  <p class="site-hint">Pick the channels each trial actually recruits through. The inbox then shows only those sources for that trial — so a coordinator scans the right ad responses (Instagram, Facebook, email…) with the channel’s logo, and isn’t distracted by channels this study doesn’t use. Leave all unchecked to show every source.</p>
+  {% if study_sources %}
+  {% for s in study_sources %}
+  <form method="post" action="{{ url_for('study_sources_save') }}" class="src-form">
+    <input type="hidden" name="nct" value="{{ s.nct }}">
+    <div class="src-form-head">
+      <b>{{ s.title }}</b>
+      {{ ui.btn('Save', 'ghost', 'sm', type='submit', icon='check') }}
+    </div>
+    <div class="src-grid">
+      {% for c in connectable_channels %}
+      <label class="src-opt{% if c.key in s.connected %} on{% endif %}">
+        <input type="checkbox" name="sources" value="{{ c.key }}"{% if c.key in s.connected %} checked{% endif %}>
+        {{ ic.icon(c.icon, 'brand-ico') }}
+        <span>{{ c.label }}</span>
+      </label>
+      {% endfor %}
+    </div>
+  </form>
+  {% endfor %}
+  {% else %}
+  {{ ui.empty('No studies yet', 'Claim a study first (Studies tab), then choose which channels it recruits through.', 'grid') }}
+  {% endif %}
+</div>
+
+{# ---------- Outbound reply connector ---------- #}
+<div class="app-card pad" style="margin-top:18px;">
+  <div class="app-card-title" style="margin-bottom:4px;">Reply from the app (IG / Facebook / Messenger)</div>
+  <p class="site-hint">Answer social-ad leads without opening Instagram or Facebook. Paste an outbound webhook (Zapier/Make, or your own endpoint); when a coordinator replies to a social lead, we POST the reply there and it’s delivered back to the person on that channel. Email and SMS leads keep sending the normal way. The signing secret lets your connector verify the request is really from us.</p>
+  <form method="post" action="{{ url_for('site_connector_save') }}" class="field-stack" style="margin-top:12px;max-width:560px;">
+    <div class="field">
+      <label>Outbound webhook URL</label>
+      <input type="url" name="connector_webhook_url" value="{{ connector_url }}" placeholder="https://hooks.zapier.com/…">
+    </div>
+    <div class="field">
+      <label>Signing secret <span style="color:var(--faint);font-weight:400;">(optional; leave blank to keep current)</span></label>
+      <input type="password" name="connector_secret" autocomplete="new-password" placeholder="••••••••">
+    </div>
+    <div>{{ ui.btn('Save connector', 'primary', 'sm', type='submit', icon='check') }}</div>
+  </form>
+</div>
+</div>{# /routing panel #}
 
 {% if is_owner %}
 {# ============================= INTERNAL ============================= #}
@@ -361,6 +577,28 @@
   var initial = (location.hash || '').replace('#', '');
   if (initial && document.querySelector('[data-setup-panel="' + initial + '"]')) activate(initial);
 })();
+
+// Team roles: reveal the custom name + access inputs when "Other…" is picked.
+// Inline roster selects auto-submit on a base-role change; "Other…" waits for Save.
+document.querySelectorAll('.js-role').forEach(function (sel) {
+  var scope = sel.closest('.field, .role-form');
+  var custom = scope ? scope.querySelector('.role-custom') : null;
+  function sync() { if (custom) custom.hidden = (sel.value !== 'other'); }
+  sync();
+  sel.addEventListener('change', function () {
+    sync();
+    if (sel.dataset.autosubmit === '1' && sel.value !== 'other' && sel.value !== '__current') {
+      sel.form.submit();
+    }
+  });
+});
+
+// Connected-sources pills reflect their checkbox live (before Save).
+document.querySelectorAll('.src-opt input').forEach(function (cb) {
+  cb.addEventListener('change', function () {
+    cb.closest('.src-opt').classList.toggle('on', cb.checked);
+  });
+});
 </script>
 
 {% endblock %}

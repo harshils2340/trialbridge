@@ -7,12 +7,12 @@
    ========================================================================= #}
 {# ---- Static index: pages + studies + actions (built with url_for) ---- #}
 {% set items = [] %}
-{% set _ = items.append({'g':'Pages','label':'Dashboard','kw':'home overview stats','url':url_for('study_home')}) %}
+{% set _ = items.append({'g':'Pages','label':'Inbox','kw':'home inbox threads messages inquiries email','url':url_for('team_inbox')}) %}
 {% set _ = items.append({'g':'Pages','label':'Applicants','kw':'leads patients candidates people referrals queue','url':url_for('leads')}) %}
-{% set _ = items.append({'g':'Pages','label':'Needs reply','kw':'inbox chat conversations replies messages waiting','url':url_for('study_home', _anchor='needs-reply')}) %}
+{% set _ = items.append({'g':'Pages','label':'Unread','kw':'inbox chat conversations replies messages waiting needs reply','url':url_for('team_inbox')}) %}
 {% set _ = items.append({'g':'Pages','label':'Applicant intake','kw':'intake import csv email forwarding studies trials','url':url_for('intake_page')}) %}
-{% set _ = items.append({'g':'Pages','label':'Campaigns','kw':'outreach email marketing ads','url':url_for('campaign_list')}) %}
-{% set _ = items.append({'g':'Pages','label':'Recruitment','kw':'funnel enrollment metrics conversion analytics','url':url_for('recruitment_dashboard')}) %}
+{# Campaigns + Recruitment dashboards are hidden CTMS surfaces now, so they are
+   out of the palette too - the nav and the palette should agree. #}
 {% set _ = items.append({'g':'Pages','label':'Team','kw':'members invite roles permissions people workspace','url':url_for('team_page')}) %}
 {% set _ = items.append({'g':'Pages','label':'Settings','kw':'preferences site setup account configuration calendar redcap','url':url_for('site_setup')}) %}
 {% if is_owner %}{% set _ = items.append({'g':'Pages','label':'Visitors','kw':'analytics traffic owner','url':url_for('owner_analytics')}) %}{% endif %}
@@ -177,7 +177,12 @@
     if (!wrap.contains(e.target)) close();
   });
   document.addEventListener('keydown', function (e) {
-    if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
+    var cmdK = (e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K');
+    // "/" focuses search too - but only when you're not already typing somewhere.
+    var typing = /^(input|textarea|select)$/i.test((e.target.tagName || '')) ||
+                 e.target.isContentEditable;
+    var slash = e.key === '/' && !e.metaKey && !e.ctrlKey && !e.altKey && !typing;
+    if (cmdK || slash) {
       e.preventDefault();
       input.focus();
       input.select();

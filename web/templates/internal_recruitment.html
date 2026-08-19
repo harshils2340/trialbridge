@@ -26,6 +26,7 @@
 <div class="app-subnav">
   <a href="{{ url_for('recruitment_dashboard') }}">{{ ui.chip('Overview', icon='activity') }}</a>
   <a href="{{ url_for('recruitment_balance') }}">{{ ui.chip('Enrollment balance', active=True, icon='users') }}</a>
+  <a href="{{ url_for('campaign_list') }}">{{ ui.chip('Campaigns', icon='megaphone') }}</a>
 </div>
 {% endif %}
 
