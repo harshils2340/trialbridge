@@ -251,7 +251,7 @@
   {# Bridget rides as the right dock - the third pane of the workspace (icon rail ·
      inbox · assistant), Cursor-style. It's not decoration: it reads the same live
      data, drafts replies you confirm, and answers "who's waiting on me". #}
-  {% if pov == 'study' and user %}{% include "_copilot.html" %}{% endif %}
+  {% if pov == 'study' and user and request.endpoint != 'marketing_hub' %}{% include "_copilot.html" %}{% endif %}
 </div>
 {% if pov == 'study' %}{% include "_omni.html" %}{% else %}{% include "_cmdk.html" %}{% endif %}
 {% if active_site_demo %}{% include "_demo_tour.html" %}{% endif %}

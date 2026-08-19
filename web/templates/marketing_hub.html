@@ -23,10 +23,21 @@
 {% block body %}
 <div class="mh-page">
   <header class="mh-page-head">
-    <div>
-      <div class="mh-eyebrow"><span></span> Shared marketing workspace</div>
+    <div class="mh-title-block">
       <h1>Marketing inbox</h1>
-      <p>Email, Instagram, and ad alerts in one queue your whole team can cover.</p>
+      <div class="mh-stat-strip" aria-label="Inbox summary">
+        <a href="{{ url_for('marketing_hub', status='open') }}" class="mh-stat {{ 'has-work' if counts.unread else '' }}">
+          <b>{{ counts.unread }}</b> Need a reply
+        </a>
+        <span class="mh-stat-sep"></span>
+        <a href="{{ url_for('marketing_hub', status='open') }}" class="mh-stat">
+          <b>{{ counts.open }}</b> Open
+        </a>
+        <span class="mh-stat-sep"></span>
+        <button type="button" class="mh-stat" data-ui-open="sourceModal">
+          <b>{{ counts.sources }}</b> Connected
+        </button>
+      </div>
     </div>
     <div class="mh-head-actions">
       <button type="button" class="mh-duty {{ 'is-covering' if settings.vacation_mode else '' }}" data-ui-open="coverageModal">
@@ -41,28 +52,6 @@
       {{ ui.btn('Connect account', 'primary', icon='plus', extra='data-ui-open="sourceModal"') }}
     </div>
   </header>
-
-  <section class="mh-pulse" aria-label="Inbox summary">
-    <a href="{{ url_for('marketing_hub', status='open') }}" class="mh-pulse-item {{ 'has-work' if counts.unread else '' }}">
-      <span class="mh-pulse-icon">{{ ic.icon('inbox') }}</span>
-      <span><b>{{ counts.unread }}</b><small>Need a reply</small></span>
-    </a>
-    <a href="{{ url_for('marketing_hub', status='open') }}" class="mh-pulse-item">
-      <span class="mh-pulse-icon">{{ ic.icon('chat') }}</span>
-      <span><b>{{ counts.open }}</b><small>Open conversations</small></span>
-    </a>
-    <button type="button" class="mh-pulse-item" data-ui-open="sourceModal">
-      <span class="mh-pulse-icon">{{ ic.icon('cloud-sync') }}</span>
-      <span><b>{{ counts.sources }}</b><small>Connected accounts</small></span>
-    </button>
-    <button type="button" class="mh-pulse-item" data-ui-open="coverageModal">
-      <span class="mh-pulse-icon">{{ ic.icon('users') }}</span>
-      <span>
-        <b class="mh-pulse-name">{{ active_owner.display_name }}</b>
-        <small>{{ 'Covering the inbox' if settings.vacation_mode else 'Primary owner' }}</small>
-      </span>
-    </button>
-  </section>
 
   <section class="mh-workspace">
     <aside class="mh-sources" aria-label="Connected accounts">

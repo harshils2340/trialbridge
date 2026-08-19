@@ -8537,22 +8537,42 @@ body.fs-page { background:
 
 /* ======================== Marketing inbox workspace ======================== */
 .appbody-wide { max-width: 1480px; }
-.mh-page { width: 100%; }
+/* Full-bleed product surface: no centered max-width column, no page padding -
+   the marketing inbox fills the whole frame and IS the screen (like the triage
+   inbox). The page is a flex column so the workspace takes all leftover height. */
+.appbody:has(.mh-page) { padding: 0; max-width: none; }
+.mh-page { width: 100%; display: flex; flex-direction: column;
+  height: calc(100dvh - 57px); padding: 14px 22px 16px; }
 .mh-page-head {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: space-between;
   gap: 20px;
-  margin-bottom: 18px;
+  margin-bottom: 12px;
 }
+.mh-title-block { display: flex; align-items: center; gap: 16px; min-width: 0; flex-wrap: wrap; }
 .mh-page-head h1 {
-  margin: 3px 0 4px;
+  margin: 0;
   color: var(--ink);
-  font-size: clamp(25px, 2.4vw, 34px);
+  font-size: 21px;
   line-height: 1.1;
-  letter-spacing: -.035em;
+  letter-spacing: -.02em;
 }
 .mh-page-head p { margin: 0; color: var(--muted); font-size: 13.5px; }
+
+/* Slim inline stats: the numbers a coordinator glances at, without the big
+   card band eating the screen. Each is a real filter/action, not decoration. */
+.mh-stat-strip { display: inline-flex; align-items: center; gap: 12px;
+  padding: 5px 14px; background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-pill); box-shadow: var(--shadow); }
+.mh-stat { display: inline-flex; align-items: baseline; gap: 5px; padding: 0;
+  border: 0; background: none; font: inherit; font-size: 12.5px; font-weight: 600;
+  color: var(--muted); cursor: pointer; text-decoration: none; white-space: nowrap;
+  -webkit-appearance: none; appearance: none; }
+.mh-stat:hover { color: var(--ink); }
+.mh-stat b { font-size: 15px; font-weight: 800; color: var(--ink); }
+.mh-stat.has-work b { color: #c74a24; }
+.mh-stat-sep { width: 1px; height: 15px; background: var(--border); }
 .mh-eyebrow {
   display: flex;
   align-items: center;
@@ -8687,10 +8707,11 @@ body.fs-page { background:
 .mh-pulse-item b.mh-pulse-name { font-size: 13px; }
 .mh-pulse-item small { margin-top: 3px; color: var(--faint); font-size: 10.5px; }
 
+/* The workspace IS the screen: it fills the viewport below the compact header so
+   the inbox - the thing coordinators actually work in - is the main surface. */
 .mh-workspace {
-  height: calc(100vh - 315px);
-  min-height: 680px;
-  max-height: 850px;
+  flex: 1;
+  min-height: 0;
   display: grid;
   grid-template-columns: 250px 345px minmax(440px, 1fr);
   overflow: hidden;
