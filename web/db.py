@@ -975,6 +975,80 @@ CREATE TABLE IF NOT EXISTS org_invites (
 CREATE INDEX IF NOT EXISTS idx_memberships_user ON memberships(user_id);
 CREATE INDEX IF NOT EXISTS idx_memberships_org ON memberships(org_id);
 
+-- Shared marketing inbox. Provider OAuth/webhooks can populate these tables,
+-- while the workspace remains useful in demo mode without external credentials.
+CREATE TABLE IF NOT EXISTS marketing_sources (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    org_id          INTEGER NOT NULL,
+    channel         TEXT NOT NULL,             -- email | instagram | google_ads
+    label           TEXT DEFAULT '',
+    identifier      TEXT NOT NULL,
+    connection_mode TEXT NOT NULL DEFAULT 'demo', -- demo | live
+    status          TEXT NOT NULL DEFAULT 'connected', -- connected | disconnected
+    created_by      INTEGER,
+    created_at      TEXT NOT NULL,
+    updated_at      TEXT NOT NULL,
+    UNIQUE (org_id, channel, identifier),
+    FOREIGN KEY (org_id) REFERENCES organizations(id),
+    FOREIGN KEY (created_by) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS marketing_threads (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    org_id         INTEGER NOT NULL,
+    source_id      INTEGER,
+    external_ref   TEXT DEFAULT '',
+    contact_name   TEXT DEFAULT '',
+    contact_handle TEXT DEFAULT '',
+    subject        TEXT DEFAULT '',
+    status         TEXT NOT NULL DEFAULT 'open', -- open | resolved
+    assigned_to    INTEGER,
+    unread         INTEGER NOT NULL DEFAULT 1,
+    priority       TEXT NOT NULL DEFAULT 'normal',
+    created_at     TEXT NOT NULL,
+    updated_at     TEXT NOT NULL,
+    FOREIGN KEY (org_id) REFERENCES organizations(id),
+    FOREIGN KEY (source_id) REFERENCES marketing_sources(id),
+    FOREIGN KEY (assigned_to) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS marketing_messages (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    org_id          INTEGER NOT NULL,
+    thread_id       INTEGER NOT NULL,
+    kind            TEXT NOT NULL, -- inbound | outbound | note
+    body            TEXT NOT NULL,
+    author_user_id  INTEGER,
+    author_name     TEXT DEFAULT '',
+    delivery_status TEXT DEFAULT '', -- received | saved | internal
+    created_at      TEXT NOT NULL,
+    FOREIGN KEY (org_id) REFERENCES organizations(id),
+    FOREIGN KEY (thread_id) REFERENCES marketing_threads(id),
+    FOREIGN KEY (author_user_id) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS marketing_handoffs (
+    org_id          INTEGER PRIMARY KEY,
+    primary_user_id INTEGER,
+    cover_user_id   INTEGER,
+    vacation_mode   INTEGER NOT NULL DEFAULT 0,
+    away_until      TEXT DEFAULT '',
+    note            TEXT DEFAULT '',
+    updated_by      INTEGER,
+    updated_at      TEXT NOT NULL,
+    FOREIGN KEY (org_id) REFERENCES organizations(id),
+    FOREIGN KEY (primary_user_id) REFERENCES users(id),
+    FOREIGN KEY (cover_user_id) REFERENCES users(id),
+    FOREIGN KEY (updated_by) REFERENCES users(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_marketing_sources_org
+    ON marketing_sources(org_id, status);
+CREATE INDEX IF NOT EXISTS idx_marketing_threads_org
+    ON marketing_threads(org_id, status, updated_at);
+CREATE INDEX IF NOT EXISTS idx_marketing_messages_thread
+    ON marketing_messages(thread_id, id);
+
 -- Copilot action proposals. The assistant never acts on its own: it writes a
 -- PROPOSED action here, the human confirms it in the rail, and only then is it
 -- executed (and marked confirmed). This gives human-in-the-loop control, an
@@ -1072,6 +1146,13 @@ ORG_ROLE_LABELS = {
 # members (full visibility + day-to-day collaboration).
 _ROLE_CAN_MANAGE_TEAM = {"coordinator", "pi"}
 _ROLE_CAN_APPROVE_DOCS = {"coordinator", "pi"}
+
+MARKETING_CHANNELS = ("email", "instagram", "google_ads")
+MARKETING_CHANNEL_LABELS = {
+    "email": "Email",
+    "instagram": "Instagram",
+    "google_ads": "Google Ads",
+}
 
 
 def now():
@@ -1638,6 +1719,429 @@ def accept_org_invite(user_id, token):
                (now(), inv["id"]))
     db.commit()
     return oid
+
+
+# --------------------------------------------------------------------------- #
+# Shared marketing inbox
+# --------------------------------------------------------------------------- #
+def get_marketing_source(user_id, source_id):
+    oid = user_org_id(user_id)
+    return get_db().execute(
+        "SELECT * FROM marketing_sources WHERE id = ? AND org_id = ?",
+        (source_id, oid)).fetchone()
+
+
+def list_marketing_sources(user_id):
+    oid = user_org_id(user_id)
+    return get_db().execute(
+        "SELECT s.*, "
+        "(SELECT COUNT(*) FROM marketing_threads t "
+        " WHERE t.source_id = s.id AND t.status = 'open') AS open_count, "
+        "(SELECT COUNT(*) FROM marketing_threads t "
+        " WHERE t.source_id = s.id AND t.unread = 1) AS unread_count "
+        "FROM marketing_sources s WHERE s.org_id = ? "
+        "ORDER BY CASE s.channel WHEN 'email' THEN 0 WHEN 'instagram' THEN 1 "
+        "ELSE 2 END, s.created_at",
+        (oid,)).fetchall()
+
+
+def create_marketing_source(user_id, channel, label, identifier,
+                            connection_mode="demo"):
+    if channel not in MARKETING_CHANNELS:
+        return None
+    oid = user_org_id(user_id)
+    label = (label or "").strip()[:80]
+    identifier = (identifier or "").strip()[:160]
+    if not identifier:
+        return None
+    mode = "live" if connection_mode == "live" else "demo"
+    ts = now()
+    conn = get_db()
+    row = conn.execute(
+        "SELECT id FROM marketing_sources "
+        "WHERE org_id = ? AND channel = ? AND lower(identifier) = lower(?)",
+        (oid, channel, identifier)).fetchone()
+    if row:
+        conn.execute(
+            "UPDATE marketing_sources SET label = ?, status = 'connected', "
+            "connection_mode = ?, updated_at = ? WHERE id = ?",
+            (label, mode, ts, row["id"]))
+        source_id = row["id"]
+    else:
+        cur = conn.execute(
+            "INSERT INTO marketing_sources "
+            "(org_id, channel, label, identifier, connection_mode, status, "
+            "created_by, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)",
+            (oid, channel, label, identifier, mode, "connected", user_id, ts, ts))
+        source_id = cur.lastrowid
+    conn.commit()
+    return source_id
+
+
+def set_marketing_source_status(user_id, source_id, status):
+    if status not in ("connected", "disconnected"):
+        return False
+    oid = user_org_id(user_id)
+    conn = get_db()
+    cur = conn.execute(
+        "UPDATE marketing_sources SET status = ?, updated_at = ? "
+        "WHERE id = ? AND org_id = ?",
+        (status, now(), source_id, oid))
+    conn.commit()
+    return bool(cur.rowcount)
+
+
+def get_marketing_handoff(user_id):
+    oid = user_org_id(user_id)
+    conn = get_db()
+    row = conn.execute(
+        "SELECT * FROM marketing_handoffs WHERE org_id = ?", (oid,)).fetchone()
+    if not row:
+        conn.execute(
+            "INSERT INTO marketing_handoffs "
+            "(org_id, primary_user_id, vacation_mode, updated_by, updated_at) "
+            "VALUES (?,?,?,?,?)", (oid, user_id, 0, user_id, now()))
+        conn.commit()
+        row = conn.execute(
+            "SELECT * FROM marketing_handoffs WHERE org_id = ?", (oid,)).fetchone()
+    member_ids = set(org_member_ids(user_id))
+    if row["primary_user_id"] not in member_ids:
+        conn.execute(
+            "UPDATE marketing_handoffs SET primary_user_id = ?, "
+            "vacation_mode = 0, cover_user_id = NULL, updated_by = ?, "
+            "updated_at = ? WHERE org_id = ?",
+            (user_id, user_id, now(), oid))
+        conn.commit()
+        row = conn.execute(
+            "SELECT * FROM marketing_handoffs WHERE org_id = ?", (oid,)).fetchone()
+    return row
+
+
+def marketing_active_owner_id(settings):
+    if not settings:
+        return None
+    if settings["vacation_mode"] and settings["cover_user_id"]:
+        return settings["cover_user_id"]
+    return settings["primary_user_id"]
+
+
+def set_marketing_handoff(user_id, primary_user_id, cover_user_id=None,
+                          vacation_mode=False, away_until="", note=""):
+    oid = user_org_id(user_id)
+    members = set(org_member_ids(user_id))
+    primary_user_id = primary_user_id or user_id
+    if primary_user_id not in members:
+        return False
+    if cover_user_id not in members or cover_user_id == primary_user_id:
+        cover_user_id = None
+    if vacation_mode and not cover_user_id:
+        return False
+    conn = get_db()
+    conn.execute(
+        "INSERT INTO marketing_handoffs "
+        "(org_id, primary_user_id, cover_user_id, vacation_mode, away_until, "
+        "note, updated_by, updated_at) VALUES (?,?,?,?,?,?,?,?) "
+        "ON CONFLICT(org_id) DO UPDATE SET "
+        "primary_user_id = excluded.primary_user_id, "
+        "cover_user_id = excluded.cover_user_id, "
+        "vacation_mode = excluded.vacation_mode, "
+        "away_until = excluded.away_until, note = excluded.note, "
+        "updated_by = excluded.updated_by, updated_at = excluded.updated_at",
+        (oid, primary_user_id, cover_user_id, 1 if vacation_mode else 0,
+         (away_until or "").strip()[:10], (note or "").strip()[:500],
+         user_id, now()))
+    conn.commit()
+    return True
+
+
+def create_marketing_thread(user_id, source_id, contact_name, contact_handle,
+                            subject, body):
+    source = get_marketing_source(user_id, source_id)
+    body = (body or "").strip()[:4000]
+    if not source or not body:
+        return None
+    oid = user_org_id(user_id)
+    settings = get_marketing_handoff(user_id)
+    assigned_to = marketing_active_owner_id(settings)
+    ts = now()
+    conn = get_db()
+    cur = conn.execute(
+        "INSERT INTO marketing_threads "
+        "(org_id, source_id, contact_name, contact_handle, subject, status, "
+        "assigned_to, unread, created_at, updated_at) "
+        "VALUES (?,?,?,?,?,'open',?,1,?,?)",
+        (oid, source_id, (contact_name or "").strip()[:100],
+         (contact_handle or "").strip()[:160],
+         (subject or "New conversation").strip()[:180], assigned_to, ts, ts))
+    thread_id = cur.lastrowid
+    conn.execute(
+        "INSERT INTO marketing_messages "
+        "(org_id, thread_id, kind, body, author_name, delivery_status, created_at) "
+        "VALUES (?,?,?,?,?,?,?)",
+        (oid, thread_id, "inbound", body,
+         (contact_name or contact_handle or "Contact").strip()[:100],
+         "received", ts))
+    conn.commit()
+    return thread_id
+
+
+def get_marketing_thread(user_id, thread_id):
+    oid = user_org_id(user_id)
+    return get_db().execute(
+        "SELECT t.*, s.channel, s.label AS source_label, "
+        "s.identifier AS source_identifier, s.connection_mode, "
+        "s.status AS source_status, u.name AS assigned_name, "
+        "u.email AS assigned_email "
+        "FROM marketing_threads t "
+        "LEFT JOIN marketing_sources s ON s.id = t.source_id "
+        "LEFT JOIN users u ON u.id = t.assigned_to "
+        "WHERE t.id = ? AND t.org_id = ?",
+        (thread_id, oid)).fetchone()
+
+
+def list_marketing_threads(user_id, status="open", channel="", query="",
+                           source_id=None):
+    oid = user_org_id(user_id)
+    where = ["t.org_id = ?"]
+    args = [oid]
+    if status in ("open", "resolved"):
+        where.append("t.status = ?")
+        args.append(status)
+    if channel in MARKETING_CHANNELS:
+        where.append("s.channel = ?")
+        args.append(channel)
+    if source_id:
+        where.append("t.source_id = ?")
+        args.append(source_id)
+    query = (query or "").strip().lower()[:100]
+    if query:
+        where.append(
+            "(lower(t.contact_name) LIKE ? OR lower(t.contact_handle) LIKE ? "
+            "OR lower(t.subject) LIKE ? OR EXISTS (SELECT 1 FROM "
+            "marketing_messages qm WHERE qm.thread_id = t.id "
+            "AND lower(qm.body) LIKE ?))")
+        like = f"%{query}%"
+        args.extend([like, like, like, like])
+    sql = (
+        "SELECT t.*, s.channel, s.label AS source_label, "
+        "s.identifier AS source_identifier, s.connection_mode, "
+        "u.name AS assigned_name, "
+        "COALESCE((SELECT m.body FROM marketing_messages m "
+        "WHERE m.thread_id = t.id ORDER BY m.id DESC LIMIT 1), '') AS preview, "
+        "COALESCE((SELECT m.kind FROM marketing_messages m "
+        "WHERE m.thread_id = t.id ORDER BY m.id DESC LIMIT 1), '') AS last_kind, "
+        "(SELECT COUNT(*) FROM marketing_messages m "
+        "WHERE m.thread_id = t.id) AS message_count "
+        "FROM marketing_threads t "
+        "LEFT JOIN marketing_sources s ON s.id = t.source_id "
+        "LEFT JOIN users u ON u.id = t.assigned_to WHERE "
+        + " AND ".join(where) +
+        " ORDER BY t.unread DESC, t.updated_at DESC, t.id DESC")
+    return get_db().execute(sql, tuple(args)).fetchall()
+
+
+def marketing_thread_counts(user_id):
+    oid = user_org_id(user_id)
+    row = get_db().execute(
+        "SELECT COUNT(*) AS total, "
+        "SUM(CASE WHEN status = 'open' THEN 1 ELSE 0 END) AS open_count, "
+        "SUM(CASE WHEN status = 'resolved' THEN 1 ELSE 0 END) AS resolved_count, "
+        "SUM(CASE WHEN unread = 1 THEN 1 ELSE 0 END) AS unread_count "
+        "FROM marketing_threads WHERE org_id = ?", (oid,)).fetchone()
+    return {
+        "total": int(row["total"] or 0),
+        "open": int(row["open_count"] or 0),
+        "resolved": int(row["resolved_count"] or 0),
+        "unread": int(row["unread_count"] or 0),
+    }
+
+
+def list_marketing_messages(user_id, thread_id):
+    thread = get_marketing_thread(user_id, thread_id)
+    if not thread:
+        return []
+    return get_db().execute(
+        "SELECT m.*, u.name AS user_name FROM marketing_messages m "
+        "LEFT JOIN users u ON u.id = m.author_user_id "
+        "WHERE m.thread_id = ? AND m.org_id = ? ORDER BY m.id",
+        (thread_id, thread["org_id"])).fetchall()
+
+
+def mark_marketing_thread_read(user_id, thread_id):
+    oid = user_org_id(user_id)
+    conn = get_db()
+    cur = conn.execute(
+        "UPDATE marketing_threads SET unread = 0 WHERE id = ? AND org_id = ?",
+        (thread_id, oid))
+    conn.commit()
+    return bool(cur.rowcount)
+
+
+def add_marketing_message(user_id, thread_id, body, kind="outbound"):
+    if kind not in ("outbound", "note"):
+        return None
+    thread = get_marketing_thread(user_id, thread_id)
+    body = (body or "").strip()[:4000]
+    if not thread or not body:
+        return None
+    user = get_db().execute(
+        "SELECT name, email FROM users WHERE id = ?", (user_id,)).fetchone()
+    author = ((user["name"] or user["email"]) if user else "Team member")
+    delivery = "internal" if kind == "note" else "saved"
+    ts = now()
+    conn = get_db()
+    cur = conn.execute(
+        "INSERT INTO marketing_messages "
+        "(org_id, thread_id, kind, body, author_user_id, author_name, "
+        "delivery_status, created_at) VALUES (?,?,?,?,?,?,?,?)",
+        (thread["org_id"], thread_id, kind, body, user_id, author,
+         delivery, ts))
+    conn.execute(
+        "UPDATE marketing_threads SET unread = 0, status = 'open', "
+        "updated_at = ? WHERE id = ?", (ts, thread_id))
+    conn.commit()
+    return cur.lastrowid
+
+
+def assign_marketing_thread(user_id, thread_id, assignee_id=None):
+    oid = user_org_id(user_id)
+    if assignee_id is not None and assignee_id not in set(org_member_ids(user_id)):
+        return False
+    conn = get_db()
+    cur = conn.execute(
+        "UPDATE marketing_threads SET assigned_to = ?, updated_at = ? "
+        "WHERE id = ? AND org_id = ?",
+        (assignee_id, now(), thread_id, oid))
+    conn.commit()
+    return bool(cur.rowcount)
+
+
+def set_marketing_thread_status(user_id, thread_id, status):
+    if status not in ("open", "resolved"):
+        return False
+    oid = user_org_id(user_id)
+    conn = get_db()
+    cur = conn.execute(
+        "UPDATE marketing_threads SET status = ?, unread = 0, updated_at = ? "
+        "WHERE id = ? AND org_id = ?", (status, now(), thread_id, oid))
+    conn.commit()
+    return bool(cur.rowcount)
+
+
+def seed_demo_marketing_hub(user_id):
+    """Populate the isolated demo account with fake channels and conversations."""
+    if not user_id:
+        return
+    conn = get_db()
+    demo_user = conn.execute(
+        "SELECT email FROM users WHERE id = ?", (user_id,)).fetchone()
+    if not demo_user or (demo_user["email"] or "").lower() != "demo@bridgemd.local":
+        return
+    oid = user_org_id(user_id)
+    if conn.execute(
+            "SELECT 1 FROM marketing_sources WHERE org_id = ? LIMIT 1",
+            (oid,)).fetchone():
+        get_marketing_handoff(user_id)
+        return
+
+    ts = now()
+
+    def _demo_member(email, name):
+        row = conn.execute("SELECT id FROM users WHERE email = ?", (email,)).fetchone()
+        if row:
+            uid = row["id"]
+            conn.execute("UPDATE users SET org_id = ? WHERE id = ?", (oid, uid))
+        else:
+            cur = conn.execute(
+                "INSERT INTO users (email, password_hash, name, verified, "
+                "verified_at, created_at, org_id) VALUES (?,?,?,?,?,?,?)",
+                (email, "demo-login-disabled", name, 1, ts, ts, oid))
+            uid = cur.lastrowid
+        conn.execute("DELETE FROM memberships WHERE user_id = ? AND org_id != ?",
+                     (uid, oid))
+        conn.execute(
+            "INSERT OR IGNORE INTO memberships "
+            "(org_id, user_id, role, role_label, created_at) VALUES (?,?,?,?,?)",
+            (oid, uid, "student", "Marketing teammate", ts))
+        return uid
+
+    jordan_id = _demo_member("jordan.marketing@bridgemd.local", "Jordan Lee")
+    casey_id = _demo_member("casey.marketing@bridgemd.local", "Casey Morgan")
+
+    def _source(channel, label, identifier):
+        cur = conn.execute(
+            "INSERT INTO marketing_sources "
+            "(org_id, channel, label, identifier, connection_mode, status, "
+            "created_by, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)",
+            (oid, channel, label, identifier, "demo", "connected", user_id,
+             ts, ts))
+        return cur.lastrowid
+
+    email_id = _source("email", "Recruitment inbox", "hello@northstartrials.com")
+    instagram_id = _source("instagram", "Community DMs", "@northstartrials")
+    ads_id = _source("google_ads", "Patient search ads", "Northstar Search")
+
+    def _ago(minutes):
+        return (dt.datetime.now() - dt.timedelta(minutes=minutes)).strftime(
+            "%Y-%m-%d %H:%M")
+
+    def _thread(source_id, contact, handle, subject, body, minutes,
+                assignee, unread=1, status="open", reply=""):
+        stamp = _ago(minutes)
+        cur = conn.execute(
+            "INSERT INTO marketing_threads "
+            "(org_id, source_id, contact_name, contact_handle, subject, status, "
+            "assigned_to, unread, created_at, updated_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?)",
+            (oid, source_id, contact, handle, subject, status, assignee,
+             unread, stamp, stamp))
+        tid = cur.lastrowid
+        conn.execute(
+            "INSERT INTO marketing_messages "
+            "(org_id, thread_id, kind, body, author_name, delivery_status, "
+            "created_at) VALUES (?,?,?,?,?,?,?)",
+            (oid, tid, "inbound", body, contact, "received", stamp))
+        if reply:
+            conn.execute(
+                "INSERT INTO marketing_messages "
+                "(org_id, thread_id, kind, body, author_user_id, author_name, "
+                "delivery_status, created_at) VALUES (?,?,?,?,?,?,?,?)",
+                (oid, tid, "outbound", reply, assignee, "BridgeMD team",
+                 "saved", _ago(max(0, minutes - 8))))
+        return tid
+
+    _thread(
+        email_id, "Nadia Brooks", "nadia@example.com",
+        "Do you offer evening screening appointments?",
+        "I work until 5 most days. Are there evening screening appointments, "
+        "and is parking covered?", 7, user_id, unread=1)
+    _thread(
+        instagram_id, "Mina Chen", "@healthwithmina",
+        "Community partnership question",
+        "I run a local health education page. Who can I speak with about sharing "
+        "your study information?", 24, casey_id, unread=1)
+    _thread(
+        ads_id, "Google Ads", "Automated alert",
+        "Cost per application increased 22%",
+        "The patient search campaign is pacing above its seven-day cost per "
+        "application average. Review search terms and budget allocation.",
+        51, jordan_id, unread=0)
+    _thread(
+        email_id, "Dr. Sam Patel", "sam.patel@example.com",
+        "Referral materials for my clinic",
+        "Could you send a one-page overview that my care team can use when "
+        "patients ask about the study?", 190, user_id, unread=0,
+        status="resolved",
+        reply="Absolutely. I have attached the approved clinic overview and "
+        "included our direct contact details.")
+
+    conn.execute(
+        "INSERT INTO marketing_handoffs "
+        "(org_id, primary_user_id, cover_user_id, vacation_mode, away_until, "
+        "note, updated_by, updated_at) VALUES (?,?,?,?,?,?,?,?) "
+        "ON CONFLICT(org_id) DO NOTHING",
+        (oid, user_id, casey_id, 0, "", "", user_id, ts))
+    conn.commit()
 
 
 def get_user_by_email(email):

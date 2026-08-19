@@ -46,21 +46,9 @@
 </div>
 {% endif %}
 
-{% if active_site_demo and not workspace %}
-<section class="demo-welcome" aria-label="How to explore this live demo">
-  <div class="demo-welcome-icon">{{ ic.icon('sparkle') }}</div>
-  <div>
-    <span>LIVE PRODUCT TOUR</span>
-    <h2>See how a site moves a candidate from interest to enrollment.</h2>
-    <p>Start with the work that needs attention today, then follow the guided steps in the sidebar. This is a fully interactive workspace using fictional data.</p>
-  </div>
-  <a class="btn btn-primary" href="#today-work">Start the tour {{ ic.icon('arrow-right') }}</a>
-</section>
-{% endif %}
-
 {# ── "Today" timeline: the whole day on one hour track (Google/Metamate-style),
    with a live "now" line and a next-up card. All visits, one place. ── #}
-<div class="app-card today-card" id="today-work">
+<div class="app-card today-card" id="today-work" data-demo-tour-target="today">
   <div class="today-h">
     <div class="today-h-l">
       <span class="today-title">Today</span>

@@ -1,0 +1,481 @@
+{% extends "base.html" %}
+{% import "_icons.html" as ic %}
+{% import "_ui.html" as ui %}
+
+{% block title %}Marketing inbox | BridgeMD{% endblock %}
+
+{% macro channel_icon(channel, extra='') -%}
+  {% if channel == 'email' %}
+    <span class="mh-channel-ic is-email {{ extra }}">{{ ic.icon('mail') }}</span>
+  {% elif channel == 'instagram' %}
+    <span class="mh-channel-ic is-instagram {{ extra }}">IG</span>
+  {% else %}
+    <span class="mh-channel-ic is-google {{ extra }}">{{ ic.icon('google', 'brand-ico') }}</span>
+  {% endif %}
+{%- endmacro %}
+
+{% macro member_avatar(member, extra='') -%}
+  <span class="mh-avatar {{ extra }}" title="{{ member.display_name if member else 'Unassigned' }}">
+    {{ member.initial if member else '?' }}
+  </span>
+{%- endmacro %}
+
+{% block body %}
+<div class="mh-page">
+  <header class="mh-page-head">
+    <div>
+      <div class="mh-eyebrow"><span></span> Shared marketing workspace</div>
+      <h1>Marketing inbox</h1>
+      <p>Email, Instagram, and ad alerts in one queue your whole team can cover.</p>
+    </div>
+    <div class="mh-head-actions">
+      <button type="button" class="mh-duty {{ 'is-covering' if settings.vacation_mode else '' }}" data-ui-open="coverageModal">
+        {{ member_avatar(active_owner, 'is-small') }}
+        <span>
+          <small>{{ 'Vacation cover' if settings.vacation_mode else 'On duty' }}</small>
+          <b>{{ active_owner.display_name }}</b>
+        </span>
+        {{ ic.icon('chevron-down') }}
+      </button>
+      {{ ui.btn('Test conversation', 'ghost', icon='chat', extra='data-ui-open="testThreadModal"', disabled=not counts.sources) }}
+      {{ ui.btn('Connect account', 'primary', icon='plus', extra='data-ui-open="sourceModal"') }}
+    </div>
+  </header>
+
+  <div class="mh-demo-note" role="status">
+    <span class="mh-demo-note-ic">{{ ic.icon('info') }}</span>
+    <div>
+      <b>The shared workspace is live. External connectors are in demo mode.</b>
+      <span>Accounts, assignments, notes, replies, and handoffs are saved. Provider OAuth is still required before messages can sync or send outside BridgeMD.</span>
+    </div>
+  </div>
+
+  <section class="mh-pulse" aria-label="Inbox summary">
+    <a href="{{ url_for('marketing_hub', status='open') }}" class="mh-pulse-item {{ 'has-work' if counts.unread else '' }}">
+      <span class="mh-pulse-icon">{{ ic.icon('inbox') }}</span>
+      <span><b>{{ counts.unread }}</b><small>Need a reply</small></span>
+    </a>
+    <a href="{{ url_for('marketing_hub', status='open') }}" class="mh-pulse-item">
+      <span class="mh-pulse-icon">{{ ic.icon('chat') }}</span>
+      <span><b>{{ counts.open }}</b><small>Open conversations</small></span>
+    </a>
+    <button type="button" class="mh-pulse-item" data-ui-open="sourceModal">
+      <span class="mh-pulse-icon">{{ ic.icon('cloud-sync') }}</span>
+      <span><b>{{ counts.sources }}</b><small>Connected accounts</small></span>
+    </button>
+    <button type="button" class="mh-pulse-item" data-ui-open="coverageModal">
+      <span class="mh-pulse-icon">{{ ic.icon('users') }}</span>
+      <span>
+        <b class="mh-pulse-name">{{ active_owner.display_name }}</b>
+        <small>{{ 'Covering the inbox' if settings.vacation_mode else 'Primary owner' }}</small>
+      </span>
+    </button>
+  </section>
+
+  <section class="mh-workspace">
+    <aside class="mh-sources" aria-label="Connected accounts">
+      <div class="mh-column-head">
+        <div>
+          <span class="mh-column-kicker">Channels</span>
+          <h2>Accounts</h2>
+        </div>
+        <button class="mh-icon-btn" type="button" data-ui-open="sourceModal" aria-label="Connect an account" title="Connect an account">
+          {{ ic.icon('plus') }}
+        </button>
+      </div>
+
+      <a class="mh-all-inbox {{ 'is-active' if not source_filter and not channel_filter else '' }}"
+         href="{{ url_for('marketing_hub', status=status_filter, q=search_query) }}">
+        <span class="mh-channel-ic is-all">{{ ic.icon('inbox') }}</span>
+        <span><b>All conversations</b><small>Every connected account</small></span>
+        {% if counts.unread %}<span class="mh-count">{{ counts.unread }}</span>{% endif %}
+      </a>
+
+      <div class="mh-source-stack">
+        {% for source in sources %}
+        <div class="mh-source-wrap {{ 'is-active' if source_filter == source.id else '' }} {{ 'is-off' if source.status != 'connected' else '' }}">
+          <a class="mh-source-link" href="{{ url_for('marketing_hub', source=source.id, status=status_filter, q=search_query) }}">
+            {{ channel_icon(source.channel) }}
+            <span class="mh-source-copy">
+              <b>{{ source.label or channel_labels[source.channel] }}</b>
+              <small>{{ source.identifier }}</small>
+            </span>
+            {% if source.unread_count %}<span class="mh-count">{{ source.unread_count }}</span>{% endif %}
+          </a>
+          <form method="post" action="{{ url_for('marketing_source_status', source_id=source.id) }}" class="mh-source-state">
+            <input type="hidden" name="status" value="{{ 'connected' if source.status != 'connected' else 'disconnected' }}">
+            <button type="submit" title="{{ 'Reconnect' if source.status != 'connected' else 'Disconnect' }} {{ source.label }}">
+              <span class="mh-status-dot"></span>{{ 'Reconnect' if source.status != 'connected' else 'Demo connected' }}
+            </button>
+          </form>
+        </div>
+        {% else %}
+        <div class="mh-source-empty">
+          <span>{{ ic.icon('cloud-sync') }}</span>
+          <b>No accounts yet</b>
+          <p>Connect your first inbox or marketing account to get started.</p>
+          {{ ui.btn('Connect account', 'primary', 'sm', icon='plus', extra='data-ui-open="sourceModal"') }}
+        </div>
+        {% endfor %}
+      </div>
+
+      <div class="mh-coverage-card {{ 'is-on' if settings.vacation_mode else '' }}">
+        <div class="mh-coverage-top">
+          <span class="mh-coverage-icon">{{ ic.icon('users') }}</span>
+          <span>
+            <small>{{ 'Coverage active' if settings.vacation_mode else 'Inbox coverage' }}</small>
+            <b>{{ active_owner.display_name }} is on duty</b>
+          </span>
+        </div>
+        {% if settings.vacation_mode %}
+        <p>{{ primary.display_name if primary else 'The primary owner' }} is away{% if settings.away_until %} until {{ settings.away_until }}{% endif %}. New conversations route to {{ active_owner.display_name }}.</p>
+        {% else %}
+        <p>Choose a teammate before you leave and keep every conversation moving.</p>
+        {% endif %}
+        <button type="button" data-ui-open="coverageModal">Manage coverage {{ ic.icon('arrow-right') }}</button>
+      </div>
+    </aside>
+
+    <section class="mh-thread-column" aria-label="Conversations">
+      <div class="mh-thread-toolbar">
+        <form method="get" action="{{ url_for('marketing_hub') }}" class="mh-search">
+          {{ ic.icon('search') }}
+          <input name="q" type="search" value="{{ search_query }}" placeholder="Search conversations" aria-label="Search conversations">
+          <input type="hidden" name="status" value="{{ status_filter }}">
+          {% if source_filter %}<input type="hidden" name="source" value="{{ source_filter }}">{% endif %}
+          {% if channel_filter %}<input type="hidden" name="channel" value="{{ channel_filter }}">{% endif %}
+        </form>
+        <button class="mh-icon-btn" type="button" data-ui-open="testThreadModal" aria-label="Create a test conversation" title="Create a test conversation" {{ 'disabled' if not counts.sources }}>
+          {{ ic.icon('plus') }}
+        </button>
+      </div>
+
+      <nav class="mh-thread-tabs" aria-label="Conversation status">
+        <a class="{{ 'is-active' if status_filter == 'open' else '' }}" href="{{ url_for('marketing_hub', status='open', source=source_filter, channel=channel_filter, q=search_query) }}">Open <span>{{ counts.open }}</span></a>
+        <a class="{{ 'is-active' if status_filter == 'resolved' else '' }}" href="{{ url_for('marketing_hub', status='resolved', source=source_filter, channel=channel_filter, q=search_query) }}">Resolved <span>{{ counts.resolved }}</span></a>
+        <a class="{{ 'is-active' if status_filter == 'all' else '' }}" href="{{ url_for('marketing_hub', status='all', source=source_filter, channel=channel_filter, q=search_query) }}">All</a>
+      </nav>
+
+      <div class="mh-thread-stack">
+        {% for thread in threads %}
+        <a class="mh-thread-row {{ 'is-active' if active and active.id == thread.id else '' }} {{ 'is-unread' if thread.unread else '' }}"
+           href="{{ url_for('marketing_hub', thread=thread.id, status=status_filter, source=source_filter, channel=channel_filter, q=search_query) }}#conversation">
+          <div class="mh-thread-row-top">
+            <span class="mh-contact-avatar">{{ (thread.contact_name or thread.contact_handle or '?')[:1]|upper }}</span>
+            <span class="mh-thread-person">
+              <b>{{ thread.contact_name or thread.contact_handle or 'Unknown contact' }}</b>
+              <small>{{ thread.channel_label }}{% if thread.source_label %} via {{ thread.source_label }}{% endif %}</small>
+            </span>
+            <time>{{ thread.time_label }}</time>
+            {% if thread.unread %}<span class="mh-unread-dot" aria-label="Unread"></span>{% endif %}
+          </div>
+          <h3>{{ thread.subject or 'New conversation' }}</h3>
+          <p>{{ thread.preview }}</p>
+          <div class="mh-thread-row-foot">
+            {% set assignee = member_by_id.get(thread.assigned_to) %}
+            {{ member_avatar(assignee, 'is-tiny') }}
+            <span>{{ assignee.display_name if assignee else 'Unassigned' }}</span>
+            {% if thread.status == 'resolved' %}<span class="mh-resolved-tag">{{ ic.icon('check') }} Resolved</span>{% endif %}
+          </div>
+        </a>
+        {% else %}
+        <div class="mh-thread-empty">
+          <span>{{ ic.icon('inbox') }}</span>
+          <h3>{{ 'Nothing found' if search_query else 'You are all caught up' }}</h3>
+          <p>{{ 'Try a different search or account.' if search_query else 'New conversations will appear here for the whole team.' }}</p>
+          {% if counts.sources %}{{ ui.btn('Add test conversation', 'ghost', 'sm', icon='plus', extra='data-ui-open="testThreadModal"') }}{% endif %}
+        </div>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="mh-conversation" id="conversation" aria-label="Active conversation">
+      {% if active %}
+      <header class="mh-conversation-head">
+        <div class="mh-contact-main">
+          <span class="mh-contact-avatar is-large">{{ (active.contact_name or active.contact_handle or '?')[:1]|upper }}</span>
+          <span>
+            <small>{{ channel_labels.get(active.channel, 'Message') }}{% if active.source_label %} via {{ active.source_label }}{% endif %}</small>
+            <h2>{{ active.contact_name or active.contact_handle or 'Unknown contact' }}</h2>
+            <p>{{ active.contact_handle or active.source_identifier }}</p>
+          </span>
+        </div>
+        <div class="mh-conversation-actions">
+          <form method="post" action="{{ url_for('marketing_thread_assign', thread_id=active.id) }}" class="mh-assign-form">
+            <label for="threadAssignee">Owner</label>
+            <select id="threadAssignee" name="assignee_id" data-autosubmit>
+              <option value="">Unassigned</option>
+              {% for member in members %}
+              <option value="{{ member.user_id }}" {{ 'selected' if active.assigned_to == member.user_id }}>{{ member.display_name }}{{ ' (you)' if member.user_id == user.id }}</option>
+              {% endfor %}
+            </select>
+          </form>
+          <form method="post" action="{{ url_for('marketing_thread_status', thread_id=active.id) }}">
+            <input type="hidden" name="status" value="{{ 'open' if active.status == 'resolved' else 'resolved' }}">
+            <button class="mh-resolve-btn" type="submit">
+              {{ ic.icon('refresh' if active.status == 'resolved' else 'check') }}
+              {{ 'Reopen' if active.status == 'resolved' else 'Resolve' }}
+            </button>
+          </form>
+        </div>
+      </header>
+
+      <div class="mh-subject-bar">
+        <span>Subject</span>
+        <b>{{ active.subject or 'New conversation' }}</b>
+        {{ ui.badge('Resolved' if active.status == 'resolved' else 'Open', 'ok' if active.status == 'resolved' else 'brand') }}
+      </div>
+
+      <div class="mh-message-list" id="messageList" aria-live="polite">
+        <div class="mh-day-rule"><span>Conversation history</span></div>
+        {% for message in messages %}
+          {% if message.kind == 'note' %}
+          <article class="mh-internal-note">
+            <span class="mh-note-icon">{{ ic.icon('users') }}</span>
+            <div>
+              <header><b>Internal note from {{ message.display_author }}</b><time>{{ message.time_label }}</time></header>
+              <p>{{ message.body }}</p>
+            </div>
+          </article>
+          {% else %}
+          <article class="mh-message {{ 'is-outbound' if message.kind == 'outbound' else 'is-inbound' }}">
+            <header>
+              <b>{{ 'You' if message.author_user_id == user.id else message.display_author }}</b>
+              <time>{{ message.time_label }}</time>
+            </header>
+            <div class="mh-message-bubble">{{ message.body }}</div>
+            {% if message.kind == 'outbound' and message.delivery_status == 'saved' %}
+            <small class="mh-delivery">{{ ic.icon('info') }} Saved in workspace, not delivered externally</small>
+            {% endif %}
+          </article>
+          {% endif %}
+        {% endfor %}
+      </div>
+
+      <div class="mh-composer" id="composer">
+        <div class="mh-compose-tabs" role="tablist" aria-label="Composer type">
+          <button type="button" class="is-active" data-compose-tab="reply" role="tab" aria-selected="true">{{ ic.icon('send') }} Reply</button>
+          <button type="button" data-compose-tab="note" role="tab" aria-selected="false">{{ ic.icon('users') }} Internal note</button>
+        </div>
+
+        <form method="post" action="{{ url_for('marketing_thread_reply', thread_id=active.id) }}" class="mh-compose-panel" data-compose-panel="reply">
+          <textarea name="body" rows="4" required placeholder="Reply to {{ active.contact_name or active.contact_handle or 'this contact' }}..."></textarea>
+          <div class="mh-compose-foot">
+            <span>
+              {% if active.connection_mode == 'demo' %}
+              {{ ic.icon('info') }} Demo connection: this reply will be saved here only.
+              {% else %}
+              Replying from {{ active.source_identifier }}
+              {% endif %}
+            </span>
+            {{ ui.btn('Save reply' if active.connection_mode == 'demo' else 'Send reply', 'primary', icon='send', type='submit') }}
+          </div>
+        </form>
+
+        <form method="post" action="{{ url_for('marketing_thread_note', thread_id=active.id) }}" class="mh-compose-panel" data-compose-panel="note" hidden>
+          <textarea name="body" rows="4" required placeholder="Leave context for your teammates..."></textarea>
+          <div class="mh-compose-foot">
+            <span>{{ ic.icon('lock') }} Only your workspace team can see this note.</span>
+            {{ ui.btn('Add note', 'primary', icon='plus', type='submit') }}
+          </div>
+        </form>
+      </div>
+      {% else %}
+      <div class="mh-no-conversation">
+        <span>{{ ic.icon('chat') }}</span>
+        <h2>Select a conversation</h2>
+        <p>Open a message from the queue to reply, assign it, or leave an internal note.</p>
+      </div>
+      {% endif %}
+    </section>
+  </section>
+</div>
+
+{% call ui.modal('sourceModal', 'Connect an account', icon='cloud-sync') %}
+<form method="post" action="{{ url_for('marketing_source_add') }}" class="mh-modal-form" id="sourceForm">
+  <div class="field">
+    <label>What do you want to connect?</label>
+    <div class="mh-channel-picker">
+      <label>
+        <input type="radio" name="channel" value="email" checked>
+        <span>{{ channel_icon('email') }}<b>Email</b><small>Shared inbox</small></span>
+      </label>
+      <label>
+        <input type="radio" name="channel" value="instagram">
+        <span>{{ channel_icon('instagram') }}<b>Instagram</b><small>Direct messages</small></span>
+      </label>
+      <label>
+        <input type="radio" name="channel" value="google_ads">
+        <span>{{ channel_icon('google_ads') }}<b>Google Ads</b><small>Account alerts</small></span>
+      </label>
+    </div>
+  </div>
+  <div class="field">
+    <label for="sourceLabel">Account label</label>
+    <input id="sourceLabel" name="label" maxlength="80" placeholder="Recruitment inbox" required>
+    <span class="mh-field-help">Use a name your teammates will recognize.</span>
+  </div>
+  <div class="field">
+    <label for="sourceIdentifier" id="sourceIdentifierLabel">Email address</label>
+    <input id="sourceIdentifier" name="identifier" maxlength="160" placeholder="recruitment@example.com" required>
+    <span class="mh-field-help" id="sourceIdentifierHelp">Messages sent to this address will share one queue after OAuth is configured.</span>
+  </div>
+  <div class="mh-oauth-preview">
+    {{ ic.icon('shield-check') }}
+    <span><b>Demo connection for now</b><small>No password is requested or stored. Live access will use the provider's OAuth consent screen.</small></span>
+  </div>
+  <div class="mh-modal-actions">
+    {{ ui.btn('Cancel', 'ghost', extra='data-ui-close') }}
+    {{ ui.btn('Add account', 'primary', icon='plus', type='submit') }}
+  </div>
+</form>
+{% endcall %}
+
+{% call ui.modal('testThreadModal', 'Add a test conversation', icon='chat') %}
+{% if counts.sources %}
+<form method="post" action="{{ url_for('marketing_thread_create') }}" class="mh-modal-form">
+  <div class="field">
+    <label for="testSource">Arrived through</label>
+    <select id="testSource" name="source_id" required>
+      {% for source in sources if source.status == 'connected' %}
+      <option value="{{ source.id }}">{{ channel_labels[source.channel] }} - {{ source.label or source.identifier }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="mh-two-fields">
+    <div class="field">
+      <label for="testContact">Contact name</label>
+      <input id="testContact" name="contact_name" maxlength="100" placeholder="Alex Morgan" required>
+    </div>
+    <div class="field">
+      <label for="testHandle">Email or handle</label>
+      <input id="testHandle" name="contact_handle" maxlength="160" placeholder="alex@example.com">
+    </div>
+  </div>
+  <div class="field">
+    <label for="testSubject">Subject</label>
+    <input id="testSubject" name="subject" maxlength="180" placeholder="Question about the campaign" required>
+  </div>
+  <div class="field">
+    <label for="testBody">Message</label>
+    <textarea id="testBody" name="body" rows="4" maxlength="4000" placeholder="Write the inbound message..." required></textarea>
+  </div>
+  <div class="mh-modal-actions">
+    {{ ui.btn('Cancel', 'ghost', extra='data-ui-close') }}
+    {{ ui.btn('Add to inbox', 'primary', icon='plus', type='submit') }}
+  </div>
+</form>
+{% else %}
+<div class="mh-modal-empty">
+  <p>Connect an account before adding a test conversation.</p>
+  {{ ui.btn('Connect account', 'primary', icon='plus', extra='data-ui-close data-ui-open="sourceModal"') }}
+</div>
+{% endif %}
+{% endcall %}
+
+{% call ui.modal('coverageModal', 'Inbox coverage', icon='users') %}
+<form method="post" action="{{ url_for('marketing_coverage') }}" class="mh-modal-form">
+  <div class="mh-coverage-explainer">
+    {{ member_avatar(active_owner) }}
+    <span>
+      <b>{{ active_owner.display_name }} is handling new conversations</b>
+      <small>Everyone on the team can still read, reply, and reassign any thread.</small>
+    </span>
+  </div>
+  <div class="field">
+    <label for="primaryOwner">Primary owner</label>
+    <select id="primaryOwner" name="primary_user_id" required>
+      {% for member in members %}
+      <option value="{{ member.user_id }}" {{ 'selected' if settings.primary_user_id == member.user_id }}>{{ member.display_name }}{{ ' (you)' if member.user_id == user.id }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <label class="mh-vacation-switch">
+    <span>
+      <b>Vacation mode</b>
+      <small>Route new conversations to a cover teammate.</small>
+    </span>
+    <input type="checkbox" name="vacation_mode" value="1" {{ 'checked' if settings.vacation_mode }}>
+    <i aria-hidden="true"></i>
+  </label>
+  <div class="mh-two-fields">
+    <div class="field">
+      <label for="coverOwner">Cover teammate</label>
+      <select id="coverOwner" name="cover_user_id">
+        <option value="">Choose a teammate</option>
+        {% for member in members %}
+        <option value="{{ member.user_id }}" {{ 'selected' if settings.cover_user_id == member.user_id }}>{{ member.display_name }}{{ ' (you)' if member.user_id == user.id }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label for="awayUntil">Back on</label>
+      <input id="awayUntil" name="away_until" type="date" min="{{ today }}" value="{{ settings.away_until }}">
+    </div>
+  </div>
+  <div class="field">
+    <label for="handoffNote">Handoff note <span>(optional)</span></label>
+    <textarea id="handoffNote" name="note" rows="3" maxlength="500" placeholder="What should your cover know?">{{ settings.note }}</textarea>
+  </div>
+  {% if members|length < 2 %}
+  <div class="mh-invite-nudge">{{ ic.icon('user-plus') }} <span>Add a teammate before turning on coverage.</span> <a href="{{ url_for('team_page') }}">Manage team</a></div>
+  {% endif %}
+  <div class="mh-modal-actions">
+    {{ ui.btn('Cancel', 'ghost', extra='data-ui-close') }}
+    {{ ui.btn('Save coverage', 'primary', icon='check', type='submit') }}
+  </div>
+</form>
+{% endcall %}
+
+<script>
+(function () {
+  document.querySelectorAll('[data-autosubmit]').forEach(function (select) {
+    select.addEventListener('change', function () { select.form.submit(); });
+  });
+
+  var composeTabs = document.querySelectorAll('[data-compose-tab]');
+  var composePanels = document.querySelectorAll('[data-compose-panel]');
+  composeTabs.forEach(function (tab) {
+    tab.addEventListener('click', function () {
+      var target = tab.getAttribute('data-compose-tab');
+      composeTabs.forEach(function (item) {
+        var active = item === tab;
+        item.classList.toggle('is-active', active);
+        item.setAttribute('aria-selected', active ? 'true' : 'false');
+      });
+      composePanels.forEach(function (panel) {
+        panel.hidden = panel.getAttribute('data-compose-panel') !== target;
+      });
+      var area = document.querySelector('[data-compose-panel="' + target + '"] textarea');
+      if (area) area.focus();
+    });
+  });
+
+  var sourceForm = document.getElementById('sourceForm');
+  if (sourceForm) {
+    var label = document.getElementById('sourceIdentifierLabel');
+    var input = document.getElementById('sourceIdentifier');
+    var help = document.getElementById('sourceIdentifierHelp');
+    var accountLabel = document.getElementById('sourceLabel');
+    var copy = {
+      email: ['Email address', 'recruitment@example.com', 'Recruitment inbox', 'Messages sent to this address will share one queue after OAuth is configured.'],
+      instagram: ['Instagram handle', '@youraccount', 'Community DMs', 'Instagram Direct messages will appear here after Meta OAuth is configured.'],
+      google_ads: ['Account name or customer ID', '123-456-7890', 'Patient search ads', 'Performance and policy alerts will appear here after Google Ads OAuth is configured.']
+    };
+    sourceForm.querySelectorAll('input[name="channel"]').forEach(function (radio) {
+      radio.addEventListener('change', function () {
+        if (!radio.checked) return;
+        var values = copy[radio.value];
+        label.textContent = values[0];
+        input.placeholder = values[1];
+        accountLabel.placeholder = values[2];
+        help.textContent = values[3];
+      });
+    });
+  }
+
+  var messageList = document.getElementById('messageList');
+  if (messageList) messageList.scrollTop = messageList.scrollHeight;
+})();
+</script>
+{% endblock %}

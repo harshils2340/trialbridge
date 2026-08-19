@@ -1,0 +1,150 @@
+{# Public-demo-only product tour. It never renders for signed-in site accounts. #}
+<div class="demo-tour" id="demoTour" hidden aria-live="polite">
+  <div class="demo-tour-shade"></div>
+  <div class="demo-tour-spotlight" id="demoTourSpotlight"></div>
+  <button class="demo-tour-end" type="button" id="demoTourEnd">End tour</button>
+  <section class="demo-tour-card" role="dialog" aria-modal="true" aria-labelledby="demoTourTitle">
+    <div class="demo-tour-progress" id="demoTourProgress"></div>
+    <button class="demo-tour-close" type="button" id="demoTourClose" aria-label="Exit guided tour">&times;</button>
+    <span class="demo-tour-kicker" id="demoTourKicker">GUIDED TOUR</span>
+    <h2 id="demoTourTitle"></h2>
+    <p id="demoTourBody"></p>
+    <div class="demo-tour-actions">
+      <button type="button" class="demo-tour-skip" id="demoTourSkip">Skip tour</button>
+      <button type="button" class="btn btn-primary" id="demoTourNext">Continue</button>
+    </div>
+  </section>
+</div>
+<script>
+(function () {
+  var root = document.getElementById('demoTour');
+  var start = document.getElementById('demoTourStart');
+  if (!root || !start) return;
+  var card = root.querySelector('.demo-tour-card');
+  var spot = document.getElementById('demoTourSpotlight');
+  var title = document.getElementById('demoTourTitle');
+  var body = document.getElementById('demoTourBody');
+  var kicker = document.getElementById('demoTourKicker');
+  var progress = document.getElementById('demoTourProgress');
+  var next = document.getElementById('demoTourNext');
+  var close = document.getElementById('demoTourClose');
+  var end = document.getElementById('demoTourEnd');
+  var skip = document.getElementById('demoTourSkip');
+  var highlighted = null;
+  var key = 'bridgemd_demo_tour_step';
+  var home = {{ url_for('study_home')|tojson }};
+  var calendar = {{ url_for('calendar_page')|tojson }};
+  var recruitment = {{ url_for('recruitment_dashboard')|tojson }};
+
+  var steps = [
+    { path: '/app/home', target: '[data-demo-tour-target="today"]',
+      title: 'Run the day from one place',
+      body: 'This timeline keeps visits, protocol timing and the next participant in view. Start here each morning instead of hunting through separate tools.',
+      next: 'Show me the applicant queue' },
+    { path: '/app/home', target: '[data-demo-tour-nav="applicants"]',
+      title: 'Now open Applicants',
+      body: 'Click the highlighted Applicants link. The tour will follow you there and show how a coordinator makes fast, reviewable decisions.',
+      click: '[data-demo-tour-nav="applicants"]' },
+    { path: '/app/leads', target: '[data-demo-tour-target="applicants"]',
+      title: 'Review the queue, not a spreadsheet',
+      body: 'Each applicant is ranked and has a clear stage, source and last activity. Click any applicant name to see the decision context and contact workflow.',
+      click: '.rowlink' },
+    { path: '/app/applicant', target: '[data-demo-tour-target="applicant-detail"]',
+      title: 'Move one person forward',
+      body: 'The next step is explicit: accept and send a booking link, follow up, or document why they are not eligible. The actual decision always stays with your team.',
+      next: 'See scheduling' },
+    { path: '/app/calendar', target: '[data-demo-tour-target="calendar"]',
+      title: 'Keep visits inside protocol windows',
+      body: 'Calendar views connect each visit to the participant, study and preparation. Use this for daily scheduling, follow-up and protocol timing.',
+      next: 'See enrollment health' },
+    { path: '/app/dashboard', target: '[data-demo-tour-target="recruitment"]',
+      title: 'See the enrollment picture',
+      body: 'Recruitment turns the activity above into a funnel: source, conversion and the biggest point of drop-off. This is the manager view for deciding where to intervene.',
+      next: 'Explore the workspace' }
+  ];
+
+  function pageMatches(step) { return location.pathname.indexOf(step.path) === 0; }
+  function clearHighlight() {
+    if (highlighted) highlighted.classList.remove('demo-tour-highlight');
+    document.querySelectorAll('.demo-tour-click-target').forEach(function (el) {
+      el.classList.remove('demo-tour-click-target');
+    });
+    highlighted = null;
+  }
+  function finish() {
+    clearHighlight(); root.hidden = true; sessionStorage.removeItem(key); document.body.classList.remove('demo-tour-open');
+  }
+  function targetFor(step) { return document.querySelector(step.target); }
+  function placeSpotlight(target) {
+    var r = target.getBoundingClientRect();
+    var pad = 7;
+    spot.style.left = Math.max(4, r.left - pad) + 'px';
+    spot.style.top = Math.max(4, r.top - pad) + 'px';
+    spot.style.width = Math.min(window.innerWidth - 8, r.width + pad * 2) + 'px';
+    spot.style.height = Math.min(window.innerHeight - 8, r.height + pad * 2) + 'px';
+  }
+  function show(index) {
+    var step = steps[index];
+    if (!step) { finish(); return; }
+    if (!pageMatches(step)) { location.href = step.path === '/app/dashboard' ? recruitment : step.path; return; }
+    var target = targetFor(step);
+    if (!target) { finish(); return; }
+    sessionStorage.setItem(key, String(index));
+    root.hidden = false; document.body.classList.add('demo-tour-open');
+    clearHighlight(); highlighted = target; highlighted.classList.add('demo-tour-highlight');
+    target.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+    window.setTimeout(function () { placeSpotlight(target); }, 360);
+    kicker.textContent = 'GUIDED TOUR · ' + (index + 1) + ' OF ' + steps.length;
+    title.textContent = step.title; body.textContent = step.body;
+    progress.style.width = ((index + 1) / steps.length * 100) + '%';
+    next.textContent = step.next || 'Continue';
+    next.hidden = !!step.click;
+    if (step.click) {
+      var clickTarget = document.querySelector(step.click);
+      if (clickTarget && !clickTarget.dataset.demoTourBound) {
+        clickTarget.dataset.demoTourBound = '1';
+        clickTarget.classList.add('demo-tour-click-target');
+        clickTarget.addEventListener('click', function (event) {
+          var following = String(index + 1);
+          sessionStorage.setItem(key, following);
+          // Carry the step through the actual navigation too. Some browsers can
+          // unload a page very aggressively when a highlighted link is clicked.
+          if (clickTarget.tagName === 'A' && clickTarget.href) {
+            try {
+              var u = new URL(clickTarget.href, location.origin);
+              u.searchParams.set('tour', following);
+              // Do the navigation ourselves so the tour state cannot be lost
+              // between the click handler and the browser's default link action.
+              event.preventDefault();
+              location.href = u.pathname + u.search + u.hash;
+            } catch (e) {}
+          }
+        });
+      } else if (clickTarget) {
+        clickTarget.classList.add('demo-tour-click-target');
+      }
+    }
+    next.onclick = function () {
+      if (index === 0) { show(1); }
+      else if (index === 3) { sessionStorage.setItem(key, '4'); location.href = calendar; }
+      else if (index === 4) { sessionStorage.setItem(key, '5'); location.href = recruitment; }
+      else { finish(); }
+    };
+  }
+  function resume() {
+    var queryStep = new URLSearchParams(location.search).get('tour');
+    if (queryStep !== null) {
+      sessionStorage.setItem(key, queryStep);
+      // Keep the demo URLs clean once the state has been recovered.
+      try { history.replaceState({}, '', location.pathname + location.hash); } catch (e) {}
+    }
+    var raw = queryStep !== null ? queryStep : sessionStorage.getItem(key);
+    if (raw !== null) show(parseInt(raw, 10) || 0);
+  }
+  start.addEventListener('click', function () { sessionStorage.setItem(key, '0'); location.href = home; });
+  close.addEventListener('click', finish); skip.addEventListener('click', finish);
+  end.addEventListener('click', finish);
+  window.addEventListener('resize', function () { if (highlighted) placeSpotlight(highlighted); });
+  resume();
+})();
+</script>

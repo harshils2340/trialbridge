@@ -13,7 +13,7 @@
 <a class="app-back" href="{{ url_for('leads') }}">{{ ic.icon('arrow-left') }} Back to applicants</a>
 
 {# ── Patient header: identity, status, and every fast action in one bar ── #}
-<div class="pt-topbar">
+<div class="pt-topbar" data-demo-tour-target="applicant-detail">
   <div class="pt-id">
     <span class="app-av lg{{ ' neutral' if not view.revealed }}">{{ view.initials }}</span>
     <div class="pt-id-main">

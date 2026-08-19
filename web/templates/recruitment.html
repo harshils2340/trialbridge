@@ -38,7 +38,7 @@
 <div class="app-card" style="margin-bottom:18px;">
   <div class="app-card-title" style="padding:14px 18px 0;">{{ ic.icon('activity') }} <b>Funnel</b> <span class="app-sub" style="font-weight:400;color:var(--faint);">applicant → enrolled</span></div>
   {% if stats.stages %}
-  <div class="rfunnel">
+  <div class="rfunnel" data-demo-tour-target="recruitment">
     {% for st in stats.stages %}
     <div class="rfunnel-step">
       <div class="rfunnel-barwrap">

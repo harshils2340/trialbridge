@@ -201,7 +201,7 @@ _STUDY_TEAM_DEMO_PREFIXES = (
     "/app/balance", "/app/campaign", "/app/intake", "/app/home",
     "/app/applicant", "/app/matching", "/app/documents", "/app/copilot",
     "/app/team", "/app/calendar", "/app/soe", "/app/payments", "/app/updates",
-    "/files/lead", "/files/team")
+    "/marketing-hub", "/files/lead", "/files/team")
 
 # Health-records / EHR sync (SMART Health IT) is hidden for now — the connector
 # is still a sandbox and not patient-ready. Flip RECORDS_UI=1 to re-enable the
@@ -1396,7 +1396,7 @@ def inject_globals():
             or path.startswith("/app/team") or path.startswith("/app/calendar")
             or path.startswith("/app/payments") or path.startswith("/app/updates")
             or path.startswith("/app/campaign") or path.startswith("/app/intake")
-            or path.startswith("/app/soe")):
+            or path.startswith("/app/soe") or path.startswith("/marketing-hub")):
         pov = "study"
     elif path.startswith("/app") or path.startswith("/referral"):
         pov = "clinician"
@@ -4190,6 +4190,258 @@ def for_sites():
         "for_sites.html", legal_contact=LEGAL_CONTACT,
         conditions_count=conditions_count, cities_count=cities_count,
         cal_link=CAL_LINK, site_demo=_site_demo_enabled())
+
+
+def _marketing_time_label(raw):
+    """Compact relative timestamp for the inbox, falling back to the raw value."""
+    try:
+        stamp = dt.datetime.strptime((raw or "").strip(), "%Y-%m-%d %H:%M")
+    except (TypeError, ValueError):
+        return raw or ""
+    delta = dt.datetime.now() - stamp
+    seconds = max(0, int(delta.total_seconds()))
+    if seconds < 60:
+        return "Now"
+    if seconds < 3600:
+        return f"{seconds // 60}m"
+    if seconds < 86400:
+        return f"{seconds // 3600}h"
+    if seconds < 172800:
+        return "Yesterday"
+    if stamp.year == dt.datetime.now().year:
+        return stamp.strftime("%b %d").replace(" 0", " ")
+    return stamp.strftime("%b %d, %Y").replace(" 0", " ")
+
+
+def _marketing_thread_url(thread_id=None, anchor="conversation"):
+    values = {}
+    if thread_id:
+        values["thread"] = thread_id
+    url = url_for("marketing_hub", **values)
+    return f"{url}#{anchor}" if anchor else url
+
+
+@app.route("/marketing-hub")
+@login_required
+def marketing_hub():
+    """Team-scoped shared inbox for marketing email, social DMs, and ad alerts."""
+    _log_event("view_marketing_hub")
+    if _is_demo_account(g.user):
+        db.seed_demo_marketing_hub(g.user["id"])
+
+    status = (request.args.get("status") or "open").strip().lower()
+    if status not in ("open", "resolved", "all"):
+        status = "open"
+    channel = (request.args.get("channel") or "").strip().lower()
+    if channel not in db.MARKETING_CHANNELS:
+        channel = ""
+    query = (request.args.get("q") or "").strip()[:100]
+
+    sources = [dict(row) for row in db.list_marketing_sources(g.user["id"])]
+    members = []
+    for row in db.list_org_members(g.user["id"]):
+        member = dict(row)
+        member["display_name"] = member.get("name") or member.get("email") or "Teammate"
+        member["initial"] = member["display_name"][:1].upper()
+        members.append(member)
+    member_by_id = {member["user_id"]: member for member in members}
+
+    source_filter = request.args.get("source", type=int)
+    if source_filter not in {source["id"] for source in sources}:
+        source_filter = None
+    thread_rows = db.list_marketing_threads(
+        g.user["id"], status=status, channel=channel, query=query,
+        source_id=source_filter)
+    threads = []
+    for row in thread_rows:
+        item = dict(row)
+        item["time_label"] = _marketing_time_label(item.get("updated_at"))
+        item["channel_label"] = db.MARKETING_CHANNEL_LABELS.get(
+            item.get("channel"), "Message")
+        threads.append(item)
+
+    selected_id = request.args.get("thread", type=int)
+    active = db.get_marketing_thread(g.user["id"], selected_id) if selected_id else None
+    if not active and threads:
+        active = db.get_marketing_thread(g.user["id"], threads[0]["id"])
+    # The first row is previewed by default, but only an explicit thread click
+    # should clear its unread state. This also prevents browser reloads from
+    # silently walking through and clearing the whole queue.
+    if active and active["unread"] and selected_id:
+        db.mark_marketing_thread_read(g.user["id"], active["id"])
+        active = db.get_marketing_thread(g.user["id"], active["id"])
+        for item in threads:
+            if item["id"] == active["id"]:
+                item["unread"] = 0
+
+    messages = []
+    if active:
+        for row in db.list_marketing_messages(g.user["id"], active["id"]):
+            item = dict(row)
+            item["time_label"] = _marketing_time_label(item.get("created_at"))
+            item["display_author"] = (
+                item.get("user_name") or item.get("author_name") or "Contact")
+            messages.append(item)
+
+    settings = db.get_marketing_handoff(g.user["id"])
+    active_owner_id = db.marketing_active_owner_id(settings)
+    active_owner = member_by_id.get(active_owner_id, {
+        "display_name": g.user["name"] or g.user["email"],
+        "initial": (g.user["name"] or g.user["email"] or "?")[:1].upper(),
+    })
+    primary = member_by_id.get(settings["primary_user_id"])
+    cover = member_by_id.get(settings["cover_user_id"])
+    counts = db.marketing_thread_counts(g.user["id"])
+    counts["sources"] = sum(1 for source in sources
+                            if source["status"] == "connected")
+
+    return render_template(
+        "marketing_hub.html", sources=sources, threads=threads,
+        active=dict(active) if active else None, messages=messages,
+        members=members, member_by_id=member_by_id, settings=dict(settings),
+        active_owner=active_owner, primary=primary, cover=cover, counts=counts,
+        status_filter=status, channel_filter=channel, search_query=query,
+        source_filter=source_filter,
+        channel_labels=db.MARKETING_CHANNEL_LABELS,
+        today=dt.date.today().isoformat())
+
+
+@app.route("/marketing-hub/sources", methods=["POST"])
+@login_required
+def marketing_source_add():
+    channel = (request.form.get("channel") or "").strip().lower()
+    label = (request.form.get("label") or "").strip()
+    identifier = (request.form.get("identifier") or "").strip()
+    if channel not in db.MARKETING_CHANNELS:
+        flash("Choose email, Instagram, or Google Ads.", "error")
+        return redirect(url_for("marketing_hub"))
+    if channel == "email":
+        if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", identifier):
+            flash("Enter a valid email address.", "error")
+            return redirect(url_for("marketing_hub"))
+    elif channel == "instagram":
+        identifier = identifier.lstrip("@")
+        if not identifier or re.search(r"\s", identifier):
+            flash("Enter an Instagram handle without spaces.", "error")
+            return redirect(url_for("marketing_hub"))
+        identifier = "@" + identifier
+    elif not identifier:
+        flash("Enter the Google Ads account name or customer ID.", "error")
+        return redirect(url_for("marketing_hub"))
+    if not label:
+        label = db.MARKETING_CHANNEL_LABELS[channel]
+    source_id = db.create_marketing_source(
+        g.user["id"], channel, label, identifier, connection_mode="demo")
+    if source_id:
+        flash("Account added. It is ready for test conversations; OAuth is still "
+              "needed for live syncing.", "ok")
+    else:
+        flash("That account could not be added.", "error")
+    return redirect(url_for("marketing_hub", source=source_id) if source_id
+                    else url_for("marketing_hub"))
+
+
+@app.route("/marketing-hub/sources/<int:source_id>/status", methods=["POST"])
+@login_required
+def marketing_source_status(source_id):
+    status = (request.form.get("status") or "").strip().lower()
+    if not db.set_marketing_source_status(g.user["id"], source_id, status):
+        abort(404)
+    flash("Channel connected." if status == "connected" else "Channel disconnected.",
+          "ok")
+    return redirect(url_for("marketing_hub"))
+
+
+@app.route("/marketing-hub/threads", methods=["POST"])
+@login_required
+def marketing_thread_create():
+    source_id = request.form.get("source_id", type=int)
+    thread_id = db.create_marketing_thread(
+        g.user["id"], source_id,
+        request.form.get("contact_name"), request.form.get("contact_handle"),
+        request.form.get("subject"), request.form.get("body"))
+    if not thread_id:
+        flash("Choose a connected channel and enter a message.", "error")
+        return redirect(url_for("marketing_hub"))
+    flash("Test conversation added to the shared inbox.", "ok")
+    return redirect(_marketing_thread_url(thread_id))
+
+
+@app.route("/marketing-hub/threads/<int:thread_id>/reply", methods=["POST"])
+@login_required
+def marketing_thread_reply(thread_id):
+    if not db.add_marketing_message(
+            g.user["id"], thread_id, request.form.get("body"), kind="outbound"):
+        flash("Write a reply before sending.", "error")
+    else:
+        flash("Reply saved to the shared thread. Live delivery starts after the "
+              "channel's OAuth connection is configured.", "ok")
+    return redirect(_marketing_thread_url(thread_id, "composer"))
+
+
+@app.route("/marketing-hub/threads/<int:thread_id>/note", methods=["POST"])
+@login_required
+def marketing_thread_note(thread_id):
+    if not db.add_marketing_message(
+            g.user["id"], thread_id, request.form.get("body"), kind="note"):
+        flash("Write a note before adding it.", "error")
+    else:
+        flash("Internal note added for the team.", "ok")
+    return redirect(_marketing_thread_url(thread_id, "composer"))
+
+
+@app.route("/marketing-hub/threads/<int:thread_id>/assign", methods=["POST"])
+@login_required
+def marketing_thread_assign(thread_id):
+    raw = (request.form.get("assignee_id") or "").strip()
+    try:
+        assignee_id = int(raw) if raw else None
+    except ValueError:
+        assignee_id = None
+    if not db.assign_marketing_thread(g.user["id"], thread_id, assignee_id):
+        abort(404)
+    flash("Conversation assignment updated.", "ok")
+    return redirect(_marketing_thread_url(thread_id))
+
+
+@app.route("/marketing-hub/threads/<int:thread_id>/status", methods=["POST"])
+@login_required
+def marketing_thread_status(thread_id):
+    status = (request.form.get("status") or "").strip().lower()
+    if not db.set_marketing_thread_status(g.user["id"], thread_id, status):
+        abort(404)
+    flash("Conversation resolved." if status == "resolved"
+          else "Conversation reopened.", "ok")
+    return redirect(_marketing_thread_url(thread_id))
+
+
+@app.route("/marketing-hub/coverage", methods=["POST"])
+@login_required
+def marketing_coverage():
+    primary_id = request.form.get("primary_user_id", type=int) or g.user["id"]
+    cover_id = request.form.get("cover_user_id", type=int)
+    vacation_mode = request.form.get("vacation_mode") == "1"
+    away_until = (request.form.get("away_until") or "").strip()
+    if away_until:
+        try:
+            parsed = dt.date.fromisoformat(away_until)
+        except ValueError:
+            flash("Choose a valid return date.", "error")
+            return redirect(url_for("marketing_hub"))
+        if vacation_mode and parsed < dt.date.today():
+            flash("The return date cannot be in the past.", "error")
+            return redirect(url_for("marketing_hub"))
+    ok = db.set_marketing_handoff(
+        g.user["id"], primary_id, cover_id, vacation_mode, away_until,
+        request.form.get("note"))
+    if not ok:
+        flash("Choose a different teammate to cover the inbox.", "error")
+    elif vacation_mode:
+        flash("Vacation coverage is on. New conversations route to your cover.",
+              "ok")
+    else:
+        flash("Vacation coverage is off. The primary owner is back on duty.", "ok")
+    return redirect(url_for("marketing_hub"))
 
 
 @app.route("/for-sites/<slug>")

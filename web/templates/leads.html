@@ -61,7 +61,7 @@
   <button type="button" class="ui-chip" data-filter="enrolled">Enrolled</button>
 </div>
 
-<div class="app-card">
+<div class="app-card" data-demo-tour-target="applicants">
   {% if not queue %}
   <div class="pad">{{ ui.empty('No applicants match', ('Nothing matches &ldquo;' ~ q ~ '&rdquo; right now. Try a different search or clear it.') if q else 'No applicants in this study yet.', 'search') }}</div>
   {% else %}
