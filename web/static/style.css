@@ -4576,12 +4576,19 @@ body.is-resizing { cursor: col-resize; user-select: none; }
   background: var(--surface); border: 1px solid var(--border);
   border-radius: var(--radius-sm, 8px); padding: 1px 6px; line-height: 1.5;
   pointer-events: none; }
-/* Inbox variant of the top search: wider affordance, live match count on the
-   right where the ⌘K hint would sit. It IS the inbox's only search. */
-.appsearch-inbox { max-width: 640px; }
-.appsearch-inbox .appsearch-input { padding-right: 104px; }
-.appsearch-count { position: absolute; right: 14px; top: 50%; transform: translateY(-50%);
-  font-size: 12px; color: var(--faint); pointer-events: none; white-space: nowrap; }
+/* Inbox variant of the top search: the one search on the page, so it reads as a
+   real, inviting field - a soft filled pill that lifts to white on focus, with a
+   live match count where the ⌘K hint would sit. */
+.appsearch-inbox { max-width: 680px; }
+.appsearch-inbox .appsearch-input { padding: 11px 108px 11px 44px; background: var(--surface-2);
+  border-color: transparent; border-radius: var(--radius-pill); }
+.appsearch-inbox .appsearch-input:hover { background: var(--bg); border-color: var(--border); }
+.appsearch-inbox .appsearch-input:focus { background: var(--surface); border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft); }
+.appsearch-inbox .appsearch-ico { left: 16px; width: 17px; height: 17px; }
+.appsearch-count { position: absolute; right: 16px; top: 50%; transform: translateY(-50%);
+  font-size: 11.5px; font-weight: 600; color: var(--faint); pointer-events: none;
+  white-space: nowrap; }
 .appsearch-panel { position: absolute; top: calc(100% + 6px); left: 0; right: 0; z-index: 40;
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
   box-shadow: var(--shadow-lg, 0 24px 60px rgba(2,6,23,.28)); max-height: 62vh;
@@ -8252,6 +8259,23 @@ body.fs-page { background:
 .route-form select { width:auto; min-width:120px; max-width:260px; }
 .route-when { color:var(--muted); font-size:13px; font-weight:600; }
 
+/* Per-study connected-sources picker (site_setup.html #routing) */
+.src-form { padding:14px; margin-top:12px; background:var(--surface-2);
+  border:1px solid var(--border); border-radius:var(--radius); }
+.src-form-head { display:flex; align-items:center; justify-content:space-between;
+  gap:12px; margin-bottom:10px; }
+.src-grid { display:flex; flex-wrap:wrap; gap:8px; }
+.src-opt { display:inline-flex; align-items:center; gap:7px; padding:7px 12px 7px 10px;
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:var(--radius-pill); font-size:13px; font-weight:600;
+  color:var(--muted); cursor:pointer; transition:border-color .12s, background .12s; }
+.src-opt:hover { border-color:var(--muted); }
+.src-opt.on { background:var(--accent-soft); border-color:var(--accent);
+  color:var(--accent); }
+.src-opt input { margin:0; }
+.src-opt .brand-ico { width:16px; height:16px; vertical-align:0; }
+.field-stack { display:flex; flex-direction:column; gap:14px; }
+
 /* ===================================================================== *
  * Gmail-style inbox (team_inbox.html): label rail + dense thread list.   *
  * ===================================================================== */
@@ -8266,10 +8290,17 @@ body.fs-page { background:
 /* The Today strip is a full-width row above the panes. Scoped with :has() so the
    panes keep filling the whole frame when there's no strip. */
 .gm:has(.gm-today) { grid-template-rows: auto minmax(0, 1fr); }
-.gm-today { grid-column: 1 / -1; padding: 12px 18px 14px;
-  border-bottom: 1px solid var(--border); background: var(--surface); }
-.gm-today .today-lane { height: 68px; }
-.gm-today .today-h { margin-bottom: 8px; }
+/* Today reads as a clean, self-contained card floating above the list (rounded,
+   bordered, soft shadow) rather than a flat full-bleed band - so the calendar
+   feels like a distinct, polished module. */
+.gm-today { grid-column: 1 / -1; margin: 14px 16px 4px; padding: 14px 16px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--shadow); }
+.gm-today .today-lane { height: 66px; border-radius: var(--radius);
+  background: var(--bg); box-shadow: inset 0 1px 2px rgba(2, 6, 23, .04); }
+.gm-today .today-ev { border-radius: 9px; }
+.gm-today .today-h { margin-bottom: 10px; }
+.gm-today .today-next-card { border-radius: var(--radius); }
 /* Rendered as <a> here (a block opens that patient's thread), not <button>. */
 .gm-today .today-next-card { text-decoration: none; }
 
@@ -8362,6 +8393,24 @@ body.fs-page { background:
 
 /* Filter row: select-all · scrolling chips · pinned actions. Only the chips
    scroll, so Cover/Routing never get clipped when the dock narrows the column. */
+/* Gmail-style category tabs: coarse inbox buckets, underline-active. A quiet
+   bottom border spans the row so the active tab's accent underline reads clearly. */
+.gm-cats { display: flex; align-items: stretch; gap: 2px; padding: 0 12px;
+  border-bottom: 1px solid var(--border); overflow-x: auto; scrollbar-width: none; }
+.gm-cats::-webkit-scrollbar { display: none; }
+.gm-cat { display: inline-flex; align-items: center; gap: 8px; flex-shrink: 0;
+  padding: 12px 16px; margin-bottom: -1px; background: transparent; border: 0;
+  border-bottom: 2px solid transparent; font-size: 13.5px; font-weight: 600;
+  color: var(--muted); cursor: pointer; white-space: nowrap;
+  -webkit-appearance: none; appearance: none; transition: color .12s; }
+.gm-cat svg { width: 17px; height: 17px; opacity: .8; }
+.gm-cat:hover { color: var(--ink); }
+.gm-cat.is-on { color: var(--accent); border-bottom-color: var(--accent); }
+.gm-cat.is-on svg { opacity: 1; }
+.gm-cat-n { font-size: 11px; font-weight: 700; color: var(--faint);
+  background: var(--surface-2); padding: 1px 7px; border-radius: var(--radius-pill); }
+.gm-cat.is-on .gm-cat-n { background: var(--accent-soft); color: var(--accent); }
+
 .gm-filters { display: flex; align-items: center; gap: 8px; padding: 9px 16px;
   border-bottom: 1px solid var(--border); }
 .gm-filters .gm-check { flex-shrink: 0; }
@@ -8375,6 +8424,57 @@ body.fs-page { background:
 .gm-filters .chip.is-on:hover { transform: none; }
 .gm-filters .chip.is-on .gm-n { background: rgba(255,255,255,.22); color: var(--accent-ink); }
 .gm-filters-div { width: 1px; height: 20px; background: var(--border); flex-shrink: 0; margin: 0 4px; }
+
+/* View = one segmented control, so the mutually-exclusive lens reads as a single
+   switch instead of five loose pills. */
+.gm-seg { display: inline-flex; flex-shrink: 0; border: 1px solid var(--border);
+  border-radius: var(--radius-pill); background: var(--surface-2); overflow: hidden; }
+.gm-seg-b { display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px;
+  font-size: 13px; font-weight: 600; color: var(--muted); background: transparent;
+  border: 0; border-left: 1px solid var(--border); cursor: pointer; white-space: nowrap;
+  -webkit-appearance: none; appearance: none; }
+.gm-seg-b:first-child { border-left: 0; }
+.gm-seg-b:hover { color: var(--ink); background: var(--bg); }
+.gm-seg-b.is-on { background: var(--accent); color: var(--accent-ink); }
+/* Segment counts are plain digits, never the chip's filled pill (that read as a
+   toggle switch on the active tab). */
+.gm-seg-b .gm-n { background: transparent; padding: 0; font-size: 11px;
+  font-weight: 700; color: var(--faint); min-width: 0; }
+.gm-seg-b.is-on .gm-n { color: var(--accent-ink); opacity: .85; }
+
+/* Team actions live in a small "More" menu, not among the filter chips. */
+.gm-more { position: relative; flex-shrink: 0; }
+.gm-more summary { list-style: none; }
+.gm-more summary::-webkit-details-marker { display: none; }
+.gm-more-btn { display: inline-flex; align-items: center; gap: 5px; padding: 6px 12px;
+  font-size: 13px; font-weight: 600; color: var(--muted); background: var(--surface);
+  border: 1px solid var(--border); border-radius: var(--radius-pill); cursor: pointer;
+  white-space: nowrap; }
+.gm-more-btn:hover { color: var(--ink); background: var(--surface-2); }
+.gm-more-btn svg { width: 14px; height: 14px; }
+.gm-more[open] .gm-more-btn { color: var(--ink); border-color: var(--border-strong); }
+.gm-more-menu { position: absolute; top: calc(100% + 6px); right: 0; z-index: 30;
+  min-width: 200px; padding: 6px; background: var(--surface);
+  border: 1px solid var(--border); border-radius: var(--radius);
+  box-shadow: var(--shadow-lift); }
+.gm-more-menu a, .gm-more-menu button { display: flex; align-items: center; gap: 9px;
+  width: 100%; padding: 9px 10px; font-size: 13px; font-weight: 500; color: var(--ink);
+  background: transparent; border: 0; border-radius: var(--radius-sm); cursor: pointer;
+  text-align: left; text-decoration: none; }
+.gm-more-menu a:hover, .gm-more-menu button:hover { background: var(--surface-2); }
+.gm-more-menu svg { width: 15px; height: 15px; color: var(--muted); flex-shrink: 0; }
+/* Source filter chip: brand mark + label. The logo stays full-colour even when
+   the chip is active (it's a brand, not a tinted glyph). */
+.gm-filters .chip-src { display: inline-flex; align-items: center; gap: 6px; padding-left: 9px; }
+.gm-filters .chip-src .brand-ico { width: 15px; height: 15px; vertical-align: 0; }
+
+/* Source pill on each list row: small logo + channel name, so a coordinator sees
+   where every lead came from at a glance (IG DM vs email vs CT.gov). */
+.gm-src { display: inline-flex; align-items: center; gap: 5px; flex-shrink: 0;
+  padding: 2px 9px 2px 6px; font-size: 11.5px; font-weight: 600; color: var(--muted);
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: var(--radius-pill); white-space: nowrap; }
+.gm-src .brand-ico { width: 14px; height: 14px; vertical-align: 0; }
 
 /* Bulk action bar */
 .gm-bulk { display: flex; align-items: center; gap: 10px; padding: 8px 16px;
@@ -8549,6 +8649,61 @@ body.fs-page { background:
   flex-shrink: 0; background: var(--surface); }
 .gm-pane-reply .chat-suggest { margin-bottom: 8px; }
 
+/* Channel pill in the pane header (brand logo + name of the source). */
+.gm-pane-ch { display: inline-flex; align-items: center; gap: 5px;
+  font-weight: 600; color: var(--muted); }
+.gm-pane-ch .brand-ico { width: 14px; height: 14px; }
+
+/* ── Email presentation (email/referral/CT.gov channels) ─────────────────────
+   Reads like a mail client: subject line, From address, stacked message cards,
+   and a formal composer with a To field + Send. Social/ad threads keep the DM
+   bubble layout above instead. */
+.email-subj { padding: 4px 4px 12px; margin-bottom: 6px;
+  border-bottom: 1px solid var(--border); }
+.email-subj b { display: block; font-size: 17px; font-weight: 700; color: var(--ink);
+  line-height: 1.3; }
+.email-subj span { display: inline-flex; align-items: center; gap: 6px; margin-top: 4px;
+  font-size: 12.5px; color: var(--muted); }
+.email-subj .brand-ico { width: 14px; height: 14px; }
+
+.email-thread { display: flex; flex-direction: column; gap: 4px; padding: 0;
+  flex: 1 0 auto; }
+.email-msg { display: flex; gap: 12px; padding: 14px; border-radius: var(--radius);
+  border: 1px solid transparent; }
+.email-msg + .email-msg { border-top: 1px solid var(--border); border-radius: 0; }
+.email-msg.is-out { background: var(--accent-soft); border-radius: var(--radius);
+  border-color: transparent; }
+.email-msg.is-out + .email-msg, .email-msg + .email-msg.is-out { border-top-color: transparent; }
+.email-av { flex-shrink: 0; width: 34px; height: 34px; border-radius: 50%;
+  display: grid; place-items: center; font-size: 12.5px; font-weight: 700;
+  color: var(--accent); background: var(--surface-2); }
+.email-msg.is-out .email-av { color: #fff; background: var(--accent); }
+.email-main { flex: 1; min-width: 0; }
+.email-msg-h { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
+  margin-bottom: 5px; }
+.email-msg-h b { font-size: 13.5px; font-weight: 700; color: var(--ink); }
+.email-addr { font-size: 12px; color: var(--faint); }
+.email-msg-h .msg-time { margin-left: auto; font-size: 11.5px; color: var(--faint);
+  white-space: nowrap; }
+.email-body { font-size: 14px; line-height: 1.55; color: var(--ink);
+  white-space: pre-wrap; word-break: break-word; }
+
+/* Email composer: To field, roomy body, Send button (not a chat send arrow). */
+.email-reply { padding: 12px 16px 16px; }
+.email-compose { border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--surface); overflow: hidden; box-shadow: var(--shadow); }
+.email-to { display: flex; align-items: center; gap: 8px; padding: 9px 14px;
+  border-bottom: 1px solid var(--border); font-size: 12.5px; color: var(--muted); }
+.email-to-chip { display: inline-flex; align-items: center; padding: 2px 10px;
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: var(--radius-pill); font-size: 12.5px; font-weight: 600; color: var(--ink); }
+.email-textarea { display: block; width: 100%; border: 0; resize: none; outline: none;
+  padding: 12px 14px; font: inherit; font-size: 14px; line-height: 1.55;
+  color: var(--ink); background: transparent; }
+.email-compose-foot { display: flex; align-items: center; gap: 12px;
+  padding: 8px 12px; border-top: 1px solid var(--border); background: var(--surface-2); }
+.email-compose-foot .chatbar-hint { color: var(--faint); }
+
 @media (max-width: 900px) {
   .gm, .gm.is-open { grid-template-columns: 1fr; height: auto; }
   .gm-tags, .gm-subj { display: none; }
@@ -8656,6 +8811,23 @@ body.fs-page { background:
 .fsx-shot-bar b { font-size:12px; color:var(--faint); font-weight:600; margin-left:10px; }
 .fsx-shot img { display:block; width:100%; height:auto; border:1px solid var(--border);
   border-radius:0 0 var(--radius) var(--radius); box-shadow:var(--shadow-lift); }
+
+/* Value band under the hero: the payoff in four numbers, so a coordinator sees
+   what changes before reading a single feature. */
+.fsx-proof { max-width:1080px; margin:26px auto 0; padding:0 24px; }
+.fsx-proof-in { display:grid; grid-template-columns:repeat(4, 1fr); gap:8px;
+  padding:22px 12px; background:var(--surface-2); border:1px solid var(--border);
+  border-radius:var(--radius-lg); }
+.fsx-proof-stat { padding:0 16px; text-align:center; }
+.fsx-proof-stat + .fsx-proof-stat { border-left:1px solid var(--border); }
+.fsx-proof-stat b { display:block; font-size:clamp(22px, 3vw, 30px); font-weight:800;
+  color:var(--display); letter-spacing:-.02em; line-height:1.1; }
+.fsx-proof-stat span { display:block; margin-top:7px; font-size:12.5px; line-height:1.45;
+  color:var(--muted); }
+@media (max-width:760px) {
+  .fsx-proof-in { grid-template-columns:repeat(2, 1fr); gap:18px 8px; }
+  .fsx-proof-stat:nth-child(3) { border-left:0; }
+}
 
 .fsx-section { max-width:1080px; margin:0 auto; padding:64px 24px; }
 .fsx-head { text-align:center; max-width:640px; margin:0 auto 44px; }

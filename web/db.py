@@ -1256,9 +1256,21 @@ _MIGRATIONS = {
         "redcap_field_map": "TEXT DEFAULT ''",
         "redcap_intake_instrument": "TEXT DEFAULT ''",
         "redcap_intake_enabled": "INTEGER DEFAULT 0",
+        # Connector-first outbound: where a reply to a social channel (IG DM,
+        # Messenger, Facebook, WhatsApp) is POSTed so a Zapier/Make/native
+        # connector delivers it back to that channel. Lets a coordinator reply to
+        # ad responses WITHOUT leaving the app. The secret signs the payload so
+        # the receiving connector can verify it's really us (never rendered back).
+        "connector_webhook_url": "TEXT DEFAULT ''",
+        "connector_secret": "TEXT DEFAULT ''",
     },
     "study_claims": {
         "notify_email": "TEXT DEFAULT ''",
+        # Which recruitment channels THIS study is connected to (CSV of channel
+        # keys from ROUTING_CHANNELS, e.g. "instagram,facebook,email_intake").
+        # Empty = every source. Drives the inbox's per-trial source filters so a
+        # trial only shows the logos/channels it actually recruits through.
+        "connected_sources": "TEXT DEFAULT ''",
         # Existing rows backfill to verified (1) so current demos keep working;
         # new self-serve claims are inserted with verified=0 (pending approval).
         "verified": "INTEGER NOT NULL DEFAULT 1",
@@ -1344,6 +1356,12 @@ _MIGRATIONS = {
         # in that team's inbox with zero study setup - and NEVER leaks to anyone
         # else (scoping is org-membership based).
         "owner_user_id": "INTEGER",
+        # Channel-side identifier to address an outbound reply back to (Instagram
+        # username, Messenger PSID, WhatsApp number, ...). Populated by the intake
+        # connector for social leads; the connector uses it to route our reply to
+        # the right person on the right platform. Email/phone stay in their own
+        # columns; this is for channels email/SMS can't reach.
+        "external_ref": "TEXT DEFAULT ''",
     },
     "lead_visits": {
         # Lifecycle so the calendar can show/flag state, not just a date.
@@ -2150,6 +2168,55 @@ def get_site_calendar_url(user_id):
         return ""
 
 
+def set_site_connector(user_id, url, secret=None):
+    """Save the outbound reply connector. `secret=None` leaves the stored secret
+    untouched (so a coordinator can edit the URL without re-typing it); pass ""
+    to clear it. The secret is write-only - never rendered back to the page."""
+    if not get_site_profile(user_id):
+        upsert_site_profile(user_id, "", "", "", "")
+    url = (url or "").strip()
+    if url and not url.startswith(("http://", "https://")):
+        url = "https://" + url
+    db = get_db()
+    if secret is None:
+        db.execute("UPDATE site_profiles SET connector_webhook_url = ?, "
+                   "updated_at = ? WHERE user_id = ?", (url, now(), user_id))
+    else:
+        db.execute("UPDATE site_profiles SET connector_webhook_url = ?, "
+                   "connector_secret = ?, updated_at = ? WHERE user_id = ?",
+                   (url, (secret or "").strip(), now(), user_id))
+    db.commit()
+    return True
+
+
+def get_site_connector(user_id):
+    """(url, secret) for the team's outbound reply connector - resolved via the
+    user's org so any teammate's replies use the same connector."""
+    prof = get_site_profile(user_id)
+    if not prof:
+        return "", ""
+
+    def _v(row, key):
+        try:
+            return (row[key] or "") if row else ""
+        except (KeyError, IndexError, TypeError):
+            return ""
+    return _v(prof, "connector_webhook_url"), _v(prof, "connector_secret")
+
+
+def get_connector_for_nct(nct):
+    """The outbound connector (url, secret) of the team that owns this NCT, so a
+    reply to a social lead can be delivered even when sent from a shared inbox."""
+    prof = get_site_profile_for_nct(nct)
+    if not prof:
+        return "", ""
+    try:
+        return (prof["connector_webhook_url"] or "",
+                prof["connector_secret"] or "")
+    except (KeyError, IndexError, TypeError):
+        return "", ""
+
+
 def get_site_profile_for_nct(nct):
     """The site profile of the team that claimed this NCT (first claim wins).
 
@@ -2823,6 +2890,70 @@ def get_claim_schedule_url(user_id, nct):
         "SELECT schedule_url FROM study_claims WHERE user_id = ? AND nct = ?",
         (user_id, nct)).fetchone()
     return (row["schedule_url"] if row else "") or ""
+
+
+# Connectable channels a study can recruit through (canonical, order = UI order).
+# Mirrors ROUTING_CHANNELS (minus the "any" wildcard) plus the direct-message
+# channels that carry inbound but aren't routing targets, so "connected sources"
+# and routing stay aligned on one vocabulary.
+CONNECTABLE_CHANNELS = ("email_intake", "instagram", "messenger", "facebook",
+                        "whatsapp", "meta", "google", "reddit", "ctgov",
+                        "referral")
+# Channels that email/SMS can't reach - a reply to these must go out through the
+# connector webhook, not the mailer. Used by the outbound reply router.
+CONNECTOR_CHANNELS = frozenset(("instagram", "messenger", "facebook", "whatsapp",
+                                "meta", "reddit"))
+
+
+def _norm_sources(sources):
+    """Coerce a list/CSV of channel keys to an ordered, de-duped tuple of valid
+    connectable channels (drops anything unknown so bad input can't poison a
+    filter)."""
+    if isinstance(sources, str):
+        sources = sources.split(",")
+    seen, out = set(), []
+    for s in (sources or []):
+        k = (s or "").strip().lower()
+        if k in CONNECTABLE_CHANNELS and k not in seen:
+            seen.add(k)
+            out.append(k)
+    return tuple(out)
+
+
+def set_claim_connected_sources(user_id, nct, sources):
+    """Save which channels a study recruits through (empty = every source)."""
+    nct = _norm_nct(nct)
+    if not nct:
+        return False
+    csv = ",".join(_norm_sources(sources))
+    db = get_db()
+    db.execute("UPDATE study_claims SET connected_sources = ? "
+               "WHERE user_id = ? AND nct = ?", (csv, user_id, nct))
+    db.commit()
+    return True
+
+
+def get_claim_connected_sources(user_id, nct):
+    """The study's connected channels as a list of keys ([] = every source).
+    Falls back to any same-org claim on this NCT, so a teammate viewing a shared
+    trial's inbox sees the same connected sources the owner configured."""
+    nct = _norm_nct(nct)
+    if not nct:
+        return []
+    row = get_db().execute(
+        "SELECT connected_sources FROM study_claims WHERE user_id = ? AND nct = ?",
+        (user_id, nct)).fetchone()
+    csv = (row["connected_sources"] if row else "") or ""
+    if not csv:
+        oid = user_org_id(user_id)
+        if oid:
+            row = get_db().execute(
+                "SELECT sc.connected_sources FROM study_claims sc "
+                "JOIN users u ON u.id = sc.user_id "
+                "WHERE u.org_id = ? AND sc.nct = ? AND sc.connected_sources != '' "
+                "LIMIT 1", (oid, nct)).fetchone()
+            csv = (row["connected_sources"] if row else "") or ""
+    return list(_norm_sources(csv))
 
 
 def list_pending_claims():
@@ -5803,6 +5934,14 @@ def seed_demo_claims(user_id):
         db.execute(
             "UPDATE leads SET schedule_url = ? WHERE nct = ? AND schedule_url = '' "
             "AND status IN ('eligible','screening','enrolled')", (link, r["nct"]))
+        # Connected sources = the channels this study's demo leads actually came
+        # in on, so each trial's inbox filters reflect a real, differing source
+        # mix (one trial runs IG+email, another adds Facebook/CT.gov, etc.).
+        srcs = [row["source"] for row in db.execute(
+            "SELECT DISTINCT source FROM leads WHERE nct = ?", (r["nct"],)).fetchall()]
+        connected = _norm_sources(srcs)
+        if connected:
+            set_claim_connected_sources(user_id, r["nct"], connected)
     # The coordinator's own account calendar (the app-wide default) + a video
     # link on applicants already in screening, so the calls flow shows as live.
     if not get_site_calendar_url(user_id):

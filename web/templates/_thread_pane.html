@@ -16,6 +16,10 @@
 {% set elig = it.elig or {} %}
 {% set first = (view.name or 'there').split(' ')[0] %}
 {% set here = url_for('team_inbox', open=l['id'], nct=active_nct or none) %}
+{# Channel-native rendering: an email inquiry reads like an email (subject, From
+   address, formal composer); an ad/social lead reads like a DM chat. #}
+{% set mode = pane.mode %}
+{% set subject = view.title or view.nct or 'Study inquiry' %}
 
 <section class="gm-pane" id="gmPane" data-lead="{{ l['id'] }}">
 
@@ -32,7 +36,7 @@
       <div class="gm-pane-meta">
         {% if l['revealed'] and view.email %}<span>{{ ic.icon('mail') }} {{ view.email }}</span>{% endif %}
         {% if l['revealed'] and view.phone %}<span>{{ ic.icon('phone') }} {{ view.phone }}</span>{% endif %}
-        <span>{{ ic.icon('inbox') }} via {{ view.source }}</span>
+        <span class="gm-pane-ch">{{ ic.icon(pane.channel_icon, 'brand-ico') }} {{ pane.channel_label }}</span>
         {% if view.title or view.nct %}<span>{{ ic.icon('file') }} {{ view.title or view.nct }}</span>{% endif %}
       </div>
     </div>
@@ -138,9 +142,37 @@
     </details>
     {% endif %}
 
-    {# ── The conversation ── #}
+    {# ── The conversation, rendered in the channel's native form ── #}
+    {% if mode == 'email' %}
+    <div class="email-subj">
+      <b>{{ subject }}</b>
+      <span>{{ ic.icon(pane.channel_icon, 'brand-ico') }} {{ pane.channel_label }} · {{ view.name }}</span>
+    </div>
+    <div class="thread-list email-thread">
+      {% for m in it.messages %}
+      {% if m['sender'] == 'system' %}
+      <div class="msg-sys" data-ts="{{ m['created_at'] }}"><div class="bubble">{{ m['body'] }}</div></div>
+      {% else %}
+      {% set out = m['sender'] == 'site' %}
+      <article class="email-msg{% if out %} is-out{% endif %}" data-ts="{{ m['created_at'] }}">
+        <span class="email-av">{% if out %}Y{% else %}{{ view.initials }}{% endif %}</span>
+        <div class="email-main">
+          <div class="email-msg-h">
+            <b>{% if out %}You{% else %}{{ view.name }}{% endif %}</b>
+            {% if not out and view.email %}<span class="email-addr">&lt;{{ view.email }}&gt;</span>{% endif %}
+            <time class="msg-time"></time>
+          </div>
+          <div class="email-body">{{ m['body'] }}</div>
+        </div>
+      </article>
+      {% endif %}
+      {% else %}
+      <div class="gm-screen-none" style="text-align:center;">No messages yet.</div>
+      {% endfor %}
+    </div>
+    {% else %}
     <div class="thread">
-      <div class="stamp"><span>Applied {{ view.last_activity }} · via {{ view.source }}</span></div>
+      <div class="stamp"><span>{{ ic.icon(pane.channel_icon, 'brand-ico') }} {{ pane.channel_label }} with {{ first }} · started {{ view.last_activity }}</span></div>
       {% for m in it.messages %}
       {% set cls = 'msg-out' if m['sender'] == 'site' else ('msg-sys' if m['sender'] == 'system' else 'msg-in') %}
       <div class="{{ cls }}" data-ts="{{ m['created_at'] }}">
@@ -150,10 +182,33 @@
       <div class="gm-screen-none" style="text-align:center;">No messages yet.</div>
       {% endfor %}
     </div>
+    {% endif %}
   </div>
 
-  {# ── Reply, inline, right where you are ── #}
+  {# ── Reply, inline, in the channel's native composer ── #}
   {% if l['revealed'] %}
+  {% if mode == 'email' %}
+  <footer class="gm-pane-reply email-reply">
+    <div class="app-chips chat-suggest" data-quick>
+      <button type="button" class="ui-chip" data-msg="Hi {{ first }}, just checking in on your interest in the study - happy to answer any questions.">Check in</button>
+      <button type="button" class="ui-chip" data-msg="Friendly reminder to book your screening visit using the link we sent - let me know if you need another time.">Booking reminder</button>
+      <button type="button" class="ui-chip" data-msg="Are you still available for your screening visit? If not, we can easily reschedule.">Reschedule</button>
+      <button type="button" class="ui-chip" data-msg="Thanks so much - we've received everything we need for now and will follow up with next steps shortly.">Thanks</button>
+    </div>
+    <form method="post" action="{{ url_for('message_lead', lead_id=l['id']) }}" class="email-compose"
+          data-ajax data-ajax-quiet data-ajax-refresh=".email-thread" data-optimistic=".email-thread">
+      <template data-optimistic-tpl><article class="email-msg is-out" data-ts="{{'{{time}}'}}"><span class="email-av">Y</span><div class="email-main"><div class="email-msg-h"><b>You</b><time class="msg-time">Just now</time></div><div class="email-body">{{'{{body}}'}}</div></div></article></template>
+      <div class="email-to">To <span class="email-to-chip">{{ view.name }}{% if view.email %} &lt;{{ view.email }}&gt;{% endif %}</span></div>
+      <textarea name="body" class="email-textarea" rows="4" data-composer
+                placeholder="Write your reply…" required data-ajax-clear
+                aria-label="Write an email to {{ first }}"></textarea>
+      <div class="email-compose-foot">
+        {{ ui.btn('Send', 'primary', 'sm', type='submit', icon='send') }}
+        <span class="chatbar-hint" style="margin:0;"><kbd>Enter</kbd> to send · <kbd>Shift</kbd>+<kbd>Enter</kbd> for a new line</span>
+      </div>
+    </form>
+  </footer>
+  {% else %}
   <footer class="gm-pane-reply">
     <div class="app-chips chat-suggest" data-quick>
       <button type="button" class="ui-chip" data-msg="Hi {{ first }}, just checking in on your interest in the study - happy to answer any questions.">Check in</button>
@@ -165,12 +220,13 @@
           data-ajax data-ajax-quiet data-ajax-refresh=".thread" data-optimistic=".thread">
       <template data-optimistic-tpl><div class="msg-out" data-ts="{{'{{time}}'}}"><div class="bubble">{{'{{body}}'}}</div></div></template>
       <textarea name="body" class="chatbar-input" rows="1" data-composer
-                placeholder="Reply to {{ first }}…" required data-ajax-clear
+                placeholder="Message {{ first }} on {{ pane.channel_label }}…" required data-ajax-clear
                 aria-label="Write a message to {{ first }}"></textarea>
       <button type="submit" class="chatbar-send" aria-label="Send message" title="Send — Enter">{{ ic.icon('send') }}</button>
     </form>
     <div class="chatbar-hint"><kbd>Enter</kbd> to send · <kbd>Shift</kbd>+<kbd>Enter</kbd> for a new line</div>
   </footer>
+  {% endif %}
   {% else %}
   <footer class="gm-pane-reply">
     <div class="callout info" style="margin:0;">{{ ic.icon('lock') }} Accept this applicant to unlock two-way messaging.</div>

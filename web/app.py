@@ -1310,6 +1310,63 @@ def _notify_applicant_schedule(lead):
     return True
 
 
+def _lead_source_key(lead):
+    """The lead's normalized channel key (instagram|messenger|email_intake|...)."""
+    try:
+        return (lead["source"] or "").strip().lower()
+    except (KeyError, IndexError, TypeError):
+        return ""
+
+
+def _connector_send_async(url, secret, lead, body):
+    """POST an outbound reply to the site's connector so it lands back on the
+    social channel the lead came from (IG DM, Messenger, ...). Best-effort and
+    off-thread: the message is already saved in-thread, so a slow/broken
+    connector never blocks the coordinator. Signed with the site's secret."""
+    try:
+        ext = lead["external_ref"]
+    except (KeyError, IndexError, TypeError):
+        ext = ""
+    payload = json.dumps({
+        "lead_id": lead["id"],
+        "nct": lead["nct"],
+        "channel": _lead_source_key(lead),
+        "external_ref": ext or "",
+        "to_name": lead["name"] or "",
+        "body": body,
+        "sent_at": db.now(),
+    }).encode("utf-8")
+    headers = {"Content-Type": "application/json"}
+    if secret:
+        headers["X-BridgeMD-Signature"] = hmac.new(
+            secret.encode("utf-8"), payload, hashlib.sha256).hexdigest()
+    req = urllib.request.Request(url, data=payload, headers=headers, method="POST")
+
+    def _go():
+        try:
+            with urllib.request.urlopen(req, timeout=15) as r:
+                r.read()
+        except Exception:
+            app.logger.warning("connector send failed for lead %s", lead["id"])
+
+    threading.Thread(target=_go, daemon=True).start()
+    return True
+
+
+def _deliver_reply(lead, body, connector=None):
+    """Route a coordinator's reply to wherever the lead can actually receive it:
+    a social-channel lead (IG/FB/Messenger/WhatsApp) goes out through the site's
+    connector; everyone else gets the usual email/SMS. Falls back to email if a
+    social lead has no connector configured yet, so nothing is silently dropped."""
+    src = _lead_source_key(lead)
+    if src in db.CONNECTOR_CHANNELS:
+        url, secret = connector if connector is not None \
+            else db.get_site_connector(g.user["id"])
+        if url:
+            return _connector_send_async(url, secret, lead, body)
+    return _notify_applicant_message(lead, body)
+
+
 def _notify_applicant_message(lead, body):
     if not lead or (not lead["email"] and not lead["phone"]):
         return False
@@ -6646,6 +6703,120 @@ def _channel_meta(source):
                                     "neutral"))
 
 
+# Maps a channel's display label to a brand/product icon in _icons.html, so the
+# inbox shows where a lead came from at a glance (the IG/FB mark, the CT.gov tile,
+# an envelope for email). Keyed on the label so it lines up with what's rendered.
+_CHANNEL_ICON = {
+    "Instagram DM": "instagram", "Messenger": "messenger", "Facebook": "facebook",
+    "WhatsApp": "whatsapp", "Meta ad": "meta", "Google Ads": "google",
+    "Google": "google", "Reddit": "reddit", "ClinicalTrials.gov": "ctgov",
+    "Email intake": "mail", "Email": "mail", "SMS": "phone", "Web form": "grid",
+    "Physician": "user", "Physician referral": "user", "EMR match": "activity",
+    "EMR referral": "activity",
+}
+
+
+def _channel_icon(label):
+    return _CHANNEL_ICON.get(label, "inbox")
+
+
+# Gmail-style inbox tabs: every thread falls into exactly ONE bucket, each a
+# different kind of work, so the queue you're in stays focused.
+#   active  -> people already in your pipeline (screening/enrolled): coordinate + retain
+#   ad      -> raw inbound from paid social/search: needs qualifying
+#   new     -> everything else: fresh inquiries needing a first touch
+# Trials are deliberately NOT a tab axis (they don't scale, and the study
+# switcher already scopes them); sources stay as the finer chip filter.
+_ACTIVE_STATUSES = {"eligible", "screening", "screened", "enrolled",
+                    "randomized", "active", "retained"}
+_AD_SOURCES = {"meta", "instagram", "facebook", "messenger", "whatsapp",
+               "google", "reddit"}
+_INBOX_TAB_META = [("new", "New inquiries", "mail"),
+                   ("ad", "Ad leads", "megaphone"),
+                   ("active", "Active patients", "users")]
+
+
+def _lead_category(status, source):
+    if (status or "").strip().lower() in _ACTIVE_STATUSES:
+        return "active"
+    if (source or "").strip().lower() in _AD_SOURCES:
+        return "ad"
+    return "new"
+
+
+# Ordered (needle-set, summary) rules for the inbox gist. First match wins, so put
+# the specific asks (reschedule, documents) before the generic ones (question).
+# Each summary is a short, plain-English subject line - what the person WANTS, the
+# way an assistant would put it - since real emails/DMs have no useful subject.
+_SUMMARY_RULES = [
+    (("reschedule", "move my", "change my appointment", "change the time",
+      "push my", "different day", "another day", "can't make"),
+     "Wants to reschedule their visit"),
+    (("schedule", "book", "available", "free on", "come in", "appointment",
+      "screening visit", "set up a time", "monday", "tuesday", "wednesday",
+      "thursday", "friday", "morning", "afternoon"),
+     "Wants to book a screening visit"),
+    (("insurance card", "insurance and consent", "consent form and"),
+     "Sent their insurance card and consent form"),
+    (("consent form", "signed consent", "consent"),
+     "Sent the signed consent form"),
+    (("insurance",), "Sent their insurance details"),
+    (("uploaded", "upload", "attached", "here are the", "here's the",
+      "the forms", "completed forms", "fill out", "paperwork", "document"),
+     "Sending documents for their file"),
+    (("reimburse", "compensat", "get paid", "payment", "stipend", "how much",
+      "cost me", "travel cost", "pay for"),
+     "Asking about pay and reimbursement"),
+    (("do i qualify", "am i eligible", "eligible", "qualify", "am i a fit",
+      "good candidate"),
+     "Asking whether they qualify"),
+    (("placebo", "sugar pill"), "Asking about the placebo"),
+    (("my own doctor", "my doctor", "my regular", "primary care", "my care",
+      "affect the care", "my gp"),
+     "Asking how it affects their regular care"),
+    (("still enrolling", "still recruiting", "still open", "spots left",
+      "any openings", "still accepting"),
+     "Asking if the study is still enrolling"),
+    (("stop", "unsubscribe", "opt out", "opt-out", "don't contact",
+      "do not contact", "remove me"),
+     "Wants to stop getting messages"),
+    (("how long", "how many visits", "what should i bring", "what to expect",
+      "how does it work", "what happens"),
+     "Asking what taking part involves"),
+    (("interested", "sign me up", "want to join", "would like to join",
+      "want to take part", "count me in"),
+     "Interested and wants to take part"),
+]
+
+
+def _message_summary(msg, channel_label):
+    """A short, plain-English gist of a thread - the AI-style 'subject' shown in
+    the inbox in place of the (repetitive) trial title. Deterministic keyword
+    rules so it's free and instant; reads like a one-line assistant summary."""
+    if not msg:
+        return "New applicant \u00b7 no message yet"
+    body = (msg["body"] or "").strip()
+    if msg["sender"] == "site":
+        return "You replied \u2014 waiting on their response"
+    if not body:
+        return "New applicant \u00b7 no message yet"
+    t = body.lower()
+    for needles, summary in _SUMMARY_RULES:
+        if any(n in t for n in needles):
+            return summary
+    if "?" in body:
+        return "Has a question about the study"
+    if any(a in t for a in ("thank", "sounds good", "will do", "perfect",
+                            "got it", "see you", "great")):
+        return "Confirmed \u2014 no action needed"
+    # Fallback: the first sentence/clause, trimmed to a subject-ish length.
+    first = re.split(r"(?<=[.!?])\s+", body)[0]
+    first = re.sub(r"\s+", " ", first).strip(" .")
+    if len(first) > 70:
+        first = first[:67].rstrip() + "\u2026"
+    return first[:1].upper() + first[1:] if first else "New message"
+
+
 def _triage_inbox_row(r, msg, unread, assignee_name):
     """Flatten a lead + its latest message into one triage-inbox row."""
     keys = set(r.keys())
@@ -6680,11 +6851,14 @@ def _triage_inbox_row(r, msg, unread, assignee_name):
         "phone": g_("phone"),
         "nct": g_("nct"),
         "title": g_("title") or g_("condition") or g_("nct") or "—",
+        "summary": _message_summary(msg, ch_label),
+        "category": _lead_category(g_("status"), g_("source")),
         "condition": g_("condition"),
         "status": g_("status") or "new",
         "revealed": bool(g_("revealed", 0)),
         "channel": ch_label,
         "channel_tone": ch_tone,
+        "channel_icon": _channel_icon(ch_label),
         "intent": intent,
         "intent_label": intent_label,
         "intent_tone": intent_tone,
@@ -6780,6 +6954,47 @@ def team_inbox():
         if n:
             label, tone = _INTENT_META.get(key, (key, "neutral"))
             intents.append({"key": key, "label": label, "tone": tone, "n": n})
+    # Gmail-style inbox tabs (coarse bucket per thread). "All" first, then each
+    # non-empty bucket. Hidden entirely when there's only one bucket in play, so
+    # a single-mode inbox doesn't grow a pointless tab strip.
+    cat_counts = {}
+    for a in inbox:
+        cat_counts[a["category"]] = cat_counts.get(a["category"], 0) + 1
+    inbox_tabs = [{"key": "all", "label": "All", "icon": "inbox", "n": len(inbox)}]
+    for key, label, icon in _INBOX_TAB_META:
+        if cat_counts.get(key):
+            inbox_tabs.append({"key": key, "label": label, "icon": icon,
+                               "n": cat_counts[key]})
+    if len(inbox_tabs) <= 2:
+        inbox_tabs = []
+    # Source filters: the channels a coordinator can click to see just that ad
+    # type (IG DMs, Facebook, email, CT.gov ...) - "check my ad responses without
+    # leaving the app". When a trial is selected AND it declares connected
+    # sources, we show exactly those (each with its live count, even zero, so an
+    # empty channel reads as "no new responses" rather than vanishing). Otherwise
+    # we show whatever sources are actually present, ordered by volume.
+    counts, tones = {}, {}
+    for a in inbox:
+        counts[a["channel"]] = counts.get(a["channel"], 0) + 1
+        tones.setdefault(a["channel"], a["channel_tone"])
+    connected = db.get_claim_connected_sources(g.user["id"], active_nct) \
+        if active_nct else []
+    channels, shown = [], set()
+    # A trial's connected channels come first, each with its live count - shown
+    # even at zero so "no new Instagram responses" reads as an answer, not a gap.
+    for key in connected:
+        lbl, tone = _channel_meta(key)
+        channels.append({"label": lbl, "tone": tone, "icon": _channel_icon(lbl),
+                         "n": counts.get(lbl, 0)})
+        shown.add(lbl)
+    # Then any source actually present but not in the connected set, so no lead is
+    # ever unfilterable (busiest first). With no connected set, this is the whole
+    # list (the "All studies" / unconfigured behavior).
+    extra = sorted((lbl for lbl in counts if lbl not in shown),
+                   key=lambda l: -counts[l])
+    for lbl in extra:
+        channels.append({"label": lbl, "tone": tones.get(lbl, "neutral"),
+                         "icon": _channel_icon(lbl), "n": counts[lbl]})
     # Trial switcher tabs: All studies + one per study, each with its open count.
     tabs = [{"nct": "", "title": "All studies", "count": total_open,
              "active": not active_nct}]
@@ -6800,7 +7015,8 @@ def team_inbox():
     # refresh (which refetches location.href and swaps .thread) keeps working.
     open_thread = _inbox_open_thread(request.args.get("open"))
     return render_template("team_inbox.html", inbox=inbox, stats=stats,
-                           intents=intents, members=members,
+                           intents=intents, channels=channels,
+                           inbox_tabs=inbox_tabs, members=members,
                            me_id=g.user["id"], tabs=tabs, active_nct=active_nct,
                            unstudied=unstudied, upcoming=upcoming,
                            upcoming_days=upcoming_days, today=today,
@@ -6832,11 +7048,24 @@ def _inbox_open_thread(raw_id):
         db.mark_thread_read(lead_id, "site")
     except Exception:
         app.logger.exception("mark_thread_read failed")
+    # How the thread is rendered depends on the channel it came in on: an email
+    # inquiry reads like an email (subject line, From, formal composer), while an
+    # ad/social lead (IG DM, Messenger, ...) reads like a DM chat. Same data,
+    # channel-native chrome - so a coordinator handles each the way the sender
+    # experiences it, without leaving the app.
+    src = _lead_source_key(lead)
+    ch_label, ch_tone = _channel_meta(src)
+    mode = "chat" if src in _AD_SOURCES else "email"
     return {
         "it": it,
         "l": lead,
         "view": view,
         "notes": db.list_notes(lead_id),
+        "channel_key": src,
+        "channel_label": ch_label,
+        "channel_tone": ch_tone,
+        "channel_icon": _channel_icon(ch_label),
+        "mode": mode,
         "default_schedule": (db.get_claim_schedule_url(g.user["id"], lead["nct"])
                              or db.get_site_calendar_url(g.user["id"])),
     }
@@ -10753,6 +10982,18 @@ def _render_site_setup(instruments=None, active_tab=None):
             continue
         route_channels.append({"key": _key, "label": _channel_meta(_key)[0]})
     _study_titles = {c["nct"]: (c["title"] or c["nct"]) for c in claims}
+    # Per-study connected sources: which channels each trial recruits through.
+    # Drives the inbox's per-trial source filters. Presented as a checkbox grid.
+    connectable_channels = [{"key": k, "label": _channel_meta(k)[0],
+                             "icon": _channel_icon(_channel_meta(k)[0])}
+                            for k in db.CONNECTABLE_CHANNELS]
+    study_sources = []
+    for c in claims:
+        study_sources.append({
+            "nct": c["nct"], "title": c["title"] or c["nct"],
+            "connected": set(db.get_claim_connected_sources(g.user["id"], c["nct"])),
+        })
+    connector_url = db.get_site_connector(g.user["id"])[0]
     routing_rules = []
     for r in db.list_routing_rules(g.user["id"]):
         clabel, ctone = ("Any channel", "neutral") if r["channel"] == "any" \
@@ -10770,6 +11011,9 @@ def _render_site_setup(instruments=None, active_tab=None):
         claims=claims,
         route_channels=route_channels,
         routing_rules=routing_rules,
+        connectable_channels=connectable_channels,
+        study_sources=study_sources,
+        connector_url=connector_url,
         posted=db.list_site_posted_studies(user_id=g.user["id"]),
         redcap_on=cfg.connected,
         redcap_token_set=bool(cfg.api_token),
@@ -10842,6 +11086,39 @@ def routing_rule_delete():
     ok = db.delete_routing_rule(g.user["id"], rule_id)
     flash("Routing rule removed." if ok else "Rule not found.",
           "success" if ok else "error")
+    return redirect(url_for("site_setup") + "#routing")
+
+
+@app.route("/app/site/sources", methods=["POST"])
+@login_required
+def study_sources_save():
+    """Save which channels a study recruits through. Empty = every source. Drives
+    the inbox's per-trial source filters so each trial shows only the logos it
+    actually gets leads from. KPI: Tier-2 efficiency - a coordinator scans the
+    right ad channels for that trial, not a mixed pile."""
+    nct = (request.form.get("nct") or "").strip()
+    sources = request.form.getlist("sources")
+    if db.set_claim_connected_sources(g.user["id"], nct, sources):
+        flash("Connected sources updated.", "success")
+    else:
+        flash("Couldn't update sources.", "error")
+    return redirect(url_for("site_setup") + "#routing")
+
+
+@app.route("/app/site/connector", methods=["POST"])
+@login_required
+def site_connector_save():
+    """Save the outbound reply connector so coordinators can answer IG/FB/Messenger
+    leads from the app (the reply is POSTed to this webhook, which delivers it back
+    to the channel). Secret is write-only; blank keeps the stored value."""
+    if not db.can_manage_team(g.user["id"]):
+        flash("Only full-access members can manage the connector.", "error")
+        return redirect(url_for("site_setup") + "#routing")
+    f = request.form
+    secret_raw = f.get("connector_secret", "")
+    secret = secret_raw.strip() if secret_raw.strip() else None
+    db.set_site_connector(g.user["id"], f.get("connector_webhook_url", ""), secret)
+    flash("Reply connector saved.", "success")
     return redirect(url_for("site_setup") + "#routing")
 
 
@@ -11145,7 +11422,7 @@ def message_lead(lead_id):
     body = request.form.get("body", "").strip()
     if body:
         db.add_message(lead_id, "site", body)
-        _notify_applicant_message(lead, body)
+        _deliver_reply(lead, body)
         flash("Message sent.", "success")
     else:
         flash("Write a message first.", "error")
@@ -11206,7 +11483,7 @@ def copilot_act():
             if not text:
                 return jsonify({"ok": False, "error": "The message is empty."}), 400
             db.add_message(lead_id, "site", text)
-            _notify_applicant_message(lead, text)
+            _deliver_reply(lead, text)
             db.mark_copilot_action(token, "confirmed")
             lbl = payload.get("label") or "the applicant"
             return jsonify({"ok": True, "answer": f"Sent to {lbl}.",

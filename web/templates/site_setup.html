@@ -502,6 +502,51 @@
   {{ ui.empty('No routing rules yet', 'Add a rule above and new inquiries route themselves to the right teammate.', 'inbox') }}
   {% endif %}
 </div>
+
+{# ---------- Connected sources per study ---------- #}
+<div class="app-card pad" style="margin-top:18px;">
+  <div class="app-card-title" style="margin-bottom:4px;">Connected sources</div>
+  <p class="site-hint">Pick the channels each trial actually recruits through. The inbox then shows only those sources for that trial — so a coordinator scans the right ad responses (Instagram, Facebook, email…) with the channel’s logo, and isn’t distracted by channels this study doesn’t use. Leave all unchecked to show every source.</p>
+  {% if study_sources %}
+  {% for s in study_sources %}
+  <form method="post" action="{{ url_for('study_sources_save') }}" class="src-form">
+    <input type="hidden" name="nct" value="{{ s.nct }}">
+    <div class="src-form-head">
+      <b>{{ s.title }}</b>
+      {{ ui.btn('Save', 'ghost', 'sm', type='submit', icon='check') }}
+    </div>
+    <div class="src-grid">
+      {% for c in connectable_channels %}
+      <label class="src-opt{% if c.key in s.connected %} on{% endif %}">
+        <input type="checkbox" name="sources" value="{{ c.key }}"{% if c.key in s.connected %} checked{% endif %}>
+        {{ ic.icon(c.icon, 'brand-ico') }}
+        <span>{{ c.label }}</span>
+      </label>
+      {% endfor %}
+    </div>
+  </form>
+  {% endfor %}
+  {% else %}
+  {{ ui.empty('No studies yet', 'Claim a study first (Studies tab), then choose which channels it recruits through.', 'grid') }}
+  {% endif %}
+</div>
+
+{# ---------- Outbound reply connector ---------- #}
+<div class="app-card pad" style="margin-top:18px;">
+  <div class="app-card-title" style="margin-bottom:4px;">Reply from the app (IG / Facebook / Messenger)</div>
+  <p class="site-hint">Answer social-ad leads without opening Instagram or Facebook. Paste an outbound webhook (Zapier/Make, or your own endpoint); when a coordinator replies to a social lead, we POST the reply there and it’s delivered back to the person on that channel. Email and SMS leads keep sending the normal way. The signing secret lets your connector verify the request is really from us.</p>
+  <form method="post" action="{{ url_for('site_connector_save') }}" class="field-stack" style="margin-top:12px;max-width:560px;">
+    <div class="field">
+      <label>Outbound webhook URL</label>
+      <input type="url" name="connector_webhook_url" value="{{ connector_url }}" placeholder="https://hooks.zapier.com/…">
+    </div>
+    <div class="field">
+      <label>Signing secret <span style="color:var(--faint);font-weight:400;">(optional; leave blank to keep current)</span></label>
+      <input type="password" name="connector_secret" autocomplete="new-password" placeholder="••••••••">
+    </div>
+    <div>{{ ui.btn('Save connector', 'primary', 'sm', type='submit', icon='check') }}</div>
+  </form>
+</div>
 </div>{# /routing panel #}
 
 {% if is_owner %}
@@ -545,6 +590,13 @@ document.querySelectorAll('.js-role').forEach(function (sel) {
     if (sel.dataset.autosubmit === '1' && sel.value !== 'other' && sel.value !== '__current') {
       sel.form.submit();
     }
+  });
+});
+
+// Connected-sources pills reflect their checkbox live (before Save).
+document.querySelectorAll('.src-opt input').forEach(function (cb) {
+  cb.addEventListener('change', function () {
+    cb.closest('.src-opt').classList.toggle('on', cb.checked);
   });
 });
 </script>

@@ -75,30 +75,65 @@
      the top bar, and views + intents live on one filter row. #}
   <section class="gm-main">
 
-    {# Filters: select-all · scrolling chips · pinned actions. The chips scroll on
-       their own so the actions stay put and nothing gets clipped by the dock. #}
+    {# Gmail-style category tabs: one coarse bucket per thread (New inquiries ·
+       Ad leads · Active patients), so each queue is a different kind of work.
+       Trials aren't a tab (the study switcher handles those); sources stay as the
+       finer chip filter below. Hidden when there's only one bucket. #}
+    {% if inbox_tabs %}
+    <div class="gm-cats" role="tablist" aria-label="Inbox">
+      {% for t in inbox_tabs %}
+      <button type="button" class="gm-cat{% if t.key == 'all' %} is-on{% endif %}"
+              role="tab" aria-selected="{{ 'true' if t.key == 'all' else 'false' }}"
+              data-cat="{{ t.key }}">
+        {{ ic.icon(t.icon) }}<span>{{ t.label }}</span>
+        {% if t.n %}<span class="gm-cat-n">{{ t.n }}</span>{% endif %}
+      </button>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {# One filter row, with real hierarchy so it stops reading as a wall of pills:
+       (1) a single segmented control for the view (mutually-exclusive lens),
+       (2) light "refine" chips for topic + source that scroll on their own,
+       (3) a "More" menu for team ACTIONS (cover, routing) - which are not filters
+       and shouldn't sit among them. #}
     <div class="gm-filters">
       <label class="gm-check" title="Select all"><input type="checkbox" id="gmAll"></label>
-      <div class="gm-chips-scroll">
-        <button type="button" class="chip is-on" data-filter="view" data-view="all" aria-pressed="true">All <span class="gm-n">{{ stats.total }}</span></button>
-        <button type="button" class="chip" data-filter="view" data-view="unread" aria-pressed="false">Unread{% if stats.unread %} <span class="gm-n">{{ stats.unread }}</span>{% endif %}</button>
+
+      <div class="gm-seg" role="group" aria-label="View">
+        <button type="button" class="gm-seg-b is-on" data-filter="view" data-view="all" aria-pressed="true">All</button>
+        <button type="button" class="gm-seg-b" data-filter="view" data-view="unread" aria-pressed="false">Unread{% if stats.unread %} <span class="gm-n">{{ stats.unread }}</span>{% endif %}</button>
         {% if members and members|length > 1 %}
-        <button type="button" class="chip" data-filter="view" data-view="mine" aria-pressed="false">Mine</button>
-        <button type="button" class="chip" data-filter="view" data-view="unassigned" aria-pressed="false">Unassigned{% if stats.unassigned %} <span class="gm-n">{{ stats.unassigned }}</span>{% endif %}</button>
+        <button type="button" class="gm-seg-b" data-filter="view" data-view="mine" aria-pressed="false">Mine</button>
+        <button type="button" class="gm-seg-b" data-filter="view" data-view="unassigned" aria-pressed="false">Unassigned{% if stats.unassigned %} <span class="gm-n">{{ stats.unassigned }}</span>{% endif %}</button>
         {% endif %}
-        <button type="button" class="chip" data-filter="view" data-view="high" aria-pressed="false">High priority{% if stats.high %} <span class="gm-n">{{ stats.high }}</span>{% endif %}</button>
-        {% if intents %}
-        <span class="gm-filters-div" aria-hidden="true"></span>
-        {% for it in intents %}
+        {% if stats.high %}
+        <button type="button" class="gm-seg-b" data-filter="view" data-view="high" aria-pressed="false">High <span class="gm-n">{{ stats.high }}</span></button>
+        {% endif %}
+      </div>
+
+      {# Refine by topic + source. "New inquiry" is dropped: it's the default for
+         nearly every thread, so as a filter it just repeats "All". Sources carry
+         their brand mark so the channel reads at a glance. #}
+      <div class="gm-chips-scroll">
+        {% for it in intents if it.key != 'new_inquiry' %}
         <button type="button" class="chip" data-filter="intent" data-intent="{{ it.key }}" aria-pressed="false">{{ it.label }} <span class="gm-n">{{ it.n }}</span></button>
+        {% endfor %}
+        {% if channels and channels|length > 1 %}
+        {% for c in channels %}
+        <button type="button" class="chip chip-src" data-filter="channel" data-channel="{{ c.label }}" aria-pressed="false" title="{{ c.label }}">{{ ic.icon(c.icon, 'brand-ico') }} {{ c.label }} <span class="gm-n">{{ c.n }}</span></button>
         {% endfor %}
         {% endif %}
       </div>
+
       {% if members and members|length > 1 %}
-      <div class="gm-filter-actions">
-        <button type="button" class="gm-tool gm-tool-lbl" data-ui-open="coverModal" title="Cover a teammate on vacation">{{ ic.icon('users') }}<span>Cover</span></button>
-        <a class="gm-tool gm-tool-lbl" href="{{ url_for('site_setup') }}#routing" title="Auto-routing rules">{{ ic.icon('arrow-right') }}<span>Routing</span></a>
-      </div>
+      <details class="gm-more">
+        <summary class="gm-more-btn" title="Team actions">More {{ ic.icon('chevron-down') }}</summary>
+        <div class="gm-more-menu">
+          <button type="button" data-ui-open="coverModal">{{ ic.icon('users') }} Cover a teammate</button>
+          <a href="{{ url_for('site_setup') }}#routing">{{ ic.icon('arrow-right') }} Auto-routing rules</a>
+        </div>
+      </details>
       {% endif %}
     </div>
 
@@ -131,6 +166,8 @@
       <li class="gm-row{% if a.unread %} is-unread{% endif %}{% if pane and pane.l['id'] == a.id %} is-open{% endif %}"
           data-id="{{ a.id }}"
           data-intent="{{ a.intent }}"
+          data-channel="{{ a.channel }}"
+          data-cat="{{ a.category }}"
           data-unread="{{ '1' if a.unread else '0' }}"
           data-high="{{ '1' if a.priority == 'high' else '0' }}"
           data-assignee="{{ a.assigned_user_id or '' }}"
@@ -142,13 +179,17 @@
         <a class="gm-open" href="{{ url_for('team_inbox', open=a.id, nct=active_nct or none) }}">
           <span class="gm-from">{{ a.name }}{% if a.unread %}<span class="gm-dot" title="Unread"></span>{% endif %}</span>
           <span class="gm-body">
-            <span class="gm-subj">{{ a.title }}{% if a.nct %} · {{ a.nct }}{% endif %}</span>
+            {# The "subject" is a plain-English, AI-style gist of the thread (what
+               the person wants) - not the trial title, which repeats down the whole
+               list and tells a coordinator nothing. The study is on the badge /
+               study switcher; the raw message is the snippet. #}
+            <span class="gm-subj">{{ a.summary }}</span>
             <span class="gm-snip">{% if a.preview_mine %}<span class="gm-you">You:</span> {% endif %}{{ a.preview|truncate(120) }}</span>
           </span>
           <span class="gm-tags">
             {% if a.priority == 'high' %}{{ ui.badge('High', 'danger') }}{% endif %}
             {{ ui.badge(a.intent_label, a.intent_tone) }}
-            {{ ui.badge(a.channel, a.channel_tone) }}
+            <span class="gm-src" title="Source: {{ a.channel }}">{{ ic.icon(a.channel_icon, 'brand-ico') }}<span>{{ a.channel }}</span></span>
             {{ verdict_badge(a.verdict) }}
             {% if a.opt_out %}{{ ui.badge('Opted out', 'danger') }}{% endif %}
           </span>
@@ -220,11 +261,13 @@
 (function () {
   var q = document.getElementById('inboxSearch');
   var rows = Array.prototype.slice.call(document.querySelectorAll('#inboxList .gm-row'));
-  var viewChips = Array.prototype.slice.call(document.querySelectorAll('.gm-filters .chip[data-filter="view"]'));
-  var intentChips = Array.prototype.slice.call(document.querySelectorAll('.gm-filters .chip[data-filter="intent"]'));
+  var viewChips = Array.prototype.slice.call(document.querySelectorAll('.gm-filters [data-filter="view"]'));
+  var intentChips = Array.prototype.slice.call(document.querySelectorAll('.gm-filters [data-filter="intent"]'));
+  var channelChips = Array.prototype.slice.call(document.querySelectorAll('.gm-filters [data-filter="channel"]'));
+  var catTabs = Array.prototype.slice.call(document.querySelectorAll('.gm-cats .gm-cat'));
   var empty = document.getElementById('inboxEmpty'), count = document.getElementById('inboxCount');
   var meId = '{{ me_id }}';
-  var activeIntent = '', activeView = 'all';
+  var activeIntent = '', activeView = 'all', activeChannel = '', activeCat = 'all';
 
   function okView(r) {
     if (activeView === 'mine') return (r.dataset.assignee || '') === meId;
@@ -238,7 +281,9 @@
     rows.forEach(function (r) {
       var okText = !term || r.dataset.text.indexOf(term) >= 0;
       var okIntent = !activeIntent || r.dataset.intent === activeIntent;
-      var ok = okText && okIntent && okView(r);
+      var okChannel = !activeChannel || r.dataset.channel === activeChannel;
+      var okCat = activeCat === 'all' || r.dataset.cat === activeCat;
+      var ok = okText && okIntent && okChannel && okCat && okView(r);
       r.style.display = ok ? '' : 'none'; if (ok) shown++;
     });
     if (empty) empty.style.display = shown ? 'none' : 'block';
@@ -281,6 +326,43 @@
       apply();
     });
   });
+  // Source chips: same quick-toggle. Click Instagram to see only IG threads,
+  // click it again to clear. One source at a time keeps the count honest.
+  channelChips.forEach(function (c) {
+    c.addEventListener('click', function () {
+      if (activeChannel === c.dataset.channel) {
+        activeChannel = ''; press(null, channelChips);
+      } else {
+        activeChannel = c.dataset.channel; press(c, channelChips);
+      }
+      apply();
+    });
+  });
+  // Category tabs (Gmail Primary/Social style): single-select bucket, always one
+  // active. Sets aria-selected for a11y and re-runs the same combined filter.
+  catTabs.forEach(function (t) {
+    t.addEventListener('click', function () {
+      activeCat = t.dataset.cat;
+      catTabs.forEach(function (x) {
+        var on = x === t;
+        x.classList.toggle('is-on', on);
+        x.setAttribute('aria-selected', on ? 'true' : 'false');
+      });
+      apply();
+    });
+  });
+
+  // "More" actions menu (native <details>): close it after a pick, and on any
+  // outside click, so it behaves like a normal dropdown.
+  var more = document.querySelector('.gm-more');
+  if (more) {
+    more.querySelectorAll('.gm-more-menu a, .gm-more-menu button').forEach(function (el) {
+      el.addEventListener('click', function () { more.removeAttribute('open'); });
+    });
+    document.addEventListener('click', function (e) {
+      if (more.open && !more.contains(e.target)) more.removeAttribute('open');
+    });
+  }
 
   // Selection + bulk bar.
   var picks = Array.prototype.slice.call(document.querySelectorAll('.gm-pick'));
@@ -336,8 +418,11 @@
   function afterPaint() {
     if (window.__attachCsrf) window.__attachCsrf();
     if (window.__hydrateTimes) window.__hydrateTimes();
-    document.querySelectorAll('#gmPane .thread').forEach(function (t) {
-      t.scrollTop = t.scrollHeight;
+    // Open on the latest message, like email/DM clients do: the pane itself is
+    // the scroller (the inner thread has overflow:visible), so scroll THAT to the
+    // bottom, otherwise a tall decision/screening block hides the conversation.
+    document.querySelectorAll('#gmPane .gm-pane-scroll').forEach(function (s) {
+      s.scrollTop = s.scrollHeight;
     });
   }
   function paint(html, id) {
