@@ -23,17 +23,12 @@
   {# Self-referencing canonical by default (strips query string); SEO pages like
      condition.html override this block with their absolute canonical URL. #}
   {% block canonical %}<link rel="canonical" href="{{ request.base_url }}">{% endblock %}
-  {# The browser-tab icon must match the brand of the page you are on: teal on the
-     sites/app pages (for_sites, for_sites_feature), blue on the consumer/patient
-     pages (which use the blue --accent identity). Same endpoint test as the
-     body.fs-page class below, so tab colour and page colour never disagree. #}
-  {% set _fs = request.endpoint in ('for_sites', 'for_sites_feature') %}
-  <link rel="icon" type="image/svg+xml" href="{{ static_url('logo.svg' if _fs else 'logo-blue.svg') }}">
-  <link rel="icon" type="image/png" sizes="32x32" href="{{ static_url('favicon-32.png' if _fs else 'favicon-blue-32.png') }}">
-  <link rel="icon" type="image/png" sizes="16x16" href="{{ static_url('favicon-16.png' if _fs else 'favicon-blue-16.png') }}">
-  <link rel="icon" href="{{ static_url('favicon.ico' if _fs else 'favicon-blue.ico') }}" sizes="any">
-  <link rel="apple-touch-icon" sizes="180x180" href="{{ static_url('apple-touch-icon.png' if _fs else 'apple-touch-icon-blue.png') }}">
-  <link rel="manifest" href="{{ static_url('site.webmanifest' if _fs else 'site-blue.webmanifest') }}">
+  <link rel="icon" type="image/svg+xml" href="{{ static_url('logo.svg') }}">
+  <link rel="icon" type="image/png" sizes="32x32" href="{{ static_url('favicon-32.png') }}">
+  <link rel="icon" type="image/png" sizes="16x16" href="{{ static_url('favicon-16.png') }}">
+  <link rel="icon" href="{{ static_url('favicon.ico') }}" sizes="any">
+  <link rel="apple-touch-icon" sizes="180x180" href="{{ static_url('apple-touch-icon.png') }}">
+  <link rel="manifest" href="{{ static_url('site.webmanifest') }}">
   <meta name="theme-color" content="#f8f9fa" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#17191d" media="(prefers-color-scheme: dark)">
   {# Social share cards: rich preview when a link is posted to Reddit / Facebook /
@@ -55,7 +50,7 @@
   {% endblock %}
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Inter:wght@400;500;600;700&family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ static_url('style.css') }}">
   {# Sitewide brand entity so Google + answer engines recognize BridgeMD as one
      consistent organization/site across every page. Page-specific schema (e.g.
@@ -96,7 +91,7 @@
 <a class="skip-link" href="#main">Skip to main content</a>
 {% block site_header %}
 <header class="pub-nav">
-  <a class="brand" href="{{ url_for('home') }}">{{ ic.icon('mark', 'brand-glyph brand-blue') }}BridgeMD</a>
+  <a class="brand" href="{{ url_for('home') }}">{{ ic.icon('mark', 'brand-glyph') }}BridgeMD</a>
   {% if not demo_home %}
   <nav class="pub-nav-center" aria-label="Primary">
     <a href="{{ url_for('find') }}">Find a trial</a>
@@ -149,7 +144,7 @@
 <footer class="pub-foot">
   <div class="pub-foot-in">
     <div class="pub-foot-brand">
-      <span>{{ ic.icon('mark', 'brand-glyph brand-glyph-sm brand-blue') }}BridgeMD</span>
+      <span>{{ ic.icon('mark', 'brand-glyph brand-glyph-sm') }}BridgeMD</span>
       <span class="pub-foot-note">Connecting people to the care that's looking for them.</span>
     </div>
   </div>

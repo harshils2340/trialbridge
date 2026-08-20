@@ -1562,7 +1562,10 @@ def inject_globals():
     except Exception:
         msgs_unread = 0
     try:
-        site_unread = db.unread_for_site(g.user["id"]) if g.user else 0
+        site_unread = (
+            db.marketing_thread_counts(g.user["id"])["unread"]
+            if g.user else 0
+        )
     except Exception:
         site_unread = 0
     # In no-login testing mode we show a small switcher so you can preview all
@@ -2275,6 +2278,27 @@ def _instagram_unsubscribe_webhooks(access_token, instagram_user_id):
         method="DELETE",
         headers={"Authorization": f"Bearer {access_token}"})
     return payload.get("success") is True
+
+
+def _instagram_send_reply(access_token, instagram_user_id, recipient_id, body):
+    """Send a human-reviewed reply to a user who initiated an Instagram thread."""
+    account_id = urllib.parse.quote(str(instagram_user_id), safe="")
+    payload = json.dumps({
+        "recipient": {"id": str(recipient_id)},
+        "message": {"text": (body or "").strip()[:1000]},
+    }).encode("utf-8")
+    result = _instagram_json_request(
+        f"{INSTAGRAM_GRAPH_API_BASE_URL}/{INSTAGRAM_GRAPH_API_VERSION}/"
+        f"{account_id}/messages",
+        data=payload, method="POST",
+        headers={
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json",
+        })
+    message_id = str(result.get("message_id") or result.get("id") or "")
+    if not message_id:
+        raise InstagramAPIError("Instagram did not confirm message delivery.")
+    return message_id
 
 
 def _meta_signed_request_payload(signed_request):
@@ -5311,6 +5335,9 @@ def marketing_hub():
     if channel not in db.MARKETING_CHANNELS:
         channel = ""
     query = (request.args.get("q") or "").strip()[:100]
+    stage_filter = (request.args.get("stage") or "all").strip().lower()
+    if stage_filter not in ("all",) + db.MARKETING_PIPELINE_STAGES:
+        stage_filter = "all"
 
     # Scope the whole inbox to the trial chosen in the top switcher, so switching
     # studies shows a different set of people - each trial reads as its own inbox.
@@ -5343,9 +5370,21 @@ def marketing_hub():
         item["channel_label"] = db.MARKETING_CHANNEL_LABELS.get(
             item.get("channel"), "Message")
         threads.append(item)
+    stage_counts = {"all": len(threads)}
+    for item in threads:
+        key = item.get("pipeline_stage") or "new"
+        stage_counts[key] = stage_counts.get(key, 0) + 1
+    if stage_filter != "all":
+        threads = [
+            item for item in threads
+            if (item.get("pipeline_stage") or "new") == stage_filter
+        ]
 
     selected_id = request.args.get("thread", type=int)
     active = db.get_marketing_thread(g.user["id"], selected_id) if selected_id else None
+    if (active and stage_filter != "all"
+            and (active["pipeline_stage"] or "new") != stage_filter):
+        active = None
     if not active and threads:
         active = db.get_marketing_thread(g.user["id"], threads[0]["id"])
     # The first row is previewed by default, but only an explicit thread click
@@ -5359,6 +5398,12 @@ def marketing_hub():
                 item["unread"] = 0
 
     messages = []
+    applicant = None
+    eligibility = {}
+    records_profile = None
+    records_data = {}
+    checklist = []
+    bridget_draft = ""
     if active:
         for row in db.list_marketing_messages(g.user["id"], active["id"]):
             item = dict(row)
@@ -5366,6 +5411,32 @@ def marketing_hub():
             item["display_author"] = (
                 item.get("user_name") or item.get("author_name") or "Contact")
             messages.append(item)
+        if active["linked_lead_id"]:
+            row = db.get_lead(active["linked_lead_id"])
+            if row:
+                applicant = dict(row)
+                try:
+                    eligibility = json.loads(applicant.get("eligibility") or "{}")
+                except (TypeError, ValueError):
+                    eligibility = {}
+                if applicant.get("applicant_token"):
+                    profile_row = db.get_records_profile(
+                        applicant["applicant_token"])
+                    records_profile = dict(profile_row) if profile_row else None
+                    if records_profile:
+                        records_data = records_profile
+                checklist = [dict(task) for task in db.list_tasks(applicant["id"])]
+        inbound = next(
+            (item["body"] for item in reversed(messages)
+             if item.get("kind") == "inbound"), "")
+        if inbound:
+            first = (active["contact_name"] or "there").split()[0]
+            study = active["study_label"] or "the study"
+            bridget_draft = (
+                f"Hi {first}, thank you for reaching out about {study}. "
+                "I can help with the next step. Could you confirm the best time "
+                "for a brief screening call this week?"
+            )
 
     settings = db.get_marketing_handoff(g.user["id"])
     active_owner_id = db.marketing_active_owner_id(settings)
@@ -5386,6 +5457,11 @@ def marketing_hub():
         active_owner=active_owner, primary=primary, cover=cover, counts=counts,
         status_filter=status, channel_filter=channel, search_query=query,
         source_filter=source_filter, active_nct=active_nct,
+        stage_filter=stage_filter, stage_counts=stage_counts,
+        applicant=applicant, eligibility=eligibility,
+        records_profile=records_profile, records_data=records_data,
+        checklist=checklist,
+        bridget_draft=bridget_draft, is_demo=_is_demo_account(g.user),
         channel_labels=db.MARKETING_CHANNEL_LABELS,
         gmail_oauth_ready=_google_ready(),
         instagram_oauth_ready=_instagram_ready(),
@@ -5889,6 +5965,42 @@ def marketing_thread_reply(thread_id):
     blocked = _private_marketing_workspace_required()
     if blocked:
         return blocked
+    if thread["provider"] == "instagram":
+        inbound = next(
+            (row for row in reversed(
+                db.list_marketing_messages(g.user["id"], thread_id))
+             if row["kind"] == "inbound"), None)
+        try:
+            inbound_at = dt.datetime.strptime(
+                (inbound["created_at"] or "")[:16], "%Y-%m-%d %H:%M")
+        except (TypeError, ValueError):
+            inbound_at = None
+        if not inbound_at or dt.datetime.now() - inbound_at > dt.timedelta(hours=24):
+            flash("Instagram's reply window has closed. Ask the person to send "
+                  "a new message before replying.", "error")
+            return redirect(_marketing_thread_url(thread_id, "composer"))
+        try:
+            access_token = token_crypto.decrypt_token(
+                thread["access_token_encrypted"], app.secret_key)
+            message_id = _instagram_send_reply(
+                access_token,
+                thread["instagram_account_id"] or thread["external_account_id"],
+                thread["external_ref"], body)
+        except (InstagramAPIError, token_crypto.TokenEncryptionError):
+            app.logger.warning("Instagram reply failed", exc_info=True)
+            flash("Instagram could not deliver this reply. Reconnect the account "
+                  "or try again.", "error")
+            return redirect(_marketing_thread_url(thread_id, "composer"))
+        stored = db.add_marketing_message(
+            g.user["id"], thread_id, body, kind="outbound",
+            delivery_status="sent", external_ref=message_id)
+        if not stored:
+            flash("Instagram sent the reply, but the local copy could not be "
+                  "saved. Do not resend it.", "error")
+        else:
+            _log_event("instagram_reply_sent")
+            flash("Reply sent through Instagram.", "ok")
+        return redirect(_marketing_thread_url(thread_id, "composer"))
     if thread["provider"] != "gmail":
         flash("External delivery is not available for this account.", "error")
         return redirect(_marketing_thread_url(thread_id, "composer"))
@@ -5952,6 +6064,159 @@ def marketing_thread_status(thread_id):
     return redirect(_marketing_thread_url(thread_id))
 
 
+@app.route("/marketing-hub/threads/<int:thread_id>/stage", methods=["POST"])
+@login_required
+def marketing_thread_stage(thread_id):
+    stage = (request.form.get("stage") or "").strip().lower()
+    thread = db.get_marketing_thread(g.user["id"], thread_id)
+    if not thread or not db.set_marketing_thread_stage(
+            g.user["id"], thread_id, stage):
+        abort(404)
+    if thread["linked_lead_id"]:
+        lead_stage = {
+            "new": "submitted", "outreach": "prescreen",
+            "prescreen": "prescreen", "screening": "screening",
+            "enrolled": "enrolled", "disqualified": "closed",
+            "archived": "closed",
+        }.get(stage, "prescreen")
+        db.update_lead_status(
+            thread["linked_lead_id"], lead_stage,
+            note="stage updated from shared inbox", actor="site")
+        if stage in ("screening", "enrolled") and not db.list_tasks(
+                thread["linked_lead_id"]):
+            for title in (
+                    "Review patient-authorized records",
+                    "Confirm coordinator eligibility review",
+                    "Book screening visit",
+                    "Document consent discussion"):
+                db.add_task(
+                    thread["linked_lead_id"], title,
+                    assigned_to="site", created_by="site")
+    flash("Recruitment stage updated.", "ok")
+    return redirect(_marketing_thread_url(thread_id))
+
+
+@app.route("/marketing-hub/threads/<int:thread_id>/applicant", methods=["POST"])
+@login_required
+def marketing_thread_create_applicant(thread_id):
+    thread = db.get_marketing_thread(g.user["id"], thread_id)
+    if not thread:
+        abort(404)
+    if thread["linked_lead_id"]:
+        flash("This conversation is already linked to an applicant.", "ok")
+        return redirect(_marketing_thread_url(thread_id))
+    if request.form.get("consent") != "1":
+        flash("Confirm the person's permission before creating an applicant.",
+              "error")
+        return redirect(_marketing_thread_url(thread_id))
+    nct = (thread["nct"] or "").strip()
+    if not nct or nct not in set(db.user_claimed_ncts(g.user["id"])):
+        flash("Choose a verified study before creating an applicant.", "error")
+        return redirect(_marketing_thread_url(thread_id))
+    handle = (thread["contact_handle"] or "").strip()
+    token = db.create_lead({
+        "applicant_token": "inbox-" + secrets.token_urlsafe(12),
+        "nct": nct,
+        "title": thread["study_label"] or nct,
+        "name": thread["contact_name"] or "Prospective participant",
+        "email": handle if "@" in handle and not handle.startswith("@") else "",
+        "age": (request.form.get("age") or "").strip()[:3],
+        "consent": 1,
+        "source": thread["channel"] or "inbox",
+        "owner_user_id": g.user["id"],
+        "eligibility": json.dumps({
+            "verdict": "possible",
+            "met": [],
+            "unknown": ["Review study inclusion and exclusion criteria"],
+            "not_met": [],
+        }),
+    })
+    lead = db.get_lead_by_token(token)
+    if not lead or not db.link_marketing_thread_lead(
+            g.user["id"], thread_id, lead["id"]):
+        flash("The applicant could not be linked.", "error")
+        return redirect(_marketing_thread_url(thread_id))
+    _log_event("marketing_applicant_linked", {
+        "thread_id": thread_id, "lead_id": lead["id"], "nct": nct})
+    flash("Applicant created. Screening tools are now available.", "ok")
+    return redirect(_marketing_thread_url(thread_id))
+
+
+@app.route("/marketing-hub/threads/<int:thread_id>/records", methods=["POST"])
+@login_required
+def marketing_thread_records(thread_id):
+    thread = db.get_marketing_thread(g.user["id"], thread_id)
+    if not thread or not thread["linked_lead_id"]:
+        abort(404)
+    if not _is_demo_account(g.user):
+        flash("Patient-authorized record retrieval is currently available in "
+              "the demo workspace only.", "error")
+        return redirect(_marketing_thread_url(thread_id, "records"))
+    lead = db.get_lead(thread["linked_lead_id"])
+    if not lead or request.form.get("authorization_confirmed") != "1":
+        flash("Confirm the patient's record authorization before retrieving.",
+              "error")
+        return redirect(_marketing_thread_url(thread_id, "records"))
+    db.authorize_lead_records(lead["id"])
+    try:
+        prof = records_mod.connect(None, lead["applicant_token"])
+        db.set_records_profile(lead["applicant_token"], prof)
+        summary = records_mod.summary_text(prof)
+        db.attach_records_to_open_leads(lead["applicant_token"], summary)
+        try:
+            elig = json.loads(lead["eligibility"] or "{}")
+        except (TypeError, ValueError):
+            elig = {}
+        elig, _ = records_mod.autofill_eligibility(prof, elig)
+        db.set_lead_prescreen(lead["id"], json.dumps(elig),
+                              lead["prescreen_readiness"] or "")
+        _log_event("demo_records_retrieved", {
+            "thread_id": thread_id, "lead_id": lead["id"],
+            "provider": records_mod.provider()})
+        flash("Patient-authorized sandbox records retrieved.", "ok")
+    except Exception:
+        app.logger.exception("demo record retrieval failed")
+        flash("The sandbox record provider could not be reached.", "error")
+    return redirect(_marketing_thread_url(thread_id, "records"))
+
+
+@app.route("/marketing-hub/threads/<int:thread_id>/checklist/<int:task_id>",
+           methods=["POST"])
+@login_required
+def marketing_thread_checklist(thread_id, task_id):
+    thread = db.get_marketing_thread(g.user["id"], thread_id)
+    if not thread or not thread["linked_lead_id"] or not _is_demo_account(g.user):
+        abort(404)
+    tasks = {task["id"]: task for task in db.list_tasks(thread["linked_lead_id"])}
+    if task_id not in tasks:
+        abort(404)
+    status = "done" if request.form.get("done") == "1" else "open"
+    db.set_task_status(task_id, status)
+    return redirect(_marketing_thread_url(thread_id, "checklist"))
+
+
+@app.route("/marketing-hub/threads/<int:thread_id>/draft.json")
+@login_required
+def marketing_thread_draft(thread_id):
+    thread = db.get_marketing_thread(g.user["id"], thread_id)
+    if not thread:
+        abort(404)
+    messages = db.list_marketing_messages(g.user["id"], thread_id)
+    latest = next(
+        (row["body"] for row in reversed(messages) if row["kind"] == "inbound"),
+        "")
+    if not latest:
+        return jsonify({"ok": False, "message": "No inbound message to draft from."}), 400
+    first = (thread["contact_name"] or "there").split()[0]
+    study = thread["study_label"] or "the study"
+    draft = (
+        f"Hi {first}, thank you for reaching out about {study}. "
+        "I can help with the next step. Could you confirm the best time for "
+        "a brief screening call this week?"
+    )
+    return jsonify({"ok": True, "draft": draft, "human_review_required": True})
+
+
 @app.route("/marketing-hub/coverage", methods=["POST"])
 @login_required
 def marketing_coverage():
@@ -5986,9 +6251,8 @@ def for_sites_feature(slug):
     """Retired. These four pages pitched the old "coordinator OS" (intake,
     pre-screen, scheduling, documents) and directly contradicted what the
     product now is: one inbox. Rather than leave contradictory pages reachable
-    (and indexed), every slug 301s to the hub. The content is still in
-    sites_features.py and for_sites_feature.html if a pillar earns its own page
-    again - restore by rendering instead of redirecting."""
+    (and indexed), every known slug 301s to the hub. `sites_features.py`
+    remains the canonical slug registry used by navigation and the sitemap."""
     if sites_features.get(slug) is None:
         abort(404)
     return redirect(url_for("for_sites") + "#how", code=301)
@@ -6625,10 +6889,48 @@ def instagram_webhook():
     if isinstance(entries, list) and entries and isinstance(entries[0], dict):
         account_external_id = str(entries[0].get("id") or "")
     event_key = hashlib.sha256(raw_payload).hexdigest()
-    db.record_marketing_webhook_event(
+    inserted = db.record_marketing_webhook_event(
         "instagram", event_key, raw_payload.decode("utf-8", errors="replace"),
         account_external_id=account_external_id)
-    return jsonify({"ok": True}), 200
+    if not inserted:
+        return jsonify({"ok": True, "duplicate": True}), 200
+    imported = 0
+    try:
+        for entry in entries or []:
+            if not isinstance(entry, dict):
+                continue
+            account_id = str(entry.get("id") or "")
+            for event in entry.get("messaging") or []:
+                if not isinstance(event, dict):
+                    continue
+                message = event.get("message") or {}
+                if not isinstance(message, dict) or message.get("is_echo"):
+                    continue
+                sender_id = str((event.get("sender") or {}).get("id") or "")
+                message_id = str(message.get("mid") or message.get("id") or "")
+                text = str(message.get("text") or "").strip()
+                if not sender_id or sender_id == account_id or not text:
+                    continue
+                try:
+                    stamp = dt.datetime.fromtimestamp(
+                        int(event.get("timestamp") or 0) / 1000)
+                    created_at = stamp.strftime("%Y-%m-%d %H:%M")
+                except (TypeError, ValueError, OSError):
+                    created_at = db.now()
+                result = db.ingest_instagram_message(
+                    account_id, sender_id, message_id, text, created_at)
+                if result and result["inserted"]:
+                    imported += 1
+        db.finish_marketing_webhook_event(
+            "instagram", event_key, "processed" if imported else "ignored")
+    except Exception as exc:
+        app.logger.exception("Instagram webhook processing failed")
+        db.finish_marketing_webhook_event(
+            "instagram", event_key, "error", str(exc))
+        # Meta should not retry a valid signed event forever because of an
+        # internal processing problem; the stored event remains auditable.
+        return jsonify({"ok": False, "error": "processing_failed"}), 200
+    return jsonify({"ok": True, "imported_messages": imported}), 200
 
 
 @app.route("/integrations/inbound-email", methods=["POST"])
@@ -8442,20 +8744,6 @@ _CHANNEL_META = {
     "demo": ("Demo", "neutral"),
 }
 
-# Triage intent -> (label, badge tone). Mirrors intake.TRIAGE_INTENTS.
-_INTENT_META = {
-    "opt_out": ("Opt-out", "danger"),
-    "scheduling": ("Scheduling", "brand"),
-    "document": ("Document", "info"),
-    "question": ("Question", "warn"),
-    "new_inquiry": ("New inquiry", "ok"),
-    "spam": ("Spam", "neutral"),
-    "other": ("Other", "neutral"),
-}
-
-_PRIORITY_RANK = {"high": 0, "normal": 1, "low": 2, "": 1}
-
-
 def _channel_meta(source):
     key = (source or "web").strip().lower()
     return _CHANNEL_META.get(key, (key.replace("_", " ").title() or "Other",
@@ -8479,578 +8767,11 @@ def _channel_icon(label):
     return _CHANNEL_ICON.get(label, "inbox")
 
 
-# Gmail-style inbox tabs: every thread falls into exactly ONE bucket, each a
-# different kind of work, so the queue you're in stays focused.
-#   active  -> people already in your pipeline (screening/enrolled): coordinate + retain
-#   ad      -> raw inbound from paid social/search: needs qualifying
-#   new     -> everything else: fresh inquiries needing a first touch
-# Trials are deliberately NOT a tab axis (they don't scale, and the study
-# switcher already scopes them); sources stay as the finer chip filter.
-_ACTIVE_STATUSES = {"eligible", "screening", "screened", "enrolled",
-                    "randomized", "active", "retained"}
-_AD_SOURCES = {"meta", "instagram", "facebook", "messenger", "whatsapp",
-               "google", "reddit"}
-_INBOX_TAB_META = [("new", "New inquiries", "mail"),
-                   ("ad", "Ad leads", "megaphone"),
-                   ("active", "Active patients", "users")]
-
-
-def _lead_category(status, source):
-    if (status or "").strip().lower() in _ACTIVE_STATUSES:
-        return "active"
-    if (source or "").strip().lower() in _AD_SOURCES:
-        return "ad"
-    return "new"
-
-
-# Ordered (needle-set, summary) rules for the inbox gist. First match wins, so put
-# the specific asks (reschedule, documents) before the generic ones (question).
-# Each summary is a short, plain-English subject line - what the person WANTS, the
-# way an assistant would put it - since real emails/DMs have no useful subject.
-_SUMMARY_RULES = [
-    (("reschedule", "move my", "change my appointment", "change the time",
-      "push my", "different day", "another day", "can't make"),
-     "Wants to reschedule their visit"),
-    (("schedule", "book", "available", "free on", "come in", "appointment",
-      "screening visit", "set up a time", "monday", "tuesday", "wednesday",
-      "thursday", "friday", "morning", "afternoon"),
-     "Wants to book a screening visit"),
-    (("insurance card", "insurance and consent", "consent form and"),
-     "Sent their insurance card and consent form"),
-    (("consent form", "signed consent", "consent"),
-     "Sent the signed consent form"),
-    (("insurance",), "Sent their insurance details"),
-    (("uploaded", "upload", "attached", "here are the", "here's the",
-      "the forms", "completed forms", "fill out", "paperwork", "document"),
-     "Sending documents for their file"),
-    (("reimburse", "compensat", "get paid", "payment", "stipend", "how much",
-      "cost me", "travel cost", "pay for"),
-     "Asking about pay and reimbursement"),
-    (("do i qualify", "am i eligible", "eligible", "qualify", "am i a fit",
-      "good candidate"),
-     "Asking whether they qualify"),
-    (("placebo", "sugar pill"), "Asking about the placebo"),
-    (("my own doctor", "my doctor", "my regular", "primary care", "my care",
-      "affect the care", "my gp"),
-     "Asking how it affects their regular care"),
-    (("still enrolling", "still recruiting", "still open", "spots left",
-      "any openings", "still accepting"),
-     "Asking if the study is still enrolling"),
-    (("stop", "unsubscribe", "opt out", "opt-out", "don't contact",
-      "do not contact", "remove me"),
-     "Wants to stop getting messages"),
-    (("how long", "how many visits", "what should i bring", "what to expect",
-      "how does it work", "what happens"),
-     "Asking what taking part involves"),
-    (("interested", "sign me up", "want to join", "would like to join",
-      "want to take part", "count me in"),
-     "Interested and wants to take part"),
-]
-
-
-def _message_summary(msg, channel_label):
-    """A short, plain-English gist of a thread - the AI-style 'subject' shown in
-    the inbox in place of the (repetitive) trial title. Deterministic keyword
-    rules so it's free and instant; reads like a one-line assistant summary."""
-    if not msg:
-        return "New applicant \u00b7 no message yet"
-    body = (msg["body"] or "").strip()
-    if msg["sender"] == "site":
-        return "You replied \u2014 waiting on their response"
-    if not body:
-        return "New applicant \u00b7 no message yet"
-    t = body.lower()
-    for needles, summary in _SUMMARY_RULES:
-        if any(n in t for n in needles):
-            return summary
-    if "?" in body:
-        return "Has a question about the study"
-    if any(a in t for a in ("thank", "sounds good", "will do", "perfect",
-                            "got it", "see you", "great")):
-        return "Confirmed \u2014 no action needed"
-    # Fallback: the first sentence/clause, trimmed to a subject-ish length.
-    first = re.split(r"(?<=[.!?])\s+", body)[0]
-    first = re.sub(r"\s+", " ", first).strip(" .")
-    if len(first) > 70:
-        first = first[:67].rstrip() + "\u2026"
-    return first[:1].upper() + first[1:] if first else "New message"
-
-
-def _triage_inbox_row(r, msg, unread, assignee_name):
-    """Flatten a lead + its latest message into one triage-inbox row."""
-    keys = set(r.keys())
-
-    def g_(k, d=""):
-        return (r[k] if k in keys else d)
-
-    def _verdict():
-        raw = g_("eligibility", "")
-        if not raw:
-            return ""
-        try:
-            v = json.loads(raw)
-            return (v.get("verdict") or "").lower() if isinstance(v, dict) else ""
-        except (ValueError, TypeError):
-            return ""
-
-    ch_label, ch_tone = _channel_meta(g_("source"))
-    intent = (g_("triage_intent") or "").strip()
-    if not intent:
-        intent = "new_inquiry"
-    intent_label, intent_tone = _INTENT_META.get(
-        intent, (intent.replace("_", " ").capitalize(), "neutral"))
-    priority = (g_("triage_priority") or "normal").strip()
-    last_at = (msg["created_at"] if msg else "") or g_("updated_at") or g_("created_at")
-    awaiting = bool(msg) and msg["sender"] == "patient"
-    return {
-        "id": g_("id"),
-        "name": g_("name") or "Anonymous",
-        "initials": _initials(g_("name") or g_("email") or "?"),
-        "email": g_("email"),
-        "phone": g_("phone"),
-        "nct": g_("nct"),
-        "title": g_("title") or g_("condition") or g_("nct") or "—",
-        "summary": _message_summary(msg, ch_label),
-        "category": _lead_category(g_("status"), g_("source")),
-        "condition": g_("condition"),
-        "status": g_("status") or "new",
-        "revealed": bool(g_("revealed", 0)),
-        "channel": ch_label,
-        "channel_tone": ch_tone,
-        "channel_icon": _channel_icon(ch_label),
-        "intent": intent,
-        "intent_label": intent_label,
-        "intent_tone": intent_tone,
-        "priority": priority,
-        "verdict": _verdict(),
-        "opt_out": bool(g_("contact_opt_out", 0)),
-        "preview": (msg["body"] if msg else "") or "No messages yet",
-        "preview_mine": bool(msg) and msg["sender"] == "site",
-        "awaiting": awaiting,
-        "unread": bool(unread),
-        "when": _inbox_time_label(last_at),
-        "last_at": last_at or "",
-        "assignee": assignee_name or "",
-        "assigned_user_id": g_("assigned_user_id"),
-    }
-
-
 @app.route("/legacy/inbox")
 @login_required
 def team_inbox():
-    """Retired surface: the marketing hub IS the inbox now (canonical /app/inbox).
-    Kept only as a redirect so any old url_for('team_inbox') link, bookmark, or
-    notification still lands on the current inbox instead of 404ing. Everything
-    below is dead code, kept so the module imports cleanly - delete later."""
+    """Redirect legacy inbox links to the canonical team inbox."""
     return redirect(url_for("marketing_hub", nct=(request.args.get("nct") or None)))
-    team_studies = db.list_team_studies(g.user["id"])
-    valid_ncts = {s["nct"] for s in team_studies}
-    # Trial switcher: a ?nct= click sets the scope; "" == All studies. The inbox
-    # DEFAULTS to All (unlike the rest of the app) so it opens showing everything
-    # - it's an inbox first, a per-trial view second.
-    _p = request.args.get("nct")
-    if _p is not None:
-        session["active_nct"] = _p if _p in valid_ncts else ""
-    active_nct = session.get("active_nct", "") or ""
-    if active_nct and active_nct not in valid_ncts:
-        active_nct = ""
-    members = db.list_org_members(g.user["id"])
-    name_by_id = {m["user_id"]: (m["name"] or m["email"] or "Teammate")
-                  for m in members}
-    rows = db.list_leads_for_user(g.user["id"])
-    # Open-thread counts per study (across ALL studies, for the switcher tabs) -
-    # computed before the scope filter so every tab shows its own count.
-    tab_counts = {}
-    total_open = 0
-    for r in rows:
-        if r["status"] in db.LEAD_CLOSED:
-            continue
-        total_open += 1
-        key = r["nct"] or ""
-        tab_counts[key] = tab_counts.get(key, 0) + 1
-    inbox = []
-    for r in rows:
-        # Scope filter. Under a specific trial, show only that trial's threads;
-        # un-studied inbound (nct == "") shows under "All studies".
-        if active_nct and r["nct"] != active_nct:
-            continue
-        if r["status"] in db.LEAD_CLOSED:
-            continue
-        msg = db.last_message(r["id"])
-        # Lazy triage: label any thread that has an inbound message but no triage
-        # yet (e.g. captured before triage existed), from its latest patient
-        # message. Persisted so it only runs once per new message.
-        if msg and msg["sender"] == "patient" and not (r["triage_intent"] or ""):
-            try:
-                _intent, _prio = intake_mod.classify_message(msg["body"])
-                db.set_lead_triage(r["id"], _intent, _prio)
-                r = db.get_lead(r["id"])
-            except Exception:
-                pass
-        unread = db.lead_unread_for_site(r["id"])
-        assignee = name_by_id.get(r["assigned_user_id"] if "assigned_user_id"
-                                  in r.keys() else None, "")
-        inbox.append(_triage_inbox_row(r, msg, unread, assignee))
-    # Sort: unread first, then priority (high->low), then awaiting a reply, then
-    # most-recent activity. Puts the most urgent unhandled thread on top.
-    inbox.sort(key=lambda a: (
-        not a["unread"], _PRIORITY_RANK.get(a["priority"], 1),
-        not a["awaiting"], a["last_at"]), reverse=False)
-    # Secondary recency sort within equal urgency (most recent first).
-    inbox.sort(key=lambda a: a["last_at"], reverse=True)
-    inbox.sort(key=lambda a: (
-        not a["unread"], _PRIORITY_RANK.get(a["priority"], 1), not a["awaiting"]))
-    stats = {
-        "total": len(inbox),
-        "unread": sum(1 for a in inbox if a["unread"]),
-        "high": sum(1 for a in inbox if a["priority"] == "high"),
-        "unassigned": sum(1 for a in inbox if not a["assignee"]),
-    }
-    intents = []
-    for key in intake_mod.TRIAGE_INTENTS:
-        n = sum(1 for a in inbox if a["intent"] == key)
-        if n:
-            label, tone = _INTENT_META.get(key, (key, "neutral"))
-            intents.append({"key": key, "label": label, "tone": tone, "n": n})
-    # Gmail-style inbox tabs (coarse bucket per thread). "All" first, then each
-    # non-empty bucket. Hidden entirely when there's only one bucket in play, so
-    # a single-mode inbox doesn't grow a pointless tab strip.
-    cat_counts = {}
-    for a in inbox:
-        cat_counts[a["category"]] = cat_counts.get(a["category"], 0) + 1
-    inbox_tabs = [{"key": "all", "label": "All", "icon": "inbox", "n": len(inbox)}]
-    for key, label, icon in _INBOX_TAB_META:
-        if cat_counts.get(key):
-            inbox_tabs.append({"key": key, "label": label, "icon": icon,
-                               "n": cat_counts[key]})
-    if len(inbox_tabs) <= 2:
-        inbox_tabs = []
-    # Source filters: the channels a coordinator can click to see just that ad
-    # type (IG DMs, Facebook, email, CT.gov ...) - "check my ad responses without
-    # leaving the app". When a trial is selected AND it declares connected
-    # sources, we show exactly those (each with its live count, even zero, so an
-    # empty channel reads as "no new responses" rather than vanishing). Otherwise
-    # we show whatever sources are actually present, ordered by volume.
-    counts, tones = {}, {}
-    for a in inbox:
-        counts[a["channel"]] = counts.get(a["channel"], 0) + 1
-        tones.setdefault(a["channel"], a["channel_tone"])
-    connected = db.get_claim_connected_sources(g.user["id"], active_nct) \
-        if active_nct else []
-    channels, shown = [], set()
-    # A trial's connected channels come first, each with its live count - shown
-    # even at zero so "no new Instagram responses" reads as an answer, not a gap.
-    for key in connected:
-        lbl, tone = _channel_meta(key)
-        channels.append({"label": lbl, "tone": tone, "icon": _channel_icon(lbl),
-                         "n": counts.get(lbl, 0)})
-        shown.add(lbl)
-    # Then any source actually present but not in the connected set, so no lead is
-    # ever unfilterable (busiest first). With no connected set, this is the whole
-    # list (the "All studies" / unconfigured behavior).
-    extra = sorted((lbl for lbl in counts if lbl not in shown),
-                   key=lambda l: -counts[l])
-    for lbl in extra:
-        channels.append({"label": lbl, "tone": tones.get(lbl, "neutral"),
-                         "icon": _channel_icon(lbl), "n": counts[lbl]})
-    # Trial switcher tabs: All studies + one per study, each with its open count.
-    tabs = [{"nct": "", "title": "All studies", "count": total_open,
-             "active": not active_nct}]
-    for s in team_studies:
-        tabs.append({
-            "nct": s["nct"],
-            "title": summarize.tidy_title(s["title"]) or s["nct"],
-            "count": tab_counts.get(s["nct"], 0),
-            "active": active_nct == s["nct"]})
-    unstudied = tab_counts.get("", 0)
-    # Upcoming visits, surfaced right on the inbox so nothing gets missed (the
-    # calendar's only genuinely useful view for day-to-day work). Today through
-    # the next ~2 weeks, scoped to the active trial, grouped by day.
-    upcoming, upcoming_days, today = _inbox_upcoming(active_nct)
-    # Reading pane. ?open=<lead_id> opens that thread INLINE, next to the list -
-    # the way email works. It's a real URL (not client-only state) so a thread
-    # deep-links, the back button works, and the composer's existing ajax
-    # refresh (which refetches location.href and swaps .thread) keeps working.
-    open_thread = _inbox_open_thread(request.args.get("open"))
-    return render_template("team_inbox.html", inbox=inbox, stats=stats,
-                           intents=intents, channels=channels,
-                           inbox_tabs=inbox_tabs, members=members,
-                           me_id=g.user["id"], tabs=tabs, active_nct=active_nct,
-                           unstudied=unstudied, upcoming=upcoming,
-                           upcoming_days=upcoming_days, today=today,
-                           pane=open_thread)
-
-
-def _inbox_open_thread(raw_id):
-    """Context for the inline reading pane, or None when no thread is open.
-
-    Opening a thread marks it read for the site side, exactly like email: the
-    unread dot and the workspace badge clear once a human has actually looked at
-    it. Returns None (rather than 404ing the whole inbox) for a missing or
-    out-of-scope id, so a stale link just lands on the plain inbox."""
-    try:
-        lead_id = int(raw_id or 0)
-    except (TypeError, ValueError):
-        return None
-    if not lead_id:
-        return None
-    lead = db.get_lead(lead_id)
-    ncts = set(db.user_claimed_ncts(g.user["id"]))
-    if not lead or (lead["nct"] and lead["nct"] not in ncts
-                    and not _is_demo_account(g.user) and not _is_owner()):
-        return None
-    it = _decode_lead(lead, db.latest_reconciliation(lead_id))
-    view = _queue_item(it)
-    view["initials"] = _initials(lead["name"] or view["code"])
-    try:
-        db.mark_thread_read(lead_id, "site")
-    except Exception:
-        app.logger.exception("mark_thread_read failed")
-    # How the thread is rendered depends on the channel it came in on: an email
-    # inquiry reads like an email (subject line, From, formal composer), while an
-    # ad/social lead (IG DM, Messenger, ...) reads like a DM chat. Same data,
-    # channel-native chrome - so a coordinator handles each the way the sender
-    # experiences it, without leaving the app.
-    src = _lead_source_key(lead)
-    ch_label, ch_tone = _channel_meta(src)
-    mode = "chat" if src in _AD_SOURCES else "email"
-    return {
-        "it": it,
-        "l": lead,
-        "view": view,
-        "notes": db.list_notes(lead_id),
-        "channel_key": src,
-        "channel_label": ch_label,
-        "channel_tone": ch_tone,
-        "channel_icon": _channel_icon(ch_label),
-        "mode": mode,
-        "default_schedule": (db.get_claim_schedule_url(g.user["id"], lead["nct"])
-                             or db.get_site_calendar_url(g.user["id"])),
-    }
-
-
-def _day_track(visits_today, now_dt):
-    """Lay today's visits on one hour track for the inbox's Today strip: the whole
-    day legible at a glance, with a live "now" line and a next-up card.
-
-    Same layout math as the dashboard's timeline: the window ADAPTS to the day's
-    actual visits (plus padding) so blocks stay wide and readable instead of
-    squished into a fixed 7a-7p strip. Returns the dict the template renders."""
-    raw = []
-    for v in visits_today:
-        vd = _cal_parse_dt(v["visit_at"])
-        if vd:
-            raw.append((vd, v))
-    raw.sort(key=lambda x: x[0])
-    now_h = now_dt.hour + now_dt.minute / 60.0
-    if raw:
-        starts = [vd.hour + vd.minute / 60.0 for vd, _ in raw]
-        ends = [vd.hour + vd.minute / 60.0 + max(20, int(v["duration_min"] or 30)) / 60.0
-                for vd, v in raw]
-        day_start = max(6, int(min(starts + [now_h])) - 1)
-        day_end = min(21, int(min(21, max(ends + [now_h]))) + 2)
-        if day_end - day_start < 6:          # keep a sane minimum span
-            day_end = min(21, day_start + 6)
-    else:
-        day_start, day_end = 8, 18
-    span = max(1.0, (day_end - day_start) * 60.0)
-    track, next_up = [], None
-    for vd, v in raw:
-        start_min = (vd.hour * 60 + vd.minute) - day_start * 60
-        dur = max(20, int(v["duration_min"] or 30))
-        left = max(0.0, min(97.0, 100.0 * start_min / span))
-        width = max(9.0, min(100.0 - left, 100.0 * dur / span))
-        ev = {"left": round(left, 2), "width": round(width, 2),
-              "lead_id": v["lead_id"], "name": v["lead_name"],
-              "kind": v["kind_label"], "time": v["time_label"],
-              "trial": (v["trial_title"] or v["nct"] or "")[:28],
-              "flag": v["flag"], "flag_label": v["flag_label"],
-              "past": vd < now_dt,
-              "iso": vd.strftime("%Y-%m-%dT%H:%M:%S"),
-              "end_iso": (vd + dt.timedelta(minutes=dur)).strftime("%Y-%m-%dT%H:%M:%S")}
-        track.append(ev)
-        if vd >= now_dt and next_up is None:
-            next_up = ev
-    now_min = (now_dt.hour * 60 + now_dt.minute) - day_start * 60
-    step = 1 if (day_end - day_start) <= 8 else 2
-    ticks = [{"label": f"{((h + 11) % 12) + 1}{'a' if h < 12 else 'p'}",
-              "left": round(100.0 * (h - day_start) * 60 / span, 2)}
-             for h in range(day_start, day_end + 1, step)]
-    return {
-        "track": track,
-        "next_up": next_up,
-        "now_pct": (round(100.0 * now_min / span, 2)
-                    if 0 <= now_min <= span else None),
-        "ticks": ticks,
-        "label": _short_date(now_dt, with_weekday=True),
-        "n": len(track),
-    }
-
-
-def _inbox_upcoming(active_nct, days=14, limit=12):
-    """Compact upcoming-visits agenda for the inbox side panel. Returns
-    (flat_list, grouped_by_day, today_track). Scoped to active_nct; demo-seeded
-    in demo mode. Never raises - a calendar hiccup must not break the inbox."""
-    try:
-        now_dt = _user_now()
-        today = now_dt.date()
-        end = today + dt.timedelta(days=days)
-        if _demo_mode_enabled():
-            _seed_demo_calendar_if_demo(
-                [{"lead": r} for r in db.list_leads_for_user(g.user["id"])])
-        raw = db.list_calendar_visits(
-            g.user["id"], today.strftime("%Y-%m-%d 00:00"),
-            end.strftime("%Y-%m-%d 23:59"))
-        visits = [_visit_view(v, now_dt) for v in raw]
-        if active_nct:
-            visits = [v for v in visits if v["nct"] == active_nct]
-        visits = [v for v in visits
-                  if v["visit_at"] and v["status"] not in ("cancelled", "completed")]
-        visits.sort(key=lambda v: v["visit_at"])
-        # Today's strip is built from EVERY visit today (before the agenda's
-        # display limit), so a busy day never silently loses blocks.
-        today_str = today.strftime("%Y-%m-%d")
-        today_track = _day_track([v for v in visits if v["date"] == today_str],
-                                 now_dt)
-        visits = visits[:limit]
-        grouped = []
-        by_day = {}
-        for v in visits:
-            by_day.setdefault(v["date"], []).append(v)
-        for day in sorted(by_day):
-            grouped.append({"date": day, "label": by_day[day][0]["rel"]
-                            or by_day[day][0]["date_label"], "visits": by_day[day]})
-        return visits, grouped, today_track
-    except Exception:
-        app.logger.exception("inbox upcoming failed")
-        return [], [], None
-
-
-@app.route("/app/inbox/<int:lead_id>/assign", methods=["POST"])
-@login_required
-def inbox_assign(lead_id):
-    """Claim/assign a thread to a teammate (or unassign). Shared-workspace glue."""
-    _ensure_site_access_for_lead(lead_id)
-    back = _safe_next(request.form.get("next", "")) or url_for("marketing_hub")
-    raw = (request.form.get("user_id") or "").strip()
-    if raw == "me":
-        uid = g.user["id"]
-    elif raw in ("", "none", "0"):
-        uid = None
-    else:
-        try:
-            uid = int(raw)
-        except ValueError:
-            uid = None
-        # Only allow assigning to a real teammate.
-        if uid is not None and uid not in {
-                m["user_id"] for m in db.list_org_members(g.user["id"])}:
-            uid = None
-    db.set_lead_assignee(lead_id, uid)
-    flash("Assigned." if uid else "Unassigned.", "success")
-    return redirect(back)
-
-
-@app.route("/app/inbox/cover", methods=["POST"])
-@login_required
-def inbox_cover():
-    """Vacation / coverage handoff: reassign a teammate's entire open queue to
-    someone else (or to yourself) in one click. The #1 shared-workspace need -
-    when a coordinator is out, their threads can't go cold."""
-    back = _safe_next(request.form.get("next", "")) or url_for("marketing_hub")
-    members = {m["user_id"] for m in db.list_org_members(g.user["id"])}
-
-    def _resolve(raw):
-        raw = (raw or "").strip()
-        if raw == "me":
-            return g.user["id"]
-        if raw in ("", "none", "0"):
-            return None
-        try:
-            return int(raw)
-        except ValueError:
-            return None
-
-    from_id = _resolve(request.form.get("from_user_id"))
-    to_id = _resolve(request.form.get("to_user_id"))
-    if not from_id or from_id not in members:
-        flash("Pick whose threads to cover.", "error")
-        return redirect(back)
-    n = db.reassign_open_leads(g.user["id"], from_id, to_id)
-    if to_id:
-        who = next((m["name"] or m["email"] for m in db.list_org_members(g.user["id"])
-                    if m["user_id"] == to_id), "a teammate")
-        flash(f"Reassigned {n} thread{'' if n == 1 else 's'} to {who}.", "success")
-    else:
-        flash(f"Unassigned {n} thread{'' if n == 1 else 's'}.", "success")
-    return redirect(back)
-
-
-@app.route("/app/inbox/bulk", methods=["POST"])
-@login_required
-def inbox_bulk():
-    """Gmail-style bulk actions over selected threads: assign to a teammate, or
-    mark done (close). Every id is access-checked against the actor's workspace.
-    KPI: Tier-2 efficiency - clear a queue in one gesture instead of one-by-one."""
-    back = _safe_next(request.form.get("next", "")) or url_for("marketing_hub")
-    action = (request.form.get("action") or "").strip()
-    lead_ids = []
-    for x in request.form.getlist("lead_ids"):
-        try:
-            lead_ids.append(int(x))
-        except (TypeError, ValueError):
-            pass
-    if not lead_ids:
-        flash("Select at least one thread first.", "error")
-        return redirect(back)
-    # Fail closed: only act on leads this user can actually see.
-    visible = {r["id"] for r in db.list_leads_for_user(g.user["id"])}
-    lead_ids = [i for i in lead_ids if i in visible]
-    n = 0
-    if action == "assign":
-        members = {m["user_id"] for m in db.list_org_members(g.user["id"])}
-        raw = (request.form.get("user_id") or "").strip()
-        if raw == "me":
-            uid = g.user["id"]
-        elif raw in ("", "none", "0"):
-            uid = None
-        else:
-            try:
-                uid = int(raw)
-            except ValueError:
-                uid = None
-            if uid is not None and uid not in members:
-                uid = None
-        for lid in lead_ids:
-            db.set_lead_assignee(lid, uid)
-            n += 1
-        who = "you" if raw == "me" else (
-            next((m["name"] or m["email"] for m in db.list_org_members(g.user["id"])
-                  if m["user_id"] == uid), "a teammate") if uid else None)
-        flash(f"Assigned {n} thread{'' if n == 1 else 's'}"
-              + (f" to {who}." if who else " (unassigned)."), "success")
-    elif action == "done":
-        for lid in lead_ids:
-            db.update_lead_status(lid, "closed", note="marked done from inbox")
-            n += 1
-        flash(f"Marked {n} thread{'' if n == 1 else 's'} done.", "success")
-    else:
-        flash("Unknown action.", "error")
-    return redirect(back)
-
-
-@app.route("/app/inbox/<int:lead_id>/draft.json")
-@login_required
-def inbox_draft(lead_id):
-    """AI-drafted first-contact reply for a thread (decision-support; a human
-    approves + sends). Returns a plain string the composer prefills."""
-    _ensure_site_access_for_lead(lead_id)
-    try:
-        draft = intake_mod.draft_outreach(lead_id)
-    except Exception:
-        app.logger.exception("inbox draft failed")
-        draft = ""
-    return jsonify({"ok": bool(draft), "draft": draft})
 
 
 @app.route("/app/search-index.json")
@@ -9115,325 +8836,11 @@ def _queue_matches(qi, row, q):
     return any(ql in (h or "").lower() for h in hay)
 
 
-def _first_name(name, fallback="there"):
-    return (name or "").split(" ")[0].strip() or fallback
-
-
 @app.route("/app/home")
 @login_required
 def study_home():
-    """Study-team home: a prioritized daily worklist ("Today"). Every item is a
-    concrete action that moves someone through found -> contacted -> screened ->
-    enrolled -> retained, ordered by urgency: respond to people waiting, decide on
-    new applicants, nudge the ones going quiet, prep visits, clear approvals.
-    Vanity totals live on Recruitment; this page is only what you DO today."""
-    # Retired as a surface: the inbox is the product's home now, so /app/home (and
-    # every old url_for('study_home') link/bookmark/notification) sends you to the
-    # inbox, carrying the study scope through. The worklist's live bits (Today
-    # visits, needs-reply) already live on the inbox. Everything below is kept only
-    # so the route still imports cleanly; delete once no caller needs it.
+    """Redirect the retired study home to the canonical team inbox."""
     return redirect(url_for("marketing_hub", nct=(request.args.get("nct") or None)))
-    claims = db.list_study_claims(g.user["id"])
-    # Trial-workspace mode: when a specific study is selected in the top switcher,
-    # Home becomes THAT trial's workspace and every queue is scoped to it. A
-    # ?nct= param (from the switcher) sets the choice; anything invalid clears it.
-    team_studies = db.list_team_studies(g.user["id"])
-    valid_ncts = {s["nct"] for s in team_studies}
-    # Back-compat: a ?nct= deep-link still sets scope ("" / unknown = All studies).
-    _p = request.args.get("nct")
-    if _p is not None:
-        session["active_nct"] = _p if _p in valid_ncts else ""
-    active_nct, team_studies = _active_scope()
-    active_study_label = _scope_label(
-        active_nct, [{"nct": s["nct"], "title": s["title"] or s["nct"]}
-                     for s in team_studies])
-    _seed_demo_targets_if_demo()
-    rows = db.list_leads_for_user(g.user["id"])
-    recon = db.latest_reconciliation_for_leads([r["id"] for r in rows])
-    items = [_decode_lead(r, recon.get(r["id"])) for r in rows]
-    _seed_demo_replies_if_demo(items)
-    now = _user_now()
-    QUIET_DAYS = 3
-
-    def _parse_ts(ts):
-        try:
-            return dt.datetime.strptime(str(ts)[:16], "%Y-%m-%d %H:%M")
-        except (ValueError, TypeError):
-            return None
-
-    # ── 1. Replies waiting: a patient spoke last or hasn't been read. Their move
-    # is done; yours is to respond fast (keeps contacted -> screened moving). ──
-    reply_queue, waiting_ids = [], set()
-    for it in items:
-        l = it["lead"]
-        if not l["revealed"] or l["status"] in db.LEAD_CLOSED:
-            continue
-        if active_nct and l["nct"] != active_nct:
-            continue
-        msgs = db.get_messages(l["id"])
-        if not msgs:
-            continue
-        last = msgs[-1]
-        unread = bool(db.lead_unread_for_site(l["id"]))
-        awaiting = last["sender"] == "patient"
-        if not (unread or awaiting):
-            continue
-        waiting_ids.add(l["id"])
-        last_at = last["created_at"] or l["updated_at"] or ""
-        reply_queue.append({
-            "id": l["id"], "name": l["name"] or it["code"],
-            "initials": _initials(l["name"] or it["code"]),
-            "preview": last["body"], "preview_mine": last["sender"] == "site",
-            "when": _inbox_time_label(last_at), "last_at": last_at,
-            "unread": unread, "awaiting": awaiting,
-            "study": l["title"] or l["condition"] or l["nct"]})
-    reply_queue.sort(key=lambda x: (x["unread"], x["awaiting"], x["last_at"]),
-                     reverse=True)
-    reply_queue = reply_queue[:8]
-
-    # ── 2. Review new applicants: AI pre-screened, awaiting accept/decline.
-    # Strongest fit first so the best candidates get contacted fastest. ──
-    pending = []
-    for it in items:
-        l = it["lead"]
-        if not (l["status"] == "prescreen" and not l["decision"]):
-            continue
-        if active_nct and l["nct"] != active_nct:
-            continue
-        v = _verdict_view(it.get("elig"))
-        elig = it.get("elig") or {}
-        flag = (elig.get("rationale") or "")
-        if elig.get("not_met"):
-            flag = "; ".join(elig["not_met"][:2])
-        elif not flag and elig.get("unknown"):
-            flag = "To confirm: " + "; ".join(elig["unknown"][:2])
-        pending.append({
-            "id": l["id"], "name": it["code"], "initials": f"#{l['id'] % 100:02d}",
-            "score": v["score"], "verdict": v["label"], "verdict_tone": v["tone"],
-            "flag": flag or "Ready for your review.",
-            "source": _source_view(l), "applied": _rel_time(l["created_at"])})
-    pending.sort(key=lambda p: p["score"], reverse=True)
-    pending = pending[:6]
-
-    # ── 3. Needs follow-up: people slipping through who need a proactive touch -
-    # eligible-but-not-booked, at-screening-without-consent, or gone quiet.
-    # Excludes anyone already in "Replies waiting" (that's their move). We do NOT
-    # pre-write a message for each (that's just noise) - the row points you to the
-    # person and you draft on demand there. Eligible-not-booked gets a real
-    # one-click "send booking link" because that's an action, not a draft. ──
-    followups = []
-    for it in items:
-        l = it["lead"]
-        if not l["revealed"] or l["status"] in db.LEAD_CLOSED or l["id"] in waiting_ids:
-            continue
-        if active_nct and l["nct"] != active_nct:
-            continue
-        tag = tone = reason = action = None
-        rank = 3
-        if l["status"] == "eligible" and not (l["schedule_url"] or "").strip():
-            tag, tone, action, rank = "Book screening", "brand", "book", 0
-            reason = "Eligible · no screening call booked"
-        elif l["status"] == "screening":
-            tag, tone, action, rank = "Consent pending", "neutral", "open", 1
-            reason = "At screening · consent not returned"
-        else:
-            last = _parse_ts(db.last_activity_at(l["id"], l["created_at"]))
-            days = (now - last).days if last else 0
-            if days >= QUIET_DAYS:
-                tag, tone, action, rank = f"Quiet {days}d", "warn", "open", 2
-                reason = f"No activity in {days} days"
-        if tag:
-            followups.append({
-                "id": l["id"], "name": l["name"] or it["code"],
-                "initials": _initials(l["name"] or it["code"]),
-                "reason": reason, "tag": tag, "tag_tone": tone,
-                "action": action, "rank": rank})
-    followups.sort(key=lambda f: f["rank"])
-    followups = followups[:8]
-    has_calendar = bool(db.get_site_calendar_url(g.user["id"]))
-
-    # ── Right rail 1: the SCHEDULE. Same engine as the Calendar page, so it
-    # carries protocol-window / overdue / re-consent flags - not just a time.
-    # Shows overdue first (recoverable deviations), then today, then the week. ──
-    _seed_demo_calendar_if_demo(items)
-    _sw0 = (now - dt.timedelta(days=5)).strftime("%Y-%m-%d %H:%M")
-    _sw1 = (now + dt.timedelta(days=14)).strftime("%Y-%m-%d 23:59")
-    try:
-        _cvis = [_visit_view(v, now)
-                 for v in db.list_calendar_visits(g.user["id"], _sw0, _sw1)]
-    except Exception:
-        _cvis = []
-    # One overlay card per visit, shared by the rail + timeline (keyed by visit
-    # id) so any click opens the same in-place detail card.
-    visit_cards = {}
-    schedule, sched_today, sched_attn = [], 0, 0
-    for v in _cvis:
-        if active_nct and v["nct"] != active_nct:
-            continue
-        if v["status"] in ("cancelled", "completed"):
-            continue
-        vd = _parse_ts(v["visit_at"])
-        if not vd:
-            continue
-        day = vd.date()
-        if day < now.date():
-            dlabel = "Overdue"
-        elif day == now.date():
-            dlabel, sched_today = "Today", sched_today + 1
-        elif day == (now + dt.timedelta(days=1)).date():
-            dlabel = "Tomorrow"
-        else:
-            dlabel = f"{vd.strftime('%a %b')} {vd.day}"
-        if v["flag"] in ("overdue", "deviation", "closing"):
-            sched_attn += 1
-        schedule.append({
-            "id": v["lead_id"], "visit_id": v["id"], "day": dlabel,
-            "time": v["time_label"], "name": v["lead_name"],
-            "kind": v["kind_label"], "flag": v["flag"],
-            "flag_label": v["flag_label"], "when": v["visit_at"]})
-    # Overdue first, then chronological.
-    schedule.sort(key=lambda x: (x["day"] != "Overdue", x["when"]))
-    schedule = schedule[:7]
-    for v in _cvis:
-        if any(s["visit_id"] == v["id"] for s in schedule):
-            visit_cards.setdefault(v["id"], _build_visit_card(v, now))
-
-    # ── "Today" timeline: today's visits laid on an hour track (Google/Metamate
-    # style) so the whole day is legible at a glance, with a live "now" line and
-    # a "next up" card. Shows the coordinator's WHOLE day across every trial (one
-    # place). The track window ADAPTS to the day's actual visits (+padding) so
-    # blocks stay wide/readable instead of squished into a fixed 7a-7p strip. ──
-    _today_raw = []
-    for v in _cvis:
-        if v["status"] in ("cancelled", "completed"):
-            continue
-        vd = _parse_ts(v["visit_at"])
-        if not vd or vd.date() != now.date():
-            continue
-        _today_raw.append((vd, v))
-    if _today_raw:
-        _starts = [vd.hour + vd.minute / 60.0 for vd, _ in _today_raw]
-        _ends = [vd.hour + vd.minute / 60.0 + max(20, int(v["duration_min"] or 30)) / 60.0
-                 for vd, v in _today_raw]
-        _now_h = now.hour + now.minute / 60.0
-        DAY_START = max(6, int(min(_starts + [_now_h])) - 1)
-        DAY_END = min(21, int(min(21, max(_ends + [_now_h]))) + 2)
-        if DAY_END - DAY_START < 6:  # keep a sane minimum span
-            DAY_END = min(21, DAY_START + 6)
-    else:
-        DAY_START, DAY_END = 8, 18
-    _span = max(1.0, (DAY_END - DAY_START) * 60.0)
-    today_track, next_up = [], None
-    for vd, v in _today_raw:
-        start_min = (vd.hour * 60 + vd.minute) - DAY_START * 60
-        dur = max(20, int(v["duration_min"] or 30))
-        left = max(0.0, min(97.0, 100.0 * start_min / _span))
-        width = max(9.0, min(100.0 - left, 100.0 * dur / _span))
-        visit_cards.setdefault(v["id"], _build_visit_card(v, now))
-        ev = {"left": round(left, 2), "width": round(width, 2),
-              "name": v["lead_name"], "kind": v["kind_label"],
-              "trial": (v["trial_title"] or v["nct"] or "")[:28],
-              "time": v["time_label"], "flag": v["flag"],
-              "flag_label": v["flag_label"], "visit_id": v["id"],
-              "recurrence": v["recurrence"], "past": vd < now,
-              "iso": vd.strftime("%Y-%m-%dT%H:%M:%S"),
-              "end_iso": (vd + dt.timedelta(minutes=dur)).strftime("%Y-%m-%dT%H:%M:%S")}
-        today_track.append(ev)
-        if vd >= now and next_up is None:
-            next_up = ev
-    today_track.sort(key=lambda x: x["left"])
-    now_min = (now.hour * 60 + now.minute) - DAY_START * 60
-    now_pct = round(100.0 * now_min / _span, 2) if 0 <= now_min <= _span else None
-    _step = 1 if (DAY_END - DAY_START) <= 8 else 2
-    hour_ticks = []
-    for _h in range(DAY_START, DAY_END + 1, _step):
-        hour_ticks.append({
-            "label": f"{((_h + 11) % 12) + 1}{'a' if _h < 12 else 'p'}",
-            "left": round(100.0 * (_h - DAY_START) * 60 / _span, 2)})
-    today_label = _short_date(now, with_weekday=True)
-    today_n = len(today_track)
-
-    # ── New candidate matches from the clinic's own records (the hero: fresh,
-    # pre-screened supply). Top few new ones surface here; the rest live on the
-    # Matches page. ──
-    _seed_matches_if_demo()
-    match_counts = db.patient_match_counts(g.user["id"])
-    new_matches = [_match_view(m)
-                   for m in db.list_patient_matches(g.user["id"], status="new")][:4]
-
-    # ── Unified inbox: one triage stream (Gmail-style) the coordinator works top
-    # to bottom. Each item is tagged with a type so the filter chips can narrow
-    # the same list without reordering it. Order = replies, then new applicants,
-    # then follow-ups (each already sorted by urgency within its group). ──
-    inbox = []
-    for c in reply_queue:
-        c["type"] = "reply"
-        inbox.append(c)
-    for p in pending:
-        p["type"] = "new"
-        inbox.append(p)
-    for f in followups:
-        f["type"] = "followup"
-        inbox.append(f)
-
-    # ── Shared facts used by both the control panel (metric cards) and the
-    # trial-workspace state. ──
-    ENROLLED_ST = {"enrolled", "randomized", "active", "retained"}
-    SCREENED_ST = {"screening", "screened", "eligible"} | ENROLLED_ST
-
-    def _target_for(nct):
-        try:
-            cfg = json.loads(db.get_kv(_recruit_targets_key(nct), "") or "{}")
-            return int(cfg.get("total_target") or 0)
-        except (ValueError, TypeError):
-            return 0
-
-    team_members = db.list_org_members(g.user["id"])
-    team_view = [{"name": m["name"] or m["email"], "role": m["role"],
-                  "role_label": db.ORG_ROLE_LABELS.get(m["role"], m["role"]),
-                  "initials": _initials(m["name"] or m["email"] or "?")}
-                 for m in team_members]
-
-    # ── Trial-workspace state: only when a specific study is active. Shows where
-    # THIS trial stands (enrolled vs target), its campaigns (target/progress), and
-    # who's on the team - the "which workspace am I in" context. ──
-    workspace = None
-    if active_nct:
-        tl = [it["lead"] for it in items if it["lead"]["nct"] == active_nct]
-        enrolled_n = sum(1 for l in tl if (l["status"] or "") in ENROLLED_ST)
-        screened_n = sum(1 for l in tl if (l["status"] or "") in SCREENED_ST)
-        target_n = _target_for(active_nct)
-        camps = db.campaign_performance(g.user["id"], ncts=[active_nct])
-        workspace = {
-            "nct": active_nct, "title": active_study_label,
-            "applicants": len(tl), "screened": screened_n, "enrolled": enrolled_n,
-            "target": target_n,
-            "progress": min(100, int(round(100 * enrolled_n / target_n))) if target_n else 0,
-            "campaigns": camps[:5], "campaigns_total": len(camps),
-            "active_campaigns": sum(1 for c in camps if c["status"] == "active"),
-            "team": team_view, "team_total": len(team_view)}
-
-    # Hero count = real recruiting work the coordinator does today. Deliberately
-    # excludes regulatory-doc approvals (PI/regulatory role) and internal matches
-    # (a pre-launch/EHR feature) so the morning reads light and honest.
-    todo_total = len(reply_queue) + len(pending) + len(followups)
-
-    hour = now.hour
-    greeting = ("Good morning" if hour < 12
-                else "Good afternoon" if hour < 18 else "Good evening")
-
-    return render_template(
-        "study_home.html", claims=claims, reply_queue=reply_queue, pending=pending,
-        followups=followups, inbox=inbox, has_calendar=has_calendar,
-        schedule=schedule, sched_today=sched_today, sched_attn=sched_attn,
-        today_track=today_track, next_up=next_up, now_pct=now_pct,
-        visit_cards=list(visit_cards.values()),
-        hour_ticks=hour_ticks, today_label=today_label, today_n=today_n,
-        new_matches=new_matches, match_counts=match_counts,
-        todo_total=todo_total, greeting=greeting,
-        workspace=workspace, active_nct=active_nct,
-        active_study_label=active_study_label,
-        org=(db.get_site_profile(g.user["id"]) or {}))
 
 
 @app.route("/app/scope")
@@ -13584,26 +12991,6 @@ def download_team_file(att_id):
     if att["nct"] not in db.user_claimed_ncts(g.user["id"]):
         abort(403)
     return _send_stored_file(att["stored_name"], att["orig_name"])
-
-
-def _inbox_time_label(ts):
-    """Human, glanceable timestamp for the conversation list: time today, a
-    weekday this week, else a short date (so a 3-day-old thread never reads as
-    'just now')."""
-    if not ts:
-        return ""
-    try:
-        when = dt.datetime.strptime(ts[:16], "%Y-%m-%d %H:%M")
-    except ValueError:
-        return ts
-    now = dt.datetime.now()
-    if when.date() == now.date():
-        return _clock_time(when)
-    if (now.date() - when.date()).days < 7:
-        return when.strftime("%a")
-    if when.year == now.year:
-        return _short_date(when)
-    return _short_date(when, with_year=True)
 
 
 @app.route("/app/messages")

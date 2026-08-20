@@ -2,7 +2,7 @@
 {% import "_icons.html" as ic %}
 {% import "_ui.html" as ui %}
 
-{% block title %}Marketing inbox | BridgeMD{% endblock %}
+{% block title %}Inbox | BridgeMD{% endblock %}
 
 {% macro channel_icon(channel, extra='') -%}
   {% if channel == 'email' %}
@@ -22,130 +22,44 @@
 
 {% block body %}
 <div class="mh-page">
-  <header class="mh-page-head">
-    <div class="mh-title-block">
-      <h1>Marketing inbox</h1>
-      <div class="mh-stat-strip" aria-label="Inbox summary">
-        <a href="{{ url_for('marketing_hub', status='open') }}" class="mh-stat {{ 'has-work' if counts.unread else '' }}">
-          <b>{{ counts.unread }}</b> Need a reply
-        </a>
-        <span class="mh-stat-sep"></span>
-        <a href="{{ url_for('marketing_hub', status='open') }}" class="mh-stat">
-          <b>{{ counts.open }}</b> Open
-        </a>
-        <span class="mh-stat-sep"></span>
-        <button type="button" class="mh-stat" data-ui-open="sourceModal">
-          <b>{{ counts.sources }}</b> Connected
-        </button>
-      </div>
-    </div>
-    <div class="mh-head-actions">
-      <button type="button" class="mh-duty {{ 'is-covering' if settings.vacation_mode else '' }}" data-ui-open="coverageModal">
-        {{ member_avatar(active_owner, 'is-small') }}
-        <span>
-          <small>{{ 'Vacation cover' if settings.vacation_mode else 'On duty' }}</small>
-          <b>{{ active_owner.display_name }}</b>
-        </span>
-        {{ ic.icon('chevron-down') }}
-      </button>
-      {{ ui.btn('Test conversation', 'ghost', icon='chat', extra='data-ui-open="testThreadModal"', disabled=not counts.sources) }}
-      {{ ui.btn('Connect account', 'primary', icon='plus', extra='data-ui-open="sourceModal"') }}
-    </div>
-  </header>
-
   <section class="mh-workspace">
     <aside class="mh-sources" aria-label="Connected accounts">
-      <div class="mh-column-head">
-        <div>
-          <span class="mh-column-kicker">Channels</span>
-          <h2>Accounts</h2>
+      <div class="mh-intake-nav">
+        <div class="mh-intake-brand">
+          <span>{{ ic.icon('mark') }}</span>
+          <div><b>BridgeMD</b><small>Recruitment</small></div>
         </div>
-        <button class="mh-icon-btn" type="button" data-ui-open="sourceModal" aria-label="Connect an account" title="Connect an account">
-          {{ ic.icon('plus') }}
-        </button>
-      </div>
-
-      <a class="mh-all-inbox {{ 'is-active' if not source_filter and not channel_filter else '' }}"
-         href="{{ url_for('marketing_hub', status=status_filter, q=search_query) }}">
-        <span class="mh-channel-ic is-all">{{ ic.icon('inbox') }}</span>
-        <span><b>All conversations</b><small>Every account</small></span>
-        {% if counts.unread %}<span class="mh-count">{{ counts.unread }}</span>{% endif %}
-      </a>
-
-      <div class="mh-source-stack">
-        {% for source in sources %}
-        <div class="mh-source-wrap {{ 'is-active' if source_filter == source.id else '' }} {{ 'is-off' if source.status != 'connected' else '' }}">
-          <a class="mh-source-link" href="{{ url_for('marketing_hub', source=source.id, status=status_filter, q=search_query) }}">
-            {{ channel_icon(source.channel) }}
-            <span class="mh-source-copy">
-              <b>{{ source.label or channel_labels[source.channel] }}</b>
-              <small>{{ source.identifier }}</small>
-            </span>
-            {% if source.unread_count %}<span class="mh-count">{{ source.unread_count }}</span>{% endif %}
+        <nav class="mh-intake-main">
+          <a href="{{ url_for('marketing_hub') }}" class="is-active">{{ ic.icon('inbox') }} Inbox{% if counts.unread %}<em>{{ counts.unread }}</em>{% endif %}</a>
+          <a href="{{ url_for('team_page') }}">{{ ic.icon('users') }} Team</a>
+          <a href="{{ url_for('site_setup') }}">{{ ic.icon('gear') }} Settings</a>
+        </nav>
+        <div class="mh-intake-group">
+          <div class="mh-intake-label"><b>Trials</b><button type="button" data-ui-open="sourceModal" title="Connect an account">{{ ic.icon('plus') }}</button></div>
+          <a href="{{ url_for('set_scope', nct='', next=url_for('marketing_hub')) }}" class="{{ 'is-active' if not active_nct }}">
+            <i></i><span>All trials</span><small>{{ counts.total }}</small>
           </a>
-          {% if source.connection_mode == 'live' and source.connection_id %}
-            {% if source.connection_status == 'connected' %}
-            <div class="mh-source-state mh-source-live-state">
-              <span class="mh-sync-meta" {{ 'data-gmail-status' if source.provider == 'gmail' else '' }}>
-                <span class="mh-status-dot"></span>
-                {% if source.provider == 'gmail' %}
-                  <span data-gmail-status-text>{{ 'Synced ' ~ source.sync_time_label if source.last_successful_sync_at else source.sync_time_label }}</span>
-                {% else %}
-                  <span>Webhook subscribed</span>
-                {% endif %}
-              </span>
-              {% if source.provider == 'gmail' %}
-              <form method="post" action="{{ url_for('marketing_connection_sync', connection_id=source.connection_id) }}"
-                    data-gmail-sync data-last-sync="{{ source.last_successful_sync_at }}">
-                <button type="submit" title="Check {{ source.label }} for new email">{{ ic.icon('refresh') }} Sync</button>
-              </form>
-              {% endif %}
-              <form method="post" action="{{ url_for('marketing_connection_disconnect', connection_id=source.connection_id) }}">
-                <button type="submit" title="Disconnect {{ source.label }}">Disconnect</button>
-              </form>
-            </div>
-            <small class="mh-source-error" {{ 'data-gmail-error' if source.provider == 'gmail' else '' }} {{ 'hidden' if not source.last_error_message }}>{{ source.last_error_message|truncate(90) }}</small>
-            {% else %}
-            {% set reconnect_url = url_for('marketing_instagram_connect') if source.provider == 'instagram' else url_for('marketing_gmail_connect') %}
-            <div class="mh-source-state">
-              <a href="{{ reconnect_url }}" title="Reconnect {{ source.label }}">
-                <span class="mh-status-dot"></span>{{ 'Needs attention' if source.connection_status in ('error', 'needs_reauth') else 'Reconnect ' ~ ('Instagram' if source.provider == 'instagram' else 'Gmail') }}
-              </a>
-            </div>
-            {% endif %}
-          {% else %}
-          <form method="post" action="{{ url_for('marketing_source_status', source_id=source.id) }}" class="mh-source-state">
-            <input type="hidden" name="status" value="{{ 'connected' if source.status != 'connected' else 'disconnected' }}">
-            <button type="submit" title="{{ 'Reconnect' if source.status != 'connected' else 'Disconnect' }} {{ source.label }}">
-              <span class="mh-status-dot"></span>{{ 'Reconnect' if source.status != 'connected' else 'Demo connected' }}
-            </button>
-          </form>
-          {% endif %}
+          {% for study in nav_studies %}
+          <a href="{{ url_for('set_scope', nct=study.nct, next=url_for('marketing_hub')) }}" class="{{ 'is-active' if active_nct == study.nct }}">
+            <i></i><span>{{ study.title|truncate(22) or study.nct }}</span>
+          </a>
+          {% endfor %}
         </div>
-        {% else %}
-        <div class="mh-source-empty">
-          <span>{{ ic.icon('cloud-sync') }}</span>
-          <b>No accounts yet</b>
-          <p>Connect your first inbox or marketing account to get started.</p>
-          {{ ui.btn('Connect account', 'primary', 'sm', icon='plus', extra='data-ui-open="sourceModal"') }}
-        </div>
-        {% endfor %}
-      </div>
-
-      <div class="mh-coverage-card {{ 'is-on' if settings.vacation_mode else '' }}">
-        <div class="mh-coverage-top">
-          <span class="mh-coverage-icon">{{ ic.icon('users') }}</span>
-          <span>
-            <small>{{ 'Coverage active' if settings.vacation_mode else 'Inbox coverage' }}</small>
-            <b>{{ active_owner.display_name }} is on duty</b>
+        <div class="mh-intake-group">
+          <div class="mh-intake-label"><b>Team</b><button type="button" data-ui-open="coverageModal" title="Manage coverage">{{ ic.icon('plus') }}</button></div>
+          {% for member in members %}
+          <span class="mh-intake-person">
+            {{ member_avatar(member, 'is-tiny') }}
+            <span>{{ member.display_name }}</span>
           </span>
+          {% endfor %}
         </div>
-        {% if settings.vacation_mode %}
-        <p>{{ primary.display_name if primary else 'The primary owner' }} is away{% if settings.away_until %} until {{ settings.away_until }}{% endif %}. New conversations route to {{ active_owner.display_name }}.</p>
-        {% else %}
-        <p>Set a cover teammate for time off.</p>
-        {% endif %}
-        <button type="button" data-ui-open="coverageModal">Manage coverage {{ ic.icon('arrow-right') }}</button>
+        <div class="mh-intake-spacer"></div>
+        <button type="button" class="mh-intake-connect" data-ui-open="sourceModal">{{ ic.icon('cloud-sync') }} {{ counts.sources }} connected account{{ '' if counts.sources == 1 else 's' }}</button>
+        <div class="mh-intake-user">
+          {{ member_avatar(member_by_id.get(user.id)) }}
+          <span><b>{{ user.name or user.email }}</b><small>{{ member_role_label or 'Coordinator' }}</small></span>
+        </div>
       </div>
     </aside>
 
@@ -158,9 +72,7 @@
           {% if source_filter %}<input type="hidden" name="source" value="{{ source_filter }}">{% endif %}
           {% if channel_filter %}<input type="hidden" name="channel" value="{{ channel_filter }}">{% endif %}
         </form>
-        <button class="mh-icon-btn" type="button" data-ui-open="testThreadModal" aria-label="Create a test conversation" title="Create a test conversation" {{ 'disabled' if not counts.sources }}>
-          {{ ic.icon('plus') }}
-        </button>
+        {{ ui.icon_btn('Create a test conversation', 'plus', extra='data-ui-open="testThreadModal"', disabled=not counts.sources) }}
       </div>
 
       <nav class="mh-thread-tabs" aria-label="Conversation status">
@@ -168,11 +80,25 @@
         <a class="{{ 'is-active' if status_filter == 'resolved' else '' }}" href="{{ url_for('marketing_hub', status='resolved', source=source_filter, channel=channel_filter, q=search_query) }}">Resolved <span>{{ counts.resolved }}</span></a>
         <a class="{{ 'is-active' if status_filter == 'all' else '' }}" href="{{ url_for('marketing_hub', status='all', source=source_filter, channel=channel_filter, q=search_query) }}">All</a>
       </nav>
+      {% set stage_labels = {
+        'all':'All', 'new':'New', 'outreach':'Outreach',
+        'prescreen':'Pre-screen', 'screening':'Screening',
+        'enrolled':'Enrolled', 'disqualified':'Not a fit',
+        'archived':'Archived'
+      } %}
+      <nav class="mh-stage-tabs" aria-label="Recruitment stage">
+        {% for key in ['all','new','outreach','prescreen','screening','enrolled'] %}
+        <a class="{{ 'is-active' if stage_filter == key }}"
+           href="{{ url_for('marketing_hub', stage=key, status=status_filter, source=source_filter, channel=channel_filter, q=search_query) }}">
+          {{ stage_labels[key] }} <span>{{ stage_counts.get(key, 0) }}</span>
+        </a>
+        {% endfor %}
+      </nav>
 
       <div class="mh-thread-stack">
         {% for thread in threads %}
         <a class="mh-thread-row {{ 'is-active' if active and active.id == thread.id else '' }} {{ 'is-unread' if thread.unread else '' }}"
-           href="{{ url_for('marketing_hub', thread=thread.id, status=status_filter, source=source_filter, channel=channel_filter, q=search_query) }}#conversation">
+           href="{{ url_for('marketing_hub', thread=thread.id, stage=stage_filter, status=status_filter, source=source_filter, channel=channel_filter, q=search_query) }}#conversation">
           <div class="mh-thread-row-top">
             <span class="mh-contact-avatar">{{ (thread.contact_name or thread.contact_handle or '?')[:1]|upper }}</span>
             <span class="mh-thread-person">
@@ -188,11 +114,12 @@
             {% set assignee = member_by_id.get(thread.assigned_to) %}
             {{ member_avatar(assignee, 'is-tiny') }}
             <span>{{ assignee.display_name if assignee else 'Unassigned' }}</span>
-            <span class="mh-connection-tag {{ 'is-live' if thread.connection_mode == 'live' else 'is-demo' }}">
-              {{ 'Live' if thread.connection_mode == 'live' else 'Demo' }}
-            </span>
-            {% if thread.study_label and not active_nct %}<span class="mh-study-tag" title="{{ thread.study_label }}">{{ ic.icon('file') }} {{ thread.study_label|truncate(26) }}</span>{% endif %}
-            {% if thread.status == 'resolved' %}<span class="mh-resolved-tag">{{ ic.icon('check') }} Resolved</span>{% endif %}
+            {% if thread.study_label and not active_nct %}<span class="mh-row-context" title="{{ thread.study_label }}">{{ thread.study_label|truncate(24) }}</span>{% endif %}
+            {% set row_stage = thread.pipeline_stage or 'new' %}
+            {% set row_tone = 'ok' if row_stage == 'enrolled' else 'danger' if row_stage == 'disqualified' else 'brand' %}
+            {{ ui.badge(stage_labels.get(row_stage, 'New'), row_tone) }}
+            {% if thread.linked_lead_id %}{{ ui.badge('Applicant', 'neutral', 'check') }}{% endif %}
+            {% if thread.status == 'resolved' %}{{ ui.badge('Resolved', 'ok', 'check') }}{% endif %}
           </div>
         </a>
         {% else %}
@@ -209,6 +136,8 @@
     <section class="mh-conversation" id="conversation" aria-label="Active conversation">
       {% if active %}
       {% set gmail_delivery_ready = active.connection_mode == 'live' and active.provider == 'gmail' and active.connection_status == 'connected' and active.external_ref %}
+      {% set instagram_delivery_ready = active.connection_mode == 'live' and active.provider == 'instagram' and active.connection_status == 'connected' and active.external_ref %}
+      {% set live_delivery_ready = gmail_delivery_ready or instagram_delivery_ready %}
       <header class="mh-conversation-head">
         <div class="mh-contact-main">
           <span class="mh-contact-avatar is-large">{{ (active.contact_name or active.contact_handle or '?')[:1]|upper }}</span>
@@ -219,6 +148,14 @@
           </span>
         </div>
         <div class="mh-conversation-actions">
+          <form method="post" action="{{ url_for('marketing_thread_stage', thread_id=active.id) }}" class="mh-assign-form">
+            <label for="threadStage">Stage</label>
+            <select id="threadStage" name="stage" data-autosubmit>
+              {% for key in ['new','outreach','prescreen','screening','enrolled','disqualified','archived'] %}
+              <option value="{{ key }}" {{ 'selected' if (active.pipeline_stage or 'new') == key }}>{{ stage_labels[key] }}</option>
+              {% endfor %}
+            </select>
+          </form>
           <form method="post" action="{{ url_for('marketing_thread_assign', thread_id=active.id) }}" class="mh-assign-form">
             <label for="threadAssignee">Owner</label>
             <select id="threadAssignee" name="assignee_id" data-autosubmit>
@@ -237,6 +174,44 @@
           </form>
         </div>
       </header>
+
+      <div class="mh-pipeline" aria-label="Recruitment progress">
+        {% set current_stage = active.pipeline_stage or 'new' %}
+        {% set progress_stages = ['new','outreach','prescreen','screening','enrolled'] %}
+        {% set stage_order = {'new':0,'outreach':1,'prescreen':2,'screening':3,'enrolled':4} %}
+        {% set current_index = stage_order.get(current_stage, -1) %}
+        {% for key in progress_stages %}
+        <span class="{{ 'is-done' if current_index > loop.index0 else 'is-active' if current_index == loop.index0 else '' }}">
+          <i>{{ ic.icon('check') if current_index > loop.index0 else loop.index }}</i>
+          <b>{{ stage_labels[key] }}</b>
+        </span>
+        {% endfor %}
+      </div>
+
+      {% if not applicant and active.channel != 'google_ads' %}
+      <section class="mh-link-applicant" data-ui-reveal>
+        <div>
+          <span class="mh-section-icon">{{ ic.icon('user-plus') }}</span>
+          <span><b>Inbox conversation</b><small>Confirm consent before opening screening and patient-authorized record tools.</small></span>
+        </div>
+        {% if active.nct %}
+        <form method="post" action="{{ url_for('marketing_thread_create_applicant', thread_id=active.id) }}">
+          <label><input type="checkbox" name="consent" value="1" required> Permission to contact and create an applicant is confirmed</label>
+          <input name="age" inputmode="numeric" maxlength="3" placeholder="Age (optional)" aria-label="Applicant age">
+          {{ ui.btn('Create applicant', 'primary', 'sm', icon='user-plus', type='submit') }}
+        </form>
+        {% else %}
+        <small>Assign this conversation to a study before creating an applicant.</small>
+        {% endif %}
+      </section>
+      {% elif not applicant %}
+      <section class="mh-link-applicant mh-channel-alert" data-ui-reveal>
+        <div>
+          <span class="mh-section-icon">{{ ic.icon('info') }}</span>
+          <span><b>Channel alert</b><small>This is an operational account notification, not a participant inquiry.</small></span>
+        </div>
+      </section>
+      {% endif %}
 
       <div class="mh-subject-bar">
         <span>Subject</span>
@@ -265,7 +240,7 @@
             {% if message.kind == 'outbound' and message.delivery_status == 'saved' %}
             <small class="mh-delivery">{{ ic.icon('info') }} Saved in workspace, not delivered externally</small>
             {% elif message.kind == 'outbound' and message.delivery_status == 'sent' %}
-            <small class="mh-delivery is-sent">{{ ic.icon('check') }} Sent via Gmail</small>
+            <small class="mh-delivery is-sent">{{ ic.icon('check') }} Sent via {{ 'Instagram' if active.provider == 'instagram' else 'Gmail' }}</small>
             {% endif %}
           </article>
           {% endif %}
@@ -278,6 +253,12 @@
           <button type="button" data-compose-tab="note" role="tab" aria-selected="false">{{ ic.icon('users') }} Internal note</button>
         </div>
 
+        <div class="mh-bridget-draft" data-bridget-panel hidden>
+          <div><b>Bridget draft</b><small>Review before sending</small></div>
+          <p data-bridget-copy>{{ bridget_draft }}</p>
+          <button type="button" data-use-draft>Use draft</button>
+        </div>
+
         <form method="post" action="{{ url_for('marketing_thread_reply', thread_id=active.id) }}" class="mh-compose-panel" data-compose-panel="reply">
           <textarea name="body" rows="4" required placeholder="Reply to {{ active.contact_name or active.contact_handle or 'this contact' }}..."></textarea>
           <div class="mh-compose-foot">
@@ -286,13 +267,20 @@
               {{ ic.icon('info') }} Demo connection: this reply will be saved here only.
               {% elif gmail_delivery_ready %}
               {{ ic.icon('send') }} Sends from {{ active.source_identifier }} to {{ active.contact_handle }}.
+              {% elif instagram_delivery_ready %}
+              {{ ic.icon('send') }} Replies to this patient-initiated Instagram conversation.
               {% elif active.connection_status != 'connected' %}
-              {{ ic.icon('info') }} Reconnect Gmail before sending a reply.
+              {{ ic.icon('info') }} Reconnect this account before sending a reply.
               {% else %}
               {{ ic.icon('info') }} Sync this conversation from Gmail before replying.
               {% endif %}
             </span>
-            {{ ui.btn('Save demo reply' if active.connection_mode == 'demo' else 'Send with Gmail', 'primary', icon='send', type='submit', disabled=active.connection_mode != 'demo' and not gmail_delivery_ready) }}
+            <div class="mh-compose-actions">
+              {% if bridget_draft %}
+              {{ ui.btn('Draft with Bridget', 'ghost', 'sm', extra='type="button" data-bridget-draft="' ~ url_for('marketing_thread_draft', thread_id=active.id) ~ '"') }}
+              {% endif %}
+              {{ ui.btn('Save demo reply' if active.connection_mode == 'demo' else 'Send reply', 'primary', icon='send', type='submit', disabled=active.connection_mode != 'demo' and not live_delivery_ready) }}
+            </div>
           </div>
         </form>
 
@@ -304,6 +292,82 @@
           </div>
         </form>
       </div>
+
+      {% if applicant %}
+      <section class="mh-clinical-card" id="records" data-ui-reveal>
+        <header>
+          <div><span class="mh-section-icon">{{ ic.icon('file') }}</span><span><b>Patient-authorized records</b><small>Decision support for coordinator review</small></span></div>
+          {% if records_profile %}
+          {{ ui.badge('Retrieved', 'ok') }}
+          {% elif applicant.records_authorized_at %}
+          {{ ui.badge('Authorized', 'info') }}
+          {% else %}
+          {{ ui.badge('Authorization needed', 'warn') }}
+          {% endif %}
+        </header>
+
+        {% if records_profile %}
+        <div class="mh-record-summary">
+          <div><b>{{ records_profile.provider or 'SMART Health IT sandbox' }}</b><small>Retrieved {{ records_profile.last_sync_at or records_profile.connected_at }}</small></div>
+          <span>{{ records_profile.completeness_score or 0 }}% complete</span>
+        </div>
+        <p class="mh-record-text">{{ records_profile.summary or applicant.record_summary }}</p>
+        <div class="mh-record-grid">
+          <div><b>Conditions</b><span>{{ (records_data.conditions or [])|join(', ') or 'No conditions returned' }}</span></div>
+          <div><b>Medications</b><span>{{ (records_data.meds or [])|join(', ') or 'No medications returned' }}</span></div>
+          <div><b>Recent observations</b><span>{{ (records_data.labs or [])|join(' · ') or 'No observations returned' }}</span></div>
+        </div>
+        {% else %}
+        <div class="mh-record-empty">
+          <span>{{ ic.icon('cloud-sync') }}</span>
+          <div><b>No records retrieved yet</b><p>This demo uses patient-authorized synthetic SMART Health IT records. No real patient data is requested.</p></div>
+        </div>
+        <form method="post" action="{{ url_for('marketing_thread_records', thread_id=active.id) }}" class="mh-record-action" data-record-pull>
+          <label><input type="checkbox" name="authorization_confirmed" value="1" required {{ 'checked' if applicant.records_authorized_at }}> Patient authorization confirmed</label>
+          {{ ui.btn('Pull authorized records', 'primary', 'sm', icon='refresh', type='submit') }}
+        </form>
+        {% endif %}
+
+        {% set met = eligibility.get('met', []) %}
+        {% set unknown = eligibility.get('unknown', []) %}
+        {% set not_met = eligibility.get('not_met', []) %}
+        <div class="mh-criteria">
+          <div class="mh-criteria-head">
+            <b>Criteria review</b>
+            <span>{{ met|length }} supported · {{ unknown|length }} needs review · {{ not_met|length }} not met</span>
+          </div>
+          {% for criterion in met %}
+          <div class="is-met">{{ ic.icon('check') }}<span><b>Supported by available information</b><small>{{ criterion }}</small></span></div>
+          {% endfor %}
+          {% for criterion in unknown %}
+          <div class="is-pending">{{ ic.icon('info') }}<span><b>Coordinator review needed</b><small>{{ criterion }}</small></span></div>
+          {% endfor %}
+          {% for criterion in not_met %}
+          <div class="is-failed">{{ ic.icon('x') }}<span><b>Criterion not met</b><small>{{ criterion }}</small></span></div>
+          {% endfor %}
+        </div>
+      </section>
+
+      <section class="mh-clinical-card" id="checklist" data-ui-reveal>
+        <header>
+          <div><span class="mh-section-icon">{{ ic.icon('check') }}</span><span><b>Screening workflow</b><small>Team checklist, not electronic consent or randomization</small></span></div>
+          <span>{{ checklist|selectattr('status', 'equalto', 'done')|list|length }}/{{ checklist|length }} complete</span>
+        </header>
+        <div class="mh-checklist">
+          {% for task in checklist %}
+          <form method="post" action="{{ url_for('marketing_thread_checklist', thread_id=active.id, task_id=task.id) }}">
+            <input type="hidden" name="done" value="{{ '0' if task.status == 'done' else '1' }}">
+            <button type="submit" class="{{ 'is-done' if task.status == 'done' }}">
+              <i>{{ ic.icon('check') if task.status == 'done' else '' }}</i>
+              <span>{{ task.title }}</span>
+            </button>
+          </form>
+          {% else %}
+          <p>No screening tasks yet. Move the applicant into screening to create a workflow.</p>
+          {% endfor %}
+        </div>
+      </section>
+      {% endif %}
       {% else %}
       <div class="mh-no-conversation">
         <span>{{ ic.icon('chat') }}</span>
@@ -316,6 +380,45 @@
 </div>
 
 {% call ui.modal('sourceModal', 'Connect an account', icon='cloud-sync') %}
+{% if sources %}
+<section class="mh-account-list" aria-label="Connected accounts">
+  <header><b>Workspace accounts</b><span>{{ counts.sources }} connected</span></header>
+  {% for source in sources %}
+  <article class="mh-account-row">
+    {{ channel_icon(source.channel) }}
+    <span class="mh-account-copy">
+      <b>{{ source.label or channel_labels[source.channel] }}</b>
+      <small>{{ source.identifier }} · {{ 'Live' if source.connection_mode == 'live' else 'Demo' }}</small>
+      {% if source.provider == 'gmail' and source.connection_status == 'connected' %}
+      <small data-gmail-status-text>{{ 'Synced ' ~ source.sync_time_label if source.last_successful_sync_at else source.sync_time_label }}</small>
+      {% endif %}
+      {% if source.last_error_message %}<em data-gmail-error>{{ source.last_error_message|truncate(90) }}</em>{% endif %}
+    </span>
+    <div class="mh-account-actions">
+      {% if source.connection_mode == 'live' and source.connection_id and source.connection_status == 'connected' %}
+        {% if source.provider == 'gmail' %}
+        <form method="post" action="{{ url_for('marketing_connection_sync', connection_id=source.connection_id) }}"
+              data-gmail-sync data-last-sync="{{ source.last_successful_sync_at }}">
+          {{ ui.btn('Sync', 'ghost', 'sm', icon='refresh', type='submit') }}
+        </form>
+        {% endif %}
+        <form method="post" action="{{ url_for('marketing_connection_disconnect', connection_id=source.connection_id) }}">
+          {{ ui.btn('Disconnect', 'ghost', 'sm', type='submit') }}
+        </form>
+      {% elif source.connection_mode == 'demo' %}
+        <form method="post" action="{{ url_for('marketing_source_status', source_id=source.id) }}">
+          <input type="hidden" name="status" value="{{ 'connected' if source.status != 'connected' else 'disconnected' }}">
+          {{ ui.btn('Reconnect' if source.status != 'connected' else 'Disconnect', 'ghost', 'sm', type='submit') }}
+        </form>
+      {% else %}
+        {% set reconnect_url = url_for('marketing_instagram_connect') if source.provider == 'instagram' else url_for('marketing_gmail_connect') %}
+        {{ ui.btn('Reconnect', 'ghost', 'sm', href=reconnect_url) }}
+      {% endif %}
+    </div>
+  </article>
+  {% endfor %}
+</section>
+{% endif %}
 <section class="mh-gmail-connect">
   <div class="mh-gmail-mark">{{ ic.icon('google', 'brand-ico') }}</div>
   <div class="mh-gmail-copy">
@@ -543,7 +646,7 @@
     if (form.getAttribute('data-syncing') === '1') return Promise.resolve(null);
     form.setAttribute('data-syncing', '1');
     var button = form.querySelector('button');
-    var card = form.closest('.mh-source-wrap');
+    var card = form.closest('.mh-account-row');
     var status = card ? card.querySelector('[data-gmail-status-text]') : null;
     var error = card ? card.querySelector('[data-gmail-error]') : null;
     if (button) {
@@ -609,6 +712,52 @@
     window.setTimeout(pollGmail, 1500);
     window.setInterval(pollGmail, 60000);
   }
+
+  var bridgetButton = document.querySelector('[data-bridget-draft]');
+  var bridgetPanel = document.querySelector('[data-bridget-panel]');
+  var bridgetCopy = document.querySelector('[data-bridget-copy]');
+  var replyArea = document.querySelector('[data-compose-panel="reply"] textarea');
+  if (bridgetButton && bridgetPanel) {
+    bridgetButton.addEventListener('click', function () {
+      bridgetButton.disabled = true;
+      bridgetButton.textContent = 'Drafting...';
+      fetch(bridgetButton.getAttribute('data-bridget-draft'), {
+        credentials: 'same-origin',
+        headers: {'Accept': 'application/json'}
+      }).then(function (response) {
+        return response.json().then(function (data) {
+          if (!response.ok) throw data;
+          return data;
+        });
+      }).then(function (data) {
+        bridgetCopy.textContent = data.draft;
+        bridgetPanel.hidden = false;
+      }).catch(function () {
+        bridgetCopy.textContent = 'Bridget could not prepare a draft right now.';
+        bridgetPanel.hidden = false;
+      }).finally(function () {
+        bridgetButton.disabled = false;
+        bridgetButton.textContent = 'Draft with Bridget';
+      });
+    });
+    var useDraft = bridgetPanel.querySelector('[data-use-draft]');
+    if (useDraft) useDraft.addEventListener('click', function () {
+      if (replyArea) {
+        replyArea.value = bridgetCopy.textContent;
+        replyArea.focus();
+      }
+      bridgetPanel.hidden = true;
+    });
+  }
+
+  var recordForm = document.querySelector('[data-record-pull]');
+  if (recordForm) recordForm.addEventListener('submit', function () {
+    var button = recordForm.querySelector('button[type="submit"]');
+    if (button) {
+      button.disabled = true;
+      button.textContent = 'Retrieving authorized records...';
+    }
+  });
 })();
 </script>
 {% endblock %}

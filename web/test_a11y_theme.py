@@ -79,6 +79,20 @@ def test_css_mobile_sidebar_and_scroll():
     print("PASS: mobile sidebar wraps; wide tables/tab-bars scroll")
 
 
+def test_visual_system_is_single_source():
+    css = _read(CSS)
+    bases = _read(TPL, "base.html") + _read(TPL, "public_base.html")
+    assert css.count(":root {") == 1, "design tokens must have one :root source"
+    for token in ("--text-xs", "--text-md", "--duration-base", "--ease-standard"):
+        assert token in css, f"missing shared visual token {token}"
+    assert "Manrope" not in css + bases and "Newsreader" not in css + bases, \
+        "multiple UI typefaces reintroduced"
+    assert "brand-blue" not in css + bases, "split blue/teal brand reintroduced"
+    assert "prefers-reduced-motion: reduce" in css
+    assert "data-ui-reveal" in bases
+    print("PASS: typography, brand, and motion use one shared system")
+
+
 def _fake_result(nct, verdict):
     return {
         "trial": {"nctId": nct, "title": f"Study {nct}", "phase": "PHASE2",
@@ -124,6 +138,7 @@ def main():
         test_css_has_dark_theme_and_focus,
         test_css_colorblind_shapes,
         test_css_mobile_sidebar_and_scroll,
+        test_visual_system_is_single_source,
         test_fit_badges_have_distinct_icons,
     ]
     failed = 0

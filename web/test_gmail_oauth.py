@@ -62,7 +62,7 @@ def test_gmail_oauth_flow():
             verified=True)
     client = _client_for(user_id)
 
-    page = client.get("/marketing-hub")
+    page = client.get("/app/inbox")
     assert page.status_code == 200
     html = page.get_data(as_text=True)
     assert "Connect Gmail" in html
@@ -118,7 +118,7 @@ def test_gmail_oauth_flow():
             query_string={"state": state, "code": "authorization-code"})
         assert callback.status_code == 302
         assert urllib.parse.urlparse(callback.headers["Location"]).path == \
-            "/marketing-hub"
+            "/app/inbox"
 
         with webapp.app.app_context():
             sources = db.list_marketing_sources(user_id)
@@ -157,7 +157,7 @@ def test_gmail_oauth_flow():
                 teammate_id, connection_id)["id"] == connection_id
             assert db.get_marketing_connection(outsider_id, connection_id) is None
 
-        connected_page = client.get("/marketing-hub")
+        connected_page = client.get("/app/inbox")
         connected_html = connected_page.get_data(as_text=True)
         assert connected_page.status_code == 200
         assert "Sync" in connected_html
@@ -529,7 +529,7 @@ def test_gmail_full_and_incremental_sync():
         assert payload["ok"] is True
         assert payload["imported_messages"] == 1
         assert payload["newest_thread_id"] == thread_id
-        page = client.get("/marketing-hub")
+        page = client.get("/app/inbox")
         page_html = page.get_data(as_text=True)
         assert "data-gmail-sync" in page_html
         assert "connected.sync@gmail.com" in page_html
@@ -537,10 +537,10 @@ def test_gmail_full_and_incremental_sync():
 
         with client.session_transaction() as flask_session:
             flask_session["active_nct"] = "NCT01234567"
-        scoped_page = client.get("/marketing-hub")
+        scoped_page = client.get("/app/inbox")
         scoped_html = scoped_page.get_data(as_text=True)
         assert scoped_page.status_code == 200
-        assert "Send with Gmail" in scoped_html
+        assert "Send reply" in scoped_html
         assert "Campaign question" in scoped_html
 
         delivered = client.post(
@@ -574,10 +574,10 @@ def test_gmail_full_and_incremental_sync():
             assert messages[-1]["external_ref"] == "gmail-sent-message-1"
             message_count = len(messages)
 
-        delivered_page = client.get(f"/marketing-hub?thread={thread_id}")
+        delivered_page = client.get(f"/app/inbox?thread={thread_id}")
         delivered_html = delivered_page.get_data(as_text=True)
         assert "Sent via Gmail" in delivered_html
-        assert "Send with Gmail" in delivered_html
+        assert "Send reply" in delivered_html
 
         def reject_api_post(token, resource, payload):
             raise webapp._GmailAPIError(

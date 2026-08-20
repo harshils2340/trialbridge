@@ -97,13 +97,13 @@ def write_ico(pngs: list[pathlib.Path], out: pathlib.Path) -> None:
 def og_html() -> str:
     """Social card: same mark, same charcoal, so shares look like the product."""
     return f"""<!doctype html><meta charset="utf-8">
-<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@600;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@600;800&display=swap" rel="stylesheet">
 <style>
   html, body {{ margin: 0; width: 1536px; height: 1024px; }}
   body {{ background:
       radial-gradient(900px 620px at 78% -12%, rgba(13,108,106,.46), transparent 62%),
       {CHARCOAL};
-    font-family: Manrope, "Helvetica Neue", Helvetica, Arial, sans-serif;
+    font-family: Inter, "Helvetica Neue", Helvetica, Arial, sans-serif;
     display: flex; flex-direction: column; justify-content: center;
     padding: 0 118px; box-sizing: border-box; color: #fff; }}
   .lock {{ display: flex; align-items: center; gap: 30px; }}

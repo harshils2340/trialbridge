@@ -27,6 +27,12 @@
   {%- endif -%}
 {%- endmacro %}
 
+{# --- Icon button ----------------------------------------------------------
+   Compact secondary action. Always requires a human-readable label. #}
+{% macro icon_btn(label, icon, type="button", extra="", disabled=False) -%}
+  <button class="ui-icon-btn" type="{{ type }}" aria-label="{{ label }}" title="{{ label }}"{% if disabled %} disabled{% endif %} {{ extra|safe }}>{{ ic.icon(icon) }}</button>
+{%- endmacro %}
+
 {# --- Badge ----------------------------------------------------------------
    Small status label. tone: neutral | brand | ok | warn | danger | info | violet #}
 {% macro badge(label, tone="neutral", icon="") -%}

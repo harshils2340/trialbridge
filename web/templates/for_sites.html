@@ -16,18 +16,18 @@
 
 <!-- ───────────────────────── Hero ───────────────────────── -->
 <section class="fsx-hero">
+  <div class="fsx-hero-bg" aria-hidden="true"></div>
   <div class="fsx-hero-in">
-    <span class="fsx-eyebrow">{{ ic.icon('inbox') }} Free for research sites</span>
-    <h1>The inbox built for<br><span class="fsx-grad">clinical trial coordinators.</span></h1>
-    <p class="fsx-sub">Every patient who contacts your site — from email, Facebook &amp; Instagram ads,
-      ClinicalTrials.gov and referrals — lands in one inbox, sorted by what it needs and handed to the
-      right coordinator automatically. Less admin. Nothing missed.</p>
+    <span class="fsx-eyebrow">{{ ic.icon('inbox') }} Free for clinics &amp; hospitals running trials</span>
+    <h1>Every study inquiry,<br><span class="fsx-grad">in one clean inbox.</span></h1>
+    <p class="fsx-sub">Email, Facebook &amp; Instagram ads, ClinicalTrials.gov and referrals — every patient
+      who reaches out lands in one shared inbox, sorted by what it needs and routed to the right
+      coordinator automatically. Less admin, nothing missed.</p>
     <div class="fsx-cta">
       <a class="fsx-btn fsx-btn-primary" href="{{ cal_link }}" target="_blank" rel="noopener">Book a demo {{ ic.icon('arrow-right') }}</a>
-      <a class="fsx-btn fsx-btn-ghost" href="#how">See how it works</a>
-      <a class="fsx-btn fsx-btn-ghost" href="{{ url_for('marketing_hub') }}">Open marketing hub {{ ic.icon('arrow-right') }}</a>
+      <a class="fsx-btn fsx-btn-ghost" href="{{ url_for('marketing_hub') }}">See it live {{ ic.icon('arrow-right') }}</a>
     </div>
-    <p class="fsx-trust">Free for your site &middot; HIPAA-minded, BAA on request &middot; No per-referral fees</p>
+    <p class="fsx-trust">Free for your team &middot; HIPAA-minded, BAA on request &middot; No per-referral fees</p>
   </div>
   <div class="fsx-shot">
     <div class="fsx-shot-bar"><span></span><span></span><span></span><b>app.bridgemd.health · inbox</b></div>
@@ -276,7 +276,7 @@
 (function () {
   var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   var blocks = Array.prototype.slice.call(
-    document.querySelectorAll('.fsx-head, .fsx-feature, .fsx-step, .fs-frame, .fs-dt, .fs-contact-card'));
+    document.querySelectorAll('.fsx-head, .fsx-feature, .fsx-step, .fsx-proof-stat, .fs-frame, .fs-dt, .fs-contact-card'));
   if (!blocks.length || reduce || !('IntersectionObserver' in window)) return;
   blocks.forEach(function (b) { b.classList.add('fs-reveal'); });
   var obs = new IntersectionObserver(function (entries, o) {
