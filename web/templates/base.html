@@ -79,16 +79,6 @@
       <a href="{{ url_for('leads') }}" class="{{ 'active' if request.endpoint == 'leads' }}">{{ ic.icon('user-plus') }}Applicants</a>
       <a href="{{ url_for('team_page') }}" class="{{ 'active' if request.endpoint in ['team_page','team_invite','team_set_role','team_remove'] }}">{{ ic.icon('users') }}Team</a>
       <a href="{{ url_for('site_setup') }}" class="{{ 'active' if request.endpoint in ['site_setup','add_study_claim','remove_study_claim','intake_page','intake_import'] }}">{{ ic.icon('gear') }}Settings</a>
-      {#  Hidden CTMS surfaces (kept for later):
-      <a href="{{ url_for('study_home') }}">Dashboard</a>
-      <a href="{{ url_for('matching_page') }}">Matches</a>
-      <a href="{{ url_for('recruitment_dashboard') }}">Recruitment</a>
-      <a href="{{ url_for('irb_page') }}">IRB &amp; approvals</a>
-      <a href="{{ url_for('updates_page') }}">Updates</a>
-      <a href="{{ url_for('documents_page') }}">Documents</a>
-      <a href="{{ url_for('soe_page') }}">Protocol schedule</a>
-      <a href="{{ url_for('payments_page') }}">Payments</a>
-      #}
       {% if is_owner and not site_demo %}
       <a href="{{ url_for('internal_hub') }}" class="appnav-internal {{ 'active' if request.endpoint in ['internal_hub','operator_inbox','internal_registry','internal_registry_opt_out','internal_recruitment','internal_recruitment_targets','owner_analytics'] }}">{{ ic.icon('shield') }}Internal</a>
       {% endif %}
@@ -144,18 +134,6 @@
           {% endfor %}
         </div>
       </details>
-      {% if request.endpoint == 'team_inbox' %}
-      {# On the inbox the top-bar search IS the inbox search - one search, no
-         duplicate below. It live-filters the thread list (wired in team_inbox.js). #}
-      <div class="appsearch-wrap appsearch-inbox">
-        <span class="appsearch-ico">{{ ic.icon('search') }}</span>
-        <input id="inboxSearch" class="appsearch-input" type="search" autocomplete="off"
-               autocapitalize="off" spellcheck="false"
-               placeholder="Search this inbox — name, email, study, message…"
-               aria-label="Search this inbox">
-        <span id="inboxCount" class="appsearch-count" aria-live="polite"></span>
-      </div>
-      {% else %}
       <div class="appsearch-wrap" id="omniWrap">
         <span class="appsearch-ico">{{ ic.icon('search') }}</span>
         <input id="omniInput" class="appsearch-input" type="text" autocomplete="off"
@@ -166,7 +144,6 @@
         <kbd class="appsearch-kbd">⌘K</kbd>
         <div class="appsearch-panel" id="omniResults" role="listbox" hidden></div>
       </div>
-      {% endif %}
       <span class="apptop-spacer"></span>
 
       {% set notif_total = (site_unread or 0) + (matches_new or 0) %}

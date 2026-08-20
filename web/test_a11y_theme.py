@@ -93,6 +93,15 @@ def test_visual_system_is_single_source():
     print("PASS: typography, brand, and motion use one shared system")
 
 
+def test_demo_tour_starts_on_canonical_inbox():
+    tour = _read(TPL, "_demo_tour.html")
+    inbox = _read(TPL, "marketing_hub.html")
+    assert "path: '/app/home'" not in tour, "tour still targets retired dashboard"
+    assert "path: '/app/inbox'" in tour
+    assert 'data-demo-tour-target="inbox"' in inbox
+    print("PASS: demo tour starts on the canonical inbox")
+
+
 def _fake_result(nct, verdict):
     return {
         "trial": {"nctId": nct, "title": f"Study {nct}", "phase": "PHASE2",
@@ -139,6 +148,7 @@ def main():
         test_css_colorblind_shapes,
         test_css_mobile_sidebar_and_scroll,
         test_visual_system_is_single_source,
+        test_demo_tour_starts_on_canonical_inbox,
         test_fit_badges_have_distinct_icons,
     ]
     failed = 0
