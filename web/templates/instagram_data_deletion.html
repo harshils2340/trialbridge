@@ -1,0 +1,39 @@
+{% extends "public_base.html" %}
+{% block title %}Instagram data deletion | BridgeMD{% endblock %}
+{% block description %}Status and instructions for Instagram data deletion requests.{% endblock %}
+
+{% block body %}
+<section class="legal-page">
+  {% if receipt %}
+    <h1>Instagram data deletion completed</h1>
+    <p class="legal-lead">BridgeMD completed the deletion request received from Meta.</p>
+
+    <h2>Request status</h2>
+    <p><b>Status:</b> Completed</p>
+    <p><b>Confirmation code:</b> <code>{{ receipt.confirmation_code }}</code></p>
+    <p><b>Completed:</b> {{ receipt.completed_at }}</p>
+
+    <p>The connected Instagram credentials, account source, stored conversations,
+      messages, and queued Instagram webhook payloads associated with this request
+      have been removed.</p>
+  {% else %}
+    <h1>Instagram data deletion</h1>
+    <p class="legal-lead">BridgeMD supports account deauthorization and data deletion
+      requests sent by Meta.</p>
+
+    <h2>Request deletion</h2>
+    <p>Remove BridgeMD from your Instagram or Meta connected-app settings and choose
+      the option to delete information shared with the app. Meta will send BridgeMD
+      a signed deletion request and provide you with a confirmation link.</p>
+
+    <h2>What is removed</h2>
+    <p>We remove the connected Instagram credentials, account source, stored inbox
+      conversations and messages, and queued Instagram webhook payloads associated
+      with the verified Instagram account.</p>
+  {% endif %}
+
+  <p class="legal-contact">Questions or manual requests:
+    <a href="mailto:{{ legal_contact }}">{{ legal_contact }}</a></p>
+  <p class="legal-foot"><a href="{{ url_for('privacy') }}">Privacy</a></p>
+</section>
+{% endblock %}

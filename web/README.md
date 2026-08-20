@@ -65,22 +65,37 @@ and advances Gmail's `historyId` for idempotent incremental sync. The marketing
   the public demo, the verified Google identity creates or resumes a private
   workspace so credentials are never attached to shared demo data.
 
-### Instagram webhook for the marketing hub
+### Instagram Business Login and webhooks
 
 Set `INSTAGRAM_APP_ID`, `INSTAGRAM_APP_SECRET`, and
 `INSTAGRAM_WEBHOOK_VERIFY_TOKEN` in the deployed service environment. The verify
 token is an application-defined secret and must exactly match the value entered
-in the Meta dashboard. For the BridgeMD production app, use:
+in the Meta dashboard. Configure the BridgeMD production app with:
 
-- Callback URL: `https://bridgemd.health/integrations/instagram/webhook`
+- Business Login redirect URL:
+  `https://bridgemd.health/integrations/instagram/callback`
+- Webhook callback URL:
+  `https://bridgemd.health/integrations/instagram/webhook`
 - Verify token: the value of `INSTAGRAM_WEBHOOK_VERIFY_TOKEN` on Render
+- Deauthorize callback URL:
+  `https://bridgemd.health/integrations/instagram/deauthorize`
+- Data deletion request URL:
+  `https://bridgemd.health/integrations/instagram/data-deletion`
 
-The callback returns Meta's verification challenge on a valid subscription
-request. Event deliveries must include a valid `X-Hub-Signature-256` generated
-with the Meta app secret; accepted events are stored idempotently for later
-processing. Deploy this code and set the Render variables before asking Meta to
-verify the production callback. A repository-root `.env` only configures the
-local server.
+Business Login requests `instagram_business_basic` and
+`instagram_business_manage_messages`. The server exchanges the authorization
+code for a long-lived token, encrypts it at rest, reads the professional account
+profile, and subscribes the account to `messages` webhooks. Webhook deliveries
+must include a valid `X-Hub-Signature-256`; accepted events are stored
+idempotently for later processing.
+
+Meta sends deauthorization and deletion callbacks as `signed_request` form
+values. Both signatures are validated with the app secret. Deauthorization
+erases credentials while preserving existing inbox history. Data deletion
+removes credentials, the Instagram source, stored conversations/messages, and
+queued webhook payloads, then returns Meta a public status URL and confirmation
+code. Deploy this code and set the Render variables before validating any URL.
+A repository-root `.env` only configures the local server.
 
 ## Integrated E2E smoke (patient -> site ATS)
 
@@ -200,6 +215,8 @@ commented `disk:` block in `render.yaml`).
 | `GMAIL_THREAD_MESSAGE_LIMIT` | Messages retained from each imported Gmail thread (default `50`, maximum `100`) |
 | `INSTAGRAM_APP_ID`, `INSTAGRAM_APP_SECRET` | Meta app credentials used for Instagram integration and webhook signatures |
 | `INSTAGRAM_WEBHOOK_VERIFY_TOKEN` | Private value that must exactly match the Meta webhook configuration |
+| `INSTAGRAM_GRAPH_API_VERSION` | Instagram Graph API version (default `v24.0`) |
+| `INSTAGRAM_BUSINESS_LOGIN_URL` | Optional Meta-provided Business Login embed URL; defaults to Instagram's OAuth authorization URL |
 | `GOOGLE_CALENDAR_SYNC` | `1` enables best-effort Google Calendar push on visit booking |
 | `GOOGLE_CALENDAR_ID`, `GOOGLE_CALENDAR_ACCESS_TOKEN` | Calendar destination + auth token for visit push |
 | `GOOGLE_CALENDAR_TIMEZONE` | Optional timezone for pushed events (default `UTC`) |

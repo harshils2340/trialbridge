@@ -86,23 +86,30 @@
           {% if source.connection_mode == 'live' and source.connection_id %}
             {% if source.connection_status == 'connected' %}
             <div class="mh-source-state mh-source-live-state">
-              <span class="mh-sync-meta" data-gmail-status>
+              <span class="mh-sync-meta" {{ 'data-gmail-status' if source.provider == 'gmail' else '' }}>
                 <span class="mh-status-dot"></span>
-                <span data-gmail-status-text>{{ 'Synced ' ~ source.sync_time_label if source.last_successful_sync_at else source.sync_time_label }}</span>
+                {% if source.provider == 'gmail' %}
+                  <span data-gmail-status-text>{{ 'Synced ' ~ source.sync_time_label if source.last_successful_sync_at else source.sync_time_label }}</span>
+                {% else %}
+                  <span>Webhook subscribed</span>
+                {% endif %}
               </span>
+              {% if source.provider == 'gmail' %}
               <form method="post" action="{{ url_for('marketing_connection_sync', connection_id=source.connection_id) }}"
                     data-gmail-sync data-last-sync="{{ source.last_successful_sync_at }}">
                 <button type="submit" title="Check {{ source.label }} for new email">{{ ic.icon('refresh') }} Sync</button>
               </form>
+              {% endif %}
               <form method="post" action="{{ url_for('marketing_connection_disconnect', connection_id=source.connection_id) }}">
                 <button type="submit" title="Disconnect {{ source.label }}">Disconnect</button>
               </form>
             </div>
-            <small class="mh-source-error" data-gmail-error {{ 'hidden' if not source.last_error_message }}>{{ source.last_error_message|truncate(90) }}</small>
+            <small class="mh-source-error" {{ 'data-gmail-error' if source.provider == 'gmail' else '' }} {{ 'hidden' if not source.last_error_message }}>{{ source.last_error_message|truncate(90) }}</small>
             {% else %}
+            {% set reconnect_url = url_for('marketing_instagram_connect') if source.provider == 'instagram' else url_for('marketing_gmail_connect') %}
             <div class="mh-source-state">
-              <a href="{{ url_for('marketing_gmail_connect') }}" title="Reconnect {{ source.label }}">
-                <span class="mh-status-dot"></span>{{ 'Needs attention' if source.connection_status in ('error', 'needs_reauth') else 'Reconnect Gmail' }}
+              <a href="{{ reconnect_url }}" title="Reconnect {{ source.label }}">
+                <span class="mh-status-dot"></span>{{ 'Needs attention' if source.connection_status in ('error', 'needs_reauth') else 'Reconnect ' ~ ('Instagram' if source.provider == 'instagram' else 'Gmail') }}
               </a>
             </div>
             {% endif %}
@@ -324,6 +331,24 @@
       {{ ui.btn('Google setup required', 'ghost', 'sm', disabled=True) }}
     {% endif %}
     <small>Google OAuth - No password shared</small>
+  </div>
+</section>
+
+<section class="mh-gmail-connect mh-instagram-connect">
+  <div class="mh-gmail-mark mh-instagram-mark">IG</div>
+  <div class="mh-gmail-copy">
+    <span class="mh-live-pill"><i></i> Live connection</span>
+    <h3>Connect Instagram</h3>
+    <p>Authorize a professional account and subscribe it to signed message notifications.</p>
+    <div class="mh-scope-list"><span>{{ ic.icon('check') }} Profile access</span><span>{{ ic.icon('check') }} Message permission</span></div>
+  </div>
+  <div class="mh-gmail-action">
+    {% if instagram_oauth_ready %}
+      {{ ui.btn('Connect Instagram', 'primary', 'sm', href=url_for('marketing_instagram_connect')) }}
+    {% else %}
+      {{ ui.btn('Meta setup required', 'ghost', 'sm', disabled=True) }}
+    {% endif %}
+    <small>Instagram Business Login</small>
   </div>
 </section>
 

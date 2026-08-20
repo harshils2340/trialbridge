@@ -435,6 +435,7 @@ PATIENT_PENDING_PURPOSE_KEY = "patient_pending_purpose"
 PATIENT_NEXT_KEY = "patient_next"
 PATIENT_GOOGLE_STATE_KEY = "patient_google_state"
 MARKETING_GOOGLE_STATE_KEY = "marketing_google_state"
+MARKETING_INSTAGRAM_STATE_KEY = "marketing_instagram_state"
 CSRF_SESSION_KEY = "_csrf_token"
 GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "").strip()
 GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "").strip()
@@ -449,6 +450,19 @@ INSTAGRAM_WEBHOOK_VERIFY_TOKEN = os.environ.get(
 INSTAGRAM_WEBHOOK_MAX_BYTES = max(
     1024, min(5_000_000, int(os.environ.get(
         "INSTAGRAM_WEBHOOK_MAX_BYTES", "1000000"))))
+INSTAGRAM_AUTH_URL = os.environ.get(
+    "INSTAGRAM_BUSINESS_LOGIN_URL",
+    "https://www.instagram.com/oauth/authorize").strip()
+INSTAGRAM_TOKEN_URL = "https://api.instagram.com/oauth/access_token"
+INSTAGRAM_GRAPH_API_BASE_URL = "https://graph.instagram.com"
+INSTAGRAM_GRAPH_API_VERSION = os.environ.get(
+    "INSTAGRAM_GRAPH_API_VERSION", "v24.0").strip()
+if not re.fullmatch(r"v\d+\.\d+", INSTAGRAM_GRAPH_API_VERSION):
+    INSTAGRAM_GRAPH_API_VERSION = "v24.0"
+INSTAGRAM_OAUTH_SCOPES = (
+    "instagram_business_basic",
+    "instagram_business_manage_messages",
+)
 GOOGLE_OAUTH_SCOPE = "openid email profile"
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
@@ -1087,7 +1101,8 @@ def _web_analytics_cookies(resp):
     # pointing at old (cached) CSS/JS even after we ship fixes. Static assets
     # are exempt (they're long-cached and busted via ?v= in static_url()).
     try:
-        if resp.headers.get("Content-Type", "").startswith("text/html"):
+        if (resp.headers.get("Content-Type", "").startswith("text/html")
+                and "no-store" not in resp.headers.get("Cache-Control", "")):
             resp.headers["Cache-Control"] = "no-cache, must-revalidate, max-age=0"
     except Exception:
         pass
@@ -1809,6 +1824,7 @@ def logout():
     session.pop(USER_PENDING_PURPOSE_KEY, None)
     session.pop(USER_NEXT_KEY, None)
     session.pop(USER_GOOGLE_STATE_KEY, None)
+    session.pop(MARKETING_INSTAGRAM_STATE_KEY, None)
     return redirect(url_for("login"))
 
 
@@ -1993,7 +2009,8 @@ def _csrf_guard():
     if request.method != "POST":
         return None
     if request.endpoint in {"alerts_run", "reminders_run", "redcap_webhook",
-                            "instagram_webhook",
+                            "instagram_webhook", "instagram_deauthorize",
+                            "instagram_data_deletion",
                             "ops_verify_claim", "inbound_email_webhook",
                             "inbound_lead_webhook"}:
         return None
@@ -2123,6 +2140,170 @@ def _issue_user_code(user, purpose):
 
 def _google_ready():
     return bool(GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET)
+
+
+class InstagramAPIError(RuntimeError):
+    def __init__(self, message, *, status=0, code=""):
+        super().__init__(message)
+        self.status = int(status or 0)
+        self.code = str(code or "")[:80]
+
+
+def _instagram_ready():
+    return bool(INSTAGRAM_APP_ID and INSTAGRAM_APP_SECRET and INSTAGRAM_AUTH_URL)
+
+
+def _instagram_json_request(url, *, data=None, method="GET", headers=None):
+    """Call Instagram without leaking credential-bearing URLs into logs."""
+    request_headers = {
+        "Accept": "application/json",
+        "User-Agent": "BridgeMD-Instagram/1.0",
+        **(headers or {}),
+    }
+    req = urllib.request.Request(
+        url, data=data, headers=request_headers, method=method)
+    try:
+        with urllib.request.urlopen(req, timeout=20) as response:
+            raw = response.read()
+    except urllib.error.HTTPError as exc:
+        status = int(exc.code or 0)
+        code = ""
+        try:
+            error_payload = json.loads(exc.read(65536).decode("utf-8"))
+            error = error_payload.get("error", error_payload)
+            if isinstance(error, dict):
+                code = error.get("code") or error.get("error_subcode") or ""
+        except Exception:
+            pass
+        app.logger.warning(
+            "Instagram API rejected a request (status=%s code=%s)",
+            status, code or "unknown")
+        raise InstagramAPIError(
+            "Instagram rejected the request.", status=status, code=code) from None
+    except (urllib.error.URLError, TimeoutError, OSError):
+        raise InstagramAPIError("Instagram could not be reached.") from None
+    try:
+        payload = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, ValueError):
+        raise InstagramAPIError("Instagram returned an invalid response.") from None
+    if not isinstance(payload, dict):
+        raise InstagramAPIError("Instagram returned an invalid response.")
+    return payload
+
+
+def _instagram_authorization_url(state):
+    parts = urllib.parse.urlsplit(INSTAGRAM_AUTH_URL)
+    params = dict(urllib.parse.parse_qsl(parts.query, keep_blank_values=True))
+    params.update({
+        "client_id": INSTAGRAM_APP_ID,
+        "redirect_uri": _abs_url("marketing_instagram_callback"),
+        "response_type": "code",
+        "scope": ",".join(INSTAGRAM_OAUTH_SCOPES),
+        "state": state,
+        "enable_fb_login": "0",
+        "force_authentication": "1",
+    })
+    return urllib.parse.urlunsplit((
+        parts.scheme, parts.netloc, parts.path,
+        urllib.parse.urlencode(params), parts.fragment))
+
+
+def _instagram_exchange_code(code):
+    body = urllib.parse.urlencode({
+        "client_id": INSTAGRAM_APP_ID,
+        "client_secret": INSTAGRAM_APP_SECRET,
+        "grant_type": "authorization_code",
+        "redirect_uri": _abs_url("marketing_instagram_callback"),
+        "code": code,
+    }).encode("utf-8")
+    payload = _instagram_json_request(
+        INSTAGRAM_TOKEN_URL, data=body, method="POST",
+        headers={"Content-Type": "application/x-www-form-urlencoded"})
+    items = payload.get("data")
+    token_data = items[0] if isinstance(items, list) and items else payload
+    if not isinstance(token_data, dict):
+        raise InstagramAPIError("Instagram returned no account authorization.")
+    return token_data
+
+
+def _instagram_exchange_long_lived_token(short_lived_token):
+    query = urllib.parse.urlencode({
+        "grant_type": "ig_exchange_token",
+        "client_secret": INSTAGRAM_APP_SECRET,
+        "access_token": short_lived_token,
+    })
+    return _instagram_json_request(
+        f"{INSTAGRAM_GRAPH_API_BASE_URL}/access_token?{query}")
+
+
+def _instagram_profile(access_token, instagram_user_id):
+    account_id = urllib.parse.quote(str(instagram_user_id), safe="")
+    query = urllib.parse.urlencode({
+        "fields": "user_id,username,name,account_type",
+    })
+    return _instagram_json_request(
+        f"{INSTAGRAM_GRAPH_API_BASE_URL}/{INSTAGRAM_GRAPH_API_VERSION}/"
+        f"{account_id}?{query}",
+        headers={"Authorization": f"Bearer {access_token}"})
+
+
+def _instagram_subscribe_webhooks(access_token, instagram_user_id):
+    account_id = urllib.parse.quote(str(instagram_user_id), safe="")
+    body = urllib.parse.urlencode({"subscribed_fields": "messages"}).encode(
+        "utf-8")
+    payload = _instagram_json_request(
+        f"{INSTAGRAM_GRAPH_API_BASE_URL}/{INSTAGRAM_GRAPH_API_VERSION}/"
+        f"{account_id}/subscribed_apps",
+        data=body, method="POST",
+        headers={
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/x-www-form-urlencoded",
+        })
+    if payload.get("success") is not True:
+        raise InstagramAPIError(
+            "Instagram did not enable message notifications.")
+    return True
+
+
+def _instagram_unsubscribe_webhooks(access_token, instagram_user_id):
+    if not access_token or not instagram_user_id:
+        return False
+    account_id = urllib.parse.quote(str(instagram_user_id), safe="")
+    payload = _instagram_json_request(
+        f"{INSTAGRAM_GRAPH_API_BASE_URL}/{INSTAGRAM_GRAPH_API_VERSION}/"
+        f"{account_id}/subscribed_apps",
+        method="DELETE",
+        headers={"Authorization": f"Bearer {access_token}"})
+    return payload.get("success") is True
+
+
+def _meta_signed_request_payload(signed_request):
+    """Verify and decode a Meta signed_request using the Instagram app secret."""
+    signed_request = (signed_request or "").strip()
+    if not INSTAGRAM_APP_SECRET:
+        raise RuntimeError("Instagram lifecycle callbacks are not configured.")
+    if not signed_request or len(signed_request) > 16384:
+        raise ValueError("Invalid signed request.")
+    try:
+        encoded_signature, encoded_payload = signed_request.split(".", 1)
+        signature = base64.urlsafe_b64decode(
+            encoded_signature + "=" * (-len(encoded_signature) % 4))
+        payload_bytes = base64.urlsafe_b64decode(
+            encoded_payload + "=" * (-len(encoded_payload) % 4))
+        expected = hmac.new(
+            INSTAGRAM_APP_SECRET.encode("utf-8"),
+            encoded_payload.encode("ascii"), hashlib.sha256).digest()
+        if not hmac.compare_digest(signature, expected):
+            raise ValueError("Invalid signed request.")
+        payload = json.loads(payload_bytes.decode("utf-8"))
+    except (UnicodeError, ValueError, TypeError):
+        raise ValueError("Invalid signed request.") from None
+    if not isinstance(payload, dict):
+        raise ValueError("Invalid signed request.")
+    algorithm = str(payload.get("algorithm") or "").upper().replace("_", "-")
+    if algorithm and algorithm != "HMAC-SHA256":
+        raise ValueError("Invalid signed request.")
+    return payload
 
 
 def _google_exchange_code(code, redirect_endpoint="patient_google_callback"):
@@ -5205,20 +5386,145 @@ def marketing_hub():
         source_filter=source_filter, active_nct=active_nct,
         channel_labels=db.MARKETING_CHANNEL_LABELS,
         gmail_oauth_ready=_google_ready(),
+        instagram_oauth_ready=_instagram_ready(),
         today=dt.date.today().isoformat())
 
 
-def _private_marketing_workspace_required():
+def _private_marketing_workspace_required(provider_name="external account"):
     session_user_id = session.get(USER_SESSION_KEY)
     if not session_user_id:
         session[USER_NEXT_KEY] = url_for("marketing_hub")
-        flash("Sign in to your own workspace before connecting Gmail.", "error")
+        flash(f"Sign in to your own workspace before connecting {provider_name}.",
+              "error")
         return redirect(url_for("login", next=url_for("marketing_hub")))
     if _is_demo_account(g.user):
         flash("External accounts cannot be attached to the public demo workspace.",
               "error")
         return redirect(url_for("marketing_hub"))
     return None
+
+
+@app.route("/marketing-hub/connect/instagram")
+@login_required
+def marketing_instagram_connect():
+    blocked = _private_marketing_workspace_required("Instagram")
+    if blocked:
+        return blocked
+    if not _instagram_ready():
+        flash("Instagram Business Login is not configured.", "error")
+        return redirect(url_for("marketing_hub"))
+    state = secrets.token_urlsafe(32)
+    session[MARKETING_INSTAGRAM_STATE_KEY] = {
+        "state": state,
+        "user_id": g.user["id"],
+        "created_at": int(time.time()),
+    }
+    return redirect(_instagram_authorization_url(state))
+
+
+@app.route("/integrations/instagram/callback")
+@login_required
+def marketing_instagram_callback():
+    pending = session.pop(MARKETING_INSTAGRAM_STATE_KEY, None)
+    if not _instagram_ready():
+        flash("Instagram Business Login is not configured.", "error")
+        return redirect(url_for("marketing_hub"))
+    state = request.args.get("state", "")
+    expected = pending.get("state", "") if isinstance(pending, dict) else ""
+    pending_user_id = pending.get("user_id") if isinstance(pending, dict) else None
+    created_at = pending.get("created_at", 0) if isinstance(pending, dict) else 0
+    try:
+        state_age = int(time.time()) - int(created_at)
+        state_is_fresh = 0 <= state_age <= 10 * 60
+    except (TypeError, ValueError):
+        state_is_fresh = False
+    pending_user_is_valid = bool(
+        g.user and pending_user_id == g.user["id"]
+        and session.get(USER_SESSION_KEY) == pending_user_id
+        and not _is_demo_account(g.user))
+    if (not state or not expected or not hmac.compare_digest(state, expected)
+            or not state_is_fresh or not pending_user_is_valid):
+        flash("Instagram connection failed state validation. Please try again.",
+              "error")
+        return redirect(url_for("marketing_hub"))
+    if request.args.get("error"):
+        flash("Instagram connection was cancelled. No account was added.", "error")
+        return redirect(url_for("marketing_hub"))
+    code = request.args.get("code", "").strip()
+    if not code:
+        flash("Instagram did not return an authorization code.", "error")
+        return redirect(url_for("marketing_hub"))
+
+    try:
+        short_payload = _instagram_exchange_code(code)
+        short_token = str(short_payload.get("access_token") or "").strip()
+        instagram_user_id = str(
+            short_payload.get("user_id") or short_payload.get("id") or "").strip()
+        if not short_token or not instagram_user_id:
+            raise InstagramAPIError(
+                "Instagram returned no account authorization.")
+
+        permissions = short_payload.get("permissions") or []
+        if isinstance(permissions, str):
+            granted_scopes = set(permissions.replace(",", " ").split())
+        else:
+            granted_scopes = {
+                str(scope).strip() for scope in permissions if str(scope).strip()}
+        if not granted_scopes:
+            granted_scopes = set(INSTAGRAM_OAUTH_SCOPES)
+        if not set(INSTAGRAM_OAUTH_SCOPES).issubset(granted_scopes):
+            flash("Instagram needs profile and message permissions to connect.",
+                  "error")
+            return redirect(url_for("marketing_hub"))
+
+        long_payload = _instagram_exchange_long_lived_token(short_token)
+        access_token = str(long_payload.get("access_token") or "").strip()
+        if not access_token:
+            raise InstagramAPIError("Instagram returned no long-lived token.")
+        profile = _instagram_profile(access_token, instagram_user_id)
+        profile_id = str(
+            profile.get("user_id") or profile.get("id") or "").strip()
+        username = str(profile.get("username") or "").strip().lstrip("@")
+        account_type = str(profile.get("account_type") or "").strip().upper()
+        if profile_id and profile_id != instagram_user_id:
+            raise InstagramAPIError("Instagram returned an inconsistent profile.")
+        if not username:
+            raise InstagramAPIError("Instagram returned no professional username.")
+        if account_type and account_type not in {
+                "BUSINESS", "CREATOR", "MEDIA_CREATOR"}:
+            raise InstagramAPIError(
+                "Only Instagram professional accounts can be connected.")
+
+        _instagram_subscribe_webhooks(access_token, instagram_user_id)
+        result = db.connect_marketing_account(
+            g.user["id"], provider="instagram", channel="instagram",
+            external_account_id=instagram_user_id,
+            account_identifier=f"@{username}",
+            access_token_encrypted=token_crypto.encrypt_token(
+                access_token, app.secret_key),
+            granted_scopes=granted_scopes,
+            token_expires_at=_oauth_token_expiry(
+                long_payload.get("expires_in") or 60 * 24 * 60 * 60),
+            instagram_account_id=instagram_user_id,
+            label="Instagram DMs")
+        if not result:
+            raise RuntimeError("Connection storage rejected the account.")
+    except InstagramAPIError as exc:
+        app.logger.warning(
+            "Instagram OAuth callback failed (status=%s code=%s)",
+            exc.status, exc.code or "unknown")
+        flash("Instagram could not be connected. Check the account permissions "
+              "and try again.", "error")
+        return redirect(url_for("marketing_hub"))
+    except Exception:
+        app.logger.exception("Instagram OAuth callback failed")
+        flash("Instagram could not be connected. Please try again.", "error")
+        return redirect(url_for("marketing_hub"))
+
+    _log_event("instagram_connected")
+    flash(f"Instagram connected for @{username} and subscribed to message "
+          "notifications.", "ok")
+    return redirect(url_for("marketing_hub", source=result["source_id"]))
 
 
 @app.route("/marketing-hub/connect/gmail")
@@ -5461,9 +5767,25 @@ def marketing_connection_disconnect(connection_id):
             # Local credentials are still erased even if Google has already
             # revoked the grant or its revocation endpoint is unavailable.
             app.logger.warning("google token revocation failed", exc_info=True)
+    elif connection["provider"] == "instagram":
+        try:
+            access_token = token_crypto.decrypt_token(
+                connection["access_token_encrypted"], app.secret_key)
+            _instagram_unsubscribe_webhooks(
+                access_token,
+                connection["instagram_account_id"]
+                or connection["external_account_id"])
+        except Exception:
+            # Deleting local credentials takes priority if Meta is unavailable or
+            # the user has already revoked the grant remotely.
+            app.logger.warning(
+                "Instagram webhook unsubscription failed", exc_info=True)
     if not db.disconnect_marketing_connection(g.user["id"], connection_id):
         abort(404)
-    flash("Gmail disconnected and its stored credentials were removed.", "ok")
+    provider_label = (
+        "Instagram" if connection["provider"] == "instagram" else "Gmail")
+    flash(f"{provider_label} disconnected and its stored credentials were removed.",
+          "ok")
     return redirect(url_for("marketing_hub"))
 
 
@@ -6173,6 +6495,79 @@ def redcap_webhook():
         _mark_screening_complete(lead, actor="redcap",
                                  note="screening form completed (REDCap)")
     return app.response_class("ok", mimetype="text/plain")
+
+
+def _meta_callback_signed_request():
+    signed_request = request.form.get("signed_request", "")
+    if not signed_request and request.is_json:
+        payload = request.get_json(silent=True) or {}
+        if isinstance(payload, dict):
+            signed_request = payload.get("signed_request", "")
+    return str(signed_request or "").strip()
+
+
+@app.route("/integrations/instagram/deauthorize", methods=["GET", "POST"])
+def instagram_deauthorize():
+    """Erase Instagram credentials when Meta reports app deauthorization."""
+    if request.method == "GET":
+        return jsonify({"ok": True, "callback": "instagram_deauthorize"})
+    try:
+        payload = _meta_signed_request_payload(_meta_callback_signed_request())
+        instagram_user_id = str(payload.get("user_id") or "").strip()
+        if not instagram_user_id:
+            raise ValueError("Invalid signed request.")
+    except RuntimeError:
+        return jsonify({"ok": False, "error": "callback_not_configured"}), 503
+    except ValueError:
+        return jsonify({"ok": False, "error": "invalid_signed_request"}), 403
+    db.deauthorize_marketing_account("instagram", instagram_user_id)
+    return jsonify({"success": True}), 200
+
+
+@app.route("/integrations/instagram/data-deletion", methods=["GET", "POST"])
+def instagram_data_deletion():
+    """Process Meta deletion requests and return a public status receipt."""
+    if request.method == "GET":
+        return render_template(
+            "instagram_data_deletion.html", receipt=None,
+            legal_contact=LEGAL_CONTACT)
+    signed_request = _meta_callback_signed_request()
+    try:
+        payload = _meta_signed_request_payload(signed_request)
+        instagram_user_id = str(payload.get("user_id") or "").strip()
+        if not instagram_user_id:
+            raise ValueError("Invalid signed request.")
+    except RuntimeError:
+        return jsonify({"ok": False, "error": "callback_not_configured"}), 503
+    except ValueError:
+        return jsonify({"ok": False, "error": "invalid_signed_request"}), 403
+
+    receipt = db.delete_marketing_account_data(
+        "instagram", instagram_user_id,
+        request_key=hashlib.sha256(signed_request.encode("utf-8")).hexdigest(),
+        confirmation_code=secrets.token_hex(16))
+    if not receipt:
+        return jsonify({"ok": False, "error": "deletion_failed"}), 500
+    confirmation_code = receipt["confirmation_code"]
+    return jsonify({
+        "url": _abs_url(
+            "instagram_data_deletion_status",
+            confirmation_code=confirmation_code),
+        "confirmation_code": confirmation_code,
+    }), 200
+
+
+@app.route(
+    "/integrations/instagram/data-deletion/status/<confirmation_code>")
+def instagram_data_deletion_status(confirmation_code):
+    receipt = db.get_marketing_data_deletion(confirmation_code)
+    if not receipt:
+        abort(404)
+    response = make_response(render_template(
+        "instagram_data_deletion.html", receipt=dict(receipt),
+        legal_contact=LEGAL_CONTACT))
+    response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 @app.route("/integrations/instagram/webhook", methods=["GET", "POST"])

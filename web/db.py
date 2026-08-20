@@ -1133,6 +1133,19 @@ CREATE TABLE IF NOT EXISTS marketing_webhook_events (
     UNIQUE (provider, event_key)
 );
 
+-- Meta requires a public status URL for each data-deletion callback. Receipts
+-- deliberately retain no provider user ID or request payload after erasure.
+CREATE TABLE IF NOT EXISTS marketing_data_deletions (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    provider          TEXT NOT NULL,
+    request_key       TEXT NOT NULL,
+    confirmation_code TEXT NOT NULL UNIQUE,
+    status            TEXT NOT NULL DEFAULT 'completed',
+    requested_at      TEXT NOT NULL,
+    completed_at      TEXT DEFAULT '',
+    UNIQUE (provider, request_key)
+);
+
 CREATE TABLE IF NOT EXISTS marketing_handoffs (
     org_id          INTEGER PRIMARY KEY,
     primary_user_id INTEGER,
@@ -1940,6 +1953,100 @@ def record_marketing_webhook_event(provider, event_key, payload_json,
          payload_json or "{}", now()))
     conn.commit()
     return bool(cur.rowcount)
+
+
+def deauthorize_marketing_account(provider, external_account_id):
+    """Erase provider credentials without deleting retained inbox history."""
+    provider = (provider or "").strip().lower()
+    external_account_id = (external_account_id or "").strip()
+    if provider not in MARKETING_CONNECTION_PROVIDERS or not external_account_id:
+        return 0
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT id, source_id FROM marketing_connections WHERE provider = ? "
+        "AND (external_account_id = ? OR instagram_account_id = ?)",
+        (provider, external_account_id, external_account_id)).fetchall()
+    if not rows:
+        return 0
+    ts = now()
+    connection_ids = [row["id"] for row in rows]
+    source_ids = [row["source_id"] for row in rows]
+    conn.executemany(
+        "UPDATE marketing_connections SET access_token_encrypted = '', "
+        "refresh_token_encrypted = '', token_expires_at = '', "
+        "gmail_watch_expires_at = '', status = 'disconnected', "
+        "last_error_code = '', last_error_message = '', last_error_at = '', "
+        "updated_at = ? WHERE id = ?",
+        [(ts, connection_id) for connection_id in connection_ids])
+    conn.executemany(
+        "UPDATE marketing_sources SET status = 'disconnected', updated_at = ? "
+        "WHERE id = ?", [(ts, source_id) for source_id in source_ids])
+    conn.commit()
+    return len(connection_ids)
+
+
+def delete_marketing_account_data(provider, external_account_id, request_key,
+                                  confirmation_code):
+    """Erase one provider identity and return an idempotent deletion receipt."""
+    provider = (provider or "").strip().lower()
+    external_account_id = (external_account_id or "").strip()
+    request_key = (request_key or "").strip()[:128]
+    confirmation_code = (confirmation_code or "").strip()[:128]
+    if (provider not in MARKETING_CONNECTION_PROVIDERS or not external_account_id
+            or not request_key or not confirmation_code):
+        return None
+    conn = get_db()
+    existing = conn.execute(
+        "SELECT * FROM marketing_data_deletions "
+        "WHERE provider = ? AND request_key = ?",
+        (provider, request_key)).fetchone()
+    if existing:
+        return dict(existing)
+
+    rows = conn.execute(
+        "SELECT id, source_id FROM marketing_connections WHERE provider = ? "
+        "AND (external_account_id = ? OR instagram_account_id = ?)",
+        (provider, external_account_id, external_account_id)).fetchall()
+    source_ids = sorted({row["source_id"] for row in rows})
+    if source_ids:
+        placeholders = ",".join("?" for _ in source_ids)
+        conn.execute(
+            "DELETE FROM marketing_messages WHERE thread_id IN "
+            f"(SELECT id FROM marketing_threads WHERE source_id IN ({placeholders}))",
+            source_ids)
+        conn.execute(
+            f"DELETE FROM marketing_threads WHERE source_id IN ({placeholders})",
+            source_ids)
+        conn.execute(
+            f"DELETE FROM marketing_connections WHERE source_id IN ({placeholders})",
+            source_ids)
+        conn.execute(
+            f"DELETE FROM marketing_sources WHERE id IN ({placeholders})",
+            source_ids)
+    conn.execute(
+        "DELETE FROM marketing_webhook_events WHERE provider = ? "
+        "AND account_external_id = ?", (provider, external_account_id))
+    ts = now()
+    conn.execute(
+        "INSERT OR IGNORE INTO marketing_data_deletions "
+        "(provider, request_key, confirmation_code, status, requested_at, "
+        "completed_at) VALUES (?,?,?,'completed',?,?)",
+        (provider, request_key, confirmation_code, ts, ts))
+    conn.commit()
+    row = conn.execute(
+        "SELECT * FROM marketing_data_deletions "
+        "WHERE provider = ? AND request_key = ?",
+        (provider, request_key)).fetchone()
+    return dict(row) if row else None
+
+
+def get_marketing_data_deletion(confirmation_code):
+    confirmation_code = (confirmation_code or "").strip()[:128]
+    if not confirmation_code:
+        return None
+    return get_db().execute(
+        "SELECT * FROM marketing_data_deletions WHERE confirmation_code = ?",
+        (confirmation_code,)).fetchone()
 
 
 def get_marketing_source(user_id, source_id):

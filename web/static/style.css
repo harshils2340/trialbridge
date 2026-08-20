@@ -9133,6 +9133,19 @@ body.fs-page { background:
   box-shadow: 0 4px 12px rgba(15,23,42,.07);
 }
 .mh-gmail-mark .brand-ico { width: 22px; height: 22px; }
+.mh-instagram-connect {
+  margin-top: 10px;
+  border-color: #ead1dc;
+  background: linear-gradient(135deg, #fff9f4 0%, #fff1f5 55%, #f5f0ff 100%);
+}
+.mh-instagram-mark {
+  border: 0;
+  background: radial-gradient(circle at 68% 72%, #ffd36a 0 13%, #f15b47 34%, #c43f8d 60%, #6154c7 100%);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: -.03em;
+}
 .mh-gmail-copy { min-width: 0; }
 .mh-gmail-copy h3 { margin: 4px 0 2px; color: var(--ink); font-size: 13px; }
 .mh-gmail-copy p { margin: 0; color: var(--muted); font-size: 9.5px; line-height: 1.45; }
@@ -9181,6 +9194,7 @@ body.fs-page { background:
 [data-theme="dark"] .mh-channel-picker input:checked + span,
 [data-theme="dark"] .mh-coverage-explainer { background: #182b39; }
 [data-theme="dark"] .mh-gmail-connect { background: linear-gradient(135deg, #172632, #172b24); border-color: #2b4b52; }
+[data-theme="dark"] .mh-instagram-connect { background: linear-gradient(135deg, #30221e, #2f1e29 55%, #25213a); border-color: #59384b; }
 
 @media (max-width: 1250px) {
   .mh-workspace { grid-template-columns: 220px 315px minmax(400px, 1fr); }
