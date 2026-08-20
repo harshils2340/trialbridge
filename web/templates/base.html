@@ -64,7 +64,7 @@
 {# ── Study-team app: "BridgeMD for sites" shell (sidebar + top bar) ── #}
 <div class="appshell">
   <aside class="appside" id="appSidebar">
-    <a class="appside-brand" href="{{ url_for('team_inbox') }}">
+    <a class="appside-brand" href="{{ url_for('marketing_hub') }}">
       <span class="appside-logo">{{ ic.icon('mark') }}</span>
       <span class="bt"><b>BridgeMD</b><small>for sites</small></span>
     </a>
@@ -72,8 +72,7 @@
       {# Lean product: shared AI-triaged inbox + calendar + team workspace. The
          fuller CTMS surfaces below are HIDDEN (routes still work) while we focus
          on the intake-inbox wedge. Un-comment to bring one back. #}
-      <a href="{{ url_for('team_inbox') }}" class="{{ 'active' if request.endpoint in ['team_inbox','applicant_detail'] }}">{{ ic.icon('inbox') }}Inbox{% if site_unread %}<span class="appnav-count">{{ site_unread }}</span>{% endif %}</a>
-      <a href="{{ url_for('marketing_hub') }}" class="{{ 'active' if request.endpoint and request.endpoint.startswith('marketing_') }}">{{ ic.icon('megaphone') }}Marketing hub</a>
+      <a href="{{ url_for('marketing_hub') }}" class="{{ 'active' if request.endpoint in ['marketing_hub','applicant_detail'] or (request.endpoint and request.endpoint.startswith('marketing_')) }}">{{ ic.icon('inbox') }}Inbox{% if site_unread %}<span class="appnav-count">{{ site_unread }}</span>{% endif %}</a>
       {# Calendar is no longer a primary tab - its useful bits (upcoming visits)
          are surfaced right on the inbox so nothing gets missed. Route still lives
          at /app/calendar (linked from the inbox "Upcoming" panel). #}
@@ -102,7 +101,7 @@
       {# The tour follows the product: work the inbox, then the two things that
          make it a shared inbox (routing, coverage). It used to end on CTMS
          dashboards, which is not what we sell. #}
-      <a href="{{ url_for('team_inbox') }}" class="{{ 'is-current' if request.endpoint in ['team_inbox','applicant_detail'] }}"><em>1</em> Work the inbox</a>
+      <a href="{{ url_for('marketing_hub') }}" class="{{ 'is-current' if request.endpoint in ['marketing_hub','applicant_detail'] }}"><em>1</em> Work the inbox</a>
       <a href="{{ url_for('site_setup') }}#routing" class="{{ 'is-current' if request.endpoint == 'site_setup' }}"><em>2</em> Auto-route by channel</a>
       <a href="{{ url_for('team_page') }}" class="{{ 'is-current' if request.endpoint == 'team_page' }}"><em>3</em> Cover a teammate</a>
     </section>
@@ -178,7 +177,7 @@
         <div class="appmenu-panel" role="menu">
           <div class="appmenu-h">Notifications</div>
           {% if site_unread %}
-          <a class="appmenu-item" href="{{ url_for('study_home', _anchor='needs-reply') }}" role="menuitem">
+          <a class="appmenu-item" href="{{ url_for('marketing_hub') }}" role="menuitem">
             <span class="appmenu-ico t-danger">{{ ic.icon('chat') }}</span>
             <span><b>{{ site_unread }} repl{{ 'y' if site_unread == 1 else 'ies' }} waiting</b><small>Patients waiting on your reply</small></span>
           </a>
@@ -192,7 +191,7 @@
           {% if not notif_total %}
           <div class="appmenu-empty">You're all caught up.</div>
           {% endif %}
-          <a class="appmenu-foot" href="{{ url_for('team_inbox') }}" role="menuitem">Go to inbox →</a>
+          <a class="appmenu-foot" href="{{ url_for('marketing_hub') }}" role="menuitem">Go to inbox →</a>
         </div>
       </details>
 

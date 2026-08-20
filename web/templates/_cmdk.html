@@ -9,7 +9,7 @@
 {# ---- Build the role-aware index (list of {g,label,kw,url,icon,action}) ---- #}
 {% set items = [] %}
 {% if pov == 'study' %}
-  {% set _ = items.append({'g':'Navigate','label':'Inbox','kw':'home inbox threads messages inquiries email needs reply','url':url_for('team_inbox'),'icon':'inbox'}) %}
+  {% set _ = items.append({'g':'Navigate','label':'Inbox','kw':'home inbox threads messages inquiries email needs reply','url':url_for('marketing_hub'),'icon':'inbox'}) %}
   {% set _ = items.append({'g':'Navigate','label':'Applicants','kw':'leads patients candidates people referrals','url':url_for('leads'),'icon':'user-plus'}) %}
   {% set _ = items.append({'g':'Navigate','label':'Applicant intake','kw':'intake import csv email forwarding studies trials','url':url_for('intake_page'),'icon':'file'}) %}
   {# Campaigns + Recruitment are hidden CTMS surfaces now - kept out so the

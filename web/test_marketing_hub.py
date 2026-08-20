@@ -50,7 +50,7 @@ def test_marketing_hub_flow():
     owner_id, cover_id, outsider_id = _create_users()
     client = _client_for(owner_id)
 
-    page = client.get("/marketing-hub")
+    page = client.get("/app/inbox")
     assert page.status_code == 200
     html = page.get_data(as_text=True)
     assert "Marketing inbox" in html
@@ -131,7 +131,7 @@ def test_marketing_hub_flow():
         "status": "resolved",
     })
     assert blocked.status_code == 404
-    outsider_page = outsider.get(f"/marketing-hub?thread={thread_id}")
+    outsider_page = outsider.get(f"/app/inbox?thread={thread_id}")
     assert "Morgan Lee" not in outsider_page.get_data(as_text=True)
 
     print("PASS: persistent inbox, replies, notes, assignment, handoff, isolation")

@@ -1053,7 +1053,7 @@ _HIDDEN_PHYSICIAN_ENDPOINTS = frozenset({
 @app.before_request
 def _hide_physician_surface():
     if request.endpoint in _HIDDEN_PHYSICIAN_ENDPOINTS:
-        return redirect(url_for("team_inbox") if g.user else url_for("home"))
+        return redirect(url_for("marketing_hub") if g.user else url_for("home"))
 
 
 @app.before_request
@@ -3056,7 +3056,7 @@ def _home_endpoint():
     brand-new, otherwise the inbox (the product's home)."""
     if g.user and _needs_onboarding(g.user["id"]):
         return "onboarding"
-    return "team_inbox"
+    return "marketing_hub"
 
 
 def _post_user_login_redirect():
@@ -5294,10 +5294,12 @@ def _marketing_thread_url(thread_id=None, anchor="conversation"):
     return f"{url}#{anchor}" if anchor else url
 
 
-@app.route("/marketing-hub")
+@app.route("/app/inbox")
 @login_required
 def marketing_hub():
-    """Team-scoped shared inbox for marketing email, social DMs, and ad alerts."""
+    """The product's home: one team-scoped inbox across every channel - marketing
+    email, social DMs, ad lead forms, ClinicalTrials.gov, referrals. Canonical at
+    /app/inbox; /app/home and /marketing-hub redirect here (see below)."""
     _log_event("view_marketing_hub")
     if _is_demo_account(g.user):
         db.seed_demo_marketing_hub(g.user["id"])
@@ -5787,6 +5789,14 @@ def marketing_connection_disconnect(connection_id):
     flash(f"{provider_label} disconnected and its stored credentials were removed.",
           "ok")
     return redirect(url_for("marketing_hub"))
+
+
+@app.route("/marketing-hub")
+@login_required
+def marketing_hub_legacy():
+    """Back-compat: the marketing hub is now the main inbox at /app/inbox. Keep
+    the old URL working for bookmarks/links by redirecting (carrying filters)."""
+    return redirect(url_for("marketing_hub", **request.args.to_dict()))
 
 
 @app.route("/marketing-hub/sources", methods=["POST"])
@@ -8625,15 +8635,14 @@ def _triage_inbox_row(r, msg, unread, assignee_name):
     }
 
 
-@app.route("/app/inbox")
+@app.route("/legacy/inbox")
 @login_required
 def team_inbox():
-    """The product: one shared, AI-triaged inbox across every study and every
-    channel (forwarded email, ad lead forms, ClinicalTrials.gov, referrals,
-    imports). Each thread is labeled with what it's about + how urgent, so a
-    team can clear it top-down. Scoped to the team's claimed studies; assignment
-    keeps two coordinators from double-replying. KPI: Tier-2 efficiency ->
-    contacted -> screened (nothing rots in a personal inbox)."""
+    """Retired surface: the marketing hub IS the inbox now (canonical /app/inbox).
+    Kept only as a redirect so any old url_for('team_inbox') link, bookmark, or
+    notification still lands on the current inbox instead of 404ing. Everything
+    below is dead code, kept so the module imports cleanly - delete later."""
+    return redirect(url_for("marketing_hub", nct=(request.args.get("nct") or None)))
     team_studies = db.list_team_studies(g.user["id"])
     valid_ncts = {s["nct"] for s in team_studies}
     # Trial switcher: a ?nct= click sets the scope; "" == All studies. The inbox
@@ -8922,7 +8931,7 @@ def _inbox_upcoming(active_nct, days=14, limit=12):
 def inbox_assign(lead_id):
     """Claim/assign a thread to a teammate (or unassign). Shared-workspace glue."""
     _ensure_site_access_for_lead(lead_id)
-    back = _safe_next(request.form.get("next", "")) or url_for("team_inbox")
+    back = _safe_next(request.form.get("next", "")) or url_for("marketing_hub")
     raw = (request.form.get("user_id") or "").strip()
     if raw == "me":
         uid = g.user["id"]
@@ -8948,7 +8957,7 @@ def inbox_cover():
     """Vacation / coverage handoff: reassign a teammate's entire open queue to
     someone else (or to yourself) in one click. The #1 shared-workspace need -
     when a coordinator is out, their threads can't go cold."""
-    back = _safe_next(request.form.get("next", "")) or url_for("team_inbox")
+    back = _safe_next(request.form.get("next", "")) or url_for("marketing_hub")
     members = {m["user_id"] for m in db.list_org_members(g.user["id"])}
 
     def _resolve(raw):
@@ -8983,7 +8992,7 @@ def inbox_bulk():
     """Gmail-style bulk actions over selected threads: assign to a teammate, or
     mark done (close). Every id is access-checked against the actor's workspace.
     KPI: Tier-2 efficiency - clear a queue in one gesture instead of one-by-one."""
-    back = _safe_next(request.form.get("next", "")) or url_for("team_inbox")
+    back = _safe_next(request.form.get("next", "")) or url_for("marketing_hub")
     action = (request.form.get("action") or "").strip()
     lead_ids = []
     for x in request.form.getlist("lead_ids"):
@@ -9123,7 +9132,7 @@ def study_home():
     # inbox, carrying the study scope through. The worklist's live bits (Today
     # visits, needs-reply) already live on the inbox. Everything below is kept only
     # so the route still imports cleanly; delete once no caller needs it.
-    return redirect(url_for("team_inbox", nct=(request.args.get("nct") or None)))
+    return redirect(url_for("marketing_hub", nct=(request.args.get("nct") or None)))
     claims = db.list_study_claims(g.user["id"])
     # Trial-workspace mode: when a specific study is selected in the top switcher,
     # Home becomes THAT trial's workspace and every queue is scoped to it. A
@@ -9439,9 +9448,9 @@ def set_scope():
     except Exception:
         valid = set()
     session["active_nct"] = nct if nct in valid else ""
-    nxt = request.args.get("next") or url_for("study_home")
+    nxt = request.args.get("next") or url_for("marketing_hub")
     if not (nxt.startswith("/") and not nxt.startswith("//")):
-        nxt = url_for("study_home")
+        nxt = url_for("marketing_hub")
     return redirect(nxt)
 
 
@@ -13606,7 +13615,7 @@ def patient_inbox():
     lead_id = request.args.get("lead_id", type=int)
     if lead_id:
         return redirect(url_for("applicant_detail", lead_id=lead_id))
-    return redirect(url_for("study_home", _anchor="needs-reply"))
+    return redirect(url_for("marketing_hub"))
 
 
 @app.route("/app/leads/<int:lead_id>/coverage-check", methods=["POST"])
@@ -15870,12 +15879,12 @@ def team_join(token):
     inv = db.get_org_invite(token)
     if not inv or (inv["accepted_at"] or "").strip():
         flash("That invite link is invalid or already used.", "error")
-        return redirect(url_for("team_inbox"))
+        return redirect(url_for("marketing_hub"))
     if db.accept_org_invite(g.user["id"], token):
         flash("You've joined the team - you now share this workspace.", "ok")
     else:
         flash("Couldn't join that team.", "error")
-    return redirect(url_for("team_inbox"))
+    return redirect(url_for("marketing_hub"))
 
 
 @app.route("/app/campaign", methods=["GET", "POST"])
