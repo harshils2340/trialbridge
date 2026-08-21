@@ -1445,7 +1445,7 @@ def build(dst, colormap, asset_prefix, raster_hue=None, accent="#1257b0"):
         # collapses that spacer and the logo crowds "Why us". Keep max-width comfortably
         # above the content's natural width, and hold the spacer open with a real floor
         # so there is always a clear gap between the logo and the links.
-        'html.bmd-scrolled .framer-1m624rr{max-width:848px!important;'
+        'html.bmd-scrolled .framer-1m624rr{max-width:660px!important;'
         'padding:8px 12px!important;'
         'box-shadow:rgba(2,2,18,.10) 0px 12px 30px -10px,'
         'rgba(2,2,18,.06) 0px 6px 12px -6px}'
@@ -1698,6 +1698,12 @@ def build(dst, colormap, asset_prefix, raster_hue=None, accent="#1257b0"):
         '<link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">')
     if 'href="/static/favicon-32.png"' not in h:
         h = h.replace('<head>', '<head>' + bmd_favicon, 1)
+
+    # BridgeMD wordmark: the Framer export ships the mark as a boxless two-tone
+    # glyph. Point both landing logos (nav + footer) at the filled blue-square mark
+    # (same treatment as the favicon / Saify), served from Flask static.
+    h = re.sub(r'/landing/assets/[0-9a-f]+_NBX8F9r1xHm09nzwJUrqfmzhg\.svg',
+               '/static/logo-wordmark.svg', h)
 
     # Safety net: if the appear animation never runs (JS failure), don't leave any
     # appear element stuck hidden -> reveal anything still transparent after 2.5s.
