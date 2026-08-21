@@ -226,49 +226,22 @@
   </div>
   <div class="fs-secure-foot">
     <span>{{ ic.icon('lock') }} Need our security overview, DPA, or a BAA for review?</span>
-    <a href="#contact">Request security docs {{ ic.icon('arrow-right') }}</a>
+    <a href="mailto:{{ legal_contact }}?subject=BridgeMD%20security%20documents">Request security docs {{ ic.icon('arrow-right') }}</a>
   </div>
 </section>
 
-<!-- ─────────────────── Contact ─────────────────── -->
-<section id="contact" class="fs-section fs-contact">
-  <div class="fs-contact-card">
-    <div class="fs-contact-copy">
-      <h2>Bring BridgeMD to your site or CRO.</h2>
-      <p>Whatever you're recruiting for now, or lining up next, it works across all of it. Tell us
-        about your studies and we'll walk you through the live product in about 20 minutes, then
-        scope a setup that fits how your team already works.</p>
-      <ul class="fs-list">
-        <li>{{ ic.icon('check') }} Works across every study you run, not just one</li>
-        <li>{{ ic.icon('check') }} Custom setups for sites, CROs and sponsors</li>
-        <li>{{ ic.icon('check') }} Fits alongside the tools you already run — REDCap, calendar, email</li>
-        <li>{{ ic.icon('check') }} Free for your site, no per-referral fees</li>
-      </ul>
+<!-- ─────────────────── Closing CTA ─────────────────── -->
+<section id="demo" class="fsx-section fsx-close-sec">
+  <div class="fsx-close">
+    {{ ic.icon('mark', 'brand-glyph brand-glyph-lg') }}
+    <h2>Bring BridgeMD to your site or CRO.</h2>
+    <p class="fsx-lead">Whatever you're recruiting for now, or lining up next, it works across all of
+      it. Pick a time and we'll walk you through the live product in about 20 minutes, then scope a
+      setup that fits how your team already works.</p>
+    <div class="fsx-cta">
+      <a class="fsx-btn fsx-btn-primary fsx-btn-lg" href="{{ cal_link }}" target="_blank" rel="noopener">Request a demo {{ ic.icon('arrow-right') }}</a>
     </div>
-    <form method="post" action="{{ url_for('demo_request') }}" class="fs-form js-pending-submit" data-pending-text="Sending…">
-      <input type="hidden" name="source" value="sites">
-      <div class="fs-form-row">
-        <label class="fs-field"><span>Name</span>
-          <input type="text" name="name" autocomplete="name" required></label>
-        <label class="fs-field"><span>Organization</span>
-          <input type="text" name="org" autocomplete="organization" placeholder="Site, clinic, or sponsor" required></label>
-      </div>
-      <div class="fs-form-row">
-        <label class="fs-field"><span>Work email</span>
-          <input type="email" name="email" autocomplete="email" required></label>
-        <label class="fs-field"><span>You are a…</span>
-          <select name="role">
-            <option value="Research site / coordinator">Research site / coordinator</option>
-            <option value="Sponsor / CRO">Sponsor / CRO</option>
-            <option value="Clinic / health system">Clinic / health system</option>
-            <option value="Other">Other</option>
-          </select></label>
-      </div>
-      <label class="fs-field"><span>Your studies, or anything custom you need <em>(optional)</em></span>
-        <textarea name="message" rows="3" placeholder="e.g. a Phase 2 obesity study plus 4 others across 3 sites, and a custom intake flow"></textarea></label>
-      <button class="fs-btn fs-btn-primary fs-btn-block" type="submit">Request a demo {{ ic.icon('arrow-right') }}</button>
-      <p class="fs-form-or">Prefer email? <a href="mailto:{{ legal_contact }}?subject=BridgeMD%20demo%20for%20my%20site">{{ legal_contact }}</a></p>
-    </form>
+    <p class="fsx-trust">Free for your site &middot; No per-referral fees &middot; Sites, clinics, CROs &amp; sponsors</p>
   </div>
 </section>
 
@@ -276,7 +249,7 @@
 (function () {
   var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   var blocks = Array.prototype.slice.call(
-    document.querySelectorAll('.fsx-head, .fsx-feature, .fsx-step, .fsx-proof-stat, .fs-frame, .fs-dt, .fs-contact-card'));
+    document.querySelectorAll('.fsx-head, .fsx-feature, .fsx-step, .fsx-proof-stat, .fs-frame, .fs-dt, .fsx-close'));
   if (!blocks.length || reduce || !('IntersectionObserver' in window)) return;
   blocks.forEach(function (b) { b.classList.add('fs-reveal'); });
   var obs = new IntersectionObserver(function (entries, o) {
