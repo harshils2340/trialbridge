@@ -40,7 +40,9 @@
       time on admin and never miss a patient who was ready to enroll.</p>
     <div class="fsx-cta">
       <a class="fsx-btn fsx-btn-primary" href="{{ cal_link }}" target="_blank" rel="noopener">Book a demo {{ ic.icon('arrow-right') }}</a>
+      {% if site_demo %}
       <a class="fsx-btn fsx-btn-ghost" href="{{ url_for('marketing_hub') }}">See it live {{ ic.icon('arrow-right') }}</a>
+      {% endif %}
     </div>
     <p class="fsx-trust">Free for your team &middot; HIPAA-minded, BAA on request &middot; No per-referral fees</p>
   </div>
@@ -256,6 +258,11 @@
       setup that fits how your team already works.</p>
     <div class="fsx-cta">
       <a class="fsx-btn fsx-btn-primary fsx-btn-lg" href="{{ cal_link }}" target="_blank" rel="noopener">Request a demo {{ ic.icon('arrow-right') }}</a>
+      {# The live demo only exists while the study-team side runs as a public
+         demo (SITE_DEMO); without it the link would land on a login. #}
+      {% if site_demo %}
+      <a class="fsx-btn fsx-btn-ghost fsx-btn-lg" href="{{ url_for('marketing_hub') }}">Live demo {{ ic.icon('arrow-right') }}</a>
+      {% endif %}
     </div>
     <p class="fsx-trust">Free for your site &middot; No per-referral fees &middot; Sites, clinics, CROs &amp; sponsors</p>
   </div>
