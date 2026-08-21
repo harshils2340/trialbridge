@@ -939,6 +939,7 @@ BLUE = (
     + _cm('cacaf6', ('202', '202', '246'), 'd1e3f6', ('209', '227', '246'))  # pale violet
 )
 
+
 def _recolor_rasters(adir, hue_deg):
     # Framer bakes the hero ombre + dashboard mockup as raster (JPG/PNG); CSS color
     # maps can't touch them. Hue-shift the cyan..violet band to the brand hue so the
@@ -1016,6 +1017,93 @@ def _localize_brand_logos(h, adir, asset_prefix):
         h = h.replace(LOGO_API + dom, asset_prefix + out_name)
         fetched += 1
     print(f"  [logo] localized {fetched}/{len(domains)} brand logos")
+    return h
+
+
+# ---- Shared pill header ------------------------------------------------------
+# The site-side trial finder is a Jinja page that renders the `.pill-nav` component
+# (templates/_nav.html + the PILL-NAV block in web/static/style.css). This static
+# Framer page can't import a Jinja macro, so at build time we pull the SAME CSS out
+# of style.css verbatim, inline it here with equivalent markup, and hide Framer's
+# own nav. Net effect: the header is authored in ONE place (style.css) and a rebuild
+# keeps `/` and `/find-trial` visually identical -- edit the component once, both update.
+_STYLE_CSS = os.path.join(os.path.dirname(__file__), "..", "web", "static", "style.css")
+
+_PILL_MARK = (
+    '<svg class="brand-glyph" xmlns="http://www.w3.org/2000/svg" width="28" height="28" '
+    'viewBox="96 96 320 320" fill="none">'
+    '<path fill="#7fb8ee" d="M142 96H254A46 46 0 0 1 300 142V254A46 46 0 0 1 254 300H142A46 '
+    '46 0 0 1 96 254V142A46 46 0 0 1 142 96ZM258 212H300V254A46 46 0 0 1 254 300H212V258A46 '
+    '46 0 0 1 258 212Z"/>'
+    '<path fill="#1257b0" d="M258 212H370A46 46 0 0 1 416 258V370A46 46 0 0 1 370 416H258A46 '
+    '46 0 0 1 212 370V258A46 46 0 0 1 258 212ZM258 212H300V254A46 46 0 0 1 254 300H212V258A46 '
+    '46 0 0 1 258 212Z"/></svg>')
+
+_PILL_ARROW = (
+    '<svg class="ico" xmlns="http://www.w3.org/2000/svg" width="16" height="16" '
+    'viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" '
+    'stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/>'
+    '<path d="m12 5 7 7-7 7"/></svg>')
+
+_PILL_MENU = (
+    '<svg class="ico" xmlns="http://www.w3.org/2000/svg" width="20" height="20" '
+    'viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" '
+    'stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/>'
+    '<line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>')
+
+
+def _pill_css():
+    """The `.pill-nav` rules pulled verbatim from web/static/style.css (single source)."""
+    try:
+        css = open(_STYLE_CSS, encoding="utf-8").read()
+    except OSError:
+        return ""
+    m = re.search(r'/\* PILL-NAV:START \*/(.*?)/\* PILL-NAV:END \*/', css, re.S)
+    return m.group(1).strip() if m else ""
+
+
+def _inject_pill_nav(h):
+    css = _pill_css()
+    if not css or 'id="bmd-pill-nav"' in h:
+        return h
+    links = [("How it works", "#features"),
+             ("Trial finder", FINDER_URL), ("FAQ", "#bmd-faq")]
+    center = ''.join('<a href="%s">%s</a>' % (href, lbl) for lbl, href in links)
+    header = (
+        '<header class="pill-nav" id="pillNav">'
+        '<a class="brand" href="/">' + _PILL_MARK + 'BridgeMD</a>'
+        '<nav class="pill-nav-center" aria-label="Primary">' + center + '</nav>'
+        '<div class="pill-nav-auth">'
+        '<a class="pill-nav-cta" href="' + CAL + '" target="_blank" rel="noopener">'
+        'Request a demo' + _PILL_ARROW + '</a>'
+        '<button type="button" class="pill-nav-burger" id="pillBurger" aria-expanded="false" '
+        'aria-controls="pillSheet" aria-label="Open menu">' + _PILL_MENU + '</button>'
+        '</div>'
+        '<div class="pill-sheet" id="pillSheet" hidden>' + center +
+        '<a class="pill-sheet-cta" href="' + CAL + '" target="_blank" rel="noopener">'
+        'Request a demo</a></div>'
+        '</header>')
+    # Overlay as a fixed pill (so the hero keeps the top padding it already had for
+    # Framer's own fixed nav) and hide Framer's nav + its fixed positioner entirely.
+    override = ('.pill-nav{position:fixed;top:14px;left:12px;right:12px;margin:0 auto;'
+                'z-index:1000}'
+                '[data-framer-name="NavBar"],.framer-bfsnv8-container{display:none!important}')
+    style = '<style id="bmd-pill-nav">' + css + override + '</style>'
+    js = ('<script>(function(){var n=document.getElementById("pillNav");if(!n)return;'
+          'function s(){n.classList.toggle("is-condensed",window.scrollY>80);}s();'
+          'window.addEventListener("scroll",s,{passive:true});'
+          'var b=document.getElementById("pillBurger"),sh=document.getElementById("pillSheet");'
+          'if(b&&sh){var set=function(o){sh.hidden=!o;n.classList.toggle("is-menu",o);'
+          'b.setAttribute("aria-expanded",o?"true":"false");};'
+          'b.addEventListener("click",function(){set(sh.hidden);});'
+          'sh.addEventListener("click",function(e){if(e.target.closest("a"))set(false);});'
+          'document.addEventListener("keydown",function(e){if(e.key==="Escape")set(false);});'
+          'window.addEventListener("resize",function(){if(window.innerWidth>820)set(false);});}'
+          '})();</script>')
+    h = h.replace('</head>', style + '</head>', 1)
+    h = h.replace('data-framer-generated-page="">',
+                  'data-framer-generated-page="">' + header, 1)
+    h = h.replace('</body>', js + '</body>', 1)
     return h
 
 
@@ -1746,6 +1834,10 @@ def build(dst, colormap, asset_prefix, raster_hue=None, accent="#1257b0"):
     # catches every SSR inline style and <style> declaration.
     h = h.replace('"Inter Placeholder"', '"Figtree Placeholder"')
     h = h.replace('"Inter"', '"Figtree"')
+
+    # Swap Framer's own nav for the shared .pill-nav header (single source: style.css).
+    # Runs last so the extracted CSS isn't touched by the font/color rewrites above.
+    h = _inject_pill_nav(h)
 
     open(p, "w", encoding="utf-8").write(h)
 

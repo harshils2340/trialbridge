@@ -1,0 +1,59 @@
+{# Shared floating pill nav used on BOTH the patient finder and the site-side
+   marketing pages, so the header can never drift and edits happen in ONE place.
+   Style lives in style.css under `.pill-nav`; only the links + CTA differ per page.
+
+   pill(links, cta_label, cta_href, ...):
+     links          list of (label, href) tuples for the center + mobile sheet
+     cta_label/href the primary right-side pill button
+     cta_blank      open the CTA in a new tab (external booking links)
+     brand_href     where the logo points (defaults to home)
+     brand_suffix   small text after the wordmark (e.g. "for sites")
+     secondary_*    optional text link left of the CTA (e.g. "Sign in")
+#}
+{% import "_icons.html" as ic %}
+
+{% macro pill(links, cta_label, cta_href, cta_blank=false, brand_href='', brand_suffix='', secondary_label='', secondary_href='') %}
+<header class="pill-nav" id="pillNav">
+  <a class="brand" href="{{ brand_href or url_for('home') }}">{{ ic.icon('mark', 'brand-glyph') }}BridgeMD{% if brand_suffix %} <span class="pill-brand-suffix">{{ brand_suffix }}</span>{% endif %}</a>
+  <nav class="pill-nav-center" aria-label="Primary">
+    {% for label, href in links %}<a href="{{ href }}">{{ label }}</a>{% endfor %}
+  </nav>
+  <div class="pill-nav-auth">
+    {% if secondary_label %}<a class="pill-nav-signin" href="{{ secondary_href }}">{{ secondary_label }}</a>{% endif %}
+    <a class="pill-nav-cta" href="{{ cta_href }}"{% if cta_blank %} target="_blank" rel="noopener"{% endif %}>{{ cta_label }}{{ ic.icon('arrow-right') }}</a>
+    <button type="button" class="pill-nav-burger" id="pillBurger" aria-expanded="false"
+            aria-controls="pillSheet" aria-label="Open menu">{{ ic.icon('menu') }}</button>
+  </div>
+  <div class="pill-sheet" id="pillSheet" hidden>
+    {% for label, href in links %}<a href="{{ href }}">{{ label }}</a>{% endfor %}
+    {% if secondary_label %}<a href="{{ secondary_href }}">{{ secondary_label }}</a>{% endif %}
+    <a class="pill-sheet-cta" href="{{ cta_href }}"{% if cta_blank %} target="_blank" rel="noopener"{% endif %}>{{ cta_label }}</a>
+  </div>
+</header>
+<script>
+(function () {
+  var nav = document.getElementById('pillNav');
+  if (!nav) return;
+  // Condense inward past a scroll point (pill narrows, brand + CTA slide toward
+  // center) and frost the glass so there's no hard seam under the header.
+  function onScroll() { nav.classList.toggle('is-condensed', window.scrollY > 80); }
+  onScroll();
+  window.addEventListener('scroll', onScroll, { passive: true });
+  // Mobile sheet.
+  var burger = document.getElementById('pillBurger');
+  var sheet = document.getElementById('pillSheet');
+  if (burger && sheet) {
+    var setSheet = function (on) {
+      sheet.hidden = !on;
+      nav.classList.toggle('is-menu', on);
+      burger.setAttribute('aria-expanded', on ? 'true' : 'false');
+      burger.setAttribute('aria-label', on ? 'Close menu' : 'Open menu');
+    };
+    burger.addEventListener('click', function () { setSheet(sheet.hidden); });
+    sheet.addEventListener('click', function (e) { if (e.target.closest('a')) setSheet(false); });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') setSheet(false); });
+    window.addEventListener('resize', function () { if (window.innerWidth > 820) setSheet(false); });
+  }
+})();
+</script>
+{% endmacro %}

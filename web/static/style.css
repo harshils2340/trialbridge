@@ -1048,6 +1048,76 @@ body.pub:not(.fs-page) {
 .pub-nav-tools { max-width: 1180px; margin: 0 auto; padding: 2px 32px 10px; display: flex; justify-content: center; }
 .pub-flash-wrap { max-width: 720px; margin: 0 auto; padding: 0 24px; }
 
+/* ============================================================================
+   .pill-nav - the ONE shared floating-pill header (see templates/_nav.html).
+   Used on the patient finder and the site-side marketing pages. Edit here once
+   and both update. A centered, rounded, translucent bar that sticks to the top,
+   frosts + condenses inward on scroll, and collapses to a burger sheet on phones.
+   The block below (between PILL-NAV:START/END) is extracted verbatim by
+   marketing/clean_landing.py and inlined into the static Framer page, so it must
+   stay self-contained (no CSS-var dependencies).
+   ========================================================================== */
+/* PILL-NAV:START */
+.pill-nav { position: sticky; top: 14px; z-index: 60; box-sizing: border-box;
+  display: grid; grid-template-columns: 1fr auto 1fr; align-items: center;
+  max-width: 952px; margin: 16px auto 0; padding: 9px 12px 9px 22px;
+  background: rgba(255,255,255,.72); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+  border: 1px solid rgba(18,40,80,.08); border-radius: 999px;
+  box-shadow: 0 12px 34px -20px rgba(15,26,46,.5);
+  transition: max-width .32s ease, padding .32s ease, background .25s ease, box-shadow .25s ease; }
+.pill-nav .brand { justify-self: start; display: flex; align-items: center; font-weight: 700;
+  letter-spacing: -.02em; font-size: 20px; gap: 10px; color: #0f1a2e; text-decoration: none; }
+.pill-nav .brand .brand-glyph { width: 28px; height: 28px; }
+.pill-brand-suffix { font-weight: 600; color: #5a6a86; font-size: 15px; }
+.pill-nav-center { display: flex; align-items: center; justify-self: center; gap: 6px; }
+.pill-nav-center a { color: #3a4763; text-decoration: none; font-weight: 600; font-size: 14.5px;
+  padding: 8px 14px; border-radius: 999px; transition: background .15s ease, color .15s ease; }
+.pill-nav-center a:hover { color: #0f1a2e; background: rgba(18,40,80,.06); text-decoration: none; }
+.pill-nav-auth { display: flex; align-items: center; justify-self: end; gap: 12px; }
+.pill-nav-signin { color: #3a4763; text-decoration: none; font-weight: 600; font-size: 14.5px; }
+.pill-nav-signin:hover { color: #0f1a2e; text-decoration: none; }
+/* CTA color is a per-page variable (--pill-cta / --pill-cta-sh) so the two sites can
+   carry different brand gradients while sharing this one component. Defaults = blue. */
+.pill-nav-cta { display: inline-flex; align-items: center; gap: 8px; font-weight: 700; font-size: 14.5px;
+  color: #fff; padding: 11px 22px; border-radius: 999px; white-space: nowrap; text-decoration: none;
+  background: var(--pill-cta, linear-gradient(135deg,#3b6ef2,#1257b0));
+  box-shadow: 0 10px 22px -12px var(--pill-cta-sh, rgba(18,87,176,.8)); transition: transform .18s ease, box-shadow .18s ease; }
+.pill-nav-cta:hover { text-decoration: none; transform: translateY(-1px);
+  box-shadow: 0 14px 28px -12px var(--pill-cta-sh, rgba(18,87,176,.9)); }
+.pill-nav-cta .ico { width: 16px; height: 16px; }
+/* Scroll state: narrow inward + frost a touch more. */
+.pill-nav.is-condensed { max-width: 820px; padding-left: 16px; padding-right: 8px;
+  background: rgba(255,255,255,.92); box-shadow: 0 16px 38px -20px rgba(15,26,46,.55); }
+.pill-nav.is-condensed .pill-nav-center { gap: 2px; }
+/* Burger is desktop-hidden; the sheet only exists on phones. */
+.pill-nav-burger { display: none; align-items: center; justify-content: center; width: 40px; height: 40px;
+  border: 1px solid rgba(18,40,80,.12); border-radius: 999px; background: #fff; color: #0f1a2e;
+  cursor: pointer; }
+.pill-nav-burger .ico { width: 20px; height: 20px; }
+.pill-sheet { display: none; }
+@media (max-width: 820px) {
+  .pill-nav { grid-template-columns: auto 1fr; padding: 9px 10px 9px 18px; max-width: none;
+    margin: 12px 12px 0; }
+  .pill-nav.is-condensed { max-width: none; }
+  .pill-nav-center { display: none; }
+  .pill-nav-signin { display: none; }
+  /* The desktop CTA is too wide to sit next to the burger on a phone; move it into
+     the sheet so the collapsed nav is just brand + burger. */
+  .pill-nav-cta { display: none; }
+  .pill-nav-burger { display: inline-flex; }
+  .pill-sheet[hidden] { display: none; }
+  .pill-sheet { display: flex; flex-direction: column; grid-column: 1 / -1; margin-top: 10px;
+    padding: 8px; gap: 2px; border-top: 1px solid rgba(18,40,80,.08); }
+  .pill-sheet a { color: #3a4763; text-decoration: none; font-weight: 600; font-size: 15px;
+    padding: 11px 12px; border-radius: 12px; }
+  .pill-sheet a:hover { background: rgba(18,40,80,.06); color: #0f1a2e; }
+  .pill-sheet-cta { margin-top: 6px; text-align: center; color: #fff !important;
+    font-weight: 700 !important; background: var(--pill-cta, linear-gradient(135deg,#3b6ef2,#1257b0));
+    box-shadow: 0 8px 18px -8px var(--pill-cta-sh, rgba(18,87,176,.6)); }
+  .pill-sheet-cta:hover { color: #fff !important; }
+}
+/* PILL-NAV:END */
+
 /* Demo POV switcher */
 .pov-tools { display: inline-flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .pov-switch { display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap;
