@@ -6800,7 +6800,9 @@ body.fs-page { background:
 
 /* Sections */
 .fs-section { padding: 68px 24px; max-width: 1120px; margin: 0 auto; }
-.fs-section[id] { scroll-margin-top: 78px; }   /* clear the sticky nav on anchor jumps */
+/* Clear the sticky nav on anchor jumps, for both section generations: #how,
+   #pricing and #demo are .fsx-section, #security is still .fs-section. */
+.fs-section[id], .fsx-section[id] { scroll-margin-top: 78px; }
 .fs-section-wide { max-width: 1280px; }
 .fs-section-alt { max-width: none; background: var(--bg); }
 .fs-section-alt > * { max-width: 1120px; margin-inline: auto; }
