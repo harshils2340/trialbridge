@@ -46,8 +46,8 @@
   <link rel="icon" href="{{ static_url('favicon.ico') }}" sizes="any">
   <link rel="apple-touch-icon" sizes="180x180" href="{{ static_url('apple-touch-icon.png') }}">
   <link rel="manifest" href="{{ static_url('site.webmanifest') }}">
-  <meta name="theme-color" content="#f8f9fa" media="(prefers-color-scheme: light)">
-  <meta name="theme-color" content="#17191d" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#f6f6fb" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0f1115" media="(prefers-color-scheme: dark)">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -227,7 +227,7 @@
   {# Bridget rides as the right dock - the third pane of the workspace (icon rail ·
      inbox · assistant), Cursor-style. It's not decoration: it reads the same live
      data, drafts replies you confirm, and answers "who's waiting on me". #}
-  {% if pov == 'study' and user and request.endpoint != 'marketing_hub' %}{% include "_copilot.html" %}{% endif %}
+  {% if pov == 'study' and user %}{% include "_copilot.html" %}{% endif %}
 </div>
 {% if pov == 'study' %}{% include "_omni.html" %}{% else %}{% include "_cmdk.html" %}{% endif %}
 {% if active_site_demo %}{% include "_demo_tour.html" %}{% endif %}
@@ -351,7 +351,7 @@ document.addEventListener('click', function (e) {
     var pref = get(LS_C);                        // 'rail' | 'full' | null
     var rail = pref === 'rail' ? true
              : pref === 'full' ? false
-             : true;                             // default: compact icon rail
+             : false;                            // default: full labeled sidebar
     side.classList.toggle('is-collapsed', rail);
   }
   applyMode();

@@ -33,6 +33,18 @@
   <button class="ui-icon-btn" type="{{ type }}" aria-label="{{ label }}" title="{{ label }}"{% if disabled %} disabled{% endif %} {{ extra|safe }}>{{ ic.icon(icon) }}</button>
 {%- endmacro %}
 
+{# --- Inbox view-filter passthrough -----------------------------------------
+   Echoes the coordinator's current queue filters into a reply/resolve form so
+   the server can land them on the NEXT thread in the same queue afterward,
+   instead of stranding them on the one they just finished. #}
+{% macro view_filter_fields(status, channel, query, stage, source_id) -%}
+  <input type="hidden" name="view_status" value="{{ status }}">
+  <input type="hidden" name="view_channel" value="{{ channel }}">
+  <input type="hidden" name="view_q" value="{{ query }}">
+  <input type="hidden" name="view_stage" value="{{ stage }}">
+  <input type="hidden" name="view_source" value="{{ source_id or '' }}">
+{%- endmacro %}
+
 {# --- Badge ----------------------------------------------------------------
    Small status label. tone: neutral | brand | ok | warn | danger | info | violet #}
 {% macro badge(label, tone="neutral", icon="") -%}

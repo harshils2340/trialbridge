@@ -5,12 +5,13 @@
 {% block title %}Inbox | BridgeMD{% endblock %}
 
 {% macro channel_icon(channel, extra='') -%}
+  {% set source_name = 'Email' if channel == 'email' else 'Instagram' if channel == 'instagram' else 'Google Ads' %}
   {% if channel == 'email' %}
-    <span class="mh-channel-ic is-email {{ extra }}">{{ ic.icon('mail') }}</span>
+    <span class="mh-channel-ic is-email {{ extra }}" title="{{ source_name }}" aria-label="{{ source_name }}">{{ ic.icon('gmail', 'brand-ico') }}</span>
   {% elif channel == 'instagram' %}
-    <span class="mh-channel-ic is-instagram {{ extra }}">IG</span>
+    <span class="mh-channel-ic is-instagram {{ extra }}" title="{{ source_name }}" aria-label="{{ source_name }}">{{ ic.icon('instagram', 'brand-ico') }}</span>
   {% else %}
-    <span class="mh-channel-ic is-google {{ extra }}">{{ ic.icon('google', 'brand-ico') }}</span>
+    <span class="mh-channel-ic is-google {{ extra }}" title="{{ source_name }}" aria-label="{{ source_name }}">{{ ic.icon('google', 'brand-ico') }}</span>
   {% endif %}
 {%- endmacro %}
 
@@ -22,47 +23,7 @@
 
 {% block body %}
 <div class="mh-page">
-  <section class="mh-workspace">
-    <aside class="mh-sources" aria-label="Connected accounts">
-      <div class="mh-intake-nav">
-        <div class="mh-intake-brand">
-          <span>{{ ic.icon('mark') }}</span>
-          <div><b>BridgeMD</b><small>Recruitment</small></div>
-        </div>
-        <nav class="mh-intake-main">
-          <a href="{{ url_for('marketing_hub') }}" class="is-active">{{ ic.icon('inbox') }} Inbox{% if counts.unread %}<em>{{ counts.unread }}</em>{% endif %}</a>
-          <a href="{{ url_for('team_page') }}">{{ ic.icon('users') }} Team</a>
-          <a href="{{ url_for('site_setup') }}">{{ ic.icon('gear') }} Settings</a>
-        </nav>
-        <div class="mh-intake-group">
-          <div class="mh-intake-label"><b>Trials</b><button type="button" data-ui-open="sourceModal" title="Connect an account">{{ ic.icon('plus') }}</button></div>
-          <a href="{{ url_for('set_scope', nct='', next=url_for('marketing_hub')) }}" class="{{ 'is-active' if not active_nct }}">
-            <i></i><span>All trials</span><small>{{ counts.total }}</small>
-          </a>
-          {% for study in nav_studies %}
-          <a href="{{ url_for('set_scope', nct=study.nct, next=url_for('marketing_hub')) }}" class="{{ 'is-active' if active_nct == study.nct }}">
-            <i></i><span>{{ study.title|truncate(22) or study.nct }}</span>
-          </a>
-          {% endfor %}
-        </div>
-        <div class="mh-intake-group">
-          <div class="mh-intake-label"><b>Team</b><button type="button" data-ui-open="coverageModal" title="Manage coverage">{{ ic.icon('plus') }}</button></div>
-          {% for member in members %}
-          <span class="mh-intake-person">
-            {{ member_avatar(member, 'is-tiny') }}
-            <span>{{ member.display_name }}</span>
-          </span>
-          {% endfor %}
-        </div>
-        <div class="mh-intake-spacer"></div>
-        <button type="button" class="mh-intake-connect" data-ui-open="sourceModal">{{ ic.icon('cloud-sync') }} {{ counts.sources }} connected account{{ '' if counts.sources == 1 else 's' }}</button>
-        <div class="mh-intake-user">
-          {{ member_avatar(member_by_id.get(user.id)) }}
-          <span><b>{{ user.name or user.email }}</b><small>{{ member_role_label or 'Coordinator' }}</small></span>
-        </div>
-      </div>
-    </aside>
-
+  <section class="mh-workspace {{ 'is-list-only' if not active }}">
     <section class="mh-thread-column" aria-label="Conversations" data-demo-tour-target="inbox">
       <div class="mh-thread-toolbar">
         <form method="get" action="{{ url_for('marketing_hub') }}" class="mh-search">
@@ -72,9 +33,9 @@
           {% if source_filter %}<input type="hidden" name="source" value="{{ source_filter }}">{% endif %}
           {% if channel_filter %}<input type="hidden" name="channel" value="{{ channel_filter }}">{% endif %}
         </form>
+        {{ ui.icon_btn('Manage connected accounts', 'cloud-sync', extra='data-ui-open="sourceModal"') }}
         {{ ui.icon_btn('Create a test conversation', 'plus', extra='data-ui-open="testThreadModal"', disabled=not counts.sources) }}
       </div>
-
       <nav class="mh-thread-tabs" aria-label="Conversation status">
         <a class="{{ 'is-active' if status_filter == 'open' else '' }}" href="{{ url_for('marketing_hub', status='open', source=source_filter, channel=channel_filter, q=search_query) }}">Open <span>{{ counts.open }}</span></a>
         <a class="{{ 'is-active' if status_filter == 'resolved' else '' }}" href="{{ url_for('marketing_hub', status='resolved', source=source_filter, channel=channel_filter, q=search_query) }}">Resolved <span>{{ counts.resolved }}</span></a>
@@ -100,7 +61,10 @@
         <a class="mh-thread-row {{ 'is-active' if active and active.id == thread.id else '' }} {{ 'is-unread' if thread.unread else '' }}"
            href="{{ url_for('marketing_hub', thread=thread.id, stage=stage_filter, status=status_filter, source=source_filter, channel=channel_filter, q=search_query) }}#conversation">
           <div class="mh-thread-row-top">
-            <span class="mh-contact-avatar">{{ (thread.contact_name or thread.contact_handle or '?')[:1]|upper }}</span>
+            <span class="mh-contact-avatar-wrap">
+              <span class="mh-contact-avatar">{{ (thread.contact_name or thread.contact_handle or '?')[:1]|upper }}</span>
+              {{ channel_icon(thread.channel, 'is-row-channel') }}
+            </span>
             <span class="mh-thread-person">
               <b>{{ thread.contact_name or thread.contact_handle or 'Unknown contact' }}</b>
               <small>{{ thread.channel_label }}{% if thread.source_label %} via {{ thread.source_label }}{% endif %}</small>
@@ -140,7 +104,10 @@
       {% set live_delivery_ready = gmail_delivery_ready or instagram_delivery_ready %}
       <header class="mh-conversation-head">
         <div class="mh-contact-main">
-          <span class="mh-contact-avatar is-large">{{ (active.contact_name or active.contact_handle or '?')[:1]|upper }}</span>
+          <span class="mh-contact-avatar-wrap is-large">
+            <span class="mh-contact-avatar is-large">{{ (active.contact_name or active.contact_handle or '?')[:1]|upper }}</span>
+            {{ channel_icon(active.channel, 'is-header-channel') }}
+          </span>
           <span>
             <small>{{ channel_labels.get(active.channel, 'Message') }}{% if active.source_label %} via {{ active.source_label }}{% endif %}{% if active.study_label %} · {{ active.study_label }}{% endif %}</small>
             <h2>{{ active.contact_name or active.contact_handle or 'Unknown contact' }}</h2>
@@ -167,7 +134,8 @@
           </form>
           <form method="post" action="{{ url_for('marketing_thread_status', thread_id=active.id) }}">
             <input type="hidden" name="status" value="{{ 'open' if active.status == 'resolved' else 'resolved' }}">
-            <button class="mh-resolve-btn" type="submit">
+            {{ ui.view_filter_fields(status_filter, channel_filter, search_query, stage_filter, source_filter) }}
+            <button class="mh-resolve-btn" type="submit" title="{{ 'Reopen' if active.status == 'resolved' else 'Resolve and move to the next conversation (e)' }}">
               {{ ic.icon('refresh' if active.status == 'resolved' else 'check') }}
               {{ 'Reopen' if active.status == 'resolved' else 'Resolve' }}
             </button>
@@ -188,7 +156,7 @@
         {% endfor %}
       </div>
 
-      {% if not applicant and active.channel != 'google_ads' %}
+      {% if not applicant and not (active.channel == 'google_ads' and active.contact_handle == 'Automated alert') %}
       <section class="mh-link-applicant" data-ui-reveal>
         <div>
           <span class="mh-section-icon">{{ ic.icon('user-plus') }}</span>
@@ -260,7 +228,13 @@
         </div>
 
         <form method="post" action="{{ url_for('marketing_thread_reply', thread_id=active.id) }}" class="mh-compose-panel" data-compose-panel="reply">
-          <textarea name="body" rows="4" required placeholder="Reply to {{ active.contact_name or active.contact_handle or 'this contact' }}..."></textarea>
+          {{ ui.view_filter_fields(status_filter, channel_filter, search_query, stage_filter, source_filter) }}
+          <textarea name="body" id="replyBody" rows="4" required placeholder="Reply to {{ active.contact_name or active.contact_handle or 'this contact' }}..."></textarea>
+          <div class="mh-quick-replies" role="group" aria-label="Insert a quick reply">
+            {% for label, _snippet in quick_replies %}
+            <button type="button" class="mh-quick-chip" data-quick-reply="{{ loop.index0 }}">{{ label }}</button>
+            {% endfor %}
+          </div>
           <div class="mh-compose-foot">
             <span>
               {% if active.connection_mode == 'demo' %}
@@ -279,7 +253,7 @@
               {% if bridget_draft %}
               {{ ui.btn('Draft with Bridget', 'ghost', 'sm', extra='type="button" data-bridget-draft="' ~ url_for('marketing_thread_draft', thread_id=active.id) ~ '"') }}
               {% endif %}
-              {{ ui.btn('Save demo reply' if active.connection_mode == 'demo' else 'Send reply', 'primary', icon='send', type='submit', disabled=active.connection_mode != 'demo' and not live_delivery_ready) }}
+              {{ ui.btn('Save demo reply' if active.connection_mode == 'demo' else 'Send reply', 'primary', icon='send', type='submit', disabled=active.connection_mode != 'demo' and not live_delivery_ready, extra='title="\u2318/Ctrl+Enter to send"') }}
             </div>
           </div>
         </form>
@@ -756,6 +730,50 @@
     if (button) {
       button.disabled = true;
       button.textContent = 'Retrieving authorized records...';
+    }
+  });
+
+  // ---- Quick replies: one click inserts a compliant, consistent answer to
+  // the handful of questions that repeat across every conversation. --------
+  var QUICK_REPLIES = {{ (quick_replies|map('last')|list)|tojson }};
+  var replyBody = document.getElementById('replyBody');
+  document.querySelectorAll('[data-quick-reply]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      if (!replyBody) return;
+      var text = QUICK_REPLIES[parseInt(btn.getAttribute('data-quick-reply'), 10)] || '';
+      replyBody.value = replyBody.value ? (replyBody.value.replace(/\s+$/, '') + '\n\n' + text) : text;
+      replyBody.focus();
+      replyBody.setSelectionRange(replyBody.value.length, replyBody.value.length);
+    });
+  });
+
+  // ---- Send with Cmd/Ctrl+Enter from either composer textarea. -----------
+  document.querySelectorAll('.mh-compose-panel textarea').forEach(function (area) {
+    area.addEventListener('keydown', function (event) {
+      if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
+        event.preventDefault();
+        area.form.submit();
+      }
+    });
+  });
+
+  // ---- Arrow keys move through the queue - no letter shortcuts to learn. ---
+  var rows = Array.prototype.slice.call(document.querySelectorAll('.mh-thread-row'));
+  function isTypingTarget(el) {
+    return el && (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT' || el.isContentEditable);
+  }
+  document.addEventListener('keydown', function (event) {
+    if (isTypingTarget(event.target) || event.metaKey || event.ctrlKey || event.altKey) return;
+    if (!rows.length) return;
+    var idx = rows.findIndex(function (r) { return r.classList.contains('is-active'); });
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      var next = rows[Math.min(idx + 1, rows.length - 1)];
+      if (next) window.location.href = next.href;
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      var prev = rows[Math.max(idx - 1, 0)];
+      if (prev) window.location.href = prev.href;
     }
   });
 })();

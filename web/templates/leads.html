@@ -47,6 +47,7 @@
         <option value="stage">Stage</option>
       </select>
     </label>
+    {{ ui.btn('Message everyone', 'ghost', 'sm', icon='send', extra='data-ui-open="broadcastModal"') }}
     {{ ui.btn('Export CSV', 'ghost', 'sm', icon='download', href=url_for('leads_export', nct=active_nct or 'all', q=q)) }}
   </div>
 </div>
@@ -113,6 +114,38 @@
   <p id="queueEmpty" class="app-sub" style="display:none;padding:22px;text-align:center;color:var(--faint);">No applicants match this filter.</p>
   {% endif %}
 </div>
+
+{% call ui.modal('broadcastModal', 'Message everyone in a study') %}
+<form method="post" action="{{ url_for('broadcast_leads') }}" enctype="multipart/form-data">
+  <input type="hidden" name="next" value="{{ request.full_path }}">
+  <div class="field">
+    <label>Study</label>
+    <select name="nct" required>
+      <option value="" {{ 'selected' if not active_nct }} disabled>Choose a study&hellip;</option>
+      {% for c in claims %}
+      <option value="{{ c.nct }}" {{ 'selected' if c.nct == active_nct }}>{{ (c.title or c.nct)[:60] }} ({{ c.nct }})</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="field">
+    <label>Message</label>
+    <textarea name="body" rows="4" placeholder="e.g. Reminder: your screening window closes Friday - reply here to book a time."></textarea>
+  </div>
+  <div class="field">
+    <label>Add a to-do for them (optional)</label>
+    <input type="text" name="task" maxlength="120" placeholder="e.g. Upload your signed consent form">
+  </div>
+  <div class="field">
+    <label>Attach a document (optional)</label>
+    <input type="file" name="file">
+  </div>
+  <p class="app-sub" style="color:var(--faint);font-size:12.5px;">Goes out to every accepted applicant in that study - each by email and/or text, whichever they gave you, delivered to their own private thread. Nobody sees who else got it.</p>
+  <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px;">
+    {{ ui.btn('Cancel', 'ghost', extra='data-ui-close') }}
+    {{ ui.btn('Send to everyone', 'primary', type='submit', icon='send') }}
+  </div>
+</form>
+{% endcall %}
 {% endif %}
 
 <script>

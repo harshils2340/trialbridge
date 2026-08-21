@@ -54,8 +54,10 @@ def test_marketing_hub_flow():
     assert page.status_code == 200
     html = page.get_data(as_text=True)
     assert "Inbox" in html
-    assert "0 connected accounts" in html
+    assert 'aria-label="Manage connected accounts"' in html
     assert "Connect Gmail" in html
+    assert 'id="studySwitch"' in html
+    assert "mh-intake-nav" not in html
 
     added = _post(client, "/marketing-hub/sources", {
         "channel": "email",
@@ -83,6 +85,10 @@ def test_marketing_hub_flow():
         assert len(threads) == 1
         thread_id = threads[0]["id"]
         assert threads[0]["assigned_to"] == owner_id
+
+    rendered = client.get("/app/inbox").get_data(as_text=True)
+    assert "is-row-channel" in rendered
+    assert 'aria-label="Email"' in rendered
 
     assert _post(client, f"/marketing-hub/threads/{thread_id}/reply", {
         "body": "Yes. I can help with that.",

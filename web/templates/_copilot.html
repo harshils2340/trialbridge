@@ -75,11 +75,19 @@
     var m = (window.location.pathname || '').match(/\/app\/applicant\/(\d+)/);
     return m ? parseInt(m[1], 10) : null;
   }
-  function setOpen(open) {
+  // applyOpen only paints the state - used for the computed per-page default,
+  // which must NOT get written to localStorage (or the very first page's
+  // guess would "stick" and silently override every later page's own
+  // context-aware default). setOpen is for an actual user action (FAB, close
+  // button, Bridget-open links) and remembers the choice across navigation.
+  function applyOpen(open) {
     dock.setAttribute('data-open', open ? '1' : '0');
     reopen.style.display = open ? 'none' : '';
-    try { localStorage.setItem('bm_copilot_open', open ? '1' : '0'); } catch (e) {}
     if (open) { input.focus(); if (!briefLoaded) renderIntro(); }
+  }
+  function setOpen(open) {
+    applyOpen(open);
+    try { localStorage.setItem('bm_copilot_open', open ? '1' : '0'); } catch (e) {}
   }
   function scroll() { log.scrollTop = log.scrollHeight; }
   function escapeHtml(s) {
@@ -472,12 +480,22 @@
 
   var saved = null;
   try { saved = localStorage.getItem('bm_copilot_open'); } catch (e) {}
-  // The dock is a first-class pane now, so it opens by default whenever there's
-  // room for it inline (the inbox drops its right rail to make that room). Only
-  // truly narrow screens start collapsed, where it opens as a drawer via the FAB.
-  var wide = window.matchMedia('(min-width: 1000px)').matches;
-  var startOpen = saved === null ? wide : saved === '1';
-  setOpen(startOpen);
+  // Default open only on the inbox, where Bridget is actively drafting/triaging
+  // and the layout is built around the extra pane. Everywhere else (Team,
+  // Settings, Dashboard, Applicants) it defaulted open too and just sat there
+  // with three bullets and a lot of empty space, starving the actual page
+  // content of width. It's always one click away via the FAB; an explicit
+  // user choice (saved !== null) always wins over this default.
+  var onInbox = /^\/app\/inbox(\/|$)/.test(window.location.pathname);
+  // An open conversation adds a whole extra column (thread list + detail) next
+  // to the sidebar, so it needs real room before Bridget's pane joins too -
+  // otherwise the conversation gets squeezed to a sliver on common laptop
+  // widths (1024-1280px). The plain list-only inbox only competes with the
+  // dock for space, so it can afford Bridget sooner.
+  var threadOpen = onInbox && !!document.querySelector('.mh-workspace:not(.is-list-only)');
+  var wide = window.matchMedia('(min-width: ' + (threadOpen ? 1360 : 1000) + 'px)').matches;
+  var startOpen = saved === null ? (wide && onInbox) : saved === '1';
+  applyOpen(startOpen);
   if (startOpen) renderIntro();
 
   // Let any page open Bridget or ask it something (e.g. the Calendar's "Ask AI").

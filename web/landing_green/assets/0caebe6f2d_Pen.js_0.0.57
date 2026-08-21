@@ -1,0 +1,8 @@
+/*
+ * Pen (phosphor-icons/Pen@0.0.57)
+ *
+ * Learn More: https://www.framer.com/asset-urls
+ */
+
+export * from "https://framerusercontent.com/modules/vtqnUROm7BeAMu5bfYdg/Mf9Kd1KWqtp76LW59208/Pen.js"
+export { default } from "https://framerusercontent.com/modules/vtqnUROm7BeAMu5bfYdg/Mf9Kd1KWqtp76LW59208/Pen.js"

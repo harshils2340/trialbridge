@@ -2950,7 +2950,18 @@ def seed_demo_marketing_hub(user_id):
     linked = conn.execute(
         "SELECT 1 FROM marketing_threads WHERE org_id = ? "
         "AND linked_lead_id IS NOT NULL LIMIT 1", (oid,)).fetchone()
-    if seeded and tagged and linked:
+    ad_lead = conn.execute(
+        "SELECT 1 FROM marketing_threads t "
+        "JOIN marketing_sources s ON s.id = t.source_id "
+        "WHERE t.org_id = ? AND s.channel = 'google_ads' "
+        "AND t.contact_handle != 'Automated alert' LIMIT 1", (oid,)).fetchone()
+    # Re-seed once more for orgs seeded before every claimed trial had its own
+    # conversations - otherwise switching the top switcher to one of the newer
+    # trials (e.g. the Azetukalner OLE) shows an empty inbox.
+    all_trials_covered = conn.execute(
+        "SELECT 1 FROM marketing_threads WHERE org_id = ? "
+        "AND nct = 'NCT07076407' LIMIT 1", (oid,)).fetchone()
+    if seeded and tagged and linked and ad_lead and all_trials_covered:
         get_marketing_handoff(user_id)
         return
 
@@ -3029,20 +3040,31 @@ def seed_demo_marketing_hub(user_id):
             "%Y-%m-%d %H:%M")
 
     def _seq(source_id, contact, handle, subject, assignee, status, unread,
-             messages, study=("", "")):
+             messages, study=("", ""), stage=None):
         """messages: list of (kind, by, body, minutes_ago).
         kind: inbound|outbound|note ; by: 'contact'|'system'|<user_id>.
-        study: (nct, label) so switching the top trial scopes the inbox."""
+        study: (nct, label) so switching the top trial scopes the inbox.
+        stage: recruitment pipeline stage for the thread's stage tab/pill
+        (defaults to the schema default 'new' when omitted)."""
         nct, study_label = study
         mins = [m[3] for m in messages]
         created, updated = _ago(max(mins)), _ago(min(mins))
-        cur = conn.execute(
-            "INSERT INTO marketing_threads "
-            "(org_id, source_id, contact_name, contact_handle, subject, status, "
-            "assigned_to, unread, nct, study_label, created_at, updated_at) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
-            (oid, source_id, contact, handle, subject, status, assignee,
-             1 if unread else 0, nct, study_label, created, updated))
+        if stage:
+            cur = conn.execute(
+                "INSERT INTO marketing_threads "
+                "(org_id, source_id, contact_name, contact_handle, subject, status, "
+                "assigned_to, unread, nct, study_label, pipeline_stage, created_at, "
+                "updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (oid, source_id, contact, handle, subject, status, assignee,
+                 1 if unread else 0, nct, study_label, stage, created, updated))
+        else:
+            cur = conn.execute(
+                "INSERT INTO marketing_threads "
+                "(org_id, source_id, contact_name, contact_handle, subject, status, "
+                "assigned_to, unread, nct, study_label, created_at, updated_at) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                (oid, source_id, contact, handle, subject, status, assignee,
+                 1 if unread else 0, nct, study_label, created, updated))
         tid = cur.lastrowid
         for kind, by, body, minutes in messages:
             if kind == "inbound":
@@ -3073,22 +3095,26 @@ def seed_demo_marketing_hub(user_id):
     seed_demo_claims(user_id)
     claims = list_team_studies(user_id)
     _pairs = [(c["nct"], c["title"] or c["nct"]) for c in claims]
-
-    def _pick(*kws):
-        for nct, title in _pairs:
-            low = (title or "").lower()
-            if any(k in low for k in kws):
-                return (nct, title)
-        return None
+    _by_nct = {nct: (nct, title) for nct, title in _pairs}
 
     def _fb(i):
         return _pairs[i % len(_pairs)] if _pairs else ("", "")
 
-    # Pick psilocybin first: its title contains "depression", so MDD keywords
-    # must stay specific (mdd/insomnia/seltorexant) to land on a different trial.
-    psi = _pick("psilocybin", "comp360") or _fb(0)
-    mig = _pick("migraine", "ubrogepant") or _fb(1)
-    mdd = _pick("mdd", "insomnia", "seltorexant", "azetukalner") or _fb(2)
+    # Fieve's 8 active trials (see seed_demo_leads' _S map) are looked up by
+    # exact NCT rather than fuzzy title keywords - several titles share words
+    # like "MDD" and "Azetukalner", and a fuzzy match silently left some trials
+    # with zero conversations whenever the top switcher scoped to them.
+    def _study(nct, fallback_i):
+        return _by_nct.get(nct) or _fb(fallback_i)
+
+    psi = _study("NCT05711940", 0)  # COMP360 Psilocybin in TRD
+    mig = _study("NCT07645924", 1)  # Elismetrep (K-304) acute migraine
+    mdd = _study("NCT06559306", 2)  # Adjunctive Seltorexant in MDD w/ insomnia
+    aze = _study("NCT07076407", 3)  # Azetukalner vs Placebo in MDD (X-NOVA3)
+    azeo = _study("NCT06922110", 4)  # Azetukalner Open-Label Extension
+    selm = _study("NCT07573176", 5)  # Seltorexant Monotherapy in MDD
+    migl = _study("NCT07674654", 6)  # Elismetrep long-term safety
+    umm = _study("NCT06417775", 7)  # Ubrogepant for Menstrual Migraine
 
     # ── Recruitment inbox (email) ──────────────────────────────────────────
     _seq(recruit_id, "Nadia Brooks", "nadia.brooks@gmail.com",
@@ -3164,8 +3190,8 @@ def seed_demo_marketing_hub(user_id):
            "hi! i run a local health education page — who can i talk to about "
            "sharing your study with my followers?", 72),
           ("note", casey_id,
-           "Legit micro-influencer, ~18k local followers. Worth a call — could be "
-           "a cheap referral channel.", 66)], study=mdd)
+           "Local health educator with about 18k followers. Worth a call if the "
+           "study team has approved materials they can share.", 66)], study=mdd)
     rob_thread = _seq(instagram_id, "Rob Torres", "@rob.torres.tx",
          "Do I need a referral?", me, "open", False,
          [("inbound", "contact",
@@ -3180,29 +3206,126 @@ def seed_demo_marketing_hub(user_id):
            "is this legit or a scam lol. how do i know my info is safe?", 145)],
          study=mdd)
 
-    # ── Google Ads alerts ──────────────────────────────────────────────────
+    # ── Google Ads leads and one operational alert ─────────────────────────
     _seq(ads_id, "Google Ads", "Automated alert",
          "Ad disapproved: landing page policy", me, "open", True,
          [("inbound", "system",
            "One ad in 'Migraine Search' was disapproved for a landing page "
            "policy issue. Affected ad is not serving. Review and resubmit to "
            "resume delivery.", 9)], study=mig)
-    _seq(ads_id, "Google Ads", "Automated alert",
-         "Cost per application up 22% this week", jordan_id, "open", False,
-         [("inbound", "system",
-           "'Migraine Search' is pacing 22% above its 7-day cost-per-application "
-           "average. Review search terms and budget allocation.", 58),
-          ("note", jordan_id,
-           "Added 6 negative keywords and trimmed broad match. Watching CPA "
-           "through the weekend.", 44)], study=mig)
-    _seq(ads_id, "Google Ads", "Automated alert",
-         "Budget 90% spent — Migraine Search", jordan_id, "resolved", False,
-         [("inbound", "system",
-           "'Migraine Search' has spent 90% of its monthly budget with 8 days "
-           "remaining.", 1810),
-          ("note", jordan_id,
-           "Topped up budget by $500 for the month — approved by Danny-Elle.",
-           1790)], study=mig)
+    _seq(ads_id, "Maya Chen", "maya.chen@gmail.com",
+         "Can I join while taking topiramate?", jordan_id, "open", True,
+         [("inbound", "contact",
+           "I clicked your Google ad for the migraine study. I have around 10 "
+           "to 12 migraine days a month and take topiramate. Could I still be "
+           "eligible?", 58),
+          ("outbound", jordan_id,
+           "Thanks, Maya. Medication history is part of screening, so we can't "
+           "confirm eligibility by message. I can send the secure pre-screen "
+           "link if you'd like to continue.", 51)], study=mig)
+    _seq(ads_id, "Ben Walsh", "ben.walsh@outlook.com",
+         "Question about visits and travel", me, "open", False,
+         [("inbound", "contact",
+           "I saw the study in a Google ad. How many clinic visits are involved, "
+           "and is there any help with travel costs?", 180),
+          ("outbound", me,
+           "Hi Ben — I can send the study-team-approved visit schedule and "
+           "reimbursement details. What is the best email for you?", 168)],
+         study=mig)
+
+    # ── Azetukalner vs Placebo (X-NOVA3, main phase 3) ──────────────────────
+    aze_thread = _seq(recruit_id, "Denise Okafor", "denise.okafor@gmail.com",
+         "Currently on sertraline, still qualify?", me, "open", True,
+         [("inbound", "contact",
+           "I have depression and I'm on 100mg sertraline but it's not helping "
+           "much. Can I still apply for the Azetukalner study or does being on "
+           "medication rule me out?", 24)], study=aze)
+    _seq(recruit_id, "Robert Klein", "rklein@protonmail.com",
+         "Follow-up after phone screen", jordan_id, "open", False,
+         [("inbound", "contact",
+           "Following up on the phone screen from last week — any update on a "
+           "screening visit date?", 260),
+          ("outbound", jordan_id,
+           "Hi Robert — you're through the phone screen. I have Monday 9am or "
+           "Wednesday 1pm for your in-person screening visit, which works?",
+           248)], study=aze, stage="outreach")
+    _seq(instagram_id, "Priya N.", "@priya.n.writes", "MDD study question",
+         casey_id, "open", False,
+         [("inbound", "contact",
+           "saw the depression study ad — do you need a referral from my "
+           "psychiatrist or can i self refer?", 410)], study=aze)
+
+    # ── Azetukalner Open-Label Extension (existing X-NOVA3 completers) ──────
+    _seq(migraine_id, "Grace Kim", "grace.kim@icloud.com",
+         "Eligible for the extension study?", me, "open", True,
+         [("inbound", "contact",
+           "I just finished the 12-week Azetukalner study. My coordinator "
+           "mentioned an open-label extension — am I eligible, and when would "
+           "it start?", 40),
+          ("outbound", me,
+           "Hi Grace — yes, everyone who completes the double-blind period is "
+           "eligible for the OLE. I'll confirm your exact start window and send "
+           "the visit schedule by end of day.", 31)], study=azeo,
+         stage="screening")
+    _seq(recruit_id, "Marcus Reed", "marcus.reed@outlook.com",
+         "OLE consent form questions", casey_id, "resolved", False,
+         [("inbound", "contact",
+           "Got the extension consent form — two questions on the med washout "
+           "section before I sign.", 1980),
+          ("outbound", casey_id,
+           "Happy to walk through it — no washout needed since you're already "
+           "on study drug. I'll call you this afternoon to go over the rest.",
+           1965)], study=azeo, stage="enrolled")
+
+    # ── Seltorexant Monotherapy in MDD ───────────────────────────────────────
+    _seq(recruit_id, "Wanda Price", "wanda.price@yahoo.com",
+         "Not currently on any antidepressant — eligible?", jordan_id, "open",
+         True,
+         [("inbound", "contact",
+           "I stopped my antidepressant a few months ago and haven't restarted. "
+           "Is the monotherapy study still an option for me, or do I need to be "
+           "on a medication already?", 65)], study=selm)
+    _seq(instagram_id, "@calm_and_c", "@calm_and_c",
+         "How long is the study?", jordan_id, "open", False,
+         [("inbound", "contact",
+           "how many weeks total is the seltorexant study and how many visits "
+           "in person vs phone?", 320),
+          ("outbound", jordan_id,
+           "It's 8 weeks total — 2 in-person visits (screening + baseline) and "
+           "the rest are quick phone or video check-ins.", 305)], study=selm,
+         stage="outreach")
+
+    # ── Elismetrep (K-304) long-term safety in acute migraine ───────────────
+    _seq(migraine_id, "Isla Thompson", "isla.thompson@gmail.com",
+         "Long-term study after finishing the acute trial", me, "open", True,
+         [("inbound", "contact",
+           "I completed the short acute-treatment migraine study in the "
+           "spring. Is the long-term safety study something I can join, or is "
+           "it only for new patients?", 95)], study=migl, stage="screening")
+    _seq(ads_id, "Colin Deb", "colin.deb@icloud.com",
+         "Long-term safety study — side effect history", me, "open", False,
+         [("inbound", "contact",
+           "Saw the ad for the long-term migraine safety study. I had a bad "
+           "reaction to a triptan a few years back — does that exclude me?",
+           500)], study=migl)
+
+    # ── Ubrogepant for Menstrual Migraine ────────────────────────────────────
+    _seq(recruit_id, "Nadia Haddad", "nadia.haddad@gmail.com",
+         "Timing screening visit around my cycle", casey_id, "open", True,
+         [("inbound", "contact",
+           "My migraines are tied to my period, so timing matters — do I need "
+           "to schedule the screening visit for a specific day of my cycle?",
+           50),
+          ("outbound", casey_id,
+           "Good question — we'll time your screening to your expected next "
+           "cycle so we can confirm the pattern. What's your cycle length "
+           "usually?", 44)], study=umm, stage="prescreen")
+    _seq(instagram_id, "Tara O.", "@tara.okonkwo", "Menstrual migraine study",
+         casey_id, "open", False,
+         [("inbound", "contact",
+           "do you need a formal diagnosis of menstrual migraine or is a "
+           "regular migraine diagnosis + tracking my period enough?", 610)],
+         study=umm)
 
     # A raw conversation is not automatically an applicant. Seed three explicit,
     # consented links so the demo shows both sides of that boundary: general
@@ -3259,6 +3382,11 @@ def seed_demo_marketing_hub(user_id):
         rob_thread, "Rob Torres", "@rob.torres.tx", 38, psi, "outreach",
         ["Age requirement", "Current depression treatment",
          "No excluded psychiatric history"])
+    _demo_applicant(
+        aze_thread, "Denise Okafor", "denise.okafor@gmail.com", 45, aze,
+        "outreach",
+        ["Current MDE severity (MADRS)", "Antidepressant washout timeline",
+         "No bipolar or psychotic history"])
 
     conn.execute(
         "INSERT INTO marketing_handoffs "

@@ -50,9 +50,9 @@ from email.utils import formatdate, getaddresses, make_msgid, parseaddr
 from html.parser import HTMLParser
 
 from dotenv import load_dotenv
-from flask import (Flask, abort, flash, g, get_flashed_messages, jsonify,
+from flask import (Flask, Response, abort, flash, g, get_flashed_messages, jsonify,
                    make_response, redirect, render_template, request, send_file,
-                   session, url_for)
+                   send_from_directory, session, url_for)
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 
@@ -5251,26 +5251,37 @@ def for_clinicians():
     return redirect(_sites_home_url(), code=301)
 
 
+# Self-hosted marketing shell (Framer-exported, no Framer runtime/fee).
+_LANDING_DIR = HERE / "landing"
+_LANDING_GREEN_DIR = HERE / "landing_green"
+
+
+def _landing_index():
+    """Pick the recolored marketing variant (blue default, or the old green) from the
+    ?theme= param or bmd_theme cookie."""
+    theme = (request.args.get("theme") or request.cookies.get("bmd_theme") or "").strip()
+    if theme == "green" and (_LANDING_GREEN_DIR / "index.html").exists():
+        return _LANDING_GREEN_DIR / "index.html"
+    return _LANDING_DIR / "index.html"
+
+
+def _serve_landing():
+    """Serve the static marketing shell with the live CSRF token injected as a meta
+    tag, so the embedded trial-finder widget can POST /find (the guard accepts the
+    X-CSRF-Token header)."""
+    html = _landing_index().read_text(encoding="utf-8")
+    meta = f'<meta name="csrf-token" content="{_csrf_token()}">'
+    html = html.replace("<head>", "<head>" + meta, 1)
+    return Response(html, mimetype="text/html")
+
+
 @app.route("/")
 def for_sites():
-    """The front door: the site-side product page for research sites and
-    sponsors/CROs. One inbox for every study inquiry, an embedded live demo (the
-    real app in SITE_DEMO mode), and a security/legal section with truthful status
-    labels (SOC 2 shown as In progress - never a fabricated certification).
-    Patients get their own front door at url_for("home"), linked from the footer."""
+    """The front door: the self-hosted BridgeMD marketing shell (one inbox for every
+    study inquiry, with an embedded trial finder). Patients get their own search at
+    url_for("home") (/find-trial), linked from the page."""
     _log_event("view_for_sites")
-    try:
-        conditions_count = len(SEO_CONDITIONS)
-    except Exception:
-        conditions_count = 0
-    try:
-        cities_count = len(_CITY_BY_SLUG)
-    except Exception:
-        cities_count = 0
-    return render_template(
-        "for_sites.html", legal_contact=LEGAL_CONTACT,
-        conditions_count=conditions_count, cities_count=cities_count,
-        cal_link=CAL_LINK, site_demo=_site_demo_enabled())
+    return _serve_landing()
 
 
 @app.route("/for-sites")
@@ -5278,6 +5289,33 @@ def for_sites_home_legacy():
     """The site-side page lived at /for-sites before it became the front door.
     301 so old links, ads and bookmarks keep working on one canonical URL."""
     return redirect(url_for("for_sites"), code=301)
+
+
+@app.route("/site-preview")
+def site_preview():
+    return _serve_landing()
+
+
+@app.route("/landing/assets/<path:filename>")
+def landing_assets(filename):
+    return send_from_directory(_LANDING_DIR / "assets", filename)
+
+
+@app.route("/landing_green/assets/<path:filename>")
+def landing_green_assets(filename):
+    return send_from_directory(_LANDING_GREEN_DIR / "assets", filename)
+
+
+@app.route("/embed/finder")
+def embed_finder():
+    """Standalone trial-finder widget, meant to be dropped into any site (and used
+    inside the front page's embed section via <iframe>). Isolating it in its own
+    document keeps typing/CSRF working regardless of the host page's scripts. The
+    form posts to /find with target=_top so results open in the top window."""
+    resp = make_response(render_template("finder_widget.html",
+                                         csrf_token=_csrf_token()))
+    resp.headers["X-Frame-Options"] = "SAMEORIGIN"
+    return resp
 
 
 def _marketing_time_label(raw):

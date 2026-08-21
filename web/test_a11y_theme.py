@@ -102,6 +102,14 @@ def test_demo_tour_starts_on_canonical_inbox():
     print("PASS: demo tour starts on the canonical inbox")
 
 
+def test_inbox_uses_shared_site_shell():
+    css = _read(CSS)
+    assert ".appshell:has(.mh-page) .appbody { min-height:calc(100dvh - 57px); padding:0; }" in css
+    assert ".appshell:has(.mh-page) > .appside" not in css
+    assert ".mh-page .mh-workspace { border:0; border-radius:0; box-shadow:none; }" in css
+    print("PASS: inbox uses shared site shell without embedded-card chrome")
+
+
 def _fake_result(nct, verdict):
     return {
         "trial": {"nctId": nct, "title": f"Study {nct}", "phase": "PHASE2",
@@ -149,6 +157,7 @@ def main():
         test_css_mobile_sidebar_and_scroll,
         test_visual_system_is_single_source,
         test_demo_tour_starts_on_canonical_inbox,
+        test_inbox_uses_shared_site_shell,
         test_fit_badges_have_distinct_icons,
     ]
     failed = 0
