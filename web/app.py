@@ -504,8 +504,6 @@ RATE_LIMIT_ROUTES = {
     # Public search is the one expensive public endpoint (LLM calls per query),
     # so cap it per IP to blunt bursts/bots. Generous for real users.
     "find": max(1, int(os.environ.get("RATE_LIMIT_FIND_MAX", "20"))),
-    # Public "book a demo" form on the For-clinics page (emails the team).
-    "demo_request": max(1, int(os.environ.get("RATE_LIMIT_DEMO_MAX", "6"))),
 }
 
 # Global daily ceiling on LLM-backed searches so a traffic spike or abuse can't
@@ -6281,44 +6279,6 @@ def blog_post(slug):
         "{demo}", url_for("for_sites") + "#demo")
     _log_event("view_blog_post", slug)
     return render_template("blog_post.html", post=post, cal_link=CAL_LINK)
-
-
-@app.route("/for-clinicians/demo", methods=["POST"])
-def demo_request():
-    """Handle the 'book a live demo' form. Records the request (so it is never
-    lost even if email delivery is off) and emails the team. Compliance: this is
-    a SaaS sales lead, not a referral - no money moves to any referral source."""
-    return_to = url_for("for_sites") + "#contact" \
-        if request.form.get("source") == "sites" \
-        else url_for("for_clinicians") + "#demo"
-    blocked = _guard_ip_rate_limit("demo_request")
-    if blocked is not None:
-        return redirect(return_to)
-    name = request.form.get("name", "").strip()
-    org = request.form.get("org", "").strip()
-    email = request.form.get("email", "").strip()
-    role = request.form.get("role", "").strip()
-    message = request.form.get("message", "").strip()
-    if not (name and org and email):
-        flash("Please add your name, organization, and work email.", "error")
-        return redirect(return_to)
-    # Log first so the lead is captured even when SMTP/notifications are off.
-    _log_event("demo_request", {"org": org, "role": role})
-    subject = f"BridgeMD demo request - {org}"
-    body = "\n".join([
-        "New live-demo request from the For-clinics page:",
-        "",
-        f"Name:          {name}",
-        f"Organization:  {org}",
-        f"Work email:    {email}",
-        f"Role / type:   {role or '-'}",
-        "",
-        "What they're recruiting for / notes:",
-        message or "-",
-    ])
-    _notify_async(OWNER_NOTIFY_EMAIL, subject, body)
-    flash("Thanks - we'll email you shortly to schedule your live demo.", "success")
-    return redirect(return_to)
 
 
 @app.route("/privacy")
