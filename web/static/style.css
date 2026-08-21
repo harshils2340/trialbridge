@@ -300,6 +300,7 @@ textarea { resize: vertical; min-height: 150px; line-height: 1.6; }
    the collapsed 64px rail via `is-collapsed` (template + applyMode) so it can't be
    dragged/expanded here and eat the workspace. */
 .appshell:has(.mh-page) > .appside { flex:0 0 auto; }
+.appshell:has(.mh-page) > .appside .appside-resize { display:none; }
 /* min-width:0 lets this flex child actually shrink; without it the body keeps its
    content's min-width and pushes the conversation pane off-screen (the clipped
    right edge). */

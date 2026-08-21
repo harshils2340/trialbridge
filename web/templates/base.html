@@ -341,6 +341,10 @@ document.addEventListener('click', function (e) {
 
   // Left panel view mode: drawer (mobile) | icon rail (medium/pref) | full.
   function isMobile() { return window.matchMedia('(max-width: 900px)').matches; }
+  // The inbox locks the rail to the compact icon width (see is-collapsed in the
+  // template + the .mh-page CSS) so it stays out of the workspace's way; don't let
+  // saved prefs expand it back to full labels here.
+  var lockRail = side.hasAttribute('data-lock-rail');
   function applyMode() {
     if (isMobile()) {
       shell.classList.add('is-drawer');
@@ -348,6 +352,7 @@ document.addEventListener('click', function (e) {
       return;
     }
     shell.classList.remove('is-drawer', 'is-drawer-open');
+    if (lockRail) { side.classList.add('is-collapsed'); return; }
     var pref = get(LS_C);                        // 'rail' | 'full' | null
     var rail = pref === 'rail' ? true
              : pref === 'full' ? false
