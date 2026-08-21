@@ -8,6 +8,22 @@
 
 {% import "_fs_chrome.html" as chrome with context %}
 
+{# Decide the scroll-reveal state before the first paint. The hidden state hangs
+   off html.fs-motion, so a block can never render visible and then be pulled
+   back out by a script at the end of the body. No JS (or reduced motion) means
+   the class is never set and everything stays visible. #}
+{% block head_extra %}
+<script>
+(function () {
+  try {
+    if (!('IntersectionObserver' in window)) return;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    document.documentElement.classList.add('fs-motion');
+  } catch (e) {}
+})();
+</script>
+{% endblock %}
+
 {% block site_header %}{{ chrome.nav(cal_link) }}{% endblock %}
 
 {% block site_footer %}{{ chrome.foot() }}{% endblock %}
@@ -247,18 +263,26 @@
 
 <script>
 (function () {
-  var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var root = document.documentElement;
+  if (!root.classList.contains('fs-motion')) return;
   var blocks = Array.prototype.slice.call(
     document.querySelectorAll('.fsx-head, .fsx-feature, .fsx-step, .fsx-proof-stat, .fs-frame, .fs-dt, .fsx-close'));
-  if (!blocks.length || reduce || !('IntersectionObserver' in window)) return;
-  blocks.forEach(function (b) { b.classList.add('fs-reveal'); });
+  if (!blocks.length) { root.classList.remove('fs-motion'); return; }
+  // Whatever is already on screen shows immediately. Waiting for the observer's
+  // first callback is what made the top of the page arrive a beat late.
+  var fold = window.innerHeight || 0;
+  var pending = blocks.filter(function (b) {
+    if (b.getBoundingClientRect().top >= fold) return true;
+    b.classList.add('is-in');
+    return false;
+  });
   var obs = new IntersectionObserver(function (entries, o) {
     entries.forEach(function (e) {
       if (!e.isIntersecting) return;
       e.target.classList.add('is-in'); o.unobserve(e.target);
     });
   }, { threshold: 0.12, rootMargin: '0px 0px -8% 0px' });
-  blocks.forEach(function (b) { obs.observe(b); });
+  pending.forEach(function (b) { obs.observe(b); });
 })();
 </script>
 {% endblock %}

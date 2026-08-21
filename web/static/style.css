@@ -6386,13 +6386,7 @@ body.fs-page { background:
 .fs-qm { display: grid; place-items: center; width: 14px; flex: none; color: var(--muted); }
 .fs-qm svg { width: 14px; height: 14px; }
 
-/* Scroll-reveal: elements get .fs-reveal added by JS (so no-JS keeps them visible),
-   then .is-in when they enter the viewport. Subtle, professional fade-up. */
-.fs-reveal { opacity: 0; transform: translateY(18px);
-  transition: opacity .6s cubic-bezier(.16,1,.3,1), transform .6s cubic-bezier(.16,1,.3,1); }
-.fs-reveal.is-in { opacity: 1; transform: none; }
 @media (prefers-reduced-motion: reduce) {
-  .fs-reveal, .fs-reveal.is-in { opacity: 1; transform: none; transition: none; }
   .fs-hv-panel { transition: none; transform: none; }
   .fs-hv-panel.is-active .fs-qrow,
   .fs-hv-panel.is-active .fs-hv-chip,
@@ -9079,16 +9073,25 @@ body.fs-page { background:
   font-weight:800; color:var(--display); margin:0 0 12px; }
 .fsx-close .fsx-lead { max-width:520px; margin:0 auto 26px; }
 
-/* Scroll reveal (shared with the legacy .fs-reveal on this page) */
-.fsx-head.fs-reveal, .fsx-feature.fs-reveal, .fsx-step.fs-reveal,
-.fsx-proof-stat.fs-reveal, .fsx-close.fs-reveal {
+/* Scroll reveal. The hidden state hangs off html.fs-motion, which an inline
+   script in the head sets before the first paint (see for_sites.html), so a
+   block is never painted visible and then hidden again. */
+html.fs-motion .fsx-head, html.fs-motion .fsx-feature, html.fs-motion .fsx-step,
+html.fs-motion .fsx-proof-stat, html.fs-motion .fsx-close,
+html.fs-motion .fs-frame, html.fs-motion .fs-dt {
   opacity:0; transform:translateY(14px); transition:opacity .5s ease, transform .5s ease; }
-.fsx-head.is-in, .fsx-feature.is-in, .fsx-step.is-in,
-.fsx-proof-stat.is-in, .fsx-close.is-in { opacity:1; transform:none; }
+html.fs-motion .is-in { opacity:1; transform:none; }
 /* Stagger the four proof numbers so the value band reads left-to-right. */
-.fsx-proof-stat.fs-reveal:nth-child(2) { transition-delay:.06s; }
-.fsx-proof-stat.fs-reveal:nth-child(3) { transition-delay:.12s; }
-.fsx-proof-stat.fs-reveal:nth-child(4) { transition-delay:.18s; }
+html.fs-motion .fsx-proof-stat:nth-child(2) { transition-delay:.06s; }
+html.fs-motion .fsx-proof-stat:nth-child(3) { transition-delay:.12s; }
+html.fs-motion .fsx-proof-stat:nth-child(4) { transition-delay:.18s; }
+@media (prefers-reduced-motion: reduce) {
+  /* Belt and braces if the preference changes after the class is set. */
+  html.fs-motion .fsx-head, html.fs-motion .fsx-feature, html.fs-motion .fsx-step,
+  html.fs-motion .fsx-proof-stat, html.fs-motion .fsx-close,
+  html.fs-motion .fs-frame, html.fs-motion .fs-dt {
+    opacity:1; transform:none; transition:none; }
+}
 
 /* ── Premium touches: soft hero backdrop, on-load entrance, card lift ── */
 .fsx-hero { position:relative; overflow:hidden; }
