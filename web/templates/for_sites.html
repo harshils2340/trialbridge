@@ -1,9 +1,9 @@
 {% extends "public_base.html" %}
 {% import "_icons.html" as ic %}
 {% block title %}BridgeMD: the inbox built for clinical trial recruitment{% endblock %}
-{% block description %}Every patient inquiry — email, Facebook & Instagram ads, ClinicalTrials.gov, referrals — in one inbox, sorted and assigned the moment it lands. Free for research sites.{% endblock %}
+{% block description %}Every patient inquiry lands in one inbox: email, Facebook & Instagram ads, ClinicalTrials.gov, and referrals. Sorted and assigned the moment it lands. Free for research sites.{% endblock %}
 {% block og_title %}BridgeMD: the inbox built for clinical trial recruitment{% endblock %}
-{% block og_description %}One inbox for every study inquiry, from every channel — auto-triaged and auto-assigned so nothing gets missed. Free for research sites.{% endblock %}
+{% block og_description %}One inbox for every study inquiry, from every channel, auto-triaged and auto-assigned so nothing gets missed. Free for research sites.{% endblock %}
 {% block canonical %}<link rel="canonical" href="{{ sites_home_url if sites_home_url.startswith('http') else request.base_url }}">{% endblock %}
 
 {% import "_fs_chrome.html" as chrome with context %}
@@ -36,7 +36,7 @@
   <div class="fsx-hero-in">
     <span class="fsx-eyebrow">{{ ic.icon('inbox') }} One inbox for every recruitment channel</span>
     <h1>Every study inquiry,<br><span class="fsx-grad">in one clean inbox.</span></h1>
-    <p class="fsx-sub">The first unlimited recruitment inbox for research sites — so you spend less
+    <p class="fsx-sub">The first unlimited recruitment inbox for research sites, so you spend less
       time on admin and never miss a patient who was ready to enroll.</p>
     <div class="fsx-cta">
       <a class="fsx-btn fsx-btn-primary" href="{{ cal_link }}" target="_blank" rel="noopener">Book a demo {{ ic.icon('arrow-right') }}</a>
@@ -73,7 +73,7 @@
     <p class="fsx-kicker">What it does</p>
     <h2>Designed to fuel every study you run.</h2>
     <p class="fsx-lead">Unlimited studies, every channel in one inbox, and AI triage the moment a
-      message lands — everything you need to answer faster, with nothing new to learn.</p>
+      message lands. Everything you need to answer faster, with nothing new to learn.</p>
   </div>
 
   <div class="fsx-features">
@@ -83,7 +83,7 @@
         <span class="fsx-feature-ic">{{ ic.icon('inbox') }}</span>
         <h3>Every inquiry, one inbox</h3>
         <p>Stop juggling five inboxes, ad dashboards, and voicemails. Email, Facebook &amp; Instagram
-          lead ads, ClinicalTrials.gov, and referrals all land in the same place — deduplicated and
+          lead ads, ClinicalTrials.gov, and referrals all land in the same place, deduplicated and
           tagged by where they came from.</p>
       </div>
       <div class="fsx-feature-viz" aria-hidden="true">
@@ -122,8 +122,8 @@
       <div class="fsx-feature-tx">
         <span class="fsx-feature-ic">{{ ic.icon('sparkle') }}</span>
         <h3>Sorted the moment it arrives</h3>
-        <p>Every message is read and labeled by what it needs — scheduling, a question, documents, an
-          opt-out — and how urgent it is. Your team works the inbox top-down instead of digging, and
+        <p>Every message is read and labeled by what it needs: scheduling, a question, documents, an
+          opt-out, and how urgent it is. Your team works the inbox top-down instead of digging, and
           the important stuff never sinks to the bottom.</p>
       </div>
       <div class="fsx-feature-viz" aria-hidden="true">
@@ -144,7 +144,7 @@
         <span class="fsx-feature-ic">{{ ic.icon('users') }}</span>
         <h3>Every inquiry has an owner</h3>
         <p>Set it once: each channel goes to whoever owns it. New inquiries land in that person's
-          queue automatically — no hand-offs, no "who's got this?" in a group chat. And when someone
+          queue automatically. No hand-offs, no "who's got this?" in a group chat. And when someone
           is away, move their whole queue to whoever is covering in one click.</p>
       </div>
       <div class="fsx-feature-viz" aria-hidden="true">
@@ -196,11 +196,11 @@
       <p class="fsx-kicker">Pricing</p>
       <h2>Free for your site.</h2>
       <p class="fsx-lead">Unlimited studies, unlimited teammates, every channel. We license to sponsors
-        and CROs — we never charge a site, and never charge per referral.</p>
+        and CROs. We never charge a site, and never charge per referral.</p>
       <ul class="fsx-list">
         <li>{{ ic.icon('check') }} Unlimited studies &amp; teammates</li>
         <li>{{ ic.icon('check') }} Every intake channel included</li>
-        <li>{{ ic.icon('check') }} Works with the tools you already use — REDCap, your calendar, email</li>
+        <li>{{ ic.icon('check') }} Works with the tools you already use: REDCap, your calendar, email</li>
         <li>{{ ic.icon('check') }} No per-referral fees, ever</li>
       </ul>
     </div>

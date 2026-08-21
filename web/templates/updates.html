@@ -20,7 +20,7 @@
   </div>
   <div class="upd-steps">
     {% for s in u.steps %}
-    <span class="upd-step is-{{ s.state }}" title="{{ s.label }}{% if s.detail %} — {{ s.detail }}{% endif %}">
+    <span class="upd-step is-{{ s.state }}" title="{{ s.label }}{% if s.detail %}: {{ s.detail }}{% endif %}">
       {% if s.state == 'done' %}{{ ic.icon('check') }}{% elif s.state == 'partial' %}{{ ic.icon('clock') }}{% else %}<span class="upd-dot"></span>{% endif %}
       {{ s.label }}
     </span>

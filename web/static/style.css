@@ -293,10 +293,17 @@ textarea { resize: vertical; min-height: 150px; line-height: 1.6; }
 
 /* Inbox participant workspace — ported from the Figma intake prototype while
    retaining the shared BridgeMD shell, tokens, controls, and provider flows. */
-.appshell:has(.mh-page) > .appside,
 .appshell:has(.mh-page) > .appside-backdrop,
 .appshell:has(.mh-page) .apptop { display:none; }
-.appshell:has(.mh-page) .appbody { min-height:100vh; }
+/* Inbox is full-height but NOT full-bleed: keep a compact icon rail so the primary
+   nav (Inbox/Applicants/Team/Settings) is always one click away. It's forced into
+   the collapsed 64px rail via `is-collapsed` (template + applyMode) so it can't be
+   dragged/expanded here and eat the workspace. */
+.appshell:has(.mh-page) > .appside { flex:0 0 auto; }
+/* min-width:0 lets this flex child actually shrink; without it the body keeps its
+   content's min-width and pushes the conversation pane off-screen (the clipped
+   right edge). */
+.appshell:has(.mh-page) .appbody { min-height:100vh; min-width:0; }
 .mh-page .mh-workspace { height:100vh; max-height:100vh; }
 .mh-workspace { grid-template-columns:220px 330px minmax(480px, 1fr); }
 .mh-sources { background:var(--surface-2); }

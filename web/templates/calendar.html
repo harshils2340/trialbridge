@@ -198,7 +198,7 @@
            data-lpignore="true" data-form-type="other">
     <p class="cal-where-hint" id="cal-where-hint" hidden></p>
   </div>
-  <div class="field"><label>Prep checklist <span class="cal-hint">one item per line — sent to the patient</span></label>
+  <div class="field"><label>Prep checklist <span class="cal-hint">one item per line, sent to the patient</span></label>
     <textarea name="prep" rows="3" placeholder="Fast 8 hours before&#10;Bring your medication list"></textarea>
   </div>
   <div class="cal-form-foot"><span></span>{{ ui.btn('Book visit', 'primary', type='submit', icon='calendar') }}</div>
@@ -216,7 +216,7 @@
       <em>{% if sync.last_synced_at %}Last synced {{ sync.last_synced_at }}{% else %}Syncing…{% endif %} · visits update automatically</em></div>
   </div>
   {% else %}
-  <p class="sync-lead">Your study visits show up automatically in the calendar you already live in. It's one-way and read-only — you keep booking and editing visits here in BridgeMD.</p>
+  <p class="sync-lead">Your study visits show up automatically in the calendar you already live in. It's one-way and read-only. You keep booking and editing visits here in BridgeMD.</p>
   {% endif %}
 
   <div class="sync-provs">
@@ -242,7 +242,7 @@
   <div class="sync-note">
     <span class="sync-note-ic">{{ ic.icon('shield') }}</span>
     <div>
-      <b>Patient-safe by default.</b> Synced events show initials + a record code (e.g. “Screening · I.M. #1042”), never the full name — so no PHI leaves BridgeMD for your calendar provider.
+      <b>Patient-safe by default.</b> Synced events show initials + a record code (e.g. “Screening · I.M. #1042”), never the full name, so no PHI leaves BridgeMD for your calendar provider.
       <form method="post" action="{{ url_for('calendar_sync_deidentify') }}" class="sync-deid">
         <input type="hidden" name="deidentify" value="{{ '0' if sync.deidentify else '1' }}">
         <button type="submit" class="sync-deid-link">{{ 'Show full patient names instead (requires a BAA)' if sync.deidentify else 'Switch back to initials only' }}</button>
@@ -427,7 +427,7 @@
       zoom:     { type: 'url',   ph: '', hint: '' },
       meet:     { type: 'url',   ph: '', hint: '' }
     };
-    // Simulated conferencing links — mimic "Add Google Meet / Zoom" in one click.
+    // Simulated conferencing links, mimic "Add Google Meet / Zoom" in one click.
     function rc(set, n) { var s = ''; for (var i = 0; i < n; i++) s += set[Math.floor(Math.random() * set.length)]; return s; }
     function genMeet() { var a = 'abcdefghijkmnopqrstuvwxyz'; return 'https://meet.google.com/' + rc(a, 3) + '-' + rc(a, 4) + '-' + rc(a, 3); }
     function genZoom() { var d = '0123456789'; var a = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz0123456789'; return 'https://us06web.zoom.us/j/' + rc(d, 11) + '?pwd=' + rc(a, 10); }
@@ -471,7 +471,7 @@
         if (m === 'phone') {
           var ph = (lead && lead.dataset.phone) || '';
           loc.value = ph; autofilled = ph;
-          if (!ph) { hint.textContent = 'No phone on file — type one, or pick an applicant first.'; }
+          if (!ph) { hint.textContent = 'No phone on file. Type one, or pick an applicant first.'; }
         } else {
           loc.value = ''; autofilled = '';
         }
@@ -479,7 +479,7 @@
       if (focusIt && !loc.readOnly) loc.focus();
     }
 
-    // "New link" — regenerate a fresh conferencing link on demand.
+    // "New link": regenerate a fresh conferencing link on demand.
     hint.addEventListener('click', function (e) {
       var btn = e.target.closest && e.target.closest('.cal-where-regen');
       if (!btn) return;

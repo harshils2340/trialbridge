@@ -79,7 +79,7 @@
 <div class="setup-panel" data-setup-panel="channels" hidden>
 <div class="app-card pad">
   <div class="app-card-title">Connected accounts</div>
-  <p class="site-hint" style="margin-top:-4px;">Connect the channels patients reach you through. Every message lands in your shared inbox, sorted by study &mdash; your team reads and replies without leaving BridgeMD.</p>
+  <p class="site-hint" style="margin-top:-4px;">Connect the channels patients reach you through. Every message lands in your shared inbox, sorted by study. Your team reads and replies without leaving BridgeMD.</p>
 
   {% if marketing_sources %}
   <section class="mh-account-list" aria-label="Connected accounts">
@@ -550,7 +550,7 @@
 <div class="setup-panel" data-setup-panel="routing" hidden>
 <div class="app-card pad">
   <div class="app-card-title" style="margin-bottom:4px;">Auto-routing</div>
-  <p class="site-hint">Send every new inquiry to the right person automatically. When a message arrives on a channel, it's assigned to the teammate you pick and shows up in <b>their</b> inbox — no manual triage. Example: all email → your intake coordinator, all Instagram/Meta leads → your outreach lead. Rules run top-down; the first match wins.</p>
+  <p class="site-hint">Send every new inquiry to the right person automatically. When a message arrives on a channel, it's assigned to the teammate you pick and shows up in <b>their</b> inbox, with no manual triage. Example: all email → your intake coordinator, all Instagram/Meta leads → your outreach lead. Rules run top-down; the first match wins.</p>
 
   {% if members|length < 2 and not routing_rules %}
   <p class="site-hint" style="margin-top:8px;">Invite a teammate first (Team tab) to route inquiries to them. You can still create rules that route everything to yourself.</p>
@@ -606,7 +606,7 @@
 {# ---------- Connected sources per study ---------- #}
 <div class="app-card pad" style="margin-top:18px;">
   <div class="app-card-title" style="margin-bottom:4px;">Connected sources</div>
-  <p class="site-hint">Pick the channels each trial actually recruits through. The inbox then shows only those sources for that trial — so a coordinator scans the right ad responses (Instagram, Facebook, email…) with the channel’s logo, and isn’t distracted by channels this study doesn’t use. Leave all unchecked to show every source.</p>
+  <p class="site-hint">Pick the channels each trial actually recruits through. The inbox then shows only those sources for that trial, so a coordinator scans the right ad responses (Instagram, Facebook, email…) with the channel’s logo, and isn’t distracted by channels this study doesn’t use. Leave all unchecked to show every source.</p>
   {% if study_sources %}
   {% for s in study_sources %}
   <form method="post" action="{{ url_for('study_sources_save') }}" class="src-form">

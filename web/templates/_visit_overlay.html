@@ -121,7 +121,7 @@
           action="{{ url_for('calendar_visit_agenda', visit_id=c.visit_id) }}"
           data-ajax data-ajax-refresh="#visit-{{ c.visit_id }}">
       <input type="hidden" name="next" value="{{ _onext }}">
-      <textarea name="agenda" rows="4" placeholder="One item per line — e.g. Review symptom diary">{{ c.agenda|join('\n') }}</textarea>
+      <textarea name="agenda" rows="4" placeholder="One item per line, e.g. Review symptom diary">{{ c.agenda|join('\n') }}</textarea>
       <div class="tev-resched-acts">
         {{ ui.btn('Save agenda', 'primary', 'sm', icon='check', type='submit') }}
         <button type="button" class="btn btn-ghost btn-sm" data-tev-agenda-cancel="{{ c.visit_id }}">Back</button>

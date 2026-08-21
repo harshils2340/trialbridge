@@ -3076,7 +3076,7 @@ def seed_demo_marketing_hub(user_id):
     migraine_id = _source("email", "Migraine study inbox",
                           "migraine@fieveclinical.com")
     instagram_id = _source("instagram", "Instagram DMs", "@fieveclinical")
-    ads_id = _source("google_ads", "Google Ads — Migraine Search",
+    ads_id = _source("google_ads", "Google Ads: Migraine Search",
                      "Fieve Migraine Search")
     # One disconnected account so the connect/reconnect state is visible.
     _source("email", "Newsletter replies", "news@fieveclinical.com",
@@ -3167,7 +3167,7 @@ def seed_demo_marketing_hub(user_id):
     _seq(recruit_id, "Nadia Brooks", "nadia.brooks@gmail.com",
          "Do you offer evening screening appointments?", me, "open", True,
          [("inbound", "contact",
-           "Hi — I saw your migraine study online. I work until 5 most days, so "
+           "Hi, I saw your migraine study online. I work until 5 most days, so "
            "are evening screening appointments possible? Also, is parking "
            "covered when I come in?", 6)], study=mig)
     _seq(recruit_id, "Marcus Reed", "marcus.reed@outlook.com",
@@ -3176,11 +3176,11 @@ def seed_demo_marketing_hub(user_id):
            "I'd have to drive about 45 minutes each way. Is mileage or travel "
            "reimbursed for the visits?", 52),
           ("outbound", jordan_id,
-           "Hi Marcus — yes, we reimburse travel for every completed visit, and "
+           "Hi Marcus, yes, we reimburse travel for every completed visit, and "
            "it's paid the same week. Want me to hold a screening slot for you?",
            41),
           ("note", casey_id,
-           "He's a strong fit — flagging so we prioritize the callback.", 39)],
+           "He's a strong fit, flagging so we prioritize the callback.", 39)],
          study=mdd)
     _seq(recruit_id, "Dr. Sam Patel", "spatel@riversidefamilymed.com",
          "Referring a patient who may qualify", me, "open", True,
@@ -3196,7 +3196,7 @@ def seed_demo_marketing_hub(user_id):
          [("inbound", "contact",
            "How much is the compensation, and when is it paid?", 1520),
           ("outbound", casey_id,
-           "Hi Priya — participants receive up to $1,200 across the study, paid "
+           "Hi Priya, participants receive up to $1,200 across the study, paid "
            "per completed visit. I've emailed the full schedule. Let me know if "
            "you'd like to book screening!", 1505)], study=psi)
 
@@ -3209,11 +3209,11 @@ def seed_demo_marketing_hub(user_id):
     tomas_thread = _seq(migraine_id, "Tomás Rivera", "trivera@gmail.com",
          "Need to reschedule my screening visit", jordan_id, "open", False,
          [("inbound", "contact",
-           "Something came up at work — can I move my Thursday screening to next "
+           "Something came up at work, can I move my Thursday screening to next "
            "week?", 215),
           ("outbound", jordan_id,
            "No problem at all, Tomás. I have Tuesday 10:00am or Wednesday 2:00pm "
-           "open — which works better?", 205),
+           "open. Which works better?", 205),
           ("inbound", "contact", "Tuesday 10am is perfect, thank you!", 150)],
          study=mig)
     _seq(migraine_id, "Grace Kim", "grace.kim@icloud.com",
@@ -3222,7 +3222,7 @@ def seed_demo_marketing_hub(user_id):
            "I've decided not to move forward right now. Thanks for your time.",
            2950),
           ("outbound", casey_id,
-           "Completely understand, Grace — thank you for letting us know. The "
+           "Completely understand, Grace. Thank you for letting us know. The "
            "door's open if anything changes down the road.", 2940)], study=mig)
 
     # ── Instagram DMs ──────────────────────────────────────────────────────
@@ -3234,7 +3234,7 @@ def seed_demo_marketing_hub(user_id):
     _seq(instagram_id, "Mina Chen", "@healthwithmina",
          "Community partnership question", casey_id, "open", False,
          [("inbound", "contact",
-           "hi! i run a local health education page — who can i talk to about "
+           "hi! i run a local health education page, who can i talk to about "
            "sharing your study with my followers?", 72),
           ("note", casey_id,
            "Local health educator with about 18k followers. Worth a call if the "
@@ -3245,7 +3245,7 @@ def seed_demo_marketing_hub(user_id):
            "do i need a referral from my own doctor to join or can i just apply "
            "directly?", 330),
           ("outbound", me,
-           "You can apply directly — no referral needed! I'll send a quick link "
+           "You can apply directly, no referral needed! I'll send a quick link "
            "to check if you're eligible. 👍", 322)], study=psi)
     # Unassigned on purpose: a brand-new DM nobody has claimed yet, so the
     # "Unassigned" owner filter shows a real inquiry to pick up (no lead lost).
@@ -3280,7 +3280,7 @@ def seed_demo_marketing_hub(user_id):
            "I saw the study in a Google ad. How many clinic visits are involved, "
            "and is there any help with travel costs?", 180),
           ("outbound", me,
-           "Hi Ben — I can send the study-team-approved visit schedule and "
+           "Hi Ben, I can send the study-team-approved visit schedule and "
            "reimbursement details. What is the best email for you?", 168)],
          study=mig)
 
@@ -3294,16 +3294,16 @@ def seed_demo_marketing_hub(user_id):
     _seq(recruit_id, "Robert Klein", "rklein@protonmail.com",
          "Follow-up after phone screen", jordan_id, "open", False,
          [("inbound", "contact",
-           "Following up on the phone screen from last week — any update on a "
+           "Following up on the phone screen from last week, any update on a "
            "screening visit date?", 260),
           ("outbound", jordan_id,
-           "Hi Robert — you're through the phone screen. I have Monday 9am or "
+           "Hi Robert, you're through the phone screen. I have Monday 9am or "
            "Wednesday 1pm for your in-person screening visit, which works?",
            248)], study=aze, stage="outreach")
     _seq(instagram_id, "Priya N.", "@priya.n.writes", "MDD study question",
          casey_id, "open", False,
          [("inbound", "contact",
-           "saw the depression study ad — do you need a referral from my "
+           "saw the depression study ad, do you need a referral from my "
            "psychiatrist or can i self refer?", 410)], study=aze)
 
     # ── Azetukalner Open-Label Extension (existing X-NOVA3 completers) ──────
@@ -3311,26 +3311,26 @@ def seed_demo_marketing_hub(user_id):
          "Eligible for the extension study?", me, "open", True,
          [("inbound", "contact",
            "I just finished the 12-week Azetukalner study. My coordinator "
-           "mentioned an open-label extension — am I eligible, and when would "
+           "mentioned an open-label extension, am I eligible, and when would "
            "it start?", 40),
           ("outbound", me,
-           "Hi Grace — yes, everyone who completes the double-blind period is "
+           "Hi Grace, yes, everyone who completes the double-blind period is "
            "eligible for the OLE. I'll confirm your exact start window and send "
            "the visit schedule by end of day.", 31)], study=azeo,
          stage="screening")
     _seq(recruit_id, "Marcus Reed", "marcus.reed@outlook.com",
          "OLE consent form questions", casey_id, "resolved", False,
          [("inbound", "contact",
-           "Got the extension consent form — two questions on the med washout "
+           "Got the extension consent form, two questions on the med washout "
            "section before I sign.", 1980),
           ("outbound", casey_id,
-           "Happy to walk through it — no washout needed since you're already "
+           "Happy to walk through it, no washout needed since you're already "
            "on study drug. I'll call you this afternoon to go over the rest.",
            1965)], study=azeo, stage="enrolled")
 
     # ── Seltorexant Monotherapy in MDD ───────────────────────────────────────
     _seq(recruit_id, "Wanda Price", "wanda.price@yahoo.com",
-         "Not currently on any antidepressant — eligible?", jordan_id, "open",
+         "Not currently on any antidepressant, eligible?", jordan_id, "open",
          True,
          [("inbound", "contact",
            "I stopped my antidepressant a few months ago and haven't restarted. "
@@ -3342,7 +3342,7 @@ def seed_demo_marketing_hub(user_id):
            "how many weeks total is the seltorexant study and how many visits "
            "in person vs phone?", 320),
           ("outbound", jordan_id,
-           "It's 8 weeks total — 2 in-person visits (screening + baseline) and "
+           "It's 8 weeks total, 2 in-person visits (screening + baseline) and "
            "the rest are quick phone or video check-ins.", 305)], study=selm,
          stage="outreach")
 
@@ -3354,21 +3354,21 @@ def seed_demo_marketing_hub(user_id):
            "spring. Is the long-term safety study something I can join, or is "
            "it only for new patients?", 95)], study=migl, stage="screening")
     _seq(ads_id, "Colin Deb", "colin.deb@icloud.com",
-         "Long-term safety study — side effect history", me, "open", False,
+         "Long-term safety study, side effect history", me, "open", False,
          [("inbound", "contact",
            "Saw the ad for the long-term migraine safety study. I had a bad "
-           "reaction to a triptan a few years back — does that exclude me?",
+           "reaction to a triptan a few years back, does that exclude me?",
            500)], study=migl)
 
     # ── Ubrogepant for Menstrual Migraine ────────────────────────────────────
     _seq(recruit_id, "Nadia Haddad", "nadia.haddad@gmail.com",
          "Timing screening visit around my cycle", casey_id, "open", True,
          [("inbound", "contact",
-           "My migraines are tied to my period, so timing matters — do I need "
+           "My migraines are tied to my period, so timing matters, do I need "
            "to schedule the screening visit for a specific day of my cycle?",
            50),
           ("outbound", casey_id,
-           "Good question — we'll time your screening to your expected next "
+           "Good question. We'll time your screening to your expected next "
            "cycle so we can confirm the pattern. What's your cycle length "
            "usually?", 44)], study=umm, stage="prescreen")
     _seq(instagram_id, "Tara O.", "@tara.okonkwo", "Menstrual migraine study",
@@ -6602,7 +6602,7 @@ def promote_doc_versions_for_update(user_id, update_id, effective_at=""):
 
 def reconsent_candidates(user_id, nct):
     """Enrolled/active (already-consented) participants on a trial this user
-    runs — the people who must re-consent when the protocol changes."""
+    runs, the people who must re-consent when the protocol changes."""
     if nct not in user_claimed_ncts(user_id):
         return []
     qs = ",".join("?" * len(RECONSENT_STATUSES))
