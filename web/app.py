@@ -197,10 +197,9 @@ if NO_LOGIN and IS_PROD and PUBLIC_DEMO:
 SITE_DEMO = os.environ.get("SITE_DEMO", "1") == "1"
 
 # Optional dedicated host for the site-side marketing site (e.g.
-# "sites.bridgemd.health"). When set AND a request arrives on that host, "/"
-# serves the for-sites page so it behaves like its own standalone website.
-# Empty by default => zero effect; the page still lives at /for-sites on the
-# main domain (so the "For sites" link and normal search keep working).
+# "sites.bridgemd.health"). Only used to build the "For sites" link, since "/"
+# serves the site-side page on every host now. Empty by default => the link
+# stays on the current domain.
 SITES_HOST = os.environ.get("SITES_HOST", "").strip().lower()
 
 # Booking link used by the "Book a demo" CTA on the site-side site.
@@ -1669,30 +1668,16 @@ def inject_globals():
 
 def _sites_home_url():
     """Absolute URL of the site-side site: the dedicated subdomain when
-    SITES_HOST is configured, otherwise the /for-sites route on the current
-    domain. Lets the 'For sites' link point at sites.bridgemd.health in prod
-    while still working locally / before DNS is set up."""
+    SITES_HOST is configured, otherwise the root of the current domain, which is
+    the site-side page. Lets the 'For sites' link point at sites.bridgemd.health
+    in prod while still working locally / before DNS is set up."""
     if SITES_HOST:
         scheme = "https" if os.environ.get("BEHIND_PROXY") else request.scheme
         return f"{scheme}://{SITES_HOST}/"
     try:
         return url_for("for_sites")
     except Exception:
-        return "/for-sites"
-
-
-@app.before_request
-def _serve_sites_subdomain():
-    """When a request lands on the dedicated site-side host (SITES_HOST), serve
-    the for-sites marketing page at the root so it behaves like its own website
-    (e.g. sites.bridgemd.health). No effect unless SITES_HOST is set and matches
-    the request host, so it is completely inert in dev / on the main domain."""
-    if not SITES_HOST:
-        return None
-    host = (request.host or "").split(":")[0].lower()
-    if host == SITES_HOST and request.path == "/":
-        return for_sites()
-    return None
+        return "/"
 
 
 @app.route("/demo-mode", methods=["POST"])
@@ -4299,10 +4284,11 @@ def build_patient_note(condition, age="", sex="", about="", pregnant="",
     return "\n".join(lines)
 
 
-@app.route("/")
+@app.route("/find-trial")
 def home():
-    # Home should always be the public search landing.
-    # Users can switch surfaces from the POV switcher.
+    # The patient search landing. It used to be the site root; the root is now
+    # the site-side page, so patient links (which all go through url_for("home"))
+    # follow this rule instead.
     return _render_landing()
 
 
@@ -5265,13 +5251,13 @@ def for_clinicians():
     return redirect(_sites_home_url(), code=301)
 
 
-@app.route("/for-sites")
+@app.route("/")
 def for_sites():
-    """Flagship site-side product site for research sites & sponsors/CROs: a modern
-    overview of the coordinator OS with an INTEGRATED live demo (the real app in
-    SITE_DEMO mode, embedded), honest capability stats, and a security/legal
-    section with truthful status labels (SOC 2 shown as In progress - never a
-    fabricated certification). Patient-free by design to keep the page role-pure."""
+    """The front door: the site-side product page for research sites and
+    sponsors/CROs. One inbox for every study inquiry, an embedded live demo (the
+    real app in SITE_DEMO mode), and a security/legal section with truthful status
+    labels (SOC 2 shown as In progress - never a fabricated certification).
+    Patients get their own front door at url_for("home"), linked from the footer."""
     _log_event("view_for_sites")
     try:
         conditions_count = len(SEO_CONDITIONS)
@@ -5285,6 +5271,13 @@ def for_sites():
         "for_sites.html", legal_contact=LEGAL_CONTACT,
         conditions_count=conditions_count, cities_count=cities_count,
         cal_link=CAL_LINK, site_demo=_site_demo_enabled())
+
+
+@app.route("/for-sites")
+def for_sites_home_legacy():
+    """The site-side page lived at /for-sites before it became the front door.
+    301 so old links, ads and bookmarks keep working on one canonical URL."""
+    return redirect(url_for("for_sites"), code=301)
 
 
 def _marketing_time_label(raw):

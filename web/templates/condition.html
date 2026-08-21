@@ -50,7 +50,7 @@
 
 {% block body %}
 <section class="cond-hero">
-  <nav class="crumbs"><a href="{{ url_for('home') }}">Home</a> ›
+  <nav class="crumbs"><a href="{{ url_for('home') }}">Find a trial</a> ›
     <a href="{{ url_for('condition_page', slug=slugify(condition)) }}">{{ condition }}</a>
     {% if city %} › <span>{{ city }}</span>{% endif %}
   </nav>

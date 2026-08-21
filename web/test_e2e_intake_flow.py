@@ -98,10 +98,10 @@ def main():
     site = webapp.app.test_client()
 
     # 1) Anonymous discovery still works.
-    r = patient.get("/")
+    r = patient.get("/find-trial")
     if r.status_code != 200:
-        _fail("home page", f"status {r.status_code}")
-    _pass("home page")
+        _fail("patient search page", f"status {r.status_code}")
+    _pass("patient search page")
 
     # 2) Patient signup + verify + onboarding.
     r = _post(

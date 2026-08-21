@@ -103,6 +103,9 @@
       <a href="{{ hub }}#pricing">Pricing</a>
       <a href="{{ hub }}#security">Security</a>
       <a href="{{ url_for('blog_index') }}">Resources</a>
+      {# The root is the site-side pitch now, so patients who land here need a
+         way through to the trial search. #}
+      <a href="{{ url_for('home') }}">Find a trial</a>
       <a href="{{ url_for('login') }}">Sign in</a>
       <a href="{{ url_for('privacy') }}">Privacy</a>
       <a href="{{ url_for('terms') }}">Terms</a>

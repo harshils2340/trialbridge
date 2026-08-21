@@ -2,6 +2,9 @@
 {% import "_icons.html" as ic %}
 {% import "_ui.html" as ui %}
 {% block title %}BridgeMD - find recruiting clinical trials{% endblock %}
+{# /find (GET) renders this same landing, so point both at one canonical URL
+   instead of splitting the signal between two paths. #}
+{% block canonical %}<link rel="canonical" href="{{ url_for('home', _external=True) }}">{% endblock %}
 
 {% block pub_nav_extra %}
 {% if patient_user and records_ui %}
