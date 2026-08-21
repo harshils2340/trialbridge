@@ -84,7 +84,6 @@ import records as records_mod  # noqa: E402
 import redcap  # noqa: E402
 import reminders as reminders_mod  # noqa: E402
 import sites_features  # noqa: E402
-import blog_posts  # noqa: E402
 import summarize  # noqa: E402
 import trends  # noqa: E402
 import ctis  # noqa: E402
@@ -4472,7 +4471,6 @@ def _render_landing():
                            location_value=location_prefill,
                            patient_ctx=patient_ctx,
                            home_stats=HOME_STATS,
-                           learn_posts=blog_posts.list_patient_posts(3),
                            landing_page=True)
 
 
@@ -6358,29 +6356,18 @@ def for_sites_feature(slug):
     return redirect(url_for("for_sites") + "#how", code=301)
 
 
+# The public blog / resources section was removed from the product. The route
+# names are kept as permanent (301) redirects to the sites home so old inbound
+# links and search-indexed URLs don't 404, and so any stray url_for("blog_index")
+# still builds instead of crashing a page.
 @app.route("/blog")
 def blog_index():
-    """Site-side blog / resources: plain-English, source-cited writing for research
-    sites and coordinators. Content lives in blog_posts.py. Marketing/credibility
-    surface (top of the B2B funnel); makes no claims about BridgeMD's own results."""
-    _log_event("view_blog")
-    return render_template(
-        "blog_index.html", blog_posts=blog_posts.list_posts(), cal_link=CAL_LINK)
+    return redirect(url_for("for_sites"), code=301)
 
 
 @app.route("/blog/<slug>")
 def blog_post(slug):
-    """One blog post. 404 on an unknown slug rather than an empty shell. The
-    {demo} token in the body is resolved to the product tour at render time so the
-    soft CTA points somewhere real."""
-    post = blog_posts.get(slug)
-    if post is None:
-        abort(404)
-    post = dict(post)
-    post["body"] = (post.get("body") or "").replace(
-        "{demo}", url_for("for_sites") + "#demo")
-    _log_event("view_blog_post", slug)
-    return render_template("blog_post.html", post=post, cal_link=CAL_LINK)
+    return redirect(url_for("for_sites"), code=301)
 
 
 @app.route("/privacy")
@@ -13325,12 +13312,9 @@ def sitemap():
 def sitemap_static():
     wk = _week_lastmod()
     urls = [(_sitemap_loc(e), wk) for e in
-            ("home", "find", "trials_index", "how_it_works", "for_sites",
-             "blog_index")]
+            ("home", "find", "trials_index", "how_it_works", "for_sites")]
     urls += [(_sitemap_loc("for_sites_feature", slug=f["slug"]), wk)
              for f in sites_features.nav_items()]
-    urls += [(_sitemap_loc("blog_post", slug=p["slug"]), wk)
-             for p in blog_posts.list_posts()]
     return _sitemap_xml(urls)
 
 

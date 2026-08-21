@@ -94,7 +94,6 @@
   <a class="brand" href="{{ url_for('home') }}">{{ ic.icon('mark', 'brand-glyph') }}BridgeMD</a>
   {# Landing pages for both patients and sites - no login/account UI anywhere. #}
   <nav class="pub-nav-center" aria-label="Primary">
-    <a href="{{ url_for('blog_index') }}">Learn</a>
     <a href="{{ sites_home_url }}">For sites</a>
   </nav>
   <div class="pub-nav-auth">
@@ -129,7 +128,7 @@
   <div class="pub-foot-legal">
     <p class="pub-foot-disc">Information and trial-matching tool - not medical advice, and not the study
       sponsor. Trial details come from ClinicalTrials.gov; the study team decides eligibility.</p>
-    <p class="pub-foot-links"><a href="{{ url_for('trials_index') }}">Browse trials</a> · <a href="{{ url_for('blog_index') }}">Learn</a> · <a href="{{ url_for('privacy') }}">Privacy</a> · <a href="{{ url_for('terms') }}">Terms</a></p>
+    <p class="pub-foot-links"><a href="{{ url_for('trials_index') }}">Browse trials</a> · <a href="{{ url_for('privacy') }}">Privacy</a> · <a href="{{ url_for('terms') }}">Terms</a></p>
   </div>
 </footer>
 {% endblock %}

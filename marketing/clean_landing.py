@@ -333,7 +333,7 @@ ROUTE_CARD = (
 EMBED_HTML = (
     '<section id="bmd-embed"><div class="bmd-embed-wrap">'
     '<div class="bmd-embed-head">'
-    '<span class="pill">BridgeMD Inside</span>'
+    '<span class="pill">BridgeMD Embed</span>'
     '<h2>Two ways to run the trial finder</h2>'
     '<p class="lead">Use it as a standalone site your team can share anywhere, or embed '
     'it straight into your hospital, clinic, or partner website, tailored to the '
@@ -389,9 +389,6 @@ FAQ_ITEMS = [
     ("Which channels does it connect?",
      "Email, website forms, Instagram, Facebook, Google Ads, ClinicalTrials.gov, and "
      "physician referrals, all sorted by study in one shared inbox."),
-    ("Do physicians pay to use it?",
-     "No. BridgeMD is free for physicians. Sites, sponsors, and CROs pay a flat SaaS "
-     "license, never per referral or per enrolled patient."),
     ("Does it decide who is eligible?",
      "No. BridgeMD runs the inbox: it captures, sorts, and routes inquiries so your "
      "team can respond and move suitable people toward screening. It does not decide "
@@ -765,6 +762,9 @@ SOURCES_HTML = (
     'by study. The replies your team sends go right back out to the same '
     'channel.</p>'
     + _build_beams() +
+    '<p class="bmd-src-note">Don&rsquo;t see your channel? '
+    '<a href="' + CAL + '" target="_blank" rel="noopener">Contact us</a> '
+    'and we&rsquo;ll look at adding it.</p>'
     '</div></section>'
 )
 
@@ -869,12 +869,12 @@ COPY = [
      "One shared inbox for clinical research teams to manage patient recruitment."),
     # nav labels (SSR). >word< keeps the match scoped to the visible link text.
     # Mapped by ORIGINAL Saify label (Home/About/Solution/Pricing) so there is no
-    # cascade. Final nav (L->R): Why us, Product, Trial finder, FAQ. hrefs are wired
-    # separately in _wire_nav() below (all four ship pointing at /site-preview).
+    # cascade. Final nav (L->R): Why us, Product, Trial finder, Embed. hrefs are
+    # wired separately in _wire_nav() below (all four ship pointing at /site-preview).
     (">Home<", ">Why us<"),
     (">About<", ">Product<"),
     (">Solution<", ">Trial finder<"),
-    (">Pricing<", ">FAQ<"),
+    (">Pricing<", ">Embed<"),
     # nav labels (JS bundle). Framer bakes the SAME text into its component bundle as
     # backtick string literals (children:`About`, defaultValue:`Solution`, ...). The
     # >word< entries above never match those, so on hydrate Framer re-renders the nav
@@ -883,7 +883,7 @@ COPY = [
     ("`Home`", "`Why us`"),
     ("`About`", "`Product`"),
     ("`Solution`", "`Trial finder`"),
-    ("`Pricing`", "`FAQ`"),
+    ("`Pricing`", "`Embed`"),
 ]
 
 # Real BridgeMD product screenshots (captured from the running demo) that replace the
@@ -1261,35 +1261,13 @@ def build(dst, colormap, asset_prefix, raster_hue=None, accent="#1257b0"):
             r'((?:(?!</a>).)*?<p[^>]*>' + re.escape(label) + r'</p>)', re.S)
         return pat.sub(
             lambda m: m.group(1) + 'href="' + href + '"' + extra + m.group(2), html)
-    # Add a 5th nav item, "Embed", by cloning the whole "FAQ" nav slot (the
-    # <!--$--><div class="framer-*-container">...<a>...</a></div><!--/$--> unit, not just
-    # the anchor - cloning only the <a> crams two links into one fixed-width slot and they
-    # stack). Duplicating a real slot keeps it consistent across SSR variants and survives
-    # Framer hydration. The clone still points at /site-preview here; _wire_nav repoints it.
-    def _add_embed_nav(html):
-        i = html.find(">FAQ</p>")
-        if i == -1:
-            return html
-        cpos = html.rfind('-container"', 0, i)
-        div_open = html.rfind('<div class="framer-', 0, cpos) if cpos != -1 else -1
-        ae = html.find("</a>", i)
-        if div_open == -1 or ae == -1:
-            return html
-        div_close = html.find("</div>", ae)
-        if div_close == -1:
-            return html
-        start = div_open - 8 if html[div_open - 8:div_open] == "<!--$-->" else div_open
-        end = div_close + len("</div>")
-        if html[end:end + 8] == "<!--/$-->":
-            end += 8
-        clone = html[start:end].replace(">FAQ</p>", ">Embed</p>")
-        return html[:end] + clone + html[end:]
-    h = _add_embed_nav(h)
-
+    # The 4th nav slot (originally Saify "Pricing") is relabeled straight to
+    # "Embed" above, so there's no clone step and no FAQ link in the header. The
+    # FAQ section still ships on the page (injected below), just without a nav link
+    # - one fewer item and no cloned slot means a smoother header on hydrate.
     h = _wire_nav(h, "Why us", "#features")
     h = _wire_nav(h, "Product", APP_HOME)
     h = _wire_nav(h, "Trial finder", FINDER_URL, newtab=True)
-    h = _wire_nav(h, "FAQ", "#bmd-faq")
     h = _wire_nav(h, "Embed", "#bmd-embed")
 
     # The footer "Product" link ships as a bare <a>Product</a> (no inner <p>), so it
@@ -1467,11 +1445,16 @@ def build(dst, colormap, asset_prefix, raster_hue=None, accent="#1257b0"):
         # collapses that spacer and the logo crowds "Why us". Keep max-width comfortably
         # above the content's natural width, and hold the spacer open with a real floor
         # so there is always a clear gap between the logo and the links.
-        'html.bmd-scrolled .framer-1m624rr{max-width:716px!important;'
+        'html.bmd-scrolled .framer-1m624rr{max-width:848px!important;'
         'padding:8px 12px!important;'
         'box-shadow:rgba(2,2,18,.10) 0px 12px 30px -10px,'
         'rgba(2,2,18,.06) 0px 6px 12px -6px}'
         'html.bmd-scrolled .framer-16rkffi{min-width:40px}'
+        # Nav spacing: leave Framer's own layout alone. The pill is [logo | Nav | CTA]
+        # where the Nav wrapper is flex:1 with place-content:center, so the links are
+        # already centered with equal gaps to the logo and the CTA (the reference
+        # "Saify" look). Earlier hacks (auto-margins / min-width overrides) only pushed
+        # the links off-center, so no nav-centering CSS is injected here on purpose.
         '@media(min-width:810px){html.bmd-scrolled .framer-bfsnv8-container{top:8px}}'
         # reduced motion: no shimmer, reveals shown immediately
         '@media(prefers-reduced-motion:reduce){[class*="text-shimmer-"]{animation:none}'
@@ -1554,8 +1537,10 @@ def build(dst, colormap, asset_prefix, raster_hue=None, accent="#1257b0"):
         'font-family:"Figtree",system-ui,-apple-system,sans-serif}'
         '#bmd-sources .bmd-bn-c2{fill:#7486a3;font-size:12px;font-weight:600;'
         'font-family:"Figtree",system-ui,-apple-system,sans-serif}'
-        '#bmd-sources .bmd-src-attr{margin:22px auto 0;color:#9aa3b4;font-size:11.5px}'
-        '#bmd-sources .bmd-src-attr a{color:#7b8494;text-decoration:underline}'
+        '#bmd-sources .bmd-src-note{margin:30px auto 0;color:#5b6478;font-size:15px}'
+        '#bmd-sources .bmd-src-note a{color:#1257b0;font-weight:700;'
+        'text-decoration:none;border-bottom:1px solid rgba(18,87,176,.35)}'
+        '#bmd-sources .bmd-src-note a:hover{border-bottom-color:#1257b0}'
         '@media(max-width:640px){#bmd-sources .bmd-src-title{font-size:26px}}'
         # Comets are inline SMIL animateMotion (classes get stripped by hydration), so
         # disable motion by targeting every animate/animateMotion in the diagram.
@@ -1699,6 +1684,20 @@ def build(dst, colormap, asset_prefix, raster_hue=None, accent="#1257b0"):
     # same-origin links, so a later listener never sees the click; being first wins.
     if click_js not in h:
         h = h.replace('<head>', '<head>' + click_js, 1)
+
+    # BridgeMD favicon across the landing page. Framer shipped its own favicon and
+    # the asset isn't even localized into landing/assets, so the old links 404.
+    # Strip every Framer icon / apple-touch link and inject the real BridgeMD set,
+    # served from Flask static (+ the root /favicon.ico route).
+    h = re.sub(r'<link\b[^>]*\brel="(?:icon|apple-touch-icon)"[^>]*>', '', h)
+    bmd_favicon = (
+        '<link rel="icon" type="image/svg+xml" href="/static/logo.svg">'
+        '<link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32.png">'
+        '<link rel="icon" type="image/png" sizes="16x16" href="/static/favicon-16.png">'
+        '<link rel="icon" href="/favicon.ico" sizes="any">'
+        '<link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">')
+    if 'href="/static/favicon-32.png"' not in h:
+        h = h.replace('<head>', '<head>' + bmd_favicon, 1)
 
     # Safety net: if the appear animation never runs (JS failure), don't leave any
     # appear element stuck hidden -> reveal anything still transparent after 2.5s.
