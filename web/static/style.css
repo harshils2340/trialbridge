@@ -6386,13 +6386,7 @@ body.fs-page { background:
 .fs-qm { display: grid; place-items: center; width: 14px; flex: none; color: var(--muted); }
 .fs-qm svg { width: 14px; height: 14px; }
 
-/* Scroll-reveal: elements get .fs-reveal added by JS (so no-JS keeps them visible),
-   then .is-in when they enter the viewport. Subtle, professional fade-up. */
-.fs-reveal { opacity: 0; transform: translateY(18px);
-  transition: opacity .6s cubic-bezier(.16,1,.3,1), transform .6s cubic-bezier(.16,1,.3,1); }
-.fs-reveal.is-in { opacity: 1; transform: none; }
 @media (prefers-reduced-motion: reduce) {
-  .fs-reveal, .fs-reveal.is-in { opacity: 1; transform: none; transition: none; }
   .fs-hv-panel { transition: none; transform: none; }
   .fs-hv-panel.is-active .fs-qrow,
   .fs-hv-panel.is-active .fs-hv-chip,
@@ -6482,7 +6476,6 @@ body.fs-page { background:
 .fs-btn-primary:hover { background: var(--btn-hover); transform: translateY(-1px); box-shadow: var(--shadow-lift); }
 .fs-btn-ghost { background: var(--surface); color: var(--ink); border-color: var(--border-strong); }
 .fs-btn-ghost:hover { border-color: var(--accent); color: var(--accent); }
-.fs-btn-block { width: 100%; justify-content: center; margin-top: 6px; }
 .fs-btn-sm { padding: 9px 16px; font-size: 14px; }
 /* Hero CTA: the primary conversion button, made long and given an accent-tinted
    glow so it clearly pops off the page. */
@@ -6807,7 +6800,9 @@ body.fs-page { background:
 
 /* Sections */
 .fs-section { padding: 68px 24px; max-width: 1120px; margin: 0 auto; }
-.fs-section[id] { scroll-margin-top: 78px; }   /* clear the sticky nav on anchor jumps */
+/* Clear the sticky nav on anchor jumps, for both section generations: #how,
+   #pricing and #demo are .fsx-section, #security is still .fs-section. */
+.fs-section[id], .fsx-section[id] { scroll-margin-top: 78px; }
 .fs-section-wide { max-width: 1280px; }
 .fs-section-alt { max-width: none; background: var(--bg); }
 .fs-section-alt > * { max-width: 1120px; margin-inline: auto; }
@@ -7385,26 +7380,6 @@ body.fs-page { background:
 .fs-also-card b { font-size: 14.5px; color: #fff; }
 .fs-also-card span { font-size: 12.5px; line-height: 1.5; color: rgba(255,255,255,.62); }
 
-/* Contact */
-.fs-contact { max-width: 1120px; }
-.fs-contact-card { display: grid; grid-template-columns: .9fr 1.1fr; gap: 40px; align-items: center;
-  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg);
-  padding: 40px; box-shadow: var(--shadow-lift); }
-.fs-contact-copy h2 { font-family: var(--sans); font-size: clamp(26px, 3vw, 34px); letter-spacing: -.03em;
-  color: var(--ink); margin: 0 0 12px; font-weight: 800; }
-.fs-contact-copy p { font-size: 15.5px; color: var(--muted); line-height: 1.5; margin: 0 0 18px; }
-.fs-form { display: flex; flex-direction: column; gap: 12px; }
-.fs-form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-.fs-field { display: flex; flex-direction: column; gap: 6px; }
-.fs-field > span { font-size: 13px; font-weight: 600; color: var(--ink); }
-.fs-field em { color: var(--faint); font-weight: 400; font-style: normal; }
-.fs-field input, .fs-field select, .fs-field textarea { width: 100%; padding: 11px 13px;
-  border: 1px solid var(--border-strong); border-radius: var(--radius-sm); font-size: 15px;
-  font-family: inherit; color: var(--ink); background: var(--surface); }
-.fs-field input:focus, .fs-field select:focus, .fs-field textarea:focus { outline: none;
-  border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
-.fs-form-or { font-size: 13px; color: var(--muted); text-align: center; margin: 4px 0 0; }
-
 @media (max-width: 1040px) {
   .fs-also-grid { grid-template-columns: repeat(2, 1fr); }
   .fs-sec-grid-3 { grid-template-columns: repeat(2, 1fr); }
@@ -7412,8 +7387,6 @@ body.fs-page { background:
 }
 
 @media (max-width: 760px) {
-  /* Same 16px floor as the base fields, so focusing one does not zoom iOS. */
-  .fs-field input, .fs-field select, .fs-field textarea { font-size: 16px; }
   /* Tabs scroll sideways instead of stacking into a wall of buttons, and the
      screenshots show whole rather than cropping to the app's sidebar. */
   .fs-tabs { width: auto; flex-wrap: nowrap; justify-content: flex-start; overflow-x: auto; }
@@ -7462,7 +7435,7 @@ body.fs-page { background:
 }
 
 @media (max-width: 900px) {
-  .fs-pillars, .fs-safe, .fs-sec-grid, .fs-stats-in, .fs-contact-card, .fs-soc,
+  .fs-pillars, .fs-safe, .fs-sec-grid, .fs-stats-in, .fs-soc,
   .fs-split { grid-template-columns: 1fr; }
   .fs-stats-in { grid-template-columns: repeat(2, 1fr); gap: 30px 0; }
   /* In a 2-col grid the divider only belongs between the two columns, i.e. on the
@@ -7470,7 +7443,6 @@ body.fs-page { background:
   .fs-stat + .fs-stat { border-left: 0; }
   .fs-stat:nth-child(2n) { border-left: 1px solid var(--border); }
   .fs-safe { grid-template-columns: repeat(2, 1fr); }
-  .fs-form-row { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 520px) {
@@ -8960,19 +8932,22 @@ body.fs-page { background:
 /* ===================================================================== *
  * Sites marketing page v2 (for_sites.html): clean, inbox-focused.        *
  * Namespaced .fsx-* so it never collides with the legacy .fs-* styles     *
- * still used by the security + contact sections on the same page.         *
+ * still used by the security section on the same page.                    *
  * ===================================================================== */
-.fsx-hero { max-width:1120px; margin:0 auto; padding:72px 24px 40px; text-align:center; }
+.fsx-hero { max-width:1120px; margin:0 auto; padding:88px 24px 44px; text-align:center; }
 .fsx-eyebrow { display:inline-flex; align-items:center; gap:7px; font-size:13px;
   font-weight:700; color:var(--accent); background:var(--accent-soft);
-  padding:6px 14px; border-radius:var(--radius-pill); margin-bottom:22px; }
+  padding:6px 14px; border-radius:var(--radius-pill); margin-bottom:26px; }
 .fsx-eyebrow svg { width:15px; height:15px; }
-.fsx-hero h1 { font-family:var(--sans); font-size:clamp(34px, 5.2vw, 60px); line-height:1.05;
-  letter-spacing:-.03em; font-weight:800; color:var(--display); margin:0 0 20px; }
+/* Display-scale headline: the hero carries the page, so the two lines run as
+   large as the column allows before the shot takes over. */
+.fsx-hero h1 { font-family:var(--sans); font-size:clamp(33px, 6.6vw, 76px); line-height:1.02;
+  letter-spacing:-.035em; font-weight:800; color:var(--display); max-width:900px;
+  margin:0 auto 22px; }
 .fsx-grad { background:linear-gradient(100deg, var(--accent), #3fa39a);
   -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; }
-.fsx-sub { max-width:640px; margin:0 auto 28px; font-size:clamp(16px, 2vw, 19px);
-  line-height:1.55; color:var(--muted); }
+.fsx-sub { max-width:700px; margin:0 auto 30px; font-size:clamp(16.5px, 2.1vw, 20px);
+  line-height:1.5; color:var(--muted); text-wrap:balance; }
 .fsx-cta { display:flex; gap:12px; justify-content:center; flex-wrap:wrap; }
 .fsx-btn { display:inline-flex; align-items:center; gap:8px; padding:13px 22px;
   border-radius:var(--radius-pill); font-size:15px; font-weight:700; text-decoration:none;
@@ -9094,16 +9069,34 @@ body.fs-page { background:
 .fsx-list li { display:flex; align-items:center; gap:8px; font-size:14px; color:var(--ink-soft); font-weight:600; }
 .fsx-list svg { width:16px; height:16px; color:var(--ok); flex-shrink:0; }
 
-/* Scroll reveal (shared with the legacy .fs-reveal on this page) */
-.fsx-head.fs-reveal, .fsx-feature.fs-reveal, .fsx-step.fs-reveal,
-.fsx-proof-stat.fs-reveal {
+/* Closing CTA: one action on the page's last screen — book the demo. */
+.fsx-close { max-width:720px; margin:0 auto; text-align:center; padding:46px 32px;
+  background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-lg);
+  box-shadow:var(--shadow-lift); }
+.fsx-close .brand-glyph { margin:0 auto 18px; }
+.fsx-close h2 { font-size:clamp(26px, 3.4vw, 34px); line-height:1.14; letter-spacing:-.025em;
+  font-weight:800; color:var(--display); margin:0 0 12px; }
+.fsx-close .fsx-lead { max-width:520px; margin:0 auto 26px; }
+
+/* Scroll reveal. The hidden state hangs off html.fs-motion, which an inline
+   script in the head sets before the first paint (see for_sites.html), so a
+   block is never painted visible and then hidden again. */
+html.fs-motion .fsx-head, html.fs-motion .fsx-feature, html.fs-motion .fsx-step,
+html.fs-motion .fsx-proof-stat, html.fs-motion .fsx-close,
+html.fs-motion .fs-frame, html.fs-motion .fs-dt {
   opacity:0; transform:translateY(14px); transition:opacity .5s ease, transform .5s ease; }
-.fsx-head.is-in, .fsx-feature.is-in, .fsx-step.is-in,
-.fsx-proof-stat.is-in { opacity:1; transform:none; }
+html.fs-motion .is-in { opacity:1; transform:none; }
 /* Stagger the four proof numbers so the value band reads left-to-right. */
-.fsx-proof-stat.fs-reveal:nth-child(2) { transition-delay:.06s; }
-.fsx-proof-stat.fs-reveal:nth-child(3) { transition-delay:.12s; }
-.fsx-proof-stat.fs-reveal:nth-child(4) { transition-delay:.18s; }
+html.fs-motion .fsx-proof-stat:nth-child(2) { transition-delay:.06s; }
+html.fs-motion .fsx-proof-stat:nth-child(3) { transition-delay:.12s; }
+html.fs-motion .fsx-proof-stat:nth-child(4) { transition-delay:.18s; }
+@media (prefers-reduced-motion: reduce) {
+  /* Belt and braces if the preference changes after the class is set. */
+  html.fs-motion .fsx-head, html.fs-motion .fsx-feature, html.fs-motion .fsx-step,
+  html.fs-motion .fsx-proof-stat, html.fs-motion .fsx-close,
+  html.fs-motion .fs-frame, html.fs-motion .fs-dt {
+    opacity:1; transform:none; transition:none; }
+}
 
 /* ── Premium touches: soft hero backdrop, on-load entrance, card lift ── */
 .fsx-hero { position:relative; overflow:hidden; }

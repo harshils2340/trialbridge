@@ -16,7 +16,6 @@
       <a href="{{ hub }}#pricing">Pricing</a>
       <a href="{{ hub }}#security">Security</a>
       <a href="{{ url_for('blog_index') }}">Resources</a>
-      <a href="{{ hub }}#contact">Contact</a>
     </nav>
     <div class="fs-nav-cta">
       <a class="fs-nav-signin" href="{{ url_for('login') }}">Sign in</a>
@@ -32,7 +31,6 @@
       <a class="fs-sheet-row" href="{{ hub }}#pricing">Pricing</a>
       <a class="fs-sheet-row" href="{{ hub }}#security">Security &amp; legal</a>
       <a class="fs-sheet-row" href="{{ url_for('blog_index') }}">Resources</a>
-      <a class="fs-sheet-row" href="{{ hub }}#contact">Contact</a>
       <a class="fs-sheet-row" href="{{ url_for('login') }}">Sign in</a>
     </div>
   </div>
@@ -105,6 +103,9 @@
       <a href="{{ hub }}#pricing">Pricing</a>
       <a href="{{ hub }}#security">Security</a>
       <a href="{{ url_for('blog_index') }}">Resources</a>
+      {# The root is the site-side pitch now, so patients who land here need a
+         way through to the trial search. #}
+      <a href="{{ url_for('home') }}">Find a trial</a>
       <a href="{{ url_for('login') }}">Sign in</a>
       <a href="{{ url_for('privacy') }}">Privacy</a>
       <a href="{{ url_for('terms') }}">Terms</a>

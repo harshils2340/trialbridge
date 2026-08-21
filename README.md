@@ -54,7 +54,8 @@ How patients and sites find BridgeMD, and how sites run recruitment.
 - **Campaigns** — paste a trial, get a recommended ad, post it, and track spend
   and ROI to close the loop. Code in `web/campaigns.py`, `web/adrender.py`.
 - **Analytics** — visitor funnel and source attribution (`web/analytics.py`).
-- **Marketing site** — `/for-sites` explains the product to study teams.
+- **Marketing site** — `/` explains the product to study teams (the patient trial
+  search lives at `/find-trial`; `/for-sites` 301s to the root).
 
 ---
 
