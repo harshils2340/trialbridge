@@ -5427,14 +5427,19 @@ def marketing_hub():
     stage_filter = (request.args.get("stage") or "all").strip().lower()
     if stage_filter not in ("all",) + db.MARKETING_PIPELINE_STAGES:
         stage_filter = "all"
-    # Ownership triage filter, persisted in the session like the study scope so it
-    # survives status/stage/search navigation without threading a param through
-    # every link. ?owner=mine|unassigned sets it; ?owner= (empty) clears it.
+    # Private inbox by default: you only see conversations assigned to you
+    # ("mine"), plus the shared "unassigned" queue of new inquiries nobody owns
+    # yet so intake never disappears. There is deliberately no "see everyone"
+    # view - a teammate's conversation only reaches you when it is assigned to you
+    # (directly or via away/coverage routing). Persisted in session like the study
+    # scope so it survives status/stage/search navigation.
     owner_param = request.args.get("owner")
     if owner_param is not None:
         session["mh_owner"] = (owner_param
-                               if owner_param in ("mine", "unassigned") else "")
-    owner_filter = session.get("mh_owner", "")
+                               if owner_param in ("mine", "unassigned") else "mine")
+    owner_filter = session.get("mh_owner", "mine")
+    if owner_filter not in ("mine", "unassigned"):
+        owner_filter = "mine"
 
     # Scope the whole inbox to the trial chosen in the top switcher, so switching
     # studies shows a different set of people - each trial reads as its own inbox.
@@ -5543,6 +5548,9 @@ def marketing_hub():
                                         assignee=owner_filter)
     counts["sources"] = sum(1 for source in sources
                             if source["status"] == "connected")
+    # Count of unclaimed inquiries so the "Unassigned" toggle can badge new intake.
+    unassigned_count = db.marketing_thread_counts(
+        g.user["id"], nct=active_nct, assignee="unassigned")["open"]
 
     return render_template(
         "marketing_hub.html", sources=sources, threads=threads,
@@ -5552,7 +5560,7 @@ def marketing_hub():
         status_filter=status, channel_filter=channel, search_query=query,
         source_filter=source_filter, active_nct=active_nct,
         stage_filter=stage_filter, stage_counts=stage_counts,
-        owner_filter=owner_filter,
+        owner_filter=owner_filter, unassigned_count=unassigned_count,
         applicant=applicant, eligibility=eligibility,
         records_profile=records_profile, records_data=records_data,
         checklist=checklist,

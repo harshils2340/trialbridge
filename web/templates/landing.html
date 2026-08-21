@@ -136,24 +136,7 @@
     </div>
     {% endif %}
 
-    {% if patient_ctx %}
-    <div class="home-you">
-      <div class="home-you-links">
-        <a class="home-you-link" href="{{ url_for('applications') }}">{{ ic.icon('activity') }} Your applications {% if patient_ctx.apps_count %}{{ ui.count(patient_ctx.apps_count) }}{% endif %}</a>
-        <a class="home-you-link" href="{{ url_for('alerts') }}">{{ ic.icon('sparkle') }} Your alerts {% if patient_ctx.alerts_count %}{{ ui.count(patient_ctx.alerts_count) }}{% endif %}</a>
-      </div>
-      {% if patient_ctx.recent %}
-      <div class="chip-row">
-        <span class="chip-label">Search again</span>
-        <div class="chip-cluster">
-          {% for c in patient_ctx.recent %}
-          <button type="button" class="chip recent-chip" data-cond="{{ c }}">{{ c }}</button>
-          {% endfor %}
-        </div>
-      </div>
-      {% endif %}
-    </div>
-    {% elif not pov_demo %}
+    {% if not pov_demo %}
     <div class="chips-block">
       <div class="chip-row">
         <span class="chip-label">Trending</span>
@@ -217,9 +200,86 @@
     </div>
   </section>
 
-  {# Objection-busting FAQ: answers the real fears people post on Reddit before
-     applying (scam? paid? safe? what happens next?). Truthful, neutral framing
-     only - no sponsor recruitment claims, no inflated pay promises. #}
+  {# For research sites: this finder doubles as the live demo sites embed, so the
+     pitch gets real estate here. Two ways to run it + a 3-step "how embedding
+     works". Different audience from the patient flow above, kept clearly labeled. #}
+  <section class="lx-section embed-pitch" aria-label="For research sites">
+    <div class="embed-pitch-head">
+      <span class="eyebrow-mini">BridgeMD Inside</span>
+      <h2 class="lx-h2 lx-center">Run a study? Put this trial finder on your own site.</h2>
+      <p class="embed-lead">Use BridgeMD as a standalone finder like this one, or embed it
+        into your hospital or clinic website, tailored to the studies you run. Either way,
+        every inquiry lands in your team&rsquo;s shared inbox.</p>
+    </div>
+
+    <div class="embed-ways">
+      <div class="embed-way">
+        <span class="embed-way-ic">{{ ic.icon('external') }}</span>
+        <h3>Standalone finder</h3>
+        <p>Send patients to a hosted finder like this page, branded to your program.
+          Nothing to build or maintain.</p>
+      </div>
+      <div class="embed-way">
+        <span class="embed-way-ic">{{ ic.icon('grid') }}</span>
+        <h3>Embedded on your site</h3>
+        <p>Drop the finder straight into your hospital or clinic website, scoped to the
+          exact studies you are recruiting for.</p>
+      </div>
+    </div>
+
+    <div class="embed-steps">
+      <span class="embed-steps-label">How embedding works</span>
+      <div class="embed-steps-grid">
+        <div class="embed-step">
+          <span class="embed-step-n">01</span>
+          <h4>Pick your studies</h4>
+          <p>Choose which trials show and tailor the pre-screen questions to your protocols.</p>
+        </div>
+        <div class="embed-step">
+          <span class="embed-step-n">02</span>
+          <h4>Add one snippet</h4>
+          <p>Paste a single embed snippet into your site, or link out to a hosted page.
+            No engineering project.</p>
+        </div>
+        <div class="embed-step">
+          <span class="embed-step-n">03</span>
+          <h4>Inquiries hit your inbox</h4>
+          <p>Every interested patient lands in your team&rsquo;s shared inbox, ready to
+            triage and respond.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="lx-cta">
+      <a class="btn btn-primary btn-lg" href="{{ url_for('for_sites') }}#bmd-embed">See how embedding works {{ ic.icon('arrow-right') }}</a>
+    </div>
+  </section>
+
+  <section class="lx-section home-learn" aria-label="Clinical trial guides">
+    <div class="home-learn-head">
+      <div>
+        <span class="eyebrow-mini">Learn before you apply</span>
+        <h2 class="lx-h2">Simple guides, no enrollment promises.</h2>
+        <p>Understand eligibility, safety, privacy, payment, and what happens after
+          you apply. The study team still makes the final decision.</p>
+      </div>
+      <a class="link-btn home-learn-all" href="{{ url_for('blog_index') }}">See all guides {{ ic.icon('arrow-right') }}</a>
+    </div>
+    <div class="home-learn-grid">
+      {% for p in learn_posts %}
+      <a class="home-learn-card" href="{{ url_for('blog_post', slug=p.slug) }}">
+        <span>{{ p.tag }}</span>
+        <h3>{{ p.title }}</h3>
+        <p>{{ p.dek }}</p>
+        <b>BridgeMD guide · {{ p.date_h }} · {{ p.read }} min read</b>
+      </a>
+      {% endfor %}
+    </div>
+  </section>
+
+  {# Objection-busting FAQ: answers the real fears people post before applying
+     (scam? paid? safe? what happens next?). Truthful, neutral framing only - no
+     sponsor recruitment claims, no inflated pay promises. Kept at the very end. #}
   <section class="lx-section" aria-label="Common questions">
     <h2 class="lx-h2 lx-center">Questions people ask before applying</h2>
     <div class="faq-list">
@@ -254,41 +314,6 @@
     </div>
     <div class="lx-cta">
       <button type="button" class="btn btn-primary btn-lg" id="faqCta">Find trials near you {{ ic.icon('arrow-right') }}</button>
-    </div>
-  </section>
-
-  <section class="lx-section home-learn" aria-label="Clinical trial guides">
-    <div class="home-learn-head">
-      <div>
-        <span class="eyebrow-mini">Learn before you apply</span>
-        <h2 class="lx-h2">Simple guides, no enrollment promises.</h2>
-        <p>Understand eligibility, safety, privacy, payment, and what happens after
-          you apply. The study team still makes the final decision.</p>
-      </div>
-      <a class="link-btn home-learn-all" href="{{ url_for('blog_index') }}">See all guides {{ ic.icon('arrow-right') }}</a>
-    </div>
-    <div class="home-learn-grid">
-      {% for p in learn_posts %}
-      <a class="home-learn-card" href="{{ url_for('blog_post', slug=p.slug) }}">
-        <span>{{ p.tag }}</span>
-        <h3>{{ p.title }}</h3>
-        <p>{{ p.dek }}</p>
-        <b>BridgeMD guide · {{ p.date_h }} · {{ p.read }} min read</b>
-      </a>
-      {% endfor %}
-    </div>
-  </section>
-
-  {# Site-facing callout (different audience: research sites). Kept minimal and near the
-     very bottom so it never interrupts the patient search flow above. #}
-  <section class="lx-section site-embed-cta" aria-label="For research sites">
-    <div class="site-embed-inner">
-      <span class="eyebrow-mini">For research sites</span>
-      <h2 class="lx-h2">Run a study? Put this trial finder on your own site.</h2>
-      <p>Use BridgeMD as a standalone finder like this one, or embed it into your
-        hospital or clinic website, tailored to the studies you run. Either way, every
-        inquiry lands in your team&rsquo;s shared inbox.</p>
-      <a class="btn btn-primary btn-lg" href="{{ url_for('for_sites') }}#bmd-embed">See how embedding works {{ ic.icon('arrow-right') }}</a>
     </div>
   </section>
 

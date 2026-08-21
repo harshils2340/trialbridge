@@ -40,22 +40,6 @@
           </select>
         </form>
         {% endif %}
-        {% if counts.sources %}
-        <form method="get" action="{{ url_for('marketing_hub') }}" class="mh-scope">
-          {# Owner triage persists in the session, but carry the other active
-             filters so switching owner doesn't reset status/stage/search. #}
-          <input type="hidden" name="status" value="{{ status_filter }}">
-          <input type="hidden" name="stage" value="{{ stage_filter }}">
-          {% if source_filter %}<input type="hidden" name="source" value="{{ source_filter }}">{% endif %}
-          {% if channel_filter %}<input type="hidden" name="channel" value="{{ channel_filter }}">{% endif %}
-          {% if search_query %}<input type="hidden" name="q" value="{{ search_query }}">{% endif %}
-          <select name="owner" data-autosubmit aria-label="Filter this inbox by owner">
-            <option value="" {{ 'selected' if not owner_filter }}>All owners</option>
-            <option value="mine" {{ 'selected' if owner_filter == 'mine' }}>Mine</option>
-            <option value="unassigned" {{ 'selected' if owner_filter == 'unassigned' }}>Unassigned</option>
-          </select>
-        </form>
-        {% endif %}
         <form method="get" action="{{ url_for('marketing_hub') }}" class="mh-search">
           {{ ic.icon('search') }}
           <input name="q" type="search" value="{{ search_query }}" placeholder="Search conversations" aria-label="Search conversations">
@@ -66,6 +50,18 @@
         {{ ui.icon_btn('Manage connected accounts', 'cloud-sync', extra='data-ui-open="sourceModal"') }}
         {{ ui.icon_btn('Create a test conversation', 'plus', extra='data-ui-open="testThreadModal"', disabled=not counts.sources) }}
       </div>
+      {% if counts.sources %}
+      {# Private inbox by default: two buckets only - your own conversations, and
+         the shared unclaimed queue so new inquiries can be picked up. There is no
+         "everyone's inbox" view on purpose; a teammate's conversation reaches you
+         only when it is assigned to you (directly or via away/coverage routing). #}
+      <div class="mh-owner-toggle" role="group" aria-label="Inbox scope">
+        <a class="{{ 'is-active' if owner_filter != 'unassigned' }}"
+           href="{{ url_for('marketing_hub', owner='mine', status=status_filter) }}">{{ ic.icon('inbox') }} My inbox</a>
+        <a class="{{ 'is-active' if owner_filter == 'unassigned' }}"
+           href="{{ url_for('marketing_hub', owner='unassigned', status=status_filter) }}">Unassigned{% if unassigned_count %} <span>{{ unassigned_count }}</span>{% endif %}</a>
+      </div>
+      {% endif %}
       <nav class="mh-thread-tabs" aria-label="Conversation status">
         <a class="{{ 'is-active' if status_filter == 'open' else '' }}" href="{{ url_for('marketing_hub', status='open', source=source_filter, channel=channel_filter, q=search_query) }}">Open <span>{{ counts.open }}</span></a>
         <a class="{{ 'is-active' if status_filter == 'resolved' else '' }}" href="{{ url_for('marketing_hub', status='resolved', source=source_filter, channel=channel_filter, q=search_query) }}">Resolved <span>{{ counts.resolved }}</span></a>
@@ -199,19 +195,6 @@
           </form>
         </div>
       </header>
-
-      <div class="mh-pipeline" aria-label="Recruitment progress">
-        {% set current_stage = active.pipeline_stage or 'new' %}
-        {% set progress_stages = ['new','outreach','prescreen','screening','enrolled'] %}
-        {% set stage_order = {'new':0,'outreach':1,'prescreen':2,'screening':3,'enrolled':4} %}
-        {% set current_index = stage_order.get(current_stage, -1) %}
-        {% for key in progress_stages %}
-        <span class="{{ 'is-done' if current_index > loop.index0 else 'is-active' if current_index == loop.index0 else '' }}">
-          <i>{{ ic.icon('check') if current_index > loop.index0 else loop.index }}</i>
-          <b>{{ stage_labels[key] }}</b>
-        </span>
-        {% endfor %}
-      </div>
 
       {% if not applicant and not (active.channel == 'google_ads' and active.contact_handle == 'Automated alert') %}
       <section class="mh-link-applicant" data-ui-reveal>

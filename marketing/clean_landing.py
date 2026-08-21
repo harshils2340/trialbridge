@@ -18,7 +18,7 @@ system python is missing Pillow, so both crash with `ModuleNotFoundError: PIL`.
 Pillow is a build-only dep (only this file imports it), so it is intentionally not
 in matcher/web/requirements.txt, which is the web app's deploy manifest.
 """
-import re, shutil, os, json
+import re, shutil, os, json, time, urllib.request
 
 # Resolve inputs/outputs relative to this script, not the caller's cwd, so the build
 # is reproducible from anywhere. Inputs (marketing_test/, product_shots/) sit next to
@@ -34,6 +34,12 @@ APP_HOME = "/app/home"
 # Framer's CDN image base. It appears in both the JS chunks and the SSR HTML; both get
 # repointed at our local assets so hydration can't reset <img> src to the remote original.
 CDN_IMG = "https://framerusercontent.com/images/"
+# Real brand logos via apistemic's free logo API (Clearbit alternative, no key).
+# Used nominatively to show which channels flow in; the hand-drawn SVG for each
+# stays behind it as a fallback so a failed/blocked request never renders blank.
+# Free tier requires a visible attribution link (rendered under the diagram).
+# https://logos.apistemic.com/
+LOGO_API = "https://logos-api.apistemic.com/domain:"
 
 # Hero copy: clear, direct BridgeMD value prop. No em dashes, no AI slop.
 EYEBROW = "One inbox for every recruitment channel"
@@ -89,6 +95,9 @@ STATS_TEXT = [
 # "AI slop" -- wrong font, wrong layout.)
 EMBED_CSS = (
     '#bmd-embed{font-family:"Figtree",system-ui,-apple-system,sans-serif;'
+    # Match Framer's Figtree stylistic sets (single-story a/g, etc.) so this
+    # section's glyphs are identical to the rest of the page, not a "different font".
+    'font-feature-settings:"cv09" 1,"cv03" 1,"cv04" 1,"cv11" 1,"blwf" 1;'
     "background:#f5f7fb;padding:110px 24px}"
     "#bmd-embed .bmd-embed-wrap{max-width:1120px;margin:0 auto}"
     "#bmd-embed .bmd-embed-head{text-align:center;max-width:660px;margin:0 auto 54px}"
@@ -194,6 +203,35 @@ EMBED_CSS = (
     "#bmd-embed .bmd-tcard{flex-direction:column}"
     "#bmd-embed .bmd-tc-side{flex-direction:row;align-items:center;"
     "justify-content:space-between;width:100%}}"
+    # --- Stage: browser mockup + floating "auto-routed to a person" card ---
+    "#bmd-embed .bmd-embed-stage{position:relative;max-width:1000px;margin:0 auto 64px}"
+    "#bmd-embed .bmd-embed-stage .bmd-embed-frame{margin:0 auto}"
+    "#bmd-embed .bmd-route-card{position:absolute;right:-6px;bottom:-36px;width:322px;"
+    "background:#fff;border:1px solid rgba(18,87,176,.16);border-radius:16px;"
+    "box-shadow:0 26px 64px -24px rgba(18,40,90,.55);padding:15px 16px 14px}"
+    "#bmd-embed .bmd-rc-head{display:flex;align-items:center;gap:8px;margin-bottom:11px}"
+    "#bmd-embed .bmd-rc-mark{display:inline-flex}"
+    "#bmd-embed .bmd-rc-mark svg{width:20px;height:20px}"
+    "#bmd-embed .bmd-rc-title{font-weight:800;color:#12122b;font-size:14px;"
+    "letter-spacing:-.01em}"
+    "#bmd-embed .bmd-rc-count{margin-left:auto;background:#eaf1fb;color:#1257b0;"
+    "font-size:11px;font-weight:700;padding:2px 9px;border-radius:999px}"
+    "#bmd-embed .bmd-rc-row{display:flex;gap:10px;align-items:flex-start;"
+    "padding:11px 12px;background:#f7faff;border:1px solid #e6ecf5;border-radius:11px}"
+    "#bmd-embed .bmd-rc-dot{width:8px;height:8px;border-radius:50%;background:#1257b0;"
+    "margin-top:5px;flex:0 0 auto}"
+    "#bmd-embed .bmd-rc-name{font-weight:700;color:#12122b;font-size:13px;line-height:1.3}"
+    "#bmd-embed .bmd-rc-sub{color:#64748b;font-size:11.5px;margin-top:2px}"
+    "#bmd-embed .bmd-rc-route{display:flex;gap:9px;align-items:flex-start;"
+    "margin:12px 4px 0;font-size:12.5px;color:#516079;line-height:1.4}"
+    "#bmd-embed .bmd-rc-route svg{width:17px;height:17px;color:#15803d;flex:0 0 auto;"
+    "margin-top:1px}"
+    "#bmd-embed .bmd-rc-route b{color:#12122b;font-weight:700}"
+    "#bmd-embed .bmd-rc-note{margin:10px 4px 0;font-size:11.5px;color:#94a3b8;"
+    "line-height:1.45}"
+    "@media(max-width:980px){#bmd-embed .bmd-embed-stage{margin-bottom:50px}"
+    "#bmd-embed .bmd-route-card{position:static;width:auto;max-width:420px;"
+    "right:auto;bottom:auto;margin:18px auto 0}}"
 )
 
 _SVG = ('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" '
@@ -214,6 +252,7 @@ _IC_CROSS = _SVG % ('<rect x="4.5" y="4.5" width="15" height="15" rx="4"/>'
 _IC_SEARCH2 = _SVG % '<circle cx="11" cy="11" r="7"/><path d="M20.5 20.5l-4-4"/>'
 _IC_PIN = _SVG % ('<path d="M12 21s7-5.5 7-11a7 7 0 1 0-14 0c0 5.5 7 11 7 11z"/>'
                   '<circle cx="12" cy="10" r="2.5"/>')
+_IC_ROUTE = _SVG % ('<path d="M5 5v6a4 4 0 0 0 4 4h8"/><path d="M14 11l4 4-4 4"/>')
 _EMB_MARK = (
     '<svg viewBox="0 0 512 512" fill-rule="evenodd" aria-hidden="true">'
     '<path fill="#7fb3e6" d="M142 96H254A46 46 0 0 1 300 142V254A46 46 0 0 1 254 300H142'
@@ -270,6 +309,27 @@ EMBED_MOCK = (
     '</div></div></div>'
 )
 
+# Companion card that floats over the browser mockup: shows what happens the moment
+# a patient hits "Apply" -- the inquiry lands in the shared inbox and is auto-routed
+# to the right coordinator, no email/forwarding. Illustrative demo data (no real
+# patient, no recruitment/payment claim). This is the Operational Efficiency story:
+# cuts triage/cycle time, redirecting coordinator time into screening/enrolling.
+ROUTE_CARD = (
+    '<div class="bmd-route-card" aria-hidden="true">'
+    f'<div class="bmd-rc-head"><span class="bmd-rc-mark">{_EMB_MARK}</span>'
+    '<span class="bmd-rc-title">Shared inbox</span>'
+    '<span class="bmd-rc-count">1 new</span></div>'
+    '<div class="bmd-rc-row"><span class="bmd-rc-dot"></span>'
+    '<div class="bmd-rc-main"><div class="bmd-rc-name">New inquiry &middot; Lupus '
+    'nephritis</div>'
+    '<div class="bmd-rc-sub">via St. Mary&rsquo;s finder &middot; just now</div></div></div>'
+    f'<div class="bmd-rc-route">{_IC_ROUTE}<span>Auto-routed to <b>Sarah&nbsp;T.</b>, '
+    'Lupus&nbsp;Nephritis coordinator</span></div>'
+    '<div class="bmd-rc-note">On the right person&rsquo;s desk in seconds. No email, '
+    'no forwarding.</div>'
+    '</div>'
+)
+
 EMBED_HTML = (
     '<section id="bmd-embed"><div class="bmd-embed-wrap">'
     '<div class="bmd-embed-head">'
@@ -280,7 +340,7 @@ EMBED_HTML = (
     'studies you run. Either way, people search your trials without leaving that site, '
     'and every inquiry lands in your shared inbox, sorted and routed to your team.</p>'
     '</div>'
-    + EMBED_MOCK +
+    + '<div class="bmd-embed-stage">' + EMBED_MOCK + ROUTE_CARD + '</div>' +
     '<div class="bmd-embed-grid">'
     f'<div class="bmd-embed-card"><span class="ic">{_IC_SNIPPET}</span>'
     '<h3>One snippet to embed</h3>'
@@ -432,16 +492,34 @@ _L_IG = ('<svg viewBox="0 0 24 24" aria-hidden="true"><defs><radialGradient id="
 _L_FB = ('<svg viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="6" fill="#0866FF"/>'
          '<path fill="#fff" d="M15.35 12.5l.42-2.63h-2.52V8.16c0-.72.35-1.42 1.48-1.42h1.15V4.5s-1.04-.18-2.04-.18'
          'c-2.08 0-3.44 1.26-3.44 3.54v2.01H8.05v2.63h2.35V19h2.85v-6.5z"/></svg>')
-_L_GMAIL = ('<svg viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="6" fill="#EA4335"/>'
-            '<g transform="translate(12 12) scale(.82) translate(-12 -12)"><path fill="#fff" '
-            'd="M24 5.457v13.909c0 .904-.732 1.636-1.636 1.636h-3.819V11.73L12 16.64l-6.545-4.91v9.273H1.636'
-            'A1.636 1.636 0 0 1 0 19.366V5.457c0-2.023 2.309-3.178 3.927-1.964L5.455 4.64 12 9.548l6.545-4.91'
-            ' 1.528-1.145C21.69 2.28 24 3.434 24 5.457z"/></g></svg>')
-_L_OUTLOOK = ('<svg viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="6" fill="#0F6CBD"/>'
-              '<rect x="10.5" y="7" width="9" height="10" rx="1" fill="#fff"/>'
-              '<path fill="#0F6CBD" d="M11 8.5l4 2.6 4-2.6v-.3a.7.7 0 0 0-.7-.7h-6.6a.7.7 0 0 0-.7.7z"/>'
-              '<ellipse cx="8" cy="12" rx="4" ry="4.4" fill="#0A5AA0"/>'
-              '<ellipse cx="8" cy="12" rx="1.7" ry="2.1" fill="#fff"/></svg>')
+# Official Gmail mark: the multicolour "M" envelope on a clean white app tile (the
+# universally recognised icon), drawn ourselves so we control it fully (no apistemic
+# hotlink, no attribution needed, no mismatched art). 48x48 canonical paths scaled
+# into the 24x24 tile with padding.
+_L_GMAIL = ('<svg viewBox="0 0 24 24" aria-hidden="true">'
+            '<rect width="24" height="24" rx="6" fill="#fff"/>'
+            '<g transform="translate(3.4 4.6) scale(0.358)">'
+            '<path fill="#4caf50" d="M45,16.2l-5,2.75l-5,4.75L35,40h7c1.657,0,3-1.343,3-3V16.2z"/>'
+            '<path fill="#1e88e5" d="M3,16.2l3.614,1.71L13,23.7V40H6c-1.657,0-3-1.343-3-3V16.2z"/>'
+            '<polygon fill="#e53935" points="35,11.2 24,19.45 13,11.2 12,17 13,23.7 24,31.95 35,23.7 36,17"/>'
+            '<path fill="#c62828" d="M3,12.298V16.2l10,7.5V11.2L9.876,8.859C9.132,8.301,8.228,8,7.298,8'
+            'C4.924,8,3,9.924,3,12.298z"/>'
+            '<path fill="#fbc02d" d="M45,12.298V16.2l-10,7.5V11.2l3.124-2.341C38.868,8.301,39.772,8,40.702,8'
+            'C43.076,8,45,9.924,45,12.298z"/>'
+            '</g></svg>')
+# Official-style Outlook mark: the light-blue envelope with the dark-blue "O" badge in
+# front, on a clean white app tile (matches the recognisable icon). Drawn ourselves so
+# there is no apistemic hotlink (outlook.com there returns the generic Microsoft mark).
+_L_OUTLOOK = ('<svg viewBox="0 0 24 24" aria-hidden="true">'
+              '<rect width="24" height="24" rx="6" fill="#fff"/>'
+              '<rect x="11.4" y="6.2" width="8.2" height="3.6" rx="0.6" fill="#0f6cbd"/>'
+              '<rect x="12.2" y="6.9" width="2.1" height="2.2" fill="#1b8ade"/>'
+              '<rect x="15" y="6.9" width="2.1" height="2.2" fill="#3ba1e3"/>'
+              '<path fill="#33aae6" d="M10.8 10h8.8v6.9a1 1 0 0 1-1 1h-6.8a1 1 0 0 1-1-1z"/>'
+              '<path fill="#1b8ade" d="M10.8 10h8.8v.6l-4.4 3-4.4-3z"/>'
+              '<rect x="3.8" y="8.7" width="8.7" height="8.7" rx="1.4" fill="#0364b8"/>'
+              '<ellipse cx="8.15" cy="13.05" rx="2.35" ry="2.85" fill="none" stroke="#fff" '
+              'stroke-width="1.5"/></svg>')
 _L_CTGOV = ('<svg viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="6" fill="#20558A"/>'
             '<path fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" '
             'd="M4 13h3l2-4.5 2.6 8 2-10 1.8 6.5H20"/></svg>')
@@ -467,17 +545,23 @@ _L_REDDIT = ('<svg viewBox="0 0 24 24" aria-hidden="true"><rect width="24" heigh
              '<circle cx="12.4" cy="7" r="1" fill="#fff"/>'
              '<path d="M12.4 7l4.2 1.1" stroke="#fff" stroke-width="1" fill="none" stroke-linecap="round"/></svg>')
 
-# (svg, label, brand colour). The colour tints the animated dot that flows from that
-# source down the funnel into the single inbox, so each channel is traceable.
+# (svg fallback, label, brand colour, apistemic domain). The colour is kept for
+# data completeness; `domain` (when set) pulls the real brand logo from the logo
+# API and layers it over the drawn fallback. Web forms / CT.gov / REDCap have no
+# clean consumer logo, so they keep their drawn mark (domain left blank).
 SOURCE_ITEMS = [
-    (_L_IG, "Instagram", "#E1306C"),
-    (_L_FB, "Facebook", "#0866FF"),
-    (_L_REDDIT, "Reddit", "#FF4500"),
-    (_L_GMAIL, "Gmail", "#EA4335"),
-    (_L_OUTLOOK, "Outlook", "#0F6CBD"),
-    (_L_CTGOV, "ClinicalTrials.gov", "#20558A"),
-    (_L_REDCAP, "REDCap", "#C00000"),
-    (_L_FORMS, "Web forms", "#1257b0"),
+    (_L_IG, "Instagram", "#E1306C", "instagram.com"),
+    (_L_FB, "Facebook", "#0866FF", "facebook.com"),
+    (_L_REDDIT, "Reddit", "#FF4500", "reddit.com"),
+    # Gmail uses our own clean drawn mark (apistemic returned a mismatched/ugly art),
+    # so no domain -> no hotlink for it.
+    (_L_GMAIL, "Gmail", "#EA4335", ""),
+    # outlook.com resolves to the generic Microsoft 4-square mark (mismatches the
+    # "Outlook" label), so keep the drawn Outlook envelope instead.
+    (_L_OUTLOOK, "Outlook", "#0F6CBD", ""),
+    (_L_CTGOV, "ClinicalTrials.gov", "#20558A", ""),
+    (_L_REDCAP, "REDCap", "#C00000", ""),
+    (_L_FORMS, "Web forms", "#1257b0", ""),
 ]
 
 
@@ -490,72 +574,111 @@ def _place_svg(svg, cx, cy, size):
         f'height="{size}" viewBox="0 0 24 24">', 1)
 
 
+def _node_logo(svg, domain, cx, cy, size):
+    """Small inline logo (used in the centre inbox rows): the drawn brand SVG as a
+    fallback, with the real apistemic logo layered on top when we have a domain. If the
+    remote image fails to load, the drawn mark underneath still shows."""
+    out = _place_svg(svg, cx, cy, size)
+    if domain:
+        out += (f'<image x="{cx - size / 2:.0f}" y="{cy - size / 2:.0f}" width="{size}" '
+                f'height="{size}" href="{LOGO_API}{domain}" '
+                f'preserveAspectRatio="xMidYMid meet"/>')
+    return out
+
+
+def _node_tile(svg, domain, cx, cy, s, uid):
+    """One channel node as a uniform rounded-square app tile: same size, same corner
+    radius, same soft shadow for EVERY channel so real logos and drawn marks read as one
+    consistent set (no white-circle-behind-a-coloured-tile double container). The drawn
+    SVG sits underneath as a fallback; the real apistemic logo is layered on top, clipped
+    to the tile's rounded corners and slice-filled so square-cornered logos still round
+    off cleanly and fill edge to edge."""
+    half = s / 2.0
+    x0, y0 = cx - half, cy - half
+    rx = round(s * 0.26)  # ~13 at s=50 -> matches the drawn tiles' scaled 6/24 radius
+    out = f'<g filter="url(#bmdtile)">'
+    out += _place_svg(svg, cx, cy, s)  # fallback under
+    if domain:
+        cid = f"bmdclip{uid}"
+        out += (f'<clipPath id="{cid}"><rect x="{x0:.0f}" y="{y0:.0f}" width="{s:.0f}" '
+                f'height="{s:.0f}" rx="{rx}"/></clipPath>'
+                f'<image x="{x0:.0f}" y="{y0:.0f}" width="{s:.0f}" height="{s:.0f}" '
+                f'href="{LOGO_API}{domain}" preserveAspectRatio="xMidYMid slice" '
+                f'clip-path="url(#{cid})"/>')
+    out += '</g>'
+    return out
+
+
 def _build_beams():
-    """Magic-UI-style animated beam network: the BridgeMD inbox sits in the middle, the
-    source logos flank it left/right, and a brand-coloured beam travels along each curved
-    connector into the centre (SMIL stroke-dashoffset over a normalized pathLength, so
-    speed is uniform and it scales with the viewBox). One self-contained SVG, no JS."""
+    """Animated beam network: the BridgeMD inbox sits in the middle, the source logos
+    flank it left/right, and a bright streak glides along each curved connector into the
+    centre. The streak is a single dash swept with SMIL stroke-dashoffset over a
+    normalized pathLength (=100), so it follows the curve EXACTLY and at uniform speed -
+    no horizontal-gradient window that only lights where a vertical band crosses the
+    path (the old janky look). One self-contained SVG, no JS."""
     w, h, cx, cy = 920, 480, 460, 240
     lx, rx, tile = 118, 802, 52
     ys = [72, 184, 296, 408]
     left = SOURCE_ITEMS[:4]
     right = SOURCE_ITEMS[4:]
-    # centre inbox-card edges the beams dock onto
-    c_l, c_r = 330, 590
+    # centre inbox-card geometry (enlarged so it reads as the clear focal point). The
+    # card is centred on (cx,cy); every header/row coord below is derived from these so
+    # resizing the card keeps everything aligned. Beams dock onto its left/right edges.
+    cardw, cardh = 320, 214
+    cardx, cardy = cx - cardw // 2, cy - cardh // 2
+    c_l, c_r = cardx, cardx + cardw
 
-    beams_base, beams_in, grad_defs, nodes = [], [], [], []
-    beam_col = "#4f7bf0"   # one calm brand-blue for every beam (no rainbow clutter)
-    win = 150              # width of the moving highlight window (user-space units)
+    paths, comets, nodes = [], [], []
+    beam_col = "#3b6ef2"   # one calm brand-blue for every comet (no rainbow clutter)
+    dur = 2.6              # seconds for a dot to travel source -> inbox
+    n_total = 8            # spread the 8 comets evenly across `dur` for a steady flow
+    tile_s = 50            # uniform node tile size
 
-    def add(items, x, is_left):
-        for i, ((svg, name, color), y) in enumerate(zip(items, ys)):
-            k = f"{'l' if is_left else 'r'}{i}"
+    # Comet = a soft glow dot + a crisp head + a few lagging tail dots, all riding the
+    # SAME path via animateMotion so they follow the curve EXACTLY (no stroke-dash
+    # fragments). (radius, opacity, time-lag behind the head). Tighter lags read as a
+    # continuous streak rather than separate dots.
+    comet_parts = [(7.0, 0.28, 0.00, True),   # blurred glow halo
+                   (3.6, 1.00, 0.00, False),  # bright head
+                   (2.9, 0.55, 0.05, False),  # tail
+                   (2.2, 0.32, 0.10, False),
+                   (1.5, 0.16, 0.15, False)]
+
+    def add(items, x, is_left, base_idx):
+        for i, ((svg, name, color, domain), y) in enumerate(zip(items, ys)):
+            gi = base_idx + i                        # global comet index (0..7)
+            pid = f"bmp{'l' if is_left else 'r'}{i}"
             if is_left:
                 sx = x + tile / 2 - 6
-                endx = c_l
-                d = f"M{sx:.0f},{y} C300,{y} 322,{cy} {c_l},{cy}"
+                d = f"M{sx:.0f},{y} C{c_l - 30},{y} {c_l - 8},{cy} {c_l},{cy}"
             else:
                 sx = x - tile / 2 + 6
-                endx = c_r
-                d = f"M{sx:.0f},{y} C620,{y} 598,{cy} {c_r},{cy}"
-            # Stagger starts so only a couple of beams are lit at once (calm, not busy).
-            beg = i * 0.6 + (0 if is_left else 0.3)
-            # Faint static lane. Fill/stroke are inline presentation attributes (not CSS
-            # classes): Framer's hydration can drop classes on injected inline-SVG
-            # children, and a filled bezier renders as an ugly black wedge.
-            beams_base.append(
-                f'<path d="{d}" fill="none" stroke="#e7edf6" stroke-width="1.6"/>')
-            # A gradient "comet" glides source -> inbox: a soft highlight window slides
-            # horizontally (userSpaceOnUse), and where its bright midpoint crosses the
-            # curve is the lit point, so it reads as travelling along the beam. Pure SMIL.
-            grad_defs.append(
-                f'<linearGradient id="bm{k}" gradientUnits="userSpaceOnUse" '
-                f'x1="{sx - win / 2:.0f}" y1="{cy}" x2="{sx + win / 2:.0f}" y2="{cy}">'
-                f'<stop offset="0" stop-color="{beam_col}" stop-opacity="0"/>'
-                f'<stop offset="0.5" stop-color="{beam_col}" stop-opacity="1"/>'
-                f'<stop offset="1" stop-color="{beam_col}" stop-opacity="0"/>'
-                f'<animate attributeName="x1" values="{sx - win / 2:.0f};{endx - win / 2:.0f}" '
-                f'dur="2.4s" begin="{beg:.2f}s" repeatCount="indefinite"/>'
-                f'<animate attributeName="x2" values="{sx + win / 2:.0f};{endx + win / 2:.0f}" '
-                f'dur="2.4s" begin="{beg:.2f}s" repeatCount="indefinite"/>'
-                '</linearGradient>')
-            # Blurred underlay for the glow, then the crisp beam on top.
-            beams_in.append(
-                f'<path d="{d}" fill="none" stroke="url(#bm{k})" stroke-width="7" '
-                'stroke-linecap="round" opacity="0.35" filter="url(#bmdglow)"/>'
-                f'<path d="{d}" fill="none" stroke="url(#bm{k})" stroke-width="3" '
-                'stroke-linecap="round"/>')
-            # Clean white circular node with the brand logo centred inside (matches the
-            # reference: consistent circular nodes, not raw app tiles).
+                d = f"M{sx:.0f},{y} C{c_r + 30},{y} {c_r + 8},{cy} {c_r},{cy}"
+            # Faint static lane the comet rides along. Inline presentation attrs (not CSS
+            # classes): hydration can drop classes on injected inline-SVG children.
+            paths.append(
+                f'<path id="{pid}" d="{d}" fill="none" stroke="#e6ecf7" '
+                'stroke-width="1.6"/>')
+            # A comet <circle> has no cx/cy (animateMotion translates it from the SVG
+            # origin), so a POSITIVE begin delay would leave it parked at (0,0) until it
+            # starts. Use a NEGATIVE begin instead: every comet is already mid-flight at
+            # the first frame, staggered by gi*step, and never sits at the corner.
+            beg = gi * (dur / n_total)               # stagger magnitude
+            for r, op, lag, blur in comet_parts:
+                flt = ' filter="url(#bmdglow)"' if blur else ''
+                comets.append(
+                    f'<circle r="{r}" fill="{beam_col}" opacity="{op}"{flt}>'
+                    f'<animateMotion dur="{dur}s" begin="{-(dur + beg + lag):.2f}s" '
+                    f'calcMode="linear" repeatCount="indefinite" rotate="auto">'
+                    f'<mpath href="#{pid}" xlink:href="#{pid}"/></animateMotion></circle>')
+            # Uniform rounded-square app tile (real logo, drawn fallback under).
             nodes.append(
-                f'<circle cx="{x}" cy="{y}" r="27" fill="#fff" stroke="#eceff5" '
-                'stroke-width="1" filter="url(#bmdsh)"/>'
-                f'{_place_svg(svg, x, y, 34)}'
-                f'<text class="bmd-bn-lbl" x="{x}" y="{y + 49:.0f}" '
+                f'{_node_tile(svg, domain, x, y, tile_s, pid)}'
+                f'<text class="bmd-bn-lbl" x="{x}" y="{y + tile_s / 2 + 22:.0f}" '
                 f'text-anchor="middle">{name}</text>')
 
-    add(left, lx, True)
-    add(right, rx, False)
+    add(left, lx, True, 0)
+    add(right, rx, False, 4)
 
     glow = (
         f'<circle cx="{cx}" cy="{cy}" r="92" fill="#1257b0" opacity=".07">'
@@ -566,16 +689,18 @@ def _build_beams():
     # Centre = a small but real-looking inbox card: header (icon + "Shared inbox" +
     # count) and a few message rows, each with its source logo, so the "one inbox"
     # target is unmistakable. All text/shape styling is inline (hydration-proof).
-    cardx, cardy, cardw, cardh = 330, 158, 260, 182
     rows = [
-        (_L_IG, "Instagram", "&ldquo;how do I join?&rdquo;", True),
-        (_L_GMAIL, "Gmail", "&ldquo;evening appt?&rdquo;", False),
-        (_L_CTGOV, "CT.gov", "new referral", False),
+        (_L_IG, "Instagram", "&ldquo;how do I join?&rdquo;", True, "instagram.com"),
+        (_L_GMAIL, "Gmail", "&ldquo;evening appt?&rdquo;", False, ""),
+        (_L_CTGOV, "CT.gov", "new referral", False, ""),
     ]
     ff = 'font-family="Figtree,system-ui,sans-serif"'
+    # All header/row coords are derived from cardx/cardy/cardw so the card can be
+    # resized in one place (above) without anything drifting out of alignment.
+    hdr_div = cardy + 44             # divider under the header
     rows_svg = ""
-    ry0, rh = 200, 44
-    for j, (svg, nm, pv, unread) in enumerate(rows):
+    ry0, rh = cardy + 48, 52
+    for j, (svg, nm, pv, unread, domain) in enumerate(rows):
         ry = ry0 + j * rh
         if j == 0:
             rows_svg += (f'<rect x="{cardx}" y="{ry}" width="{cardw}" height="{rh}" '
@@ -583,17 +708,18 @@ def _build_beams():
         else:
             rows_svg += (f'<line x1="{cardx + 16}" y1="{ry}" x2="{cardx + cardw - 16}" '
                          f'y2="{ry}" stroke="#f3f6fb" stroke-width="1"/>')
-        rows_svg += _place_svg(svg, cardx + 23, ry + rh / 2, 26)
-        rows_svg += (f'<text x="{cardx + 48}" y="{ry + 19}" {ff} font-size="15" '
+        rows_svg += _node_logo(svg, domain, cardx + 26, ry + rh / 2, 28)
+        rows_svg += (f'<text x="{cardx + 54}" y="{ry + 21}" {ff} font-size="16" '
                      f'font-weight="700" fill="#1f2a44">{nm}</text>')
-        rows_svg += (f'<text x="{cardx + 48}" y="{ry + 34}" {ff} font-size="12.5" '
+        rows_svg += (f'<text x="{cardx + 54}" y="{ry + 38}" {ff} font-size="13" '
                      f'font-weight="500" fill="#7b8798">{pv}</text>')
         if unread:
-            rows_svg += (f'<circle cx="{cardx + cardw - 16}" cy="{ry + 16}" r="4" '
+            rows_svg += (f'<circle cx="{cardx + cardw - 18}" cy="{ry + 18}" r="4.5" '
                          'fill="#1257b0"/>')
     inbox_icon = (
-        '<svg x="345" y="171" width="20" height="20" viewBox="0 0 24 24" fill="none" '
-        'stroke="#1257b0" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">'
+        f'<svg x="{cardx + 16:.0f}" y="{cardy + 14:.0f}" width="22" height="22" '
+        'viewBox="0 0 24 24" fill="none" stroke="#1257b0" stroke-width="1.8" '
+        'stroke-linecap="round" stroke-linejoin="round">'
         '<path d="M3.5 12.5V6a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2v6.5"/>'
         '<path d="M3.5 12.5H8l1.5 2.5h5L16 12.5h4.5V18a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/>'
         '</svg>')
@@ -601,27 +727,32 @@ def _build_beams():
         f'<g filter="url(#bmdsh)"><rect x="{cardx}" y="{cardy}" width="{cardw}" '
         f'height="{cardh}" rx="18" fill="#fff" stroke="rgba(18,87,176,.16)"/></g>'
         + inbox_icon
-        + f'<text x="372" y="186" {ff} font-size="16" font-weight="800" '
-        'fill="#12122b">Shared inbox</text>'
-        + f'<rect x="550" y="172" width="32" height="18" rx="9" fill="#eef2f8"/>'
-        + f'<text x="566" y="185" {ff} font-size="11" font-weight="700" fill="#516079" '
-        'text-anchor="middle">12</text>'
-        + f'<line x1="{cardx}" y1="197" x2="{cardx + cardw}" y2="197" stroke="#eef2f8" '
-        'stroke-width="1"/>'
+        + f'<text x="{cardx + 46:.0f}" y="{cardy + 30:.0f}" {ff} font-size="17" '
+        'font-weight="800" fill="#12122b">Shared inbox</text>'
+        + f'<rect x="{cardx + cardw - 46:.0f}" y="{cardy + 15:.0f}" width="34" '
+        'height="20" rx="10" fill="#eef2f8"/>'
+        + f'<text x="{cardx + cardw - 29:.0f}" y="{cardy + 29:.0f}" {ff} font-size="12" '
+        'font-weight="700" fill="#516079" text-anchor="middle">12</text>'
+        + f'<line x1="{cardx}" y1="{hdr_div}" x2="{cardx + cardw}" y2="{hdr_div}" '
+        'stroke="#eef2f8" stroke-width="1"/>'
         + rows_svg)
     defs = (
         '<defs>'
         '<filter id="bmdsh" x="-40%" y="-40%" width="180%" height="180%">'
         '<feDropShadow dx="0" dy="3" stdDeviation="5" flood-color="#0f1a3a" '
         'flood-opacity="0.12"/></filter>'
-        '<filter id="bmdglow" x="-50%" y="-50%" width="200%" height="200%">'
-        '<feGaussianBlur stdDeviation="3.2"/></filter>'
-        + ''.join(grad_defs) +
+        '<filter id="bmdtile" x="-45%" y="-45%" width="190%" height="190%">'
+        '<feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#1a2b52" '
+        'flood-opacity="0.16"/></filter>'
+        '<filter id="bmdglow" x="-60%" y="-60%" width="220%" height="220%">'
+        '<feGaussianBlur stdDeviation="3"/></filter>'
         '</defs>')
+    # Order: faint lanes, then comets riding them, then the tiles on top (so a comet
+    # slides UNDER the node it docks into), then the centre inbox card.
     return (
         f'<div class="bmd-bn"><svg viewBox="0 0 {w} {h}" '
         'xmlns:xlink="http://www.w3.org/1999/xlink" aria-hidden="true">'
-        f'{defs}{glow}{"".join(beams_base)}{"".join(beams_in)}'
+        f'{defs}{glow}{"".join(paths)}{"".join(comets)}'
         f'{"".join(nodes)}{centre}</svg></div>')
 
 
@@ -840,6 +971,52 @@ def _recolor_rasters(adir, hue_deg):
             out.save(fp, quality=92)
         n += 1
     return n
+
+
+# Cache dir for the fetched brand logos, next to this script so it's committed and a
+# rebuild doesn't need to re-hit the API (apistemic asks for <=1 rps server-side).
+LOGO_CACHE = "brand_logos"
+
+
+def _localize_brand_logos(h, adir, asset_prefix):
+    """Bake the real brand logos in locally instead of hotlinking apistemic at runtime.
+
+    An inline-SVG <image> pointing at a cross-origin URL renders as a broken-image
+    placeholder in Chrome (it even paints over the drawn fallback), so we fetch each
+    referenced logo ONCE (cached next to the script; apistemic wants <=1 rps + a
+    contact User-Agent), drop it into assets/, and repoint the HTML at the local copy.
+    If a fetch fails, the whole <image> tag is stripped so the hand-drawn fallback
+    that sits underneath shows through - never a broken node."""
+    os.makedirs(LOGO_CACHE, exist_ok=True)
+    domains = sorted(set(re.findall(re.escape(LOGO_API) + r'([a-z0-9.\-]+)', h)))
+    fetched = 0
+    for i, dom in enumerate(domains):
+        slug = re.sub(r'[^a-z0-9]', '-', dom.split('.')[0])
+        cache_fp = os.path.join(LOGO_CACHE, f"{slug}.webp")
+        if not os.path.exists(cache_fp):
+            try:
+                if i:
+                    time.sleep(1.1)  # be polite: <=1 rps
+                req = urllib.request.Request(
+                    LOGO_API + dom,
+                    headers={"User-Agent": "BridgeMD landing build "
+                             "(+https://bridgemd.ca; contact harshil@bridgemd.ca)"})
+                data = urllib.request.urlopen(req, timeout=15).read()
+                if len(data) < 200:
+                    raise ValueError("suspiciously small logo payload")
+                with open(cache_fp, "wb") as fh:
+                    fh.write(data)
+            except Exception as e:  # noqa: BLE001 - any failure -> drop to fallback
+                print(f"  [logo] {dom} fetch failed ({e}); using drawn fallback")
+                h = re.sub(r'<image\b[^>]*href="' + re.escape(LOGO_API + dom)
+                           + r'"[^>]*/>', '', h)
+                continue
+        out_name = f"bmd-logo-{slug}.webp"
+        shutil.copyfile(cache_fp, os.path.join(adir, out_name))
+        h = h.replace(LOGO_API + dom, asset_prefix + out_name)
+        fetched += 1
+    print(f"  [logo] localized {fetched}/{len(domains)} brand logos")
+    return h
 
 
 def build(dst, colormap, asset_prefix, raster_hue=None, accent="#1257b0"):
@@ -1144,6 +1321,10 @@ def build(dst, colormap, asset_prefix, raster_hue=None, accent="#1257b0"):
     h = re.sub(r'(<section [^>]*class="framer-r3ortg")',
                TRUST_HTML + r'\1', h, count=1)
 
+    # Bake the real brand logos referenced by the sources diagram into local assets
+    # (fetched from apistemic) so the page never hotlinks a third party at runtime.
+    h = _localize_brand_logos(h, adir, asset_prefix)
+
     # Replace the bloated Framer footer with our compact one (the Framer <footer>
     # itself is hidden via the kill-list below).
     h = re.sub(r'(<footer\b)', FOOTER_HTML + r'\1', h, count=1)
@@ -1279,16 +1460,18 @@ def build(dst, colormap, asset_prefix, raster_hue=None, accent="#1257b0"):
         'padding .4s cubic-bezier(.22,.61,.36,1),box-shadow .4s ease,'
         'background-color .4s ease}'
         '.framer-bfsnv8-container{transition:top .4s cubic-bezier(.22,.61,.36,1)}'
-        # Condense on scroll: a modest width pull-in + tighter padding (which drops the
-        # pill height, the visible "shrink") + shadow. Do NOT over-shrink the width --
-        # the logo and menu are only separated by the flex spacer (.framer-16rkffi), so
-        # if the pill gets narrower than its content that spacer collapses and the logo
-        # collides with "Why us". min-width keeps that spacer alive as a hard floor.
-        'html.bmd-scrolled .framer-1m624rr{max-width:680px!important;'
-        'padding:8px 10px!important;'
+        # Condense on scroll: the "shrink" is mostly the tighter padding (lower pill
+        # height) + lift + shadow; the width pull-in is deliberately GENTLE. With five
+        # nav links the content is nearly as wide as the pill, and the logo and menu are
+        # only separated by the flex spacer (.framer-16rkffi). Over-shrinking the width
+        # collapses that spacer and the logo crowds "Why us". Keep max-width comfortably
+        # above the content's natural width, and hold the spacer open with a real floor
+        # so there is always a clear gap between the logo and the links.
+        'html.bmd-scrolled .framer-1m624rr{max-width:716px!important;'
+        'padding:8px 12px!important;'
         'box-shadow:rgba(2,2,18,.10) 0px 12px 30px -10px,'
         'rgba(2,2,18,.06) 0px 6px 12px -6px}'
-        'html.bmd-scrolled .framer-16rkffi{min-width:28px}'
+        'html.bmd-scrolled .framer-16rkffi{min-width:40px}'
         '@media(min-width:810px){html.bmd-scrolled .framer-bfsnv8-container{top:8px}}'
         # reduced motion: no shimmer, reveals shown immediately
         '@media(prefers-reduced-motion:reduce){[class*="text-shimmer-"]{animation:none}'
@@ -1354,14 +1537,14 @@ def build(dst, colormap, asset_prefix, raster_hue=None, accent="#1257b0"):
         # viewBox, no JS.
         '#bmd-sources{background:#fff;padding:64px 24px 56px;'
         'font-family:"Figtree",system-ui,-apple-system,sans-serif}'
-        '#bmd-sources .bmd-src-wrap{max-width:960px;margin:0 auto;text-align:center}'
+        '#bmd-sources .bmd-src-wrap{max-width:1060px;margin:0 auto;text-align:center}'
         '#bmd-sources .bmd-src-eyebrow{color:#1257b0;font-size:13px;font-weight:700;'
         'letter-spacing:.08em;text-transform:uppercase;margin:0 0 12px}'
         '#bmd-sources .bmd-src-title{color:#12122b;font-size:33px;line-height:1.15;'
         'font-weight:700;letter-spacing:-.02em;margin:0 0 14px}'
         '#bmd-sources .bmd-src-sub{color:#5b6478;font-size:16px;line-height:1.6;'
         'max-width:660px;margin:0 auto 34px}'
-        '#bmd-sources .bmd-bn{max-width:820px;margin:0 auto}'
+        '#bmd-sources .bmd-bn{max-width:1025px;margin:0 auto}'
         '#bmd-sources .bmd-bn svg{width:100%;height:auto;display:block;overflow:visible}'
         '#bmd-sources .bmd-bn-lane{fill:none;stroke:#d7e3f4;stroke-width:2}'
         '#bmd-sources .bmd-bn-beam{fill:none;stroke-width:3;stroke-linecap:round}'
@@ -1371,9 +1554,14 @@ def build(dst, colormap, asset_prefix, raster_hue=None, accent="#1257b0"):
         'font-family:"Figtree",system-ui,-apple-system,sans-serif}'
         '#bmd-sources .bmd-bn-c2{fill:#7486a3;font-size:12px;font-weight:600;'
         'font-family:"Figtree",system-ui,-apple-system,sans-serif}'
+        '#bmd-sources .bmd-src-attr{margin:22px auto 0;color:#9aa3b4;font-size:11.5px}'
+        '#bmd-sources .bmd-src-attr a{color:#7b8494;text-decoration:underline}'
         '@media(max-width:640px){#bmd-sources .bmd-src-title{font-size:26px}}'
+        # Comets are inline SMIL animateMotion (classes get stripped by hydration), so
+        # disable motion by targeting every animate/animateMotion in the diagram.
         '@media(prefers-reduced-motion:reduce){'
-        '#bmd-sources .bmd-bn-beam animate{display:none}}'
+        '#bmd-sources .bmd-bn animate,#bmd-sources .bmd-bn animateMotion'
+        '{display:none}}'
         # (f) compact footer
         '#bmd-footer{font-family:"Figtree",system-ui,-apple-system,sans-serif;'
         'background:#fff;border-top:1px solid rgba(18,87,176,.12);'

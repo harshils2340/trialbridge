@@ -1191,6 +1191,11 @@ body.home-screen .hero::before { display: none; }
 body.home-screen .hero-in { max-width: 820px; width: 100%; margin: 0 auto; }
 body.home-screen .hero h1 { font-family: inherit; max-width: none; margin: 0 auto;
   font-size: 44px; line-height: 1.03; letter-spacing: -.04em; font-weight: 800; }
+/* Keep the finder headline on a single line from tablet up; it wraps on phones
+   so it never overflows the viewport. */
+@media (min-width: 760px) {
+  body.home-screen .hero h1 { white-space: nowrap; font-size: clamp(32px, 4.4vw, 44px); }
+}
 body.home-screen .hero-eyebrow { margin-bottom: 12px; border-color: #c9ddf4; color: #31577f;
   background: rgba(255,255,255,.72); box-shadow: none; }
 body.home-screen .hero-sub { font-size: 16px; max-width: 630px; margin-top: 10px; }
@@ -5910,14 +5915,45 @@ a.rail-attn:hover { text-decoration: underline; }
 .home-learn-card b { margin-top: var(--space-4); color: var(--faint);
   font-size: 11.5px; font-weight: 600; letter-spacing: .01em; }
 
-/* For-sites callout on the patient finder (separate audience, kept subtle) */
-.site-embed-cta { display: flex; justify-content: center; }
-.site-embed-inner { max-width: 620px; width: 100%; text-align: center;
+/* For-sites embed pitch on the patient finder (doubles as the sites live demo).
+   Framer/Grovia-style: two "ways to run it" cards + numbered how-embedding steps.
+   Separate audience from the patient flow, so it's boxed and clearly labeled. */
+.embed-pitch { max-width: 980px; margin: 60px auto 0;
+  padding: var(--space-8) var(--space-6);
   background: var(--accent-soft); border: 1px solid var(--border);
-  border-radius: var(--radius-lg); padding: var(--space-7) var(--space-6); }
-.site-embed-inner .lx-h2 { justify-content: center; margin: var(--space-2) 0 var(--space-3); }
-.site-embed-inner p { margin: 0 auto var(--space-5); max-width: 52ch;
-  color: var(--muted); font-size: 14.5px; line-height: 1.6; }
+  border-radius: var(--radius-lg); }
+.embed-pitch-head { text-align: center; max-width: 62ch; margin: 0 auto; }
+.embed-pitch-head .lx-h2 { justify-content: center; margin: var(--space-2) 0 var(--space-3); }
+.embed-lead { margin: 0 auto; color: var(--muted); font-size: 15.5px;
+  line-height: 1.6; max-width: 60ch; }
+.embed-ways { display: grid; grid-template-columns: repeat(2, 1fr);
+  gap: var(--space-5); margin-top: var(--space-7); }
+.embed-way { background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: var(--space-6);
+  transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease; }
+.embed-way:hover { border-color: var(--brand-border); box-shadow: var(--shadow-lift);
+  transform: translateY(-2px); }
+.embed-way-ic { display: inline-flex; align-items: center; justify-content: center;
+  width: 40px; height: 40px; border-radius: var(--radius-sm);
+  background: var(--accent-soft); color: var(--accent); margin-bottom: var(--space-4); }
+.embed-way-ic .ico { width: 20px; height: 20px; }
+.embed-way h3 { margin: 0 0 6px; font-family: var(--sans); font-size: 17px;
+  font-weight: 700; letter-spacing: -.01em; color: var(--ink); }
+.embed-way p { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.55; }
+.embed-steps { margin-top: var(--space-7); }
+.embed-steps-label { display: block; text-align: center; font-size: 11px;
+  text-transform: uppercase; letter-spacing: .08em; color: var(--accent);
+  font-weight: 800; margin-bottom: var(--space-5); }
+.embed-steps-grid { display: grid; grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-6); }
+.embed-step { border-top: 2px solid var(--accent); padding-top: var(--space-4); }
+.embed-step-n { display: block; font-family: var(--sans); font-size: 24px;
+  font-weight: 800; letter-spacing: -.02em; color: var(--accent);
+  margin-bottom: 8px; }
+.embed-step h4 { margin: 0 0 5px; font-family: var(--sans); font-size: 15.5px;
+  font-weight: 700; letter-spacing: -.01em; color: var(--ink); }
+.embed-step p { margin: 0; color: var(--muted); font-size: 13.5px; line-height: 1.55; }
+.embed-pitch .lx-cta { margin-top: var(--space-7); }
 
 /* Trust strip */
 .trust-strip { max-width: 980px; margin: 48px auto 8px; padding: 0 24px;
@@ -5931,6 +5967,8 @@ a.rail-attn:hover { text-decoration: underline; }
 
 @media (max-width: 760px) {
   .hiw-grid { grid-template-columns: 1fr; }
+  .embed-pitch { padding: var(--space-6) var(--space-5); margin-top: 40px; }
+  .embed-ways, .embed-steps-grid { grid-template-columns: 1fr; }
   .home-proof { grid-template-columns: 1fr; margin-top: 24px; }
   .home-learn-head { flex-direction: column; align-items: flex-start; }
   .home-learn-grid { grid-template-columns: 1fr; }
@@ -8411,6 +8449,21 @@ body.fs-page { background:
 .mh-search:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); background: var(--surface); }
 .mh-search .ico { width: 14px; color: var(--faint); }
 .mh-search input { min-width: 0; width: 100%; height: 32px; padding: 0; border: 0; outline: 0; background: transparent; color: var(--ink); font: inherit; font-size: 11.5px; }
+/* Inbox scope segmented control: My inbox (default, private) vs Unassigned
+   (shared unclaimed queue). No "everyone" option by design. */
+.mh-owner-toggle { display: flex; gap: 4px; margin: 0 13px 10px; padding: 3px;
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: 10px; }
+.mh-owner-toggle a { flex: 1; display: inline-flex; align-items: center;
+  justify-content: center; gap: 5px; padding: 6px 8px; border-radius: 7px;
+  color: var(--muted); font-size: 10.5px; font-weight: 700; text-decoration: none;
+  transition: background .12s ease, color .12s ease; }
+.mh-owner-toggle a .ico { width: 13px; height: 13px; }
+.mh-owner-toggle a:hover { color: var(--ink); text-decoration: none; }
+.mh-owner-toggle a.is-active { background: var(--surface); color: var(--accent);
+  box-shadow: 0 1px 2px rgba(16,16,40,.06); }
+.mh-owner-toggle a span { min-width: 16px; padding: 1px 5px; border-radius: 999px;
+  background: var(--accent-soft); color: var(--accent); font-size: 9px; }
 .mh-thread-tabs { display: flex; gap: 5px; padding: 0 13px 10px; border-bottom: 1px solid var(--border); }
 .mh-thread-tabs a { display: inline-flex; align-items: center; gap: 5px; padding: 6px 9px; border-radius: 8px; color: var(--faint); font-size: 10px; font-weight: 700; text-decoration: none; }
 .mh-thread-tabs a:hover { background: var(--surface-2); color: var(--ink); text-decoration: none; }
@@ -8467,7 +8520,11 @@ body.fs-page { background:
 .mh-thread-empty h3 { margin: 13px 0 5px; color: var(--ink); font-size: 14px; }
 .mh-thread-empty p { max-width: 230px; margin: 0 0 14px; font-size: 10.5px; line-height: 1.5; }
 
-.mh-conversation { display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; background: var(--surface); }
+/* Flex column (not a positional grid): header sections vary in count (pipeline,
+   consent bar, channel alert, clinical card), so a fixed grid-template-rows put the
+   flexible 1fr on the wrong row and crushed the message list. Flex + the message
+   list as the single flex:1 scroll area is resilient to whatever chrome renders. */
+.mh-conversation { display: flex; flex-direction: column; min-height: 0; background: var(--surface); }
 .mh-conversation-head { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 16px 18px 13px; }
 .mh-contact-main { min-width: 0; display: flex; align-items: center; gap: 11px; }
 .mh-contact-main > span:last-child { min-width: 0; }
@@ -8486,7 +8543,7 @@ body.fs-page { background:
 .mh-subject-bar > b { min-width: 0; flex: 1; overflow: hidden; color: var(--ink); font-size: 10.5px; text-overflow: ellipsis; white-space: nowrap; }
 .mh-subject-bar .ui-badge { font-size: 8px; }
 
-.mh-message-list { min-height: 0; overflow: auto; padding: 20px 20px 16px; background: linear-gradient(180deg, var(--surface) 0%, var(--surface-2) 145%); }
+.mh-message-list { flex: 1 1 auto; min-height: 0; max-height: none; overflow: auto; padding: 20px 20px 16px; background: linear-gradient(180deg, var(--surface) 0%, var(--surface-2) 145%); }
 .mh-day-rule { display: flex; align-items: center; gap: 10px; margin: 0 0 18px; color: var(--faint); font-size: 8px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
 .mh-day-rule::before,
 .mh-day-rule::after { height: 1px; flex: 1; content: ''; background: var(--border); }
@@ -8522,6 +8579,18 @@ body.fs-page { background:
 .mh-compose-tabs button { display: inline-flex; align-items: center; gap: 5px; padding: 9px 1px 7px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--faint); font: inherit; font-size: 9.5px; font-weight: 700; cursor: pointer; }
 .mh-compose-tabs button.is-active { border-bottom-color:var(--accent); color:var(--accent); }
 .mh-compose-tabs .ico { width: 12px; }
+/* Quick-reply chips: were unstyled (raw browser buttons). Branded pills that tint
+   accent-blue on hover, sized for the compact composer. */
+.mh-quick-replies { display: flex; flex-wrap: wrap; gap: 6px; margin: 9px 0 2px; }
+.mh-quick-chip { display: inline-flex; align-items: center; padding: 6px 12px;
+  border: 1px solid var(--border); border-radius: var(--radius-pill);
+  background: var(--surface); color: var(--ink-soft); font: inherit; font-size: 11px;
+  font-weight: 600; line-height: 1; white-space: nowrap; cursor: pointer;
+  transition: background .12s ease, border-color .12s ease, color .12s ease; }
+.mh-quick-chip:hover { background: var(--accent-soft); border-color: var(--accent);
+  color: var(--accent); }
+.mh-quick-chip:active { transform: translateY(1px); }
+.mh-quick-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .mh-compose-panel[hidden] { display: none; }
 .mh-compose-panel textarea { width: 100%; min-height: 78px; padding: 11px 12px; resize: vertical; border: 1px solid var(--border); border-radius: 11px; background: var(--surface-2); color: var(--ink); font: inherit; font-size: 11.5px; line-height: 1.55; }
 .mh-compose-panel textarea:focus { border-color: var(--accent); background: var(--surface); box-shadow: 0 0 0 3px var(--accent-soft); outline: 0; }
@@ -9186,13 +9255,13 @@ html.fs-motion .fsx-proof-stat:nth-child(4) { transition-delay:.18s; }
 .mh-thread-row h3 { font-size:12px; margin:var(--space-2) 0 var(--space-1) 38px; }
 .mh-thread-row p { font-size:11.5px; line-height:1.45; margin-left:38px; }
 .mh-thread-row-foot { margin-left:38px; flex-wrap:wrap; }
-.mh-conversation { min-width:0; background:var(--bg); overflow-x:hidden; overflow-y:auto;
+.mh-conversation { min-width:0; background:var(--bg); overflow:hidden;
   container-type:inline-size; container-name:mh-conv; }
 .mh-conversation-head { position:sticky; top:0; z-index:3; background:var(--surface);
   padding:var(--space-4) var(--space-5); border-bottom:1px solid var(--border); }
 .mh-subject-bar,.mh-message-list,.mh-composer,.mh-clinical-card {
   margin-left:var(--space-5); margin-right:var(--space-5); }
-.mh-message-list { min-height:180px; }
+.mh-message-list { min-height:0; }
 .mh-composer { margin-bottom:var(--space-5); }
 /* .mh-conversation is `display:grid` (see the legacy block above) - grid items
    default to min-width:auto, so without this every child here (head, actions,
