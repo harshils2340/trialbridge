@@ -8944,7 +8944,7 @@ body.fs-page { background:
   margin:0 auto 22px; }
 .fsx-grad { background:linear-gradient(100deg, var(--accent), #3fa39a);
   -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; }
-.fsx-sub { max-width:620px; margin:0 auto 30px; font-size:clamp(16.5px, 2.1vw, 20px);
+.fsx-sub { max-width:700px; margin:0 auto 30px; font-size:clamp(16.5px, 2.1vw, 20px);
   line-height:1.5; color:var(--muted); text-wrap:balance; }
 .fsx-cta { display:flex; gap:12px; justify-content:center; flex-wrap:wrap; }
 .fsx-btn { display:inline-flex; align-items:center; gap:8px; padding:13px 22px;

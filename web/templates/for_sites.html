@@ -1,8 +1,8 @@
 {% extends "public_base.html" %}
 {% import "_icons.html" as ic %}
-{% block title %}BridgeMD: the inbox built for clinical trial coordinators{% endblock %}
-{% block description %}Every patient inquiry — email, Facebook & Instagram ads, ClinicalTrials.gov, referrals — in one inbox, auto-sorted and routed to the right coordinator. Free for research sites.{% endblock %}
-{% block og_title %}BridgeMD: the inbox built for clinical trial coordinators{% endblock %}
+{% block title %}BridgeMD: the inbox built for clinical trial recruitment{% endblock %}
+{% block description %}Every patient inquiry — email, Facebook & Instagram ads, ClinicalTrials.gov, referrals — in one inbox, sorted and assigned the moment it lands. Free for research sites.{% endblock %}
+{% block og_title %}BridgeMD: the inbox built for clinical trial recruitment{% endblock %}
 {% block og_description %}One inbox for every study inquiry, from every channel — auto-triaged and auto-assigned so nothing gets missed. Free for research sites.{% endblock %}
 {% block canonical %}<link rel="canonical" href="{{ sites_home_url if sites_home_url.startswith('http') else request.base_url }}">{% endblock %}
 
@@ -36,8 +36,8 @@
   <div class="fsx-hero-in">
     <span class="fsx-eyebrow">{{ ic.icon('inbox') }} One inbox for every recruitment channel</span>
     <h1>Every study inquiry,<br><span class="fsx-grad">in one clean inbox.</span></h1>
-    <p class="fsx-sub">The first unlimited recruitment inbox for research sites — every channel in
-      one place to answer anyone, anytime.</p>
+    <p class="fsx-sub">The first unlimited recruitment inbox for research sites — so you spend less
+      time on admin and never miss a patient who was ready to enroll.</p>
     <div class="fsx-cta">
       <a class="fsx-btn fsx-btn-primary" href="{{ cal_link }}" target="_blank" rel="noopener">Book a demo {{ ic.icon('arrow-right') }}</a>
       <a class="fsx-btn fsx-btn-ghost" href="{{ url_for('marketing_hub') }}">See it live {{ ic.icon('arrow-right') }}</a>
@@ -139,10 +139,10 @@
     <div class="fsx-feature fsx-rev">
       <div class="fsx-feature-tx">
         <span class="fsx-feature-ic">{{ ic.icon('users') }}</span>
-        <h3>The right coordinator, automatically</h3>
-        <p>Set it once: all email to your intake coordinator, all Instagram leads to your outreach lead.
-          New inquiries route straight to that person's inbox — no manual hand-offs. And when someone's
-          on vacation, send their whole queue to whoever's covering in one click.</p>
+        <h3>Every inquiry has an owner</h3>
+        <p>Set it once: each channel goes to whoever owns it. New inquiries land in that person's
+          queue automatically — no hand-offs, no "who's got this?" in a group chat. And when someone
+          is away, move their whole queue to whoever is covering in one click.</p>
       </div>
       <div class="fsx-feature-viz" aria-hidden="true">
         <div class="fsx-rule">{{ ic.icon('inbox') }} Meta ads {{ ic.icon('arrow-right') }}
@@ -174,8 +174,8 @@
     <div class="fsx-step">
       <span class="fsx-step-n">2</span>
       <h3>It sorts &amp; routes</h3>
-      <p>Every new inquiry is triaged by what it needs and auto-assigned to the right coordinator by
-        your rules.</p>
+      <p>Every new inquiry is triaged by what it needs and assigned automatically, by your own
+        rules.</p>
     </div>
     <div class="fsx-step">
       <span class="fsx-step-n">3</span>
@@ -195,7 +195,7 @@
       <p class="fsx-lead">Unlimited studies, unlimited teammates, every channel. We license to sponsors
         and CROs — we never charge a site, and never charge per referral.</p>
       <ul class="fsx-list">
-        <li>{{ ic.icon('check') }} Unlimited studies &amp; coordinators</li>
+        <li>{{ ic.icon('check') }} Unlimited studies &amp; teammates</li>
         <li>{{ ic.icon('check') }} Every intake channel included</li>
         <li>{{ ic.icon('check') }} Works with the tools you already use — REDCap, your calendar, email</li>
         <li>{{ ic.icon('check') }} No per-referral fees, ever</li>
