@@ -1632,6 +1632,14 @@ def inject_globals():
             active_study_label = _scope_label(active_nct, nav_studies)
         except Exception:
             nav_studies = []
+        # Per-study unread badges for the switcher, so the coordinator can see which
+        # trial needs attention without opening each one. One grouped query.
+        try:
+            _unread_by_study = db.marketing_unread_by_study(g.user["id"])
+            for _s in nav_studies:
+                _s["unread"] = _unread_by_study.get(_s["nct"], 0)
+        except Exception:
+            pass
         try:
             my_role = db.member_role(g.user["id"])
             my_role_label = db.member_role_label(g.user["id"])
@@ -5253,26 +5261,20 @@ def for_clinicians():
 
 # Self-hosted marketing shell (Framer-exported, no Framer runtime/fee).
 _LANDING_DIR = HERE / "landing"
-_LANDING_GREEN_DIR = HERE / "landing_green"
-
-
-def _landing_index():
-    """Pick the recolored marketing variant (blue default, or the old green) from the
-    ?theme= param or bmd_theme cookie."""
-    theme = (request.args.get("theme") or request.cookies.get("bmd_theme") or "").strip()
-    if theme == "green" and (_LANDING_GREEN_DIR / "index.html").exists():
-        return _LANDING_GREEN_DIR / "index.html"
-    return _LANDING_DIR / "index.html"
 
 
 def _serve_landing():
     """Serve the static marketing shell with the live CSRF token injected as a meta
     tag, so the embedded trial-finder widget can POST /find (the guard accepts the
     X-CSRF-Token header)."""
-    html = _landing_index().read_text(encoding="utf-8")
+    html = (_LANDING_DIR / "index.html").read_text(encoding="utf-8")
     meta = f'<meta name="csrf-token" content="{_csrf_token()}">'
     html = html.replace("<head>", "<head>" + meta, 1)
-    return Response(html, mimetype="text/html")
+    resp = Response(html, mimetype="text/html")
+    # The shell is rebuilt out-of-band by clean_landing.py; without this the browser
+    # serves a stale cached copy and edits look like they didn't apply.
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
 
 
 @app.route("/")
@@ -5284,38 +5286,9 @@ def for_sites():
     return _serve_landing()
 
 
-@app.route("/for-sites")
-def for_sites_home_legacy():
-    """The site-side page lived at /for-sites before it became the front door.
-    301 so old links, ads and bookmarks keep working on one canonical URL."""
-    return redirect(url_for("for_sites"), code=301)
-
-
-@app.route("/site-preview")
-def site_preview():
-    return _serve_landing()
-
-
 @app.route("/landing/assets/<path:filename>")
 def landing_assets(filename):
     return send_from_directory(_LANDING_DIR / "assets", filename)
-
-
-@app.route("/landing_green/assets/<path:filename>")
-def landing_green_assets(filename):
-    return send_from_directory(_LANDING_GREEN_DIR / "assets", filename)
-
-
-@app.route("/embed/finder")
-def embed_finder():
-    """Standalone trial-finder widget, meant to be dropped into any site (and used
-    inside the front page's embed section via <iframe>). Isolating it in its own
-    document keeps typing/CSRF working regardless of the host page's scripts. The
-    form posts to /find with target=_top so results open in the top window."""
-    resp = make_response(render_template("finder_widget.html",
-                                         csrf_token=_csrf_token()))
-    resp.headers["X-Frame-Options"] = "SAMEORIGIN"
-    return resp
 
 
 def _marketing_time_label(raw):
@@ -5347,6 +5320,93 @@ def _marketing_thread_url(thread_id=None, anchor="conversation"):
     return f"{url}#{anchor}" if anchor else url
 
 
+# One-tap reply snippets for the composer (label shown on the chip, text inserted
+# into the reply box). The template (marketing_hub.html) expected `quick_replies`
+# but nothing ever provided it, so the chips silently never rendered -- this is the
+# missing source. Kept neutral and NON-committal on purpose (no promised
+# reimbursement, placebo odds, or eligibility guarantees a coordinator must
+# confirm), since a chip is inserted verbatim and a rushed send must not state an
+# unapproved claim (see COMPLIANCE.md). Edit before sending.
+_MARKETING_QUICK_REPLIES = [
+    ("Offer a screening call",
+     "Would you be open to a short screening call this week? Send me a few times "
+     "that work and I'll get it booked."),
+    ("Ask best time to reach",
+     "What days and times generally work best to reach you? I'll make sure someone "
+     "follows up then."),
+    ("Still interested?",
+     "Just checking in \u2014 are you still interested in learning more about this "
+     "study? No pressure either way, just let me know."),
+    ("What to expect",
+     "Happy to walk you through what taking part involves and answer any questions "
+     "on a quick call. Would that help?"),
+    ("Thanks + next steps",
+     "Thanks for the details, this is really helpful. I'll review and follow up "
+     "with the next steps shortly."),
+]
+
+
+def _bridget_reply_draft(first, study, inbound):
+    """First-pass reply draft that actually addresses what the patient asked
+    (scheduling, visit costs, eligibility, safety), falling back to a generic
+    next-step. Deterministic keyword routing -- no model -- and ALWAYS
+    human-reviewed before it can be sent (Bridget drafts, a person edits + sends;
+    see COMPLIANCE.md). Deliberately phrased to NOT assert study-specific facts
+    (reimbursement amounts, placebo odds) a coordinator must confirm, so a rushed
+    'send as-is' can never state an unapproved claim."""
+    text = (inbound or "").lower()
+    opener = f"Hi {first}, thanks for reaching out about {study}. "
+
+    def _has(*words):
+        return any(w in text for w in words)
+
+    if _has("evening", "weekend", "after work", "what time", "times", "schedule",
+            "appointment", "availability", "available", "when can"):
+        body = ("Happy to work around your schedule for a brief screening call. "
+                "What days and times generally work best for you?")
+    elif _has("travel", "mileage", "parking", "reimburse", "compensat", " paid",
+              "payment", "stipend", "cost", "expense", "gas"):
+        body = ("Good question on visit costs. Let me confirm exactly what this "
+                "study covers and I'll follow up with the specifics.")
+    elif _has("qualify", "eligible", "eligibility", "criteria", "requirement",
+              "do i fit", "am i able", "right fit"):
+        body = ("To see whether this study is a fit, we do a short pre-screening. "
+                "Could we set up a quick call to walk through a few questions?")
+    elif _has("safe", "placebo", "side effect", "risk", "danger", "guinea pig"):
+        body = ("Those are important questions. The study team can walk you "
+                "through safety, what to expect, and how the study is designed "
+                "on a short call. Would that be helpful?")
+    elif _has("how long", "how many visit", "duration", "time commitment",
+              "how often", "last for", "how many weeks", "how many months"):
+        body = ("Good question on the time commitment. Let me confirm the visit "
+                "schedule and overall length for this study and I'll lay it out "
+                "for you.")
+    elif _has("where is", "where are", "location", "how far", "address",
+              "near me", "drive", "remote", "virtual", "online", "from home",
+              "telehealth", "in person"):
+        body = ("Good question on location and visits. Let me confirm where this "
+                "study runs and whether any parts can be done remotely, and I'll "
+                "follow up with the details.")
+    elif _has("privacy", "private", "confidential", "who sees", "who will see",
+              "spam", "share my", "sell my", "my data", "my information",
+              "my info", "personal information"):
+        body = ("Your privacy matters here. Your information is only used to see "
+                "if this study could be a fit and to connect you with the study "
+                "team, and it's never sold. Happy to answer any specific concern.")
+    elif _has("withdraw", "drop out", "opt out", "change my mind",
+              "leave the study", "back out", "pull out"):
+        # Voluntariness + the right to withdraw are universal informed-consent
+        # principles (Common Rule / GCP), not a study-specific claim, so this is
+        # safe to state directly.
+        body = ("Taking part is completely voluntary and you can stop at any "
+                "time, for any reason. I'm happy to walk through what that "
+                "involves whenever you'd like.")
+    else:
+        body = ("I can help with the next step. Could you confirm the best time "
+                "for a brief screening call this week?")
+    return opener + body
+
+
 @app.route("/app/inbox")
 @login_required
 def marketing_hub():
@@ -5367,6 +5427,14 @@ def marketing_hub():
     stage_filter = (request.args.get("stage") or "all").strip().lower()
     if stage_filter not in ("all",) + db.MARKETING_PIPELINE_STAGES:
         stage_filter = "all"
+    # Ownership triage filter, persisted in the session like the study scope so it
+    # survives status/stage/search navigation without threading a param through
+    # every link. ?owner=mine|unassigned sets it; ?owner= (empty) clears it.
+    owner_param = request.args.get("owner")
+    if owner_param is not None:
+        session["mh_owner"] = (owner_param
+                               if owner_param in ("mine", "unassigned") else "")
+    owner_filter = session.get("mh_owner", "")
 
     # Scope the whole inbox to the trial chosen in the top switcher, so switching
     # studies shows a different set of people - each trial reads as its own inbox.
@@ -5391,7 +5459,7 @@ def marketing_hub():
         source_filter = None
     thread_rows = db.list_marketing_threads(
         g.user["id"], status=status, channel=channel, query=query,
-        source_id=source_filter, nct=active_nct)
+        source_id=source_filter, nct=active_nct, assignee=owner_filter)
     threads = []
     for row in thread_rows:
         item = dict(row)
@@ -5461,11 +5529,7 @@ def marketing_hub():
         if inbound:
             first = (active["contact_name"] or "there").split()[0]
             study = active["study_label"] or "the study"
-            bridget_draft = (
-                f"Hi {first}, thank you for reaching out about {study}. "
-                "I can help with the next step. Could you confirm the best time "
-                "for a brief screening call this week?"
-            )
+            bridget_draft = _bridget_reply_draft(first, study, inbound)
 
     settings = db.get_marketing_handoff(g.user["id"])
     active_owner_id = db.marketing_active_owner_id(settings)
@@ -5475,7 +5539,8 @@ def marketing_hub():
     })
     primary = member_by_id.get(settings["primary_user_id"])
     cover = member_by_id.get(settings["cover_user_id"])
-    counts = db.marketing_thread_counts(g.user["id"], nct=active_nct)
+    counts = db.marketing_thread_counts(g.user["id"], nct=active_nct,
+                                        assignee=owner_filter)
     counts["sources"] = sum(1 for source in sources
                             if source["status"] == "connected")
 
@@ -5487,10 +5552,12 @@ def marketing_hub():
         status_filter=status, channel_filter=channel, search_query=query,
         source_filter=source_filter, active_nct=active_nct,
         stage_filter=stage_filter, stage_counts=stage_counts,
+        owner_filter=owner_filter,
         applicant=applicant, eligibility=eligibility,
         records_profile=records_profile, records_data=records_data,
         checklist=checklist,
         bridget_draft=bridget_draft, is_demo=_is_demo_account(g.user),
+        quick_replies=_MARKETING_QUICK_REPLIES,
         channel_labels=db.MARKETING_CHANNEL_LABELS,
         gmail_oauth_ready=_google_ready(),
         instagram_oauth_ready=_instagram_ready(),
@@ -6238,11 +6305,7 @@ def marketing_thread_draft(thread_id):
         return jsonify({"ok": False, "message": "No inbound message to draft from."}), 400
     first = (thread["contact_name"] or "there").split()[0]
     study = thread["study_label"] or "the study"
-    draft = (
-        f"Hi {first}, thank you for reaching out about {study}. "
-        "I can help with the next step. Could you confirm the best time for "
-        "a brief screening call this week?"
-    )
+    draft = _bridget_reply_draft(first, study, latest)
     return jsonify({"ok": True, "draft": draft, "human_review_required": True})
 
 
@@ -12161,9 +12224,23 @@ def _render_site_setup(instruments=None, active_tab=None):
             else "Any study",
             "assignee_name": r["assignee_name"], "assignee_email": r["assignee_email"],
         })
+    # Connected message channels (Gmail / Instagram / demo sources) so they can be
+    # managed from Settings, not only the inbox modal. Same rows + connect/sync/
+    # disconnect routes the inbox uses -- one source of truth, surfaced where a
+    # coordinator would actually look for "connected accounts".
+    marketing_sources = [dict(r) for r in db.list_marketing_sources(g.user["id"])]
+    for _s in marketing_sources:
+        _last = _s.get("last_successful_sync_at") or ""
+        _s["sync_time_label"] = (
+            _marketing_time_label(_last) if _last else "Not synced yet")
     return render_template(
         "site_setup.html",
         profile=profile,
+        marketing_sources=marketing_sources,
+        marketing_sources_count=len(marketing_sources),
+        channel_labels=db.MARKETING_CHANNEL_LABELS,
+        gmail_oauth_ready=_google_ready(),
+        instagram_oauth_ready=_instagram_ready(),
         claims=claims,
         route_channels=route_channels,
         routing_rules=routing_rules,

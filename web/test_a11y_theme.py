@@ -103,11 +103,24 @@ def test_demo_tour_starts_on_canonical_inbox():
 
 
 def test_inbox_uses_shared_site_shell():
+    """The inbox is deliberately FULL-BLEED: it hides the top bar (.apptop) and the
+    left sidebar, and the workspace fills the whole viewport flush against the
+    Bridget dock - so it never reads as a short "inset card" (see the CSS comment
+    above .mh-page). This test pins that contract: it fails if someone re-adds a
+    header height offset, re-shows the top bar, or shrinks the workspace back into a
+    detached card. (Earlier revisions achieved the no-card look by stripping the
+    workspace border/radius/shadow and subtracting a 57px header; the current design
+    achieves it more completely via a hidden header + 100vh fill.)"""
     css = _read(CSS)
-    assert ".appshell:has(.mh-page) .appbody { min-height:calc(100dvh - 57px); padding:0; }" in css
-    assert ".appshell:has(.mh-page) > .appside" not in css
-    assert ".mh-page .mh-workspace { border:0; border-radius:0; box-shadow:none; }" in css
-    print("PASS: inbox uses shared site shell without embedded-card chrome")
+    # Top bar hidden on the inbox route -> no header to subtract.
+    assert ".appshell:has(.mh-page) .apptop { display:none; }" in css
+    # With no header, the body fills the full viewport (not calc(100dvh - 57px)).
+    assert ".appshell:has(.mh-page) .appbody { min-height:100vh; }" in css
+    # Workspace fills the viewport height instead of sitting as an inset card.
+    assert ".mh-page .mh-workspace { height:100vh; max-height:100vh; }" in css
+    # Full-bleed page: no padding, or the workspace detaches from the dock.
+    assert "height: 100dvh; padding: 0;" in css
+    print("PASS: inbox uses shared site shell as a full-bleed workspace")
 
 
 def _fake_result(nct, verdict):

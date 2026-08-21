@@ -47,10 +47,19 @@ def daily_digest(user_id, per_section=5):
             "citations": payload.get("citations", []),
         })
     total = sum(s["count"] for s in sections)
-    if total:
-        headline = f"{tools._n(total, 'thing')} need you across your studies today."
-    else:
+    # Lead with the single highest-priority section as a starting point, not a
+    # summed "N things need you" number -- a big grand total reads as overwhelming
+    # noise, whereas "start here, then X more areas" is calm and actionable.
+    if not sections:
         headline = "You're all caught up - nothing needs you across your studies."
+    elif len(sections) == 1:
+        s = sections[0]
+        headline = f"{s['count']} {s['title'].lower()} - your one focus today."
+    else:
+        top = sections[0]
+        others = len(sections) - 1
+        headline = (f"Start with {top['count']} {top['title'].lower()}, "
+                    f"then {others} more area{'s' if others != 1 else ''}.")
     return {"headline": headline, "total": total, "sections": sections}
 
 

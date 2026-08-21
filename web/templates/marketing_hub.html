@@ -26,6 +26,36 @@
   <section class="mh-workspace {{ 'is-list-only' if not active }}">
     <section class="mh-thread-column" aria-label="Conversations" data-demo-tour-target="inbox">
       <div class="mh-thread-toolbar">
+        {% if nav_studies and nav_studies|length > 1 %}
+        <form method="get" action="{{ url_for('set_scope') }}" class="mh-scope">
+          {# Preserve the active filters when switching trials, but drop the open
+             thread= so we land on the new study's fresh list (an old-study thread
+             left open in the pane would be confusing). #}
+          <input type="hidden" name="next" value="{{ url_for('marketing_hub', status=status_filter, stage=stage_filter, source=source_filter, channel=channel_filter, q=search_query) }}">
+          <select name="nct" data-autosubmit aria-label="Filter this inbox by study">
+            <option value="" {{ 'selected' if not active_nct }}>All studies{% if site_unread %} ({{ site_unread }}){% endif %}</option>
+            {% for s in nav_studies %}
+            <option value="{{ s.nct }}" {{ 'selected' if active_nct == s.nct }}>{{ (s.title[:28] ~ ('\u2026' if s.title and s.title|length > 28 else '')) or s.nct }}{% if s.unread %} ({{ s.unread }}){% endif %}</option>
+            {% endfor %}
+          </select>
+        </form>
+        {% endif %}
+        {% if counts.sources %}
+        <form method="get" action="{{ url_for('marketing_hub') }}" class="mh-scope">
+          {# Owner triage persists in the session, but carry the other active
+             filters so switching owner doesn't reset status/stage/search. #}
+          <input type="hidden" name="status" value="{{ status_filter }}">
+          <input type="hidden" name="stage" value="{{ stage_filter }}">
+          {% if source_filter %}<input type="hidden" name="source" value="{{ source_filter }}">{% endif %}
+          {% if channel_filter %}<input type="hidden" name="channel" value="{{ channel_filter }}">{% endif %}
+          {% if search_query %}<input type="hidden" name="q" value="{{ search_query }}">{% endif %}
+          <select name="owner" data-autosubmit aria-label="Filter this inbox by owner">
+            <option value="" {{ 'selected' if not owner_filter }}>All owners</option>
+            <option value="mine" {{ 'selected' if owner_filter == 'mine' }}>Mine</option>
+            <option value="unassigned" {{ 'selected' if owner_filter == 'unassigned' }}>Unassigned</option>
+          </select>
+        </form>
+        {% endif %}
         <form method="get" action="{{ url_for('marketing_hub') }}" class="mh-search">
           {{ ic.icon('search') }}
           <input name="q" type="search" value="{{ search_query }}" placeholder="Search conversations" aria-label="Search conversations">
@@ -83,15 +113,33 @@
             {% set row_tone = 'ok' if row_stage == 'enrolled' else 'danger' if row_stage == 'disqualified' else 'brand' %}
             {{ ui.badge(stage_labels.get(row_stage, 'New'), row_tone) }}
             {% if thread.linked_lead_id %}{{ ui.badge('Applicant', 'neutral', 'check') }}{% endif %}
-            {% if thread.status == 'resolved' %}{{ ui.badge('Resolved', 'ok', 'check') }}{% endif %}
+            {% if thread.status == 'resolved' %}{{ ui.badge('Resolved', 'ok', 'check') }}
+            {% elif thread.last_reply_kind == 'inbound' %}{{ ui.badge('Awaiting reply', 'warn') }}{% endif %}
           </div>
         </a>
         {% else %}
         <div class="mh-thread-empty">
           <span>{{ ic.icon('inbox') }}</span>
-          <h3>{{ 'Nothing found' if search_query else 'You are all caught up' }}</h3>
-          <p>{{ 'Try a different search or account.' if search_query else 'New messages land here for the whole team.' }}</p>
-          {% if counts.sources %}{{ ui.btn('Add test conversation', 'ghost', 'sm', icon='plus', extra='data-ui-open="testThreadModal"') }}{% endif %}
+          {% if search_query %}
+          <h3>Nothing found</h3>
+          <p>Try a different search or account.</p>
+          {% elif not counts.sources %}
+          <h3>Connect a channel to start</h3>
+          <p>Link email, Instagram, or a lead source and new inquiries land here for your whole team.</p>
+          {{ ui.btn('Connect your first channel', 'primary', 'sm', icon='plus', extra='data-ui-open="sourceModal"') }}
+          {% elif owner_filter == 'mine' %}
+          <h3>Nothing assigned to you</h3>
+          <p>Conversations you own show up here. Switch to the whole team to pick up more.</p>
+          {{ ui.btn('View all owners', 'ghost', 'sm', href=url_for('marketing_hub', owner='', status=status_filter)) }}
+          {% elif owner_filter == 'unassigned' %}
+          <h3>No unclaimed conversations</h3>
+          <p>Every inquiry has an owner right now. Nothing is sitting unclaimed.</p>
+          {{ ui.btn('View all owners', 'ghost', 'sm', href=url_for('marketing_hub', owner='', status=status_filter)) }}
+          {% else %}
+          <h3>You are all caught up</h3>
+          <p>New messages land here for the whole team.</p>
+          {{ ui.btn('Add test conversation', 'ghost', 'sm', icon='plus', extra='data-ui-open="testThreadModal"') }}
+          {% endif %}
         </div>
         {% endfor %}
       </div>
@@ -132,6 +180,15 @@
               {% endfor %}
             </select>
           </form>
+          {% if not active.assigned_to %}
+          {# One-click claim for the most common triage action: pick up an
+             unclaimed inquiry so it can't sit unowned. Only shown when nobody
+             owns it yet - otherwise the Owner dropdown handles reassignment. #}
+          <form method="post" action="{{ url_for('marketing_thread_assign', thread_id=active.id) }}" class="mh-assign-form">
+            <input type="hidden" name="assignee_id" value="{{ user.id }}">
+            {{ ui.btn('Claim', 'primary', 'sm', icon='check', type='submit') }}
+          </form>
+          {% endif %}
           <form method="post" action="{{ url_for('marketing_thread_status', thread_id=active.id) }}">
             <input type="hidden" name="status" value="{{ 'open' if active.status == 'resolved' else 'resolved' }}">
             {{ ui.view_filter_fields(status_filter, channel_filter, search_query, stage_filter, source_filter) }}

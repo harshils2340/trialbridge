@@ -25,11 +25,9 @@
 <section class="hero">
   <div class="hero-in">
     {% if patient_user %}
-    <span class="hero-eyebrow">{{ ic.icon('sparkle') }} Your trial search, in one place</span>
     <h1>Find your next <span class="hero-grad">trial match.</span></h1>
     {% else %}
-    <span class="hero-eyebrow">{{ ic.icon('sparkle') }} A clearer way to find a study</span>
-    <h1>Find a clinical trial<br><span class="hero-grad">that fits your life.</span></h1>
+    <h1>Find a clinical trial <span class="hero-grad">that fits your life.</span></h1>
     {% endif %}
     <p class="hero-sub">{{ 'Search again with your saved context and keep applications moving.' if patient_user else 'Tell us what you are dealing with. We surface recruiting studies nearby and help you understand what could fit.' }}</p>
 
@@ -196,24 +194,6 @@
     </p>
   </section>
 
-  <section class="home-proof" aria-label="Why BridgeMD is credible">
-    <div class="home-proof-item">
-      <span>{{ ic.icon('database') }}</span>
-      <b>ClinicalTrials.gov</b>
-      <em>Live public trial data</em>
-    </div>
-    <div class="home-proof-item">
-      <span>{{ ic.icon('shield') }}</span>
-      <b>IRB / REB reviewed</b>
-      <em>Trials follow approved protocols</em>
-    </div>
-    <div class="home-proof-item">
-      <span>{{ ic.icon('lock') }}</span>
-      <b>You control your info</b>
-      <em>Shared only when you apply</em>
-    </div>
-  </section>
-
   {# How it works: kills the "what even is this / what happens after I apply"
      uncertainty that stalls patients before they apply. #}
   <section class="lx-section hiw-section" aria-label="How it works">
@@ -296,6 +276,19 @@
         <b>BridgeMD guide · {{ p.date_h }} · {{ p.read }} min read</b>
       </a>
       {% endfor %}
+    </div>
+  </section>
+
+  {# Site-facing callout (different audience: research sites). Kept minimal and near the
+     very bottom so it never interrupts the patient search flow above. #}
+  <section class="lx-section site-embed-cta" aria-label="For research sites">
+    <div class="site-embed-inner">
+      <span class="eyebrow-mini">For research sites</span>
+      <h2 class="lx-h2">Run a study? Put this trial finder on your own site.</h2>
+      <p>Use BridgeMD as a standalone finder like this one, or embed it into your
+        hospital or clinic website, tailored to the studies you run. Either way, every
+        inquiry lands in your team&rsquo;s shared inbox.</p>
+      <a class="btn btn-primary btn-lg" href="{{ url_for('for_sites') }}#bmd-embed">See how embedding works {{ ic.icon('arrow-right') }}</a>
     </div>
   </section>
 

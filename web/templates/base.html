@@ -120,13 +120,13 @@
         <div class="appswitch-menu" role="menu">
           {% if nav_studies %}
           <a href="{{ url_for('set_scope', nct='', next=request.full_path) }}" class="{{ 'active' if not active_nct }}" role="menuitem">
-            <span class="ss-main">All studies</span>
+            <span class="ss-main">All studies{% if site_unread %} <span class="ss-count">{{ site_unread }}</span>{% endif %}</span>
             <span class="ss-sub">Every trial on one view</span>
           </a>
           {% endif %}
           {% for s in nav_studies %}
           <a href="{{ url_for('set_scope', nct=s.nct, next=request.full_path) }}" class="{{ 'active' if active_nct == s.nct }}" role="menuitem">
-            <span class="ss-main">{{ s.title[:40] or s.nct }}</span>
+            <span class="ss-main">{{ s.title[:40] or s.nct }}{% if s.unread %} <span class="ss-count">{{ s.unread }}</span>{% endif %}</span>
             <span class="ss-sub">{{ s.nct }}</span>
           </a>
           {% else %}

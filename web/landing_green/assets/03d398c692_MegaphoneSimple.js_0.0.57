@@ -1,8 +1,0 @@
-/*
- * MegaphoneSimple (phosphor-icons/MegaphoneSimple@0.0.57)
- *
- * Learn More: https://www.framer.com/asset-urls
- */
-
-export * from "https://framerusercontent.com/modules/qIRh73kYMiiV3q15m9xd/k6TSAxYkJOcjKYOuisHf/MegaphoneSimple.js"
-export { default } from "https://framerusercontent.com/modules/qIRh73kYMiiV3q15m9xd/k6TSAxYkJOcjKYOuisHf/MegaphoneSimple.js"

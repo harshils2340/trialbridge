@@ -272,17 +272,7 @@
 })();
 </script>
 
-{# Calendar-flavoured starters for Bridget (the OS-wide agent in the right rail),
-   and wire the header "Ask AI" button to open it. Bridget answers visit-prep,
-   protocol-window and re-consent questions grounded in this schedule. #}
 <script>
-  window.BRIDGET_STARTERS = [
-    "What should I prep for tomorrow?",
-    "Which visits are outside their protocol window?",
-    "Who needs re-consent soon?",
-    "What's on my schedule this week?"
-  ];
-
   // ---- Click a time slot (week/day) or a day (month) to book a visit ----
   (function () {
     function pad(n) { return (n < 10 ? '0' : '') + n; }

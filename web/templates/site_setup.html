@@ -3,6 +3,18 @@
 {% import "_ui.html" as ui %}
 {% block title %}Site setup · BridgeMD{% endblock %}
 
+{# Channel brand icon, mirrored from the inbox (marketing_hub.html) so the
+   Channels tab reads identically to the inbox's account modal. #}
+{% macro channel_icon(channel, extra='') -%}
+  {% if channel == 'email' %}
+    <span class="mh-channel-ic is-email {{ extra }}">{{ ic.icon('gmail', 'brand-ico') }}</span>
+  {% elif channel == 'instagram' %}
+    <span class="mh-channel-ic is-instagram {{ extra }}">{{ ic.icon('instagram', 'brand-ico') }}</span>
+  {% else %}
+    <span class="mh-channel-ic is-google {{ extra }}">{{ ic.icon('google', 'brand-ico') }}</span>
+  {% endif %}
+{%- endmacro %}
+
 {% block body %}
 <div class="app-head">
   <div>
@@ -15,6 +27,7 @@
   <nav class="setup-tabs" aria-label="Settings sections">
     <button type="button" class="setup-tab on" data-setup-tab="org">{{ ic.icon('users') }} Organization</button>
     <button type="button" class="setup-tab" data-setup-tab="studies">{{ ic.icon('award') }} Studies{% if claims %} <span class="setup-count">{{ claims|length }}</span>{% endif %}</button>
+    <button type="button" class="setup-tab" data-setup-tab="channels">{{ ic.icon('cloud-sync') }} Channels{% if marketing_sources %} <span class="setup-count">{{ marketing_sources|length }}</span>{% endif %}</button>
     <button type="button" class="setup-tab" data-setup-tab="intake">{{ ic.icon('file') }} Intake &amp; screening</button>
     <button type="button" class="setup-tab" data-setup-tab="team">{{ ic.icon('users') }} Team</button>
     <button type="button" class="setup-tab" data-setup-tab="routing">{{ ic.icon('inbox') }} Routing{% if routing_rules %} <span class="setup-count">{{ routing_rules|length }}</span>{% endif %}</button>
@@ -61,6 +74,93 @@
     </p>
   </div>
 </div>{# /org panel #}
+
+{# ============================== CHANNELS ============================== #}
+<div class="setup-panel" data-setup-panel="channels" hidden>
+<div class="app-card pad">
+  <div class="app-card-title">Connected accounts</div>
+  <p class="site-hint" style="margin-top:-4px;">Connect the channels patients reach you through. Every message lands in your shared inbox, sorted by study &mdash; your team reads and replies without leaving BridgeMD.</p>
+
+  {% if marketing_sources %}
+  <section class="mh-account-list" aria-label="Connected accounts">
+    <header><b>Workspace accounts</b><span>{{ marketing_sources_count }} connected</span></header>
+    {% for source in marketing_sources %}
+    <article class="mh-account-row">
+      {{ channel_icon(source.channel) }}
+      <span class="mh-account-copy">
+        <b>{{ source.label or channel_labels[source.channel] }}</b>
+        <small>{{ source.identifier }} &middot; {{ 'Live' if source.connection_mode == 'live' else 'Demo' }}</small>
+        {% if source.provider == 'gmail' and source.connection_status == 'connected' %}
+        <small>{{ 'Synced ' ~ source.sync_time_label if source.last_successful_sync_at else source.sync_time_label }}</small>
+        {% endif %}
+        {% if source.last_error_message %}<em>{{ source.last_error_message|truncate(90) }}</em>{% endif %}
+      </span>
+      <div class="mh-account-actions">
+        {% if source.connection_mode == 'live' and source.connection_id and source.connection_status == 'connected' %}
+          {% if source.provider == 'gmail' %}
+          <form method="post" action="{{ url_for('marketing_connection_sync', connection_id=source.connection_id) }}">
+            {{ ui.btn('Sync', 'ghost', 'sm', icon='refresh', type='submit') }}
+          </form>
+          {% endif %}
+          <form method="post" action="{{ url_for('marketing_connection_disconnect', connection_id=source.connection_id) }}">
+            {{ ui.btn('Disconnect', 'ghost', 'sm', type='submit') }}
+          </form>
+        {% elif source.connection_mode == 'demo' %}
+          <form method="post" action="{{ url_for('marketing_source_status', source_id=source.id) }}">
+            <input type="hidden" name="status" value="{{ 'connected' if source.status != 'connected' else 'disconnected' }}">
+            {{ ui.btn('Reconnect' if source.status != 'connected' else 'Disconnect', 'ghost', 'sm', type='submit') }}
+          </form>
+        {% else %}
+          {% set reconnect_url = url_for('marketing_instagram_connect') if source.provider == 'instagram' else url_for('marketing_gmail_connect') %}
+          {{ ui.btn('Reconnect', 'ghost', 'sm', href=reconnect_url) }}
+        {% endif %}
+      </div>
+    </article>
+    {% endfor %}
+  </section>
+  {% else %}
+  {{ ui.empty('No channels connected yet', 'Connect Gmail or Instagram below and inquiries start flowing into your shared inbox.', 'inbox') }}
+  {% endif %}
+
+  <div class="setup-connect-grid">
+    <section class="mh-gmail-connect">
+      <div class="mh-gmail-mark">{{ ic.icon('google', 'brand-ico') }}</div>
+      <div class="mh-gmail-copy">
+        <span class="mh-live-pill"><i></i> Live connection</span>
+        <h3>Connect Gmail</h3>
+        <p>Bring email into this shared inbox and keep it updated for your whole team.</p>
+        <div class="mh-scope-list"><span>{{ ic.icon('check') }} Sync inbox</span><span>{{ ic.icon('check') }} Team access</span></div>
+      </div>
+      <div class="mh-gmail-action">
+        {% if gmail_oauth_ready %}
+          {{ ui.btn('Connect Gmail', 'primary', 'sm', icon='google', href=url_for('marketing_gmail_connect')) }}
+        {% else %}
+          {{ ui.btn('Google setup required', 'ghost', 'sm', disabled=True) }}
+        {% endif %}
+        <small>Google OAuth &middot; No password shared</small>
+      </div>
+    </section>
+
+    <section class="mh-gmail-connect mh-instagram-connect">
+      <div class="mh-gmail-mark mh-instagram-mark">IG</div>
+      <div class="mh-gmail-copy">
+        <span class="mh-live-pill"><i></i> Live connection</span>
+        <h3>Connect Instagram</h3>
+        <p>Authorize a professional account and pull direct messages into your inbox.</p>
+        <div class="mh-scope-list"><span>{{ ic.icon('check') }} Profile access</span><span>{{ ic.icon('check') }} Message permission</span></div>
+      </div>
+      <div class="mh-gmail-action">
+        {% if instagram_oauth_ready %}
+          {{ ui.btn('Connect Instagram', 'primary', 'sm', href=url_for('marketing_instagram_connect')) }}
+        {% else %}
+          {{ ui.btn('Meta setup required', 'ghost', 'sm', disabled=True) }}
+        {% endif %}
+        <small>Instagram Business Login</small>
+      </div>
+    </section>
+  </div>
+</div>
+</div>{# /channels panel #}
 
 {# ========================= INTAKE & SCREENING ========================= #}
 <div class="setup-panel" data-setup-panel="intake" hidden>

@@ -2706,7 +2706,7 @@ def get_marketing_thread(user_id, thread_id):
 
 
 def list_marketing_threads(user_id, status="open", channel="", query="",
-                           source_id=None, nct=""):
+                           source_id=None, nct="", assignee=""):
     oid = user_org_id(user_id)
     where = ["t.org_id = ?"]
     args = [oid]
@@ -2722,6 +2722,14 @@ def list_marketing_threads(user_id, status="open", channel="", query="",
     if nct:
         where.append("(t.nct = ? OR COALESCE(t.nct, '') = '')")
         args.append(nct)
+    # Ownership triage: "mine" = threads routed to me, "unassigned" = threads
+    # nobody owns yet (so nothing sits unclaimed). Unlike nct, unassigned is NOT
+    # folded into every view - the whole point is to isolate the unclaimed queue.
+    if assignee == "mine":
+        where.append("t.assigned_to = ?")
+        args.append(user_id)
+    elif assignee == "unassigned":
+        where.append("t.assigned_to IS NULL")
     query = (query or "").strip().lower()[:100]
     if query:
         where.append(
@@ -2741,6 +2749,12 @@ def list_marketing_threads(user_id, status="open", channel="", query="",
         "COALESCE((SELECT m.kind FROM marketing_messages m "
         "WHERE m.thread_id = t.id ORDER BY m.created_at DESC, m.id DESC "
         "LIMIT 1), '') AS last_kind, "
+        # Kind of the last real MESSAGE (ignores internal notes) so we can tell
+        # "patient wrote, we still owe a reply" (inbound) from "we already
+        # replied" (outbound) - an internal note must not look like a response.
+        "COALESCE((SELECT m.kind FROM marketing_messages m "
+        "WHERE m.thread_id = t.id AND m.kind != 'note' "
+        "ORDER BY m.created_at DESC, m.id DESC LIMIT 1), '') AS last_reply_kind, "
         "(SELECT COUNT(*) FROM marketing_messages m "
         "WHERE m.thread_id = t.id) AS message_count "
         "FROM marketing_threads t "
@@ -2748,15 +2762,31 @@ def list_marketing_threads(user_id, status="open", channel="", query="",
         "LEFT JOIN users u ON u.id = t.assigned_to WHERE "
         + " AND ".join(where) +
         " ORDER BY t.unread DESC, t.updated_at DESC, t.id DESC")
-    return get_db().execute(sql, tuple(args)).fetchall()
+    rows = get_db().execute(sql, tuple(args)).fetchall()
+    # Triage default: float threads we still OWE a reply to (open + last real
+    # message inbound) to the top, so an aging owed reply can't get buried under
+    # newer threads we've already answered. Stable, so the SQL order (unread,
+    # then recency) is preserved WITHIN the owed / not-owed groups. This is the
+    # only place this ordering lives; revert this sort to restore pure recency.
+    return sorted(
+        rows,
+        key=lambda r: 0 if (r["status"] == "open"
+                            and r["last_reply_kind"] == "inbound") else 1)
 
 
-def marketing_thread_counts(user_id, nct=""):
+def marketing_thread_counts(user_id, nct="", assignee=""):
     oid = user_org_id(user_id)
     where, args = ["org_id = ?"], [oid]
     if nct:
         where.append("(nct = ? OR COALESCE(nct, '') = '')")
         args.append(nct)
+    # Keep the status-tab counts honest when the owner triage filter is active,
+    # so "Open 5" matches the 5 rows shown (mirrors the list's assignee filter).
+    if assignee == "mine":
+        where.append("assigned_to = ?")
+        args.append(user_id)
+    elif assignee == "unassigned":
+        where.append("assigned_to IS NULL")
     row = get_db().execute(
         "SELECT COUNT(*) AS total, "
         "SUM(CASE WHEN status = 'open' THEN 1 ELSE 0 END) AS open_count, "
@@ -2770,6 +2800,18 @@ def marketing_thread_counts(user_id, nct=""):
         "resolved": int(row["resolved_count"] or 0),
         "unread": int(row["unread_count"] or 0),
     }
+
+
+def marketing_unread_by_study(user_id):
+    """Unread thread counts grouped by study NCT, for the top-bar switcher badges
+    (so a coordinator sees which trial has activity and jumps straight to it).
+    One query; returns {nct: count}. Unassigned (no NCT) threads are omitted."""
+    oid = user_org_id(user_id)
+    rows = get_db().execute(
+        "SELECT nct, SUM(CASE WHEN unread = 1 THEN 1 ELSE 0 END) AS unread_count "
+        "FROM marketing_threads WHERE org_id = ? AND COALESCE(nct, '') != '' "
+        "GROUP BY nct", (oid,)).fetchall()
+    return {r["nct"]: int(r["unread_count"] or 0) for r in rows}
 
 
 def list_marketing_messages(user_id, thread_id):
@@ -2929,7 +2971,12 @@ def seed_demo_marketing_hub(user_id):
     Idempotent: seeds once (detected via a sentinel source) so a coordinator can
     click around, reply, and reassign during a live clinic demo without the data
     resetting under them. The first run also clears any throwaway accounts the
-    demo user hand-added, so the inbox reads like a real, busy site."""
+    demo user hand-added, so the inbox reads like a real, busy site.
+
+    Deliberately gated to the throwaway demo account ONLY: the seeder assumes the
+    demo org (and wipes existing marketing data on first run), so it is NOT safe
+    to point at an arbitrary account. A fresh real account correctly gets an empty
+    inbox to connect its own channels."""
     if not user_id:
         return
     conn = get_db()
@@ -3200,7 +3247,9 @@ def seed_demo_marketing_hub(user_id):
           ("outbound", me,
            "You can apply directly — no referral needed! I'll send a quick link "
            "to check if you're eligible. 👍", 322)], study=psi)
-    _seq(instagram_id, "Sam W.", "@skeptical_sam", "Is this real?", jordan_id,
+    # Unassigned on purpose: a brand-new DM nobody has claimed yet, so the
+    # "Unassigned" owner filter shows a real inquiry to pick up (no lead lost).
+    _seq(instagram_id, "Sam W.", "@skeptical_sam", "Is this real?", None,
          "open", True,
          [("inbound", "contact",
            "is this legit or a scam lol. how do i know my info is safe?", 145)],
@@ -3213,8 +3262,10 @@ def seed_demo_marketing_hub(user_id):
            "One ad in 'Migraine Search' was disapproved for a landing page "
            "policy issue. Affected ad is not serving. Review and resubmit to "
            "resume delivery.", 9)], study=mig)
+    # Unassigned on purpose: a fresh ad lead lands with no owner (ad leads
+    # routinely arrive unclaimed), so triaging the "Unassigned" queue has teeth.
     _seq(ads_id, "Maya Chen", "maya.chen@gmail.com",
-         "Can I join while taking topiramate?", jordan_id, "open", True,
+         "Can I join while taking topiramate?", None, "open", True,
          [("inbound", "contact",
            "I clicked your Google ad for the migraine study. I have around 10 "
            "to 12 migraine days a month and take topiramate. Could I still be "
