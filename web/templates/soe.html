@@ -7,13 +7,13 @@
 <div class="app-head">
   <div>
     <h1>Schedule of events</h1>
-    <p>The protocol visit schedule you run every participant against — visits, windows and the procedures due. Apply it to a participant and every visit lands on the calendar with its window.</p>
+    <p>The protocol visit schedule you run every participant against: visits, windows, and the procedures due. Apply it to a participant and every visit lands on the calendar with its window.</p>
   </div>
 </div>
 
 {% if not trials %}
 <div class="app-card pad">
-  {{ ui.empty('Claim a study to build its schedule', 'Once you run a trial, draft its schedule of events here — from the protocol — then apply it to each enrolled participant in one click.', 'list', action=ui.btn('Go to Settings', variant='primary', icon='gear', href=url_for('site_setup'))) }}
+  {{ ui.empty('Claim a study to build its schedule', 'Once you run a trial, draft its schedule of events here from the protocol, then apply it to each enrolled participant in one click.', 'list', action=ui.btn('Go to Settings', variant='primary', icon='gear', href=url_for('site_setup'))) }}
 </div>
 {% else %}
 
@@ -30,7 +30,7 @@
   <form method="post" action="{{ url_for('soe_generate') }}" class="cal-form">
     <input type="hidden" name="nct" value="{{ nct }}">
     <div class="field">
-      <label>Paste the protocol's schedule of assessments <span class="cal-hint">{% if has_llm %}AI reads it and drafts the visits + windows{% else %}no AI key set — we'll insert a standard template you can edit{% endif %}</span></label>
+      <label>Paste the protocol's schedule of assessments <span class="cal-hint">{% if has_llm %}AI reads it and drafts the visits + windows{% else %}no AI key set, so we'll insert a standard template you can edit{% endif %}</span></label>
       <textarea name="protocol_text" rows="5" placeholder="e.g. Screening (Day -14 to -1): consent, labs, ECG. Baseline/Day 1: randomize, dose. Week 4 (±3d): labs, PRO. Week 12 / EOT (±5d): ECG, final PRO..."></textarea>
     </div>
     <div class="cal-form-foot">

@@ -92,7 +92,7 @@
 
 <div class="app-card">
   <div class="app-card-title" style="padding:14px 18px 6px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
-    <span>{{ ic.icon('dollar') }} <b>Payment schedule</b> <span class="app-sub" style="font-weight:400;color:var(--faint);">per-visit stipends, completion lump sums, and reimbursements — set once per protocol</span></span>
+    <span>{{ ic.icon('dollar') }} <b>Payment schedule</b> <span class="app-sub" style="font-weight:400;color:var(--faint);">per-visit stipends, completion lump sums, and reimbursements, set once per protocol</span></span>
     {% if nct_filter %}
     <form method="post" action="{{ url_for('payments_rules_from_soe') }}" style="display:inline" data-ajax>
       <input type="hidden" name="nct" value="{{ nct_filter }}">
@@ -162,9 +162,9 @@
     </div>
   </div>
   <div class="field" id="pr-tmpl-field">
-    <label>Phase preset <span class="cal-hint">optional — prefills a starting amount you can adjust</span></label>
+    <label>Phase preset <span class="cal-hint">optional, prefills a starting amount you can adjust</span></label>
     <select id="pr-tmpl">
-      <option value="">— pick a phase to suggest an amount —</option>
+      <option value="">Pick a phase to suggest an amount</option>
       {% for t in phase_templates %}<option value="{{ t.id }}">{{ t.label }}</option>{% endfor %}
     </select>
   </div>
@@ -177,7 +177,7 @@
     <label class="pay-check"><input type="checkbox" name="irb_approved" id="pr-irb" value="1"> This amount is <b>IRB/REB-approved</b> and disclosed in the consent form</label>
     <span class="cal-hint">Required before a rule can auto-issue. Amounts are for time &amp; travel, never for enrolling.</span>
   </div>
-  <div class="field"><label>IRB reference <span class="cal-hint">optional — approval # / consent section</span></label><input type="text" name="irb_note" id="pr-irbnote" placeholder="IRB #2024-118, consent sec. 12"></div>
+  <div class="field"><label>IRB reference <span class="cal-hint">optional, approval # / consent section</span></label><input type="text" name="irb_note" id="pr-irbnote" placeholder="IRB #2024-118, consent sec. 12"></div>
   <div class="cal-form-foot"><span></span>{{ ui.btn('Save rule', 'primary', type='submit', icon='check') }}</div>
 </form>
 {% endcall %}
@@ -187,7 +187,7 @@
 <form method="post" action="{{ url_for('payments_reimbursement') }}" class="cal-form" data-ajax>
   <div class="field"><label>Participant</label>
     <select name="lead_id" required>
-      <option value="">— choose a participant —</option>
+      <option value="">Choose a participant</option>
       {% for p in participants %}<option value="{{ p.id }}">{{ p.name }} · {{ p.nct }}</option>{% endfor %}
     </select>
   </div>

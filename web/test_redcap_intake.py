@@ -147,11 +147,14 @@ def test_db_helpers():
         found = db.find_lead_by_redcap_record("RC-777")
         if not found or found["id"] != lead["id"]:
             _fail("find_lead_by_redcap_record", "record id lookup failed")
-        # Fallback: match on the lead's own id.
-        found2 = db.find_lead_by_redcap_record(str(lead["id"]))
-        if not found2 or found2["id"] != lead["id"]:
-            _fail("find_lead_by_redcap_record", "id fallback failed")
-        _pass("lead survey tracking + webhook lookup")
+        # Security: a bare primary-key value must NOT resolve a lead. Lookup
+        # matches ONLY the stored REDCap handoff record id, so a caller cannot
+        # advance an arbitrary patient by guessing sequential ids. (The old
+        # primary-key fallback was removed on purpose - see the db docstring.)
+        if db.find_lead_by_redcap_record(str(lead["id"])) is not None:
+            _fail("find_lead_by_redcap_record",
+                  "primary-key fallback must be rejected (enumeration guard)")
+        _pass("lead survey tracking + webhook lookup (no id fallback)")
         return uid, token
 
 
@@ -168,7 +171,7 @@ def test_screening_flow():
     # Patient signup -> verify -> onboarding.
     _post(client, "/account/signup", data={
         "full_name": "Screen Patient", "email": "screen@test.local",
-        "password": "StrongPass123"})
+        "password": "StrongPass123", "agree": "on"})
     _post(client, "/account/verify", data={"code": "123456"})
     _post(client, "/account/onboarding", data={
         "primary_interest": "obesity", "notify_email": "screen@test.local",
@@ -203,7 +206,9 @@ def test_screening_flow():
     body = r.get_data(as_text=True)
     if r.status_code != 200 or "screening form" not in body.lower():
         _fail("screening form", f"status {r.status_code}")
-    if "Demo screening form" not in body:
+    # Simulated mode (no live REDCap) renders the illustrative inline form - a
+    # "Sample" badge plus real input fields - not the real REDCap iframe.
+    if "screening-frame-sample" not in body or 'name="s_travel"' not in body:
         _fail("screening form", "simulated form not rendered")
     # Level 2: the simulated form is wrapped in the branded embed chrome.
     if "screening-frame" not in body or "powered by your study team's REDCap" not in body:
@@ -239,23 +244,50 @@ def test_webhook():
         lead_id = lead["id"]
 
     client = webapp.app.test_client()
-    # No shared secret configured in tests -> webhook accepts.
-    r = client.post("/integrations/redcap/webhook", data={
-        "record": "WH-9001", "instrument": "patient_intake",
-        "patient_intake_complete": "2"})
-    if r.status_code != 200 or r.get_data(as_text=True) != "ok":
-        _fail("webhook", f"status {r.status_code} body {r.get_data(as_text=True)}")
-    with webapp.app.app_context():
-        lead = db.get_lead(lead_id)
-        if lead["redcap_survey_status"] != "complete":
-            _fail("webhook", "lead not marked complete")
-    _pass("webhook marks matching lead complete")
+    original_secret = redcap.WEBHOOK_SECRET
+    try:
+        # Security: the endpoint FAILS CLOSED. With no shared secret configured it
+        # must reject every call (403) so anonymous callers can't advance patients.
+        redcap.WEBHOOK_SECRET = ""
+        r = client.post("/integrations/redcap/webhook", data={"record": "WH-9001"})
+        if r.status_code != 403:
+            _fail("webhook", f"no-secret must fail closed, got {r.status_code}")
 
-    # Unknown record is ignored (no error).
-    r = client.post("/integrations/redcap/webhook", data={"record": "does-not-exist"})
-    if r.status_code != 200 or r.get_data(as_text=True) != "ignored":
-        _fail("webhook", "unknown record should be ignored")
-    _pass("webhook ignores unknown record")
+        # With a secret configured, a call WITHOUT the token is still rejected.
+        redcap.WEBHOOK_SECRET = "test-webhook-secret"
+        r = client.post("/integrations/redcap/webhook", data={"record": "WH-9001"})
+        if r.status_code != 403:
+            _fail("webhook", f"missing token must be rejected, got {r.status_code}")
+
+        # A wrong token is rejected.
+        r = client.post("/integrations/redcap/webhook",
+                        data={"record": "WH-9001"},
+                        headers={"X-Redcap-Token": "wrong"})
+        if r.status_code != 403:
+            _fail("webhook", f"wrong token must be rejected, got {r.status_code}")
+
+        # The correct token is accepted and marks the matching lead complete.
+        r = client.post("/integrations/redcap/webhook", data={
+            "record": "WH-9001", "instrument": "patient_intake",
+            "patient_intake_complete": "2"},
+            headers={"X-Redcap-Token": "test-webhook-secret"})
+        if r.status_code != 200 or r.get_data(as_text=True) != "ok":
+            _fail("webhook", f"status {r.status_code} body {r.get_data(as_text=True)}")
+        with webapp.app.app_context():
+            lead = db.get_lead(lead_id)
+            if lead["redcap_survey_status"] != "complete":
+                _fail("webhook", "lead not marked complete")
+        _pass("webhook fails closed without secret, marks lead complete with it")
+
+        # Unknown record (authenticated) is ignored, not an error.
+        r = client.post("/integrations/redcap/webhook",
+                        data={"record": "does-not-exist"},
+                        headers={"X-Redcap-Token": "test-webhook-secret"})
+        if r.status_code != 200 or r.get_data(as_text=True) != "ignored":
+            _fail("webhook", "unknown record should be ignored")
+        _pass("webhook ignores unknown record")
+    finally:
+        redcap.WEBHOOK_SECRET = original_secret
 
 
 def main():

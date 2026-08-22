@@ -1,7 +1,269 @@
 {% extends "public_base.html" %}
 {% import "_icons.html" as ic %}
 {% import "_ui.html" as ui %}
+{% import "_nav.html" as nav with context %}
 {% block title %}BridgeMD - find recruiting clinical trials{% endblock %}
+{# /find (GET) renders this same landing, so point both at one canonical URL
+   instead of splitting the signal between two paths. #}
+{% block canonical %}<link rel="canonical" href="{{ url_for('home', _external=True) }}">{% endblock %}
+
+{% block head_extra %}
+<style>
+/* ============================================================================
+   Finder page redesign. Clean, modern marketing rhythm with ONE brand blue.
+   The hero search form + all its inner classes / JS hooks are untouched; this
+   only restyles the shell and the below-fold sections. Loads after style.css,
+   so equal-specificity rules here win.
+   ========================================================================== */
+/* Figtree - the same typeface the Framer marketing site uses. Self-hosted from
+   the already-shipped landing assets so there's no Google Fonts / CSP dependency. */
+@font-face{ font-family:"Figtree"; font-style:normal; font-weight:400; font-display:swap;
+  src:url("/landing/assets/8221d5aa15__Xmz-HUzqDCFdgfMsYiV_F7wfS-Bs_d_QF5bwkEU4HTy.woff2") format("woff2"); }
+@font-face{ font-family:"Figtree"; font-style:normal; font-weight:500; font-display:swap;
+  src:url("/landing/assets/22a0ab5a22__Xmz-HUzqDCFdgfMsYiV_F7wfS-Bs_dNQF5bwkEU4HTy.woff2") format("woff2"); }
+@font-face{ font-family:"Figtree"; font-style:normal; font-weight:600; font-display:swap;
+  src:url("/landing/assets/7bde881678__Xmz-HUzqDCFdgfMsYiV_F7wfS-Bs_ehR15bwkEU4HTy.woff2") format("woff2"); }
+@font-face{ font-family:"Figtree"; font-style:normal; font-weight:700; font-display:swap;
+  src:url("/landing/assets/acab8c9edc__Xmz-HUzqDCFdgfMsYiV_F7wfS-Bs_eYR15bwkEU4HTy.woff2") format("woff2"); }
+
+/* Apply Figtree across the whole finder page (this style block only loads here). */
+body.home-screen, body.home-screen h1, body.home-screen h2, body.home-screen h3,
+body.home-screen h4, body.home-screen h5, body.home-screen h6, body.home-screen p,
+body.home-screen a, body.home-screen span, body.home-screen li, body.home-screen label,
+body.home-screen button, body.home-screen input, body.home-screen select,
+body.home-screen textarea, body.home-screen summary, body.home-screen .brand{
+  font-family:"Figtree", var(--sans), system-ui, -apple-system, "Segoe UI", sans-serif; }
+
+.fx{ --fx-ink:#0f1a2e; --fx-mut:#586582; --fx-accent:#1257b0; --fx-accent2:#3b6ef2;
+  --fx-soft:#eef3fb; --fx-card:#fff; --fx-line:rgba(18,40,80,.10);
+  --fx-radius:22px; --fx-shadow:0 22px 60px -30px rgba(15,26,46,.45);
+  --fx-shadow-sm:0 8px 24px -16px rgba(15,26,46,.4); }
+
+/* The finder used to be a single-viewport search screen with nothing below, so
+   the shell locked the hero to fill the viewport. It now has rich marketing
+   sections underneath, so undo that lock and let the page scroll normally with a
+   natural-height hero (otherwise the hero balloons on tall screens and hides the
+   fact that there's more below). */
+body.home-screen{ display:block; min-height:0; }
+body.home-screen .pub-main{ display:block; }
+body.home-screen .hero{ flex:none; display:block; min-height:0; padding:76px 24px 52px;
+  background:radial-gradient(1100px 480px at 50% -80px, rgba(59,110,242,.10), transparent 70%); }
+body.home-screen .hero-in{ max-width:1040px; margin:0 auto; }
+body.home-screen .hero h1{ white-space:normal; font-size:clamp(34px,5vw,50px);
+  line-height:1.05; letter-spacing:-.03em; }
+/* Keep the headline on a single line from tablet up (it wraps on phones). */
+@media (min-width:760px){
+  body.home-screen .hero h1{ white-space:nowrap; font-size:clamp(34px,4.2vw,50px); }
+}
+body.home-screen .hero-sub{ max-width:600px; font-size:18px; }
+body.home-screen .landing-legal{ position:static; }
+
+/* ---- Hero search card cleanup ----
+   Cohesive spacing, a full-width segmented control (was hugging left), and a
+   blue active pill (the base style had a leftover TEAL glow on a blue button).
+   Softer container + radii to sit with the Figtree/Framer look. Scoped to the
+   finder so no other search surface changes. */
+body.home-screen .hero-card{ max-width:820px; padding:18px; border-radius:20px;
+  border-color:rgba(18,40,80,.10);
+  box-shadow:0 26px 60px -36px rgba(15,26,46,.5), 0 2px 8px rgba(15,26,46,.05); }
+body.home-screen .hero-card-head{ margin:0 4px 12px; color:#5a6a86;
+  font-size:11.5px; letter-spacing:.08em; }
+body.home-screen .hero-card-head small{ color:#0a7d43; font-weight:700; font-size:11.5px; }
+body.home-screen .hero-card .search-modes{ display:flex; width:100%; gap:4px; margin:0 0 10px;
+  padding:4px; background:#eef1f7; border-color:transparent; border-radius:14px; }
+body.home-screen .hero-card .search-mode{ flex:1 1 0; text-align:center; padding:9px 12px;
+  border-radius:10px; font-size:14px; }
+body.home-screen .hero-card .search-mode.is-active{
+  background:linear-gradient(135deg,#3b6ef2,#1257b0); color:#fff;
+  box-shadow:0 6px 14px -6px rgba(18,87,176,.6); }
+body.home-screen .hero-card .hero-search{ padding:6px; border-radius:14px;
+  border-color:rgba(18,40,80,.12); }
+body.home-screen .hero-card .hero-go{ border-radius:11px; }
+body.home-screen .hero-card .hero-loc-actions{ margin-top:10px; }
+body.home-screen .hero-reassurance{ margin-top:16px; font-size:12.5px; }
+
+/* The floating pill header is the shared `.pill-nav` component now
+   (style.css + templates/_nav.html), so no finder-specific nav rules live here. */
+
+/* Full-width scroll container so section bands can run edge to edge. Legacy
+   children (.near-wrap, .trust-strip) and .fx-sec all self-center, so widening
+   the wrapper is safe. */
+.landing-extra.fx{ max-width:none; width:100%; padding:0;
+  background:linear-gradient(180deg,#fff 0, #f6f8fc 220px); }
+.fx-sec{ max-width:1120px; margin:0 auto; padding:92px 24px; }
+.fx-sec-tight{ padding-top:24px; }
+.fx-head{ max-width:680px; }
+.fx-head.fx-center{ margin:0 auto; text-align:center; }
+.fx-eyebrow{ display:inline-block; font-size:12.5px; font-weight:700; letter-spacing:.09em;
+  text-transform:uppercase; color:var(--fx-accent);
+  background:rgba(18,87,176,.08); padding:6px 14px; border-radius:999px; }
+.fx-h2{ font-size:clamp(30px,4vw,44px); line-height:1.08; font-weight:800;
+  letter-spacing:-.025em; color:var(--fx-ink); margin:18px 0 14px; }
+.fx-lead{ font-size:18px; line-height:1.62; color:var(--fx-mut); margin:0; }
+.fx-lead strong{ color:var(--fx-accent); font-weight:800; white-space:nowrap; }
+.fx-center .fx-lead{ margin-left:auto; margin-right:auto; }
+
+/* ---- Split hero: patient search (left) + product-in-context embed visual (right).
+   The right panel is a browser mockup of the finder living inside a clinic's own
+   site: a proof visual ("runs on your site too"), not a B2B CTA, so the patient
+   search stays the primary action. Stacks below 980px. Stats/trending/trust move
+   into a thin centered strip under the split. ---- */
+/* clip horizontal overflow only (vertical stays visible so the search autocomplete
+   dropdown isn't cut); guards against any intrinsic-width child widening the page
+   on small screens. overflow-x:clip does not create a scroll container, so the
+   sticky pill nav keeps sticking to the viewport. */
+body.home-screen{ overflow-x:clip; }
+body.home-screen .hero-in{ min-width:0; }
+body.home-screen .hero-split{ display:grid; grid-template-columns:1fr; gap:34px;
+  align-items:center; text-align:left; min-width:0; }
+body.home-screen .hero-split-left{ min-width:0; }
+body.home-screen .hero-split-left h1{ white-space:normal; margin:0 0 12px;
+  font-size:clamp(32px,5.4vw,44px); text-align:left; }
+body.home-screen .hero-split-left .hero-sub{ margin:0 0 20px; max-width:540px; }
+body.home-screen .hero-split-left .hero-card{ margin:0; max-width:none; }
+body.home-screen .hero-split-left .hero-reassurance{ justify-content:flex-start;
+  margin-top:16px; }
+/* The condition/location/button row is cramped in the narrower left column, so
+   stack it vertically (each field its own bordered input, full-width button) -
+   cleaner and it mirrors the embedded-widget mockup on the right. */
+body.home-screen .hero-split-left .hero-card .hero-search{ flex-direction:column;
+  align-items:stretch; gap:8px; }
+body.home-screen .hero-split-left .hero-card .hero-search-loc::before{ display:none; }
+body.home-screen .hero-split-left .hero-card .hero-field{ border:1px solid rgba(18,40,80,.12);
+  border-radius:12px; }
+body.home-screen .hero-split-left .hero-card .hero-go{ width:100%; justify-content:center; }
+@media (min-width:980px){
+  body.home-screen .hero-split{ grid-template-columns:minmax(0,1.04fr) minmax(0,.96fr);
+    gap:54px; }
+  body.home-screen .hero-split-left h1{ white-space:normal; font-size:clamp(34px,3.3vw,44px); }
+}
+
+body.home-screen .hero-split-right{ min-width:0; }
+body.home-screen .embed-mock{ border-radius:16px; overflow:hidden; background:#fff;
+  border:1px solid rgba(18,40,80,.12);
+  box-shadow:0 32px 74px -34px rgba(15,26,46,.5), 0 2px 10px rgba(15,26,46,.05); }
+body.home-screen .embed-mock-bar{ display:flex; align-items:center; gap:7px;
+  padding:11px 14px; background:#f3f5fa; border-bottom:1px solid rgba(18,40,80,.08); }
+body.home-screen .embed-dot{ width:9px; height:9px; border-radius:50%; background:#cdd5e4; }
+body.home-screen .embed-url{ margin-left:8px; font-size:12px; color:#7a86a0; background:#fff;
+  border:1px solid rgba(18,40,80,.08); border-radius:8px; padding:3px 12px; }
+body.home-screen .embed-mock-body{ padding:22px; }
+body.home-screen .embed-site-head{ display:flex; align-items:center;
+  justify-content:space-between; padding-bottom:14px; margin-bottom:18px;
+  border-bottom:1px solid rgba(18,40,80,.08); }
+body.home-screen .embed-site-logo{ font-weight:800; color:#0f1a2e; font-size:15px;
+  display:flex; align-items:center; gap:9px; }
+body.home-screen .embed-site-logo::before{ content:""; width:18px; height:18px;
+  border-radius:6px; background:linear-gradient(135deg,#3b6ef2,#1257b0); }
+body.home-screen .embed-site-nav{ font-size:12px; color:#8792a8; }
+body.home-screen .embed-widget{ border:1px solid rgba(18,87,176,.18); border-radius:14px;
+  padding:18px; background:linear-gradient(180deg,#f7faff,#fff); }
+body.home-screen .embed-widget-tag{ display:inline-flex; align-items:center; gap:6px;
+  font-size:11px; font-weight:700; letter-spacing:.02em; color:#1257b0; background:#e7f0fd;
+  border-radius:999px; padding:4px 11px; margin-bottom:13px; }
+body.home-screen .embed-widget-title{ font-weight:700; color:#0f1a2e; font-size:16px;
+  margin-bottom:13px; }
+body.home-screen .embed-widget-field{ font-size:13px; color:#8a94aa; background:#fff;
+  border:1px solid rgba(18,40,80,.12); border-radius:10px; padding:11px 13px; margin-bottom:9px; }
+body.home-screen .embed-widget-go{ text-align:center; font-weight:700; font-size:14px;
+  color:#fff; background:linear-gradient(135deg,#3b6ef2,#1257b0); border-radius:10px;
+  padding:12px; margin-top:4px; box-shadow:0 8px 18px -8px rgba(18,87,176,.6); }
+body.home-screen .embed-caption{ margin-top:20px; }
+body.home-screen .embed-cap-title{ font-weight:700; color:#0f1a2e; font-size:15.5px;
+  margin:0 0 11px; display:flex; align-items:center; gap:9px; }
+body.home-screen .embed-cap-title::before{ content:""; width:9px; height:9px; border-radius:3px;
+  background:linear-gradient(135deg,#3b6ef2,#1257b0); }
+body.home-screen .embed-points{ list-style:none; margin:0 0 14px; padding:0; display:grid; gap:9px; }
+body.home-screen .embed-points li{ position:relative; padding-left:26px; font-size:14px;
+  color:#586582; line-height:1.45; }
+body.home-screen .embed-points li::before{ content:"✓"; position:absolute; left:0; top:-1px;
+  color:#1257b0; font-weight:800; }
+body.home-screen .embed-forsites{ display:inline-flex; align-items:center; gap:6px;
+  font-weight:700; font-size:14px; color:#1257b0; text-decoration:none; }
+body.home-screen .embed-forsites:hover{ text-decoration:underline; }
+body.home-screen .embed-forsites svg{ width:15px; height:15px; }
+
+/* Thin centered strip under the split. */
+body.home-screen .hero-strip{ max-width:900px; margin:44px auto 0; text-align:center; }
+body.home-screen .hero-strip .hero-stats{ margin:0 auto; }
+body.home-screen .hero-strip .chips-block{ margin-top:18px; }
+body.home-screen .hero-strip .hero-trust{ margin-top:16px; }
+@media (max-width:620px){ body.home-screen .embed-mock-body{ padding:16px; } }
+
+/* Belt-and-suspenders so nothing on the finder can exceed the phone viewport
+   (a wide flex child - stats row, segmented control - would otherwise widen the
+   whole page and right-crop the nav + hero). */
+@media (max-width:820px){
+  body.home-screen .hero{ padding:20px 16px 40px; }
+  body.home-screen .hero-in,
+  body.home-screen .hero-split,
+  body.home-screen .hero-split-left,
+  body.home-screen .hero-split-right,
+  body.home-screen .hero-card,
+  body.home-screen .embed-mock,
+  body.home-screen .hero-strip{ max-width:100%; width:100%; min-width:0; }
+  body.home-screen .hero-strip .hero-stats{ display:flex; width:100%; }
+  body.home-screen .hero-strip .hero-stat{ flex:1 1 0; min-width:0; padding:8px 6px; }
+  body.home-screen .hero-card .search-modes{ flex-wrap:wrap; }
+  body.home-screen .hero-card .search-mode{ flex:1 1 30%; }
+}
+
+/* ---- How it works: white cards with soft circular icon badges ---- */
+.fx-flow{ display:grid; grid-template-columns:repeat(3,1fr); gap:24px; margin-top:52px; }
+.fx-card{ background:var(--fx-card); border:1px solid var(--fx-line); border-radius:20px;
+  padding:34px 30px; box-shadow:0 10px 30px -24px rgba(15,26,46,.4); }
+.fx-badge{ display:inline-flex; align-items:center; justify-content:center; width:58px; height:58px;
+  border-radius:50%; color:var(--fx-accent); background:rgba(18,87,176,.09); }
+.fx-badge svg{ width:26px; height:26px; }
+.fx-card h3{ font-size:21px; font-weight:800; color:var(--fx-ink); margin:22px 0 10px; }
+.fx-card p{ font-size:15px; line-height:1.62; color:var(--fx-mut); margin:0; }
+
+/* ---- FAQ ---- */
+.fx-faq{ max-width:820px; margin:0 auto; }
+.fx-faq details{ border:1px solid var(--fx-line); border-radius:16px; background:#fff;
+  margin-bottom:12px; box-shadow:var(--fx-shadow-sm); overflow:hidden; }
+.fx-faq summary{ list-style:none; cursor:pointer; padding:20px 22px; font-size:16.5px;
+  font-weight:700; color:var(--fx-ink); display:flex; justify-content:space-between;
+  align-items:center; gap:18px; }
+.fx-faq summary::-webkit-details-marker{ display:none; }
+.fx-faq summary::after{ content:"+"; font-size:26px; line-height:1; color:var(--fx-accent);
+  flex:0 0 auto; }
+.fx-faq details[open] summary{ color:var(--fx-accent); }
+.fx-faq details[open] summary::after{ content:"\2212"; }
+.fx-faq .fx-a{ padding:0 22px 20px; color:var(--fx-mut); font-size:15.5px; line-height:1.62; }
+.fx-faq .fx-a em{ color:var(--fx-ink); font-style:normal; font-weight:600; }
+.fx-cta{ text-align:center; margin-top:40px; }
+
+/* ---- Footer cleanup ----
+   The old footer was a hard white bar with a crisp top border, plus a trust row
+   chopped up by vertical divider bars. Blend both into the page: transparent
+   backgrounds, one soft hairline, aligned to the content width, no dividers. */
+body.home-screen .trust-strip{ max-width:1080px; margin:0 auto; padding:44px 24px 0;
+  gap:12px 30px; }
+body.home-screen .trust-pill{ color:#5a6a86; font-weight:600; font-size:13px; padding:0; }
+body.home-screen .trust-pill .ico{ color:#0a7d43; }
+body.home-screen .trust-strip .trust-pill + .trust-pill::before{ display:none; }
+
+body.home-screen .landing-legal{ width:auto; max-width:1080px; margin:28px auto 0;
+  padding:20px 24px 44px; background:transparent; border-top:1px solid rgba(18,40,80,.08);
+  align-items:flex-start; }
+body.home-screen .landing-legal-disc{ color:#8a94a8; font-size:12.5px; line-height:1.6; }
+body.home-screen .landing-legal-links{ font-size:12.5px; }
+body.home-screen .landing-legal-links a{ color:#5a6a86; }
+body.home-screen .landing-legal-links a:hover{ color:var(--fx-accent); }
+
+@media (max-width:900px){
+  .fx-flow{ grid-template-columns:1fr; }
+  .fx-sec{ padding:64px 20px; }
+}
+</style>
+{% endblock %}
+
+{# Shared floating pill header (templates/_nav.html), same component the site-side
+   pages use. Only the links + CTA are finder-specific. #}
+{% block site_header %}{{ nav.pill(
+     [('How it works', '#how'), ('AI Inbox', sites_home_url), ('FAQ', '#faq')],
+     'Request a demo', sites_home_url ~ '#demo') }}{% endblock %}
 
 {% block pub_nav_extra %}
 {% if patient_user and records_ui %}
@@ -21,22 +283,14 @@
 {% block body %}
 <section class="hero">
   <div class="hero-in">
+   <div class="hero-split">
+    <div class="hero-split-left">
     {% if patient_user %}
-    <span class="hero-eyebrow">{{ ic.icon('sparkle') }} Your trial search, in one place</span>
     <h1>Find your next <span class="hero-grad">trial match.</span></h1>
     {% else %}
-    <span class="hero-eyebrow">{{ ic.icon('sparkle') }} A clearer way to find a study</span>
-    <h1>Find a clinical trial<br><span class="hero-grad">that fits your life.</span></h1>
+    <h1>Find a clinical trial <span class="hero-grad">that fits your life.</span></h1>
     {% endif %}
     <p class="hero-sub">{{ 'Search again with your saved context and keep applications moving.' if patient_user else 'Tell us what you are dealing with. We surface recruiting studies nearby and help you understand what could fit.' }}</p>
-
-    {% if not patient_user %}
-    <div class="hero-stats" aria-label="Why BridgeMD">
-      <div class="hero-stat"><span class="hero-stat-v">{{ home_stats.recruiting if home_stats else '65,000+' }}</span><span class="hero-stat-l">recruiting trials, live now</span></div>
-      <div class="hero-stat"><span class="hero-stat-v">Free</span><span class="hero-stat-l">no account needed to search</span></div>
-      <div class="hero-stat"><span class="hero-stat-v hero-stat-green">{{ home_stats.paid if home_stats else 'Thousands' }}</span><span class="hero-stat-l">pay for your time &amp; travel</span></div>
-    </div>
-    {% endif %}
 
     <div class="hero-card">
     <form id="heroForm" method="post" action="{{ url_for('find') }}" autocomplete="off">
@@ -134,50 +388,83 @@
       <span>{{ ic.icon('lock') }} You choose what to share</span>
     </div>
     {% endif %}
+    </div>{# .hero-split-left #}
 
-    {% if patient_ctx %}
-    <div class="home-you">
-      <div class="home-you-links">
-        <a class="home-you-link" href="{{ url_for('applications') }}">{{ ic.icon('activity') }} Your applications {% if patient_ctx.apps_count %}{{ ui.count(patient_ctx.apps_count) }}{% endif %}</a>
-        <a class="home-you-link" href="{{ url_for('alerts') }}">{{ ic.icon('sparkle') }} Your alerts {% if patient_ctx.alerts_count %}{{ ui.count(patient_ctx.alerts_count) }}{% endif %}</a>
+    {% if not patient_user %}
+    {# Product-in-context: the same finder, embedded inside a clinic's own site.
+       A proof visual ("runs on your site too"), not a B2B CTA, so the patient
+       search stays the primary action. Carries the old embed story in 3 points. #}
+    <aside class="hero-split-right" aria-label="BridgeMD on your own site">
+      <div class="embed-mock" aria-hidden="true">
+        <div class="embed-mock-bar">
+          <span class="embed-dot"></span><span class="embed-dot"></span><span class="embed-dot"></span>
+          <span class="embed-url">riversidehealth.org/clinical-trials</span>
+        </div>
+        <div class="embed-mock-body">
+          <div class="embed-site-head">
+            <span class="embed-site-logo">Riverside Health</span>
+            <span class="embed-site-nav">Care · Doctors · Research</span>
+          </div>
+          <div class="embed-widget">
+            <span class="embed-widget-tag">Powered by BridgeMD</span>
+            <div class="embed-widget-title">Find a study at Riverside</div>
+            <div class="embed-widget-field">Condition, e.g. type 2 diabetes</div>
+            <div class="embed-widget-field">City or postal code</div>
+            <div class="embed-widget-go">See matching studies</div>
+          </div>
+        </div>
       </div>
-      {% if patient_ctx.recent %}
-      <div class="chip-row">
-        <span class="chip-label">Search again</span>
-        <div class="chip-cluster">
-          {% for c in patient_ctx.recent %}
-          <button type="button" class="chip recent-chip" data-cond="{{ c }}">{{ c }}</button>
-          {% endfor %}
+      <div class="embed-caption">
+        <p class="embed-cap-title">Runs on your site too</p>
+        <ul class="embed-points">
+          <li>Embed the finder in your clinic's own branding and domain</li>
+          <li>Patients apply in minutes, no email or phone tag</li>
+          <li>Every inquiry lands in your team's shared inbox</li>
+        </ul>
+        <a class="embed-forsites" href="{{ sites_home_url }}">For research sites {{ ic.icon('arrow-right') }}</a>
+      </div>
+    </aside>
+    {% endif %}
+   </div>{# .hero-split #}
+
+    {% if not patient_user or not pov_demo %}
+    <div class="hero-strip">
+      {% if not patient_user %}
+      <div class="hero-stats" aria-label="Why BridgeMD">
+        <div class="hero-stat"><span class="hero-stat-v">{{ home_stats.recruiting if home_stats else '65,000+' }}</span><span class="hero-stat-l">recruiting trials, live now</span></div>
+        <div class="hero-stat"><span class="hero-stat-v">Free</span><span class="hero-stat-l">no account needed to search</span></div>
+        <div class="hero-stat"><span class="hero-stat-v hero-stat-green">{{ home_stats.paid if home_stats else 'Thousands' }}</span><span class="hero-stat-l">pay for your time &amp; travel</span></div>
+      </div>
+      {% endif %}
+
+      {% if not pov_demo %}
+      <div class="chips-block">
+        <div class="chip-row">
+          <span class="chip-label">Trending</span>
+          <div class="chip-cluster">
+            {% for d in drugs[:3] %}
+            <a class="chip drug-chip" href="{{ url_for('condition_page', slug=slugify(d)) }}" data-drug="{{ d }}">{{ d }}</a>
+            {% endfor %}
+            {% for c in conditions[:1] %}
+            <a class="chip cond-chip" href="{{ url_for('condition_page', slug=slugify(c)) }}" data-cond="{{ c }}">{{ c }}</a>
+            {% endfor %}
+          </div>
         </div>
       </div>
       {% endif %}
-    </div>
-    {% elif not pov_demo %}
-    <div class="chips-block">
-      <div class="chip-row">
-        <span class="chip-label">Trending</span>
-        <div class="chip-cluster">
-          {% for d in drugs[:3] %}
-          <a class="chip drug-chip" href="{{ url_for('condition_page', slug=slugify(d)) }}" data-drug="{{ d }}">{{ d }}</a>
-          {% endfor %}
-          {% for c in conditions[:1] %}
-          <a class="chip cond-chip" href="{{ url_for('condition_page', slug=slugify(c)) }}" data-cond="{{ c }}">{{ c }}</a>
-          {% endfor %}
-        </div>
-      </div>
-    </div>
-    {% endif %}
 
-    {% if not patient_user %}
-    <p class="hero-trust">Free. No account needed. Trials from
-      <a href="https://clinicaltrials.gov" target="_blank" rel="noopener">ClinicalTrials.gov</a>.
-      Not medical advice.</p>
+      {% if not patient_user %}
+      <p class="hero-trust">Free. No account needed. Trials from
+        <a href="https://clinicaltrials.gov" target="_blank" rel="noopener">ClinicalTrials.gov</a>.
+        Not medical advice.</p>
+      {% endif %}
+    </div>
     {% endif %}
 
   </div>
 </section>
 
-<div class="landing-extra">
+<div class="landing-extra fx">
 
   {# Trials near you: hydrated client-side ONLY once we know the visitor's
      coords (saved patient location or "use my location"), so the homepage never
@@ -193,106 +480,86 @@
     </p>
   </section>
 
-  <section class="home-proof" aria-label="Why BridgeMD is credible">
-    <div class="home-proof-item">
-      <span>{{ ic.icon('database') }}</span>
-      <b>ClinicalTrials.gov</b>
-      <em>Live public trial data</em>
-    </div>
-    <div class="home-proof-item">
-      <span>{{ ic.icon('shield') }}</span>
-      <b>IRB / REB reviewed</b>
-      <em>Trials follow approved protocols</em>
-    </div>
-    <div class="home-proof-item">
-      <span>{{ ic.icon('lock') }}</span>
-      <b>You control your info</b>
-      <em>Shared only when you apply</em>
-    </div>
-  </section>
-
   {# How it works: kills the "what even is this / what happens after I apply"
      uncertainty that stalls patients before they apply. #}
-  <section class="lx-section hiw-section" aria-label="How it works">
-    <h2 class="lx-h2 lx-center">How it works</h2>
-    <div class="hiw-grid">
-      <div class="hiw-step">
-        <span class="hiw-num">1</span>
+  <section class="fx-sec" id="how" aria-label="How it works">
+    <div class="fx-head fx-center">
+      <h2 class="fx-h2">The trials exist. Most people never find them.</h2>
+      <p class="fx-lead">Clinical trials are how new treatments reach people, and
+        thousands get care through one every year. Still, <strong>fewer than 1 in 20</strong>
+        people who could take part ever do, usually because no one ever tells them a
+        trial exists. The listings are public, but they sit in government databases
+        built for researchers. We read those same listings and put them in plain
+        language, for any condition, anywhere you live.</p>
+    </div>
+    <div class="fx-flow">
+      <div class="fx-card">
+        <span class="fx-badge">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        </span>
         <h3>Search or describe</h3>
-        <p>Enter your condition, or just describe your situation in plain English. No medical jargon needed.</p>
+        <p>Type a condition, or describe your situation in your own words. Either
+          way gets you to the same matches.</p>
       </div>
-      <div class="hiw-step">
-        <span class="hiw-num">2</span>
-        <h3>We match &amp; pre-check</h3>
-        <p>We scan recruiting studies near you and flag the ones you likely fit, so you skip the ones you don't.</p>
+      <div class="fx-card">
+        <span class="fx-badge">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+        </span>
+        <h3>See your matches</h3>
+        <p>We scan recruiting studies near you and flag the ones you likely fit, so you
+          skip the ones you don't.</p>
       </div>
-      <div class="hiw-step">
-        <span class="hiw-num">3</span>
-        <h3>Apply in minutes</h3>
-        <p>Send your interest and the study team reaches out. Free, private, and no doctor's referral needed.</p>
+      <div class="fx-card">
+        <span class="fx-badge">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        </span>
+        <h3>The team reaches out</h3>
+        <p>Send your interest and the study team contacts you. Applying is not enrolling,
+          so you are never locked in.</p>
       </div>
     </div>
   </section>
 
-  {# Objection-busting FAQ: answers the real fears people post on Reddit before
-     applying (scam? paid? safe? what happens next?). Truthful, neutral framing
-     only - no sponsor recruitment claims, no inflated pay promises. #}
-  <section class="lx-section" aria-label="Common questions">
-    <h2 class="lx-h2 lx-center">Questions people ask before applying</h2>
-    <div class="faq-list">
-      <details class="faq-item">
+  {# Objection-busting FAQ: answers the real fears people post before applying
+     (scam? paid? safe? what happens next?). Truthful, neutral framing only - no
+     sponsor recruitment claims, no inflated pay promises. Kept at the very end. #}
+  <section class="fx-sec" id="faq" aria-label="Common questions">
+    <div class="fx-head fx-center">
+      <span class="fx-eyebrow">Your questions, answered</span>
+      <h2 class="fx-h2">Questions people ask before applying</h2>
+    </div>
+    <div class="fx-faq">
+      <details>
         <summary>Is BridgeMD really free?</summary>
-        <p>Yes - searching and applying are 100% free for patients. We're a matching tool, not the study sponsor, and we never charge you.</p>
+        <div class="fx-a">Yes, searching and applying are 100% free for patients. We're a matching tool, not the study sponsor, and we never charge you.</div>
       </details>
-      <details class="faq-item">
+      <details>
         <summary>Will I get paid?</summary>
-        <p>Many trials reimburse your time and travel, and some pay a stipend. The amount is set by each study, not by us - we show what the study lists. Never treat compensation as the only reason to join.</p>
+        <div class="fx-a">Many trials reimburse your time and travel, and some pay a stipend. The amount is set by each study, not by us. We show what the study lists. Never treat compensation as the only reason to join.</div>
       </details>
-      <details class="faq-item">
+      <details>
         <summary>Is it safe? Am I just a guinea pig?</summary>
-        <p>Every trial follows a protocol reviewed by an independent ethics board (IRB/REB). The study team walks you through the risks and what to expect <em>before</em> you agree to anything, and taking part is always voluntary - you can leave at any time.</p>
+        <div class="fx-a">Every trial follows a protocol reviewed by an independent ethics board (IRB/REB). The study team walks you through the risks and what to expect <em>before</em> you agree to anything, and taking part is always voluntary. You can leave at any time.</div>
       </details>
-      <details class="faq-item">
+      <details>
         <summary>What happens after I apply?</summary>
-        <p>Your interest goes to that study's coordinator. They contact you to confirm details and check whether you're eligible. Applying is not enrolling - you're never obligated to continue.</p>
+        <div class="fx-a">Your interest goes straight to that study's team. They contact you to confirm details and check whether you're eligible. Applying is not enrolling, so you're never obligated to continue.</div>
       </details>
-      <details class="faq-item">
+      <details>
         <summary>Do I need a doctor's referral or insurance?</summary>
-        <p>No referral is needed to apply. Trials don't bill your insurance for study procedures, and the study team will tell you exactly what's covered.</p>
+        <div class="fx-a">No referral is needed to apply. Trials don't bill your insurance for study procedures, and the study team will tell you exactly what's covered.</div>
       </details>
-      <details class="faq-item">
+      <details>
         <summary>Will I get a placebo instead of real treatment?</summary>
-        <p>Not all trials use a placebo. When one does, the study team explains it upfront - and participants are usually still monitored closely and continue receiving standard care.</p>
+        <div class="fx-a">Not all trials use a placebo. When one does, the study team explains it upfront, and participants are usually still monitored closely and continue receiving standard care.</div>
       </details>
-      <details class="faq-item">
+      <details>
         <summary>Is my information private? Will I get spammed?</summary>
-        <p>You control what you share. We don't sell your data - we only pass what you submit to the specific study team you choose to apply to.</p>
+        <div class="fx-a">You control what you share. We don't sell your data. We only pass what you submit to the specific study team you choose to apply to.</div>
       </details>
     </div>
-    <div class="lx-cta">
+    <div class="fx-cta">
       <button type="button" class="btn btn-primary btn-lg" id="faqCta">Find trials near you {{ ic.icon('arrow-right') }}</button>
-    </div>
-  </section>
-
-  <section class="lx-section home-learn" aria-label="Clinical trial guides">
-    <div class="home-learn-head">
-      <div>
-        <span class="eyebrow-mini">Learn before you apply</span>
-        <h2 class="lx-h2">Simple guides, no enrollment promises.</h2>
-        <p>Understand eligibility, safety, privacy, payment, and what happens after
-          you apply. The study team still makes the final decision.</p>
-      </div>
-      <a class="link-btn home-learn-all" href="{{ url_for('blog_index') }}">See all guides {{ ic.icon('arrow-right') }}</a>
-    </div>
-    <div class="home-learn-grid">
-      {% for p in learn_posts %}
-      <a class="home-learn-card" href="{{ url_for('blog_post', slug=p.slug) }}">
-        <span>{{ p.tag }}</span>
-        <h3>{{ p.title }}</h3>
-        <p>{{ p.dek }}</p>
-        <b>BridgeMD guide · {{ p.date_h }} · {{ p.read }} min read</b>
-      </a>
-      {% endfor %}
     </div>
   </section>
 
@@ -307,9 +574,10 @@
 </div>
 
 <footer class="landing-legal">
-  <p class="landing-legal-disc">BridgeMD is an information and trial-matching tool - not medical advice,
-    and not the study sponsor. Trial details come from ClinicalTrials.gov; the study team decides eligibility.</p>
-  <p class="landing-legal-links"><a href="{{ url_for('blog_index') }}">Learn</a> · <a href="{{ url_for('privacy') }}">Privacy</a> · <a href="{{ url_for('terms') }}">Terms</a> · <a href="{{ url_for('how_it_works') }}">How it works</a></p>
+  <p class="landing-legal-disc">BridgeMD is an information and trial-matching tool. It is not medical
+    advice and not the study sponsor. Trial details come from ClinicalTrials.gov, and the study team
+    decides who is eligible.</p>
+  <p class="landing-legal-links"><a href="{{ url_for('privacy') }}">Privacy</a> · <a href="{{ url_for('terms') }}">Terms</a> · <a href="{{ url_for('how_it_works') }}">How it works</a></p>
 </footer>
 
 <div class="loading-overlay" id="loadingOverlay" aria-hidden="true">

@@ -32,19 +32,15 @@
   var skip = document.getElementById('demoTourSkip');
   var highlighted = null;
   var key = 'bridgemd_demo_tour_step';
-  var home = {{ url_for('study_home')|tojson }};
+  var home = {{ url_for('marketing_hub')|tojson }};
   var calendar = {{ url_for('calendar_page')|tojson }};
   var recruitment = {{ url_for('recruitment_dashboard')|tojson }};
 
   var steps = [
-    { path: '/app/home', target: '[data-demo-tour-target="today"]',
-      title: 'Run the day from one place',
-      body: 'This timeline keeps visits, protocol timing and the next participant in view. Start here each morning instead of hunting through separate tools.',
-      next: 'Show me the applicant queue' },
-    { path: '/app/home', target: '[data-demo-tour-nav="applicants"]',
-      title: 'Now open Applicants',
-      body: 'Click the highlighted Applicants link. The tour will follow you there and show how a coordinator makes fast, reviewable decisions.',
-      click: '[data-demo-tour-nav="applicants"]' },
+    { path: '/app/inbox', target: '[data-demo-tour-target="inbox"]',
+      title: 'Start with new conversations',
+      body: 'Every inquiry lands in one queue with its source, stage, owner and latest message. Work the people who need a response instead of hunting through separate channels.',
+      next: 'Review the applicant queue' },
     { path: '/app/leads', target: '[data-demo-tour-target="applicants"]',
       title: 'Review the queue, not a spreadsheet',
       body: 'Each applicant is ranked and has a clear stage, source and last activity. Click any applicant name to see the decision context and contact workflow.',
@@ -86,7 +82,11 @@
   function show(index) {
     var step = steps[index];
     if (!step) { finish(); return; }
-    if (!pageMatches(step)) { location.href = step.path === '/app/dashboard' ? recruitment : step.path; return; }
+    if (!pageMatches(step)) {
+      sessionStorage.setItem(key, String(index));
+      location.href = step.path === '/app/dashboard' ? recruitment : step.path;
+      return;
+    }
     var target = targetFor(step);
     if (!target) { finish(); return; }
     sessionStorage.setItem(key, String(index));
@@ -126,8 +126,8 @@
     }
     next.onclick = function () {
       if (index === 0) { show(1); }
-      else if (index === 3) { sessionStorage.setItem(key, '4'); location.href = calendar; }
-      else if (index === 4) { sessionStorage.setItem(key, '5'); location.href = recruitment; }
+      else if (index === 2) { sessionStorage.setItem(key, '3'); location.href = calendar; }
+      else if (index === 3) { sessionStorage.setItem(key, '4'); location.href = recruitment; }
       else { finish(); }
     };
   }

@@ -46,11 +46,11 @@
   <link rel="icon" href="{{ static_url('favicon.ico') }}" sizes="any">
   <link rel="apple-touch-icon" sizes="180x180" href="{{ static_url('apple-touch-icon.png') }}">
   <link rel="manifest" href="{{ static_url('site.webmanifest') }}">
-  <meta name="theme-color" content="#f8f9fa" media="(prefers-color-scheme: light)">
-  <meta name="theme-color" content="#17191d" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#f6f6fb" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0f1115" media="(prefers-color-scheme: dark)">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ static_url('style.css') }}">
 </head>
 <body>
@@ -63,8 +63,8 @@
 {% if pov == 'study' %}
 {# ── Study-team app: "BridgeMD for sites" shell (sidebar + top bar) ── #}
 <div class="appshell">
-  <aside class="appside" id="appSidebar">
-    <a class="appside-brand" href="{{ url_for('team_inbox') }}">
+  <aside class="appside{{ ' is-collapsed' if request.endpoint == 'marketing_hub' else '' }}" id="appSidebar" {{ 'data-lock-rail' if request.endpoint == 'marketing_hub' else '' }}>
+    <a class="appside-brand" href="{{ url_for('marketing_hub') }}">
       <span class="appside-logo">{{ ic.icon('mark') }}</span>
       <span class="bt"><b>BridgeMD</b><small>for sites</small></span>
     </a>
@@ -72,24 +72,13 @@
       {# Lean product: shared AI-triaged inbox + calendar + team workspace. The
          fuller CTMS surfaces below are HIDDEN (routes still work) while we focus
          on the intake-inbox wedge. Un-comment to bring one back. #}
-      <a href="{{ url_for('team_inbox') }}" class="{{ 'active' if request.endpoint in ['team_inbox','applicant_detail'] }}">{{ ic.icon('inbox') }}Inbox{% if site_unread %}<span class="appnav-count">{{ site_unread }}</span>{% endif %}</a>
-      <a href="{{ url_for('marketing_hub') }}" class="{{ 'active' if request.endpoint and request.endpoint.startswith('marketing_') }}">{{ ic.icon('megaphone') }}Marketing hub</a>
+      <a href="{{ url_for('marketing_hub') }}" class="{{ 'active' if request.endpoint in ['marketing_hub','applicant_detail'] or (request.endpoint and request.endpoint.startswith('marketing_')) }}">{{ ic.icon('inbox') }}Inbox{% if site_unread %}<span class="appnav-count">{{ site_unread }}</span>{% endif %}</a>
       {# Calendar is no longer a primary tab - its useful bits (upcoming visits)
          are surfaced right on the inbox so nothing gets missed. Route still lives
          at /app/calendar (linked from the inbox "Upcoming" panel). #}
       <a href="{{ url_for('leads') }}" class="{{ 'active' if request.endpoint == 'leads' }}">{{ ic.icon('user-plus') }}Applicants</a>
       <a href="{{ url_for('team_page') }}" class="{{ 'active' if request.endpoint in ['team_page','team_invite','team_set_role','team_remove'] }}">{{ ic.icon('users') }}Team</a>
       <a href="{{ url_for('site_setup') }}" class="{{ 'active' if request.endpoint in ['site_setup','add_study_claim','remove_study_claim','intake_page','intake_import'] }}">{{ ic.icon('gear') }}Settings</a>
-      {#  Hidden CTMS surfaces (kept for later):
-      <a href="{{ url_for('study_home') }}">Dashboard</a>
-      <a href="{{ url_for('matching_page') }}">Matches</a>
-      <a href="{{ url_for('recruitment_dashboard') }}">Recruitment</a>
-      <a href="{{ url_for('irb_page') }}">IRB &amp; approvals</a>
-      <a href="{{ url_for('updates_page') }}">Updates</a>
-      <a href="{{ url_for('documents_page') }}">Documents</a>
-      <a href="{{ url_for('soe_page') }}">Protocol schedule</a>
-      <a href="{{ url_for('payments_page') }}">Payments</a>
-      #}
       {% if is_owner and not site_demo %}
       <a href="{{ url_for('internal_hub') }}" class="appnav-internal {{ 'active' if request.endpoint in ['internal_hub','operator_inbox','internal_registry','internal_registry_opt_out','internal_recruitment','internal_recruitment_targets','owner_analytics'] }}">{{ ic.icon('shield') }}Internal</a>
       {% endif %}
@@ -102,7 +91,7 @@
       {# The tour follows the product: work the inbox, then the two things that
          make it a shared inbox (routing, coverage). It used to end on CTMS
          dashboards, which is not what we sell. #}
-      <a href="{{ url_for('team_inbox') }}" class="{{ 'is-current' if request.endpoint in ['team_inbox','applicant_detail'] }}"><em>1</em> Work the inbox</a>
+      <a href="{{ url_for('marketing_hub') }}" class="{{ 'is-current' if request.endpoint in ['marketing_hub','applicant_detail'] }}"><em>1</em> Work the inbox</a>
       <a href="{{ url_for('site_setup') }}#routing" class="{{ 'is-current' if request.endpoint == 'site_setup' }}"><em>2</em> Auto-route by channel</a>
       <a href="{{ url_for('team_page') }}" class="{{ 'is-current' if request.endpoint == 'team_page' }}"><em>3</em> Cover a teammate</a>
     </section>
@@ -131,13 +120,13 @@
         <div class="appswitch-menu" role="menu">
           {% if nav_studies %}
           <a href="{{ url_for('set_scope', nct='', next=request.full_path) }}" class="{{ 'active' if not active_nct }}" role="menuitem">
-            <span class="ss-main">All studies</span>
+            <span class="ss-main">All studies{% if site_unread %} <span class="ss-count">{{ site_unread }}</span>{% endif %}</span>
             <span class="ss-sub">Every trial on one view</span>
           </a>
           {% endif %}
           {% for s in nav_studies %}
           <a href="{{ url_for('set_scope', nct=s.nct, next=request.full_path) }}" class="{{ 'active' if active_nct == s.nct }}" role="menuitem">
-            <span class="ss-main">{{ s.title[:40] or s.nct }}</span>
+            <span class="ss-main">{{ s.title[:40] or s.nct }}{% if s.unread %} <span class="ss-count">{{ s.unread }}</span>{% endif %}</span>
             <span class="ss-sub">{{ s.nct }}</span>
           </a>
           {% else %}
@@ -145,18 +134,6 @@
           {% endfor %}
         </div>
       </details>
-      {% if request.endpoint == 'team_inbox' %}
-      {# On the inbox the top-bar search IS the inbox search - one search, no
-         duplicate below. It live-filters the thread list (wired in team_inbox.js). #}
-      <div class="appsearch-wrap appsearch-inbox">
-        <span class="appsearch-ico">{{ ic.icon('search') }}</span>
-        <input id="inboxSearch" class="appsearch-input" type="search" autocomplete="off"
-               autocapitalize="off" spellcheck="false"
-               placeholder="Search this inbox — name, email, study, message…"
-               aria-label="Search this inbox">
-        <span id="inboxCount" class="appsearch-count" aria-live="polite"></span>
-      </div>
-      {% else %}
       <div class="appsearch-wrap" id="omniWrap">
         <span class="appsearch-ico">{{ ic.icon('search') }}</span>
         <input id="omniInput" class="appsearch-input" type="text" autocomplete="off"
@@ -167,7 +144,6 @@
         <kbd class="appsearch-kbd">⌘K</kbd>
         <div class="appsearch-panel" id="omniResults" role="listbox" hidden></div>
       </div>
-      {% endif %}
       <span class="apptop-spacer"></span>
 
       {% set notif_total = (site_unread or 0) + (matches_new or 0) %}
@@ -178,7 +154,7 @@
         <div class="appmenu-panel" role="menu">
           <div class="appmenu-h">Notifications</div>
           {% if site_unread %}
-          <a class="appmenu-item" href="{{ url_for('study_home', _anchor='needs-reply') }}" role="menuitem">
+          <a class="appmenu-item" href="{{ url_for('marketing_hub') }}" role="menuitem">
             <span class="appmenu-ico t-danger">{{ ic.icon('chat') }}</span>
             <span><b>{{ site_unread }} repl{{ 'y' if site_unread == 1 else 'ies' }} waiting</b><small>Patients waiting on your reply</small></span>
           </a>
@@ -192,7 +168,7 @@
           {% if not notif_total %}
           <div class="appmenu-empty">You're all caught up.</div>
           {% endif %}
-          <a class="appmenu-foot" href="{{ url_for('team_inbox') }}" role="menuitem">Go to inbox →</a>
+          <a class="appmenu-foot" href="{{ url_for('marketing_hub') }}" role="menuitem">Go to inbox →</a>
         </div>
       </details>
 
@@ -251,7 +227,7 @@
   {# Bridget rides as the right dock - the third pane of the workspace (icon rail ·
      inbox · assistant), Cursor-style. It's not decoration: it reads the same live
      data, drafts replies you confirm, and answers "who's waiting on me". #}
-  {% if pov == 'study' and user and request.endpoint != 'marketing_hub' %}{% include "_copilot.html" %}{% endif %}
+  {% if pov == 'study' and user %}{% include "_copilot.html" %}{% endif %}
 </div>
 {% if pov == 'study' %}{% include "_omni.html" %}{% else %}{% include "_cmdk.html" %}{% endif %}
 {% if active_site_demo %}{% include "_demo_tour.html" %}{% endif %}
@@ -351,7 +327,7 @@ document.addEventListener('click', function (e) {
   function get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
   function set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
   function del(k) { try { localStorage.removeItem(k); } catch (e) {} }
-  // The left rail is never wider than its regular size (240) — there's no reason
+  // The left rail is never wider than its regular size (240), there's no reason
   // to. Dragging narrower snaps it into the icon/logo rail below RAIL_SNAP.
   var SIDE_FULL = 240, SIDE_MIN = 176, RAIL_SNAP = 132, RAIL_EXPAND = 150;
   function clampSide(v) { return Math.max(SIDE_MIN, Math.min(SIDE_FULL, v)); }
@@ -365,6 +341,10 @@ document.addEventListener('click', function (e) {
 
   // Left panel view mode: drawer (mobile) | icon rail (medium/pref) | full.
   function isMobile() { return window.matchMedia('(max-width: 900px)').matches; }
+  // The inbox locks the rail to the compact icon width (see is-collapsed in the
+  // template + the .mh-page CSS) so it stays out of the workspace's way; don't let
+  // saved prefs expand it back to full labels here.
+  var lockRail = side.hasAttribute('data-lock-rail');
   function applyMode() {
     if (isMobile()) {
       shell.classList.add('is-drawer');
@@ -372,10 +352,11 @@ document.addEventListener('click', function (e) {
       return;
     }
     shell.classList.remove('is-drawer', 'is-drawer-open');
+    if (lockRail) { side.classList.add('is-collapsed'); return; }
     var pref = get(LS_C);                        // 'rail' | 'full' | null
     var rail = pref === 'rail' ? true
              : pref === 'full' ? false
-             : true;                             // default: compact icon rail
+             : false;                            // default: full labeled sidebar
     side.classList.toggle('is-collapsed', rail);
   }
   applyMode();
@@ -701,6 +682,27 @@ document.addEventListener('click', function (e) {
 
   hydrateTimes();
   setInterval(hydrateTimes, 60000);  // keep "Just now" -> "N min ago" fresh
+})();
+</script>
+<script>
+(function () {
+  var nodes = Array.prototype.slice.call(
+    document.querySelectorAll('[data-ui-reveal]'));
+  var reduce = window.matchMedia &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (!nodes.length || reduce || !('IntersectionObserver' in window)) {
+    nodes.forEach(function (node) { node.classList.add('is-visible'); });
+    return;
+  }
+  document.documentElement.classList.add('ui-motion');
+  var observer = new IntersectionObserver(function (entries) {
+    entries.forEach(function (entry) {
+      if (!entry.isIntersecting) return;
+      entry.target.classList.add('is-visible');
+      observer.unobserve(entry.target);
+    });
+  }, { threshold: .08, rootMargin: '0px 0px -24px 0px' });
+  nodes.forEach(function (node) { observer.observe(node); });
 })();
 </script>
 </body>

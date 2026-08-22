@@ -16,16 +16,16 @@
   --border: #e3e6e9;
   --border-strong: #ccd1d6;
 
-  /* Brand & actions (BridgeMD teal) ------------------------------ */
-  --accent: #0d6c6a;
-  --accent-soft: #e6f4f3;
+  /* Brand & actions (BridgeMD blue) ------------------------------ */
+  --accent: #1257b0;
+  --accent-soft: #e8f1fc;
   --accent-ink: #ffffff;
-  --btn: #0d6c6a;
-  --btn-hover: #0a5654;
+  --btn: #1257b0;
+  --btn-hover: #0e468d;
   /* The two tones of the logo mark: front square and back square. A dark or
      coloured surface overrides these. */
-  --mark-a: #0d6c6a;
-  --mark-b: #7ec9c3;
+  --mark-a: #1257b0;
+  --mark-b: #7fb3e6;
 
   /* Status tones (one per meaning - do not add new greens/reds) --- */
   --green: #16a34a;
@@ -36,8 +36,8 @@
   --amber-bg: #f7efe0;
   --red: #b42a1f;
   --red-bg: #fbeceb;
-  --violet: #9d3f6d;
-  --violet-bg: #fbeef4;
+  --violet: var(--info);
+  --violet-bg: var(--info-bg);
   /* Info stays a neutral steel so it never competes with the teal brand tone. */
   --info: #4e5a63;
   --info-bg: #eef1f3;
@@ -49,7 +49,7 @@
   --warn-border: #ecd6ac;
   --danger-border: #ecc4c0;
   --info-border: #d7dde1;
-  --violet-border: #efcfdf;
+  --violet-border: var(--info-border);
   --neutral-bg: #f2f4f5;
   --neutral-border: #e3e6e9;
 
@@ -74,15 +74,32 @@
 
   /* Type ---------------------------------------------------------- */
   --mono: "SFMono-Regular", ui-monospace, Menlo, Consolas, monospace;
-  --sans: "Manrope", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  /* Editorial serif for display headlines - reads authoritative/academic. */
-  --serif: "Newsreader", Georgia, "Times New Roman", serif;
+  --sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --serif: var(--sans);
 
   /* Neutral charcoal for display headlines (teal stays the ACTION accent).
    * --display-ink flips light in dark mode via the theme override. */
   --display: #17191d;
   --display-soft: #4a5158;
   --display-ink: var(--display);
+
+  /* Type scale: product surfaces use these six sizes instead of inventing
+     per-screen typography. Display pages may use fluid clamp() values. */
+  --text-xs: 11px;
+  --text-sm: 13px;
+  --text-md: 15px;
+  --text-lg: 18px;
+  --text-xl: 24px;
+  --text-2xl: 32px;
+  --leading-tight: 1.2;
+  --leading-body: 1.55;
+
+  /* Motion is restrained and functional: quick state feedback, slower layout
+     entrance, one shared easing curve. */
+  --duration-fast: 120ms;
+  --duration-base: 180ms;
+  --duration-slow: 280ms;
+  --ease-standard: cubic-bezier(.2,.8,.2,1);
 }
 
 * { box-sizing: border-box; }
@@ -90,6 +107,8 @@ html, body { margin: 0; padding: 0; }
 [hidden] { display: none !important; }
 body {
   font-family: var(--sans);
+  font-size: var(--text-sm);
+  line-height: var(--leading-body);
   font-feature-settings: "cv11", "ss01";
   background: var(--bg);
   color: var(--ink);
@@ -97,6 +116,9 @@ body {
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
+button, input, select, textarea { font: inherit; }
+h1, h2, h3, h4 { line-height: var(--leading-tight); text-wrap:balance; }
+p { text-wrap:pretty; }
 a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
 h1, h2, h3, h4 { color: var(--ink); }
@@ -119,7 +141,6 @@ h1, h2, h3, h4 { color: var(--ink); }
 /* On accent or dark surfaces the mark goes to white tones instead. */
 .mark-on-dark { --mark-a: #fff; --mark-b: rgba(255,255,255,.5); }
 /* Patient side reuses the same mark in a blue ombre (site side stays green/teal). */
-.brand-blue { --mark-a: #1257b0; --mark-b: #7fb8ee; }
 .side-nav { display: flex; flex-direction: column; gap: 2px; margin-top: 26px; }
 .side-nav::before { content: "Menu"; font-size: 11px; font-weight: 600;
   letter-spacing: .08em; text-transform: uppercase; color: var(--faint);
@@ -210,31 +231,46 @@ textarea { resize: vertical; min-height: 150px; line-height: 1.6; }
 
 /* ---------- Buttons ---------- */
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px;
-  padding: 11px 18px; border-radius: var(--radius-sm); font-size: 14px; font-weight: 600;
+  padding: 11px 18px; border-radius: var(--radius-sm); font-size: var(--text-sm); font-weight: 700;
   letter-spacing: -.01em; border: 1px solid transparent; cursor: pointer;
-  font-family: inherit; transition: background .15s, border-color .15s, transform .04s, box-shadow .15s; }
+  font-family: inherit; transition: background var(--duration-base) var(--ease-standard),
+  border-color var(--duration-base) var(--ease-standard),
+  transform var(--duration-fast) var(--ease-standard),
+  box-shadow var(--duration-base) var(--ease-standard); }
 .btn:hover { text-decoration: none; }
 .btn:active { transform: translateY(1px); }
 .btn:disabled, .btn[disabled] { opacity: .45; cursor: not-allowed; box-shadow: none; }
 .btn:disabled:active, .btn[disabled]:active { transform: none; }
-.btn-primary { background: var(--btn); color: #fff; }
+.btn-primary { background: var(--btn); color: var(--accent-ink); }
 .btn-primary:hover { background: var(--btn-hover); }
-.btn-ghost { background: #fff; color: var(--ink); border-color: var(--border-strong); }
+.btn-ghost { background: var(--surface); color: var(--ink); border-color: var(--border-strong); }
 .btn-ghost:hover { background: var(--surface-2); border-color: var(--faint); }
-.btn-danger { background: var(--red); color: #fff; border-color: var(--red); }
+.btn-danger { background: var(--red); color: var(--accent-ink); border-color: var(--red); }
 .btn-danger:hover { filter: brightness(.95); }
 .btn-block { width: 100%; }
-.btn-sm { padding: 6px 12px; font-size: 12.5px; }
+.btn-sm { padding: 7px 12px; font-size: var(--text-xs); }
+.ui-icon-btn { width:34px; height:34px; display:inline-flex; align-items:center;
+  justify-content:center; flex:0 0 auto; padding:0; border:1px solid var(--border);
+  border-radius:var(--radius-sm); background:var(--surface); color:var(--muted);
+  cursor:pointer; transition:color var(--duration-fast) var(--ease-standard),
+  background var(--duration-fast) var(--ease-standard),
+  border-color var(--duration-fast) var(--ease-standard),
+  transform var(--duration-fast) var(--ease-standard); }
+.ui-icon-btn:hover { color:var(--accent); background:var(--accent-soft);
+  border-color:var(--brand-border); }
+.ui-icon-btn:active { transform:scale(.96); }
+.ui-icon-btn:disabled { opacity:.45; cursor:not-allowed; }
+.ui-icon-btn .ico { width:15px; height:15px; }
 
 /* ---------- Flash ---------- */
 .flash { padding: 12px 16px; border-radius: var(--radius-sm); margin-bottom: 18px;
   font-size: 14px; border: 1px solid; }
-.flash.error { background: var(--red-bg); border-color: #f2cec9; color: var(--red); }
-.flash.ok, .flash.success { background: var(--green-bg); border-color: #c4e6d6; color: var(--green); }
+.flash.error { background: var(--red-bg); border-color: var(--danger-border); color: var(--red); }
+.flash.ok, .flash.success { background: var(--green-bg); border-color: var(--ok-border); color: var(--green); }
 .toast-stack { position: fixed; right: 18px; top: 74px; z-index: 1200;
   width: min(420px, calc(100vw - 22px)); display: flex; flex-direction: column; gap: 10px; }
 .flash-toast { margin: 0; display: flex; align-items: center; justify-content: flex-start;
-  gap: 10px; box-shadow: 0 8px 26px rgba(20, 24, 40, .14); border-radius: 12px;
+  gap: 10px; box-shadow: var(--shadow-lift); border-radius: var(--radius-sm);
   background: var(--surface); color: var(--ink-soft); border-color: var(--border);
   animation: toastIn .26s cubic-bezier(.22,1,.36,1); }
 .flash-toast.info { background: #edf2ff; border-color: #cdd8ff; color: #3c4a8a; }
@@ -253,6 +289,217 @@ textarea { resize: vertical; min-height: 150px; line-height: 1.6; }
 @media (prefers-reduced-motion: reduce) { .flash-toast { animation: none; } }
 @media (max-width: 820px) {
   .toast-stack { left: 12px; right: 12px; width: auto; top: 68px; }
+}
+
+/* Inbox participant workspace — ported from the Figma intake prototype while
+   retaining the shared BridgeMD shell, tokens, controls, and provider flows. */
+.appshell:has(.mh-page) > .appside-backdrop,
+.appshell:has(.mh-page) .apptop { display:none; }
+/* Inbox is full-height but NOT full-bleed: keep a compact icon rail so the primary
+   nav (Inbox/Applicants/Team/Settings) is always one click away. It's forced into
+   the collapsed 64px rail via `is-collapsed` (template + applyMode) so it can't be
+   dragged/expanded here and eat the workspace. */
+.appshell:has(.mh-page) > .appside { flex:0 0 auto; }
+.appshell:has(.mh-page) > .appside .appside-resize { display:none; }
+/* min-width:0 lets this flex child actually shrink; without it the body keeps its
+   content's min-width and pushes the conversation pane off-screen (the clipped
+   right edge). */
+.appshell:has(.mh-page) .appbody { min-height:100vh; min-width:0; }
+.mh-page .mh-workspace { height:100vh; max-height:100vh; }
+.mh-workspace { grid-template-columns:220px 330px minmax(480px, 1fr); }
+.mh-sources { background:var(--surface-2); }
+.mh-sources > :not(.mh-intake-nav) { display:none; }
+.mh-intake-nav { height:100%; display:flex; flex-direction:column; min-height:0; }
+.mh-intake-brand { min-height:56px; padding:var(--space-3); display:flex;
+  align-items:center; gap:var(--space-2); border-bottom:1px solid var(--border); }
+.mh-intake-brand > span { width:28px; height:28px; display:flex; align-items:center;
+  justify-content:center; border-radius:var(--radius-sm); color:var(--accent-ink);
+  background:var(--accent); }
+.mh-intake-brand > span svg { width:17px; height:17px; }
+.mh-intake-brand div,.mh-intake-user > span { display:flex; flex-direction:column; min-width:0; }
+.mh-intake-brand b { color:var(--ink); font-size:13px; }
+.mh-intake-brand small,.mh-intake-user small { color:var(--faint); font-size:9px; }
+.mh-intake-main { padding:var(--space-3) var(--space-2); }
+.mh-intake-main a,.mh-intake-group > a { display:flex; align-items:center; gap:var(--space-2);
+  color:var(--muted); text-decoration:none; border-radius:var(--radius-sm); }
+.mh-intake-main a { min-height:34px; padding:0 10px; font-size:12px; }
+.mh-intake-main a svg { width:14px; height:14px; }
+.mh-intake-main a em { margin-left:auto; padding:1px 6px; color:var(--accent-ink);
+  background:var(--accent); border-radius:var(--radius-pill); font-size:9px; font-style:normal; }
+.mh-intake-main a.is-active,.mh-intake-group > a.is-active {
+  color:var(--accent); background:var(--accent-soft); font-weight:800; }
+.mh-intake-group { padding:var(--space-2); }
+.mh-intake-label { display:flex; align-items:center; justify-content:space-between;
+  padding:0 8px var(--space-2); color:var(--faint); text-transform:uppercase;
+  letter-spacing:.08em; }
+.mh-intake-label b { font-size:9px; }
+.mh-intake-label button { border:0; padding:2px; color:var(--faint); background:transparent; cursor:pointer; }
+.mh-intake-label svg { width:12px; height:12px; }
+.mh-intake-group > a { min-height:30px; padding:0 8px; font-size:10.5px; }
+.mh-intake-group > a i { width:7px; height:7px; flex:0 0 7px;
+  border-radius:var(--radius-pill); background:var(--faint); }
+.mh-intake-group > a.is-active i { background:var(--accent); }
+.mh-intake-group > a span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.mh-intake-group > a small { margin-left:auto; color:var(--faint); font-size:9px; }
+.mh-intake-person { min-height:30px; padding:0 8px; display:flex; align-items:center;
+  gap:var(--space-2); color:var(--muted); font-size:10.5px; }
+.mh-intake-person > span:last-child { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.mh-intake-spacer { flex:1; min-height:var(--space-3); }
+.mh-intake-connect { margin:0 var(--space-3) var(--space-3); padding:8px 10px;
+  display:flex; align-items:center; justify-content:center; gap:var(--space-2);
+  border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--muted);
+  background:var(--surface); font-size:10px; font-weight:800; cursor:pointer; }
+.mh-intake-connect svg { width:13px; height:13px; }
+.mh-intake-user { min-height:54px; padding:var(--space-3); display:flex; align-items:center;
+  gap:var(--space-2); border-top:1px solid var(--border); }
+.mh-intake-user b { overflow:hidden; text-overflow:ellipsis; color:var(--ink); font-size:10.5px; }
+.mh-thread-column { min-width:0; background:var(--surface);
+  grid-template-rows:auto auto auto minmax(0,1fr); }
+.mh-thread-stack { min-height:0; }
+.mh-thread-row { padding:var(--space-3); border-left:3px solid transparent; }
+.mh-thread-row.is-active { border-left-color:var(--accent); background:var(--accent-soft); }
+.mh-thread-row h3 { font-size:12px; margin:var(--space-2) 0 var(--space-1) 38px; }
+.mh-thread-row p { font-size:11.5px; line-height:1.45; margin-left:38px; }
+.mh-thread-row-foot { margin-left:38px; flex-wrap:wrap; }
+
+.mh-stage-tabs { display:flex; gap:var(--space-1); padding:var(--space-2) var(--space-3);
+  border-bottom:1px solid var(--border); overflow-x:auto; scrollbar-width:none; }
+.mh-stage-tabs::-webkit-scrollbar { display:none; }
+.mh-stage-tabs a { display:inline-flex; align-items:center; gap:var(--space-1);
+  white-space:nowrap; text-decoration:none; color:var(--faint); font-size:10.5px;
+  font-weight:700; padding:6px 8px; border-radius:var(--radius-sm); }
+.mh-stage-tabs a span { font-size:9px; }
+.mh-stage-tabs a:hover { color:var(--ink-soft); background:var(--surface-2); }
+.mh-stage-tabs a.is-active { color:var(--accent); background:var(--accent-soft); }
+
+.mh-conversation { background:var(--bg); overflow-y:auto; }
+.mh-conversation-head { position:sticky; top:0; z-index:3; background:var(--surface);
+  padding:var(--space-4) var(--space-5); border-bottom:1px solid var(--border); }
+.mh-conversation-actions { flex-wrap:wrap; justify-content:flex-end; }
+.mh-pipeline { display:flex; align-items:flex-start; padding:var(--space-4) var(--space-6);
+  background:var(--surface); border-bottom:1px solid var(--border); }
+.mh-pipeline > span { position:relative; flex:1; display:flex; flex-direction:column;
+  align-items:center; gap:var(--space-1); color:var(--faint); text-align:center; }
+.mh-pipeline > span:not(:last-child)::after { content:""; position:absolute;
+  height:2px; left:calc(50% + 16px); right:calc(-50% + 16px); top:12px;
+  background:var(--border); }
+.mh-pipeline > span.is-done:not(:last-child)::after { background:var(--accent); }
+.mh-pipeline i { position:relative; z-index:1; display:flex; align-items:center;
+  justify-content:center; width:24px; height:24px; border:2px solid var(--border);
+  border-radius:var(--radius-pill); background:var(--surface); font-size:10px;
+  font-style:normal; font-weight:800; }
+.mh-pipeline i svg { width:11px; height:11px; }
+.mh-pipeline b { font-size:9px; }
+.mh-pipeline .is-active { color:var(--accent); }
+.mh-pipeline .is-active i,.mh-pipeline .is-done i {
+  border-color:var(--accent); background:var(--accent); color:var(--accent-ink); }
+
+.mh-link-applicant { margin:var(--space-4) var(--space-5) 0; padding:var(--space-4);
+  display:flex; align-items:center; justify-content:space-between; gap:var(--space-4);
+  background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); }
+.mh-link-applicant > div,.mh-clinical-card header > div { display:flex; align-items:center; gap:var(--space-3); }
+.mh-link-applicant span span,.mh-clinical-card header span span { display:flex; flex-direction:column; gap:2px; }
+.mh-link-applicant b,.mh-clinical-card header b { font-size:13px; color:var(--ink); }
+.mh-link-applicant small,.mh-clinical-card header small { color:var(--muted); font-size:10.5px; }
+.mh-link-applicant form { display:flex; align-items:center; justify-content:flex-end;
+  gap:var(--space-3); flex-wrap:wrap; }
+.mh-link-applicant label,.mh-record-action label { font-size:10.5px; color:var(--muted); }
+.mh-link-applicant input[name="age"] { width:100px; padding:7px 9px; font-size:11px; }
+.mh-section-icon { display:flex; align-items:center; justify-content:center;
+  width:32px; height:32px; flex:0 0 32px; border-radius:var(--radius-sm);
+  color:var(--accent); background:var(--accent-soft); }
+.mh-section-icon svg { width:15px; height:15px; }
+
+.mh-subject-bar,.mh-message-list,.mh-composer,.mh-clinical-card {
+  margin-left:var(--space-5); margin-right:var(--space-5); }
+.mh-subject-bar { margin-top:var(--space-4); border:1px solid var(--border);
+  border-radius:var(--radius) var(--radius) 0 0; }
+.mh-message-list { min-height:180px; max-height:320px; background:var(--surface);
+  border-left:1px solid var(--border); border-right:1px solid var(--border); }
+.mh-composer { border:1px solid var(--border); border-radius:0 0 var(--radius) var(--radius);
+  margin-bottom:var(--space-5); overflow:hidden; }
+.mh-compose-actions { display:flex; align-items:center; gap:var(--space-2); }
+.mh-bridget-draft { margin:var(--space-3); padding:var(--space-3); border:1px solid var(--brand-border);
+  border-radius:var(--radius-sm); background:var(--accent-soft); }
+.mh-bridget-draft > div { display:flex; justify-content:space-between; gap:var(--space-3); }
+.mh-bridget-draft b { color:var(--accent); font-size:11px; }
+.mh-bridget-draft small { color:var(--muted); font-size:9.5px; }
+.mh-bridget-draft p { color:var(--ink-soft); font-size:12px; line-height:1.5; }
+.mh-bridget-draft button { border:0; color:var(--accent-ink); background:var(--accent);
+  border-radius:var(--radius-sm); padding:6px 10px; font-weight:800; cursor:pointer; }
+
+.mh-clinical-card { background:var(--surface); border:1px solid var(--border);
+  border-radius:var(--radius); margin-bottom:var(--space-5); overflow:hidden; }
+.mh-clinical-card > header { min-height:58px; display:flex; align-items:center;
+  justify-content:space-between; gap:var(--space-4); padding:var(--space-3) var(--space-4);
+  border-bottom:1px solid var(--border); }
+.mh-clinical-card > header > div { min-width:0; flex:1; }
+.mh-clinical-card > header > span { color:var(--muted); font-size:11px; }
+.mh-record-summary { display:flex; justify-content:space-between; gap:var(--space-4);
+  margin:var(--space-4); padding:var(--space-3); background:var(--surface-2);
+  border-radius:var(--radius-sm); }
+.mh-record-summary div { display:flex; flex-direction:column; }
+.mh-record-summary b { color:var(--ink); font-size:12px; }
+.mh-record-summary small,.mh-record-summary > span { color:var(--muted); font-size:10px; }
+.mh-record-text { margin:0 var(--space-4) var(--space-4); color:var(--ink-soft);
+  font-size:12px; line-height:1.55; }
+.mh-record-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:var(--space-2);
+  margin:0 var(--space-4) var(--space-4); }
+.mh-record-grid > div { display:flex; flex-direction:column; gap:var(--space-1);
+  padding:var(--space-3); border:1px solid var(--border); border-radius:var(--radius-sm); }
+.mh-record-grid b { font-size:10px; color:var(--ink); }
+.mh-record-grid span { color:var(--muted); font-size:10.5px; line-height:1.45; }
+.mh-record-empty { display:flex; align-items:center; gap:var(--space-3);
+  padding:var(--space-5) var(--space-4) var(--space-3); }
+.mh-record-empty > svg { width:28px; height:28px; color:var(--faint); }
+.mh-record-empty b { font-size:12.5px; }
+.mh-record-empty p { margin:2px 0 0; color:var(--muted); font-size:11px; }
+.mh-record-action { display:flex; align-items:center; justify-content:space-between;
+  gap:var(--space-4); padding:0 var(--space-4) var(--space-4); }
+.mh-criteria { margin:0 var(--space-4) var(--space-4); border:1px solid var(--border);
+  border-radius:var(--radius-sm); overflow:hidden; }
+.mh-criteria-head { display:flex; justify-content:space-between; gap:var(--space-4);
+  padding:var(--space-3); background:var(--surface-2); }
+.mh-criteria-head b { font-size:11px; }
+.mh-criteria-head span { color:var(--muted); font-size:10px; }
+.mh-criteria > div:not(.mh-criteria-head) { display:flex; align-items:flex-start;
+  gap:var(--space-3); padding:var(--space-3); border-top:1px solid var(--border); }
+.mh-criteria > div > svg { width:14px; height:14px; flex:0 0 14px; }
+.mh-criteria > div > span { display:flex; flex-direction:column; gap:2px; }
+.mh-criteria > div > span b { font-size:10.5px; }
+.mh-criteria > div > span small { color:var(--muted); font-size:10.5px; }
+.mh-criteria .is-met > svg { color:var(--ok); }
+.mh-criteria .is-pending > svg { color:var(--amber); }
+.mh-criteria .is-failed > svg { color:var(--red); }
+.mh-checklist { padding:var(--space-2) var(--space-4) var(--space-4); }
+.mh-checklist form + form { border-top:1px solid var(--border); }
+.mh-checklist button { width:100%; display:flex; align-items:center; gap:var(--space-3);
+  border:0; background:transparent; color:var(--ink); padding:var(--space-3) 0;
+  text-align:left; cursor:pointer; }
+.mh-checklist button i { width:20px; height:20px; display:flex; align-items:center;
+  justify-content:center; border:2px solid var(--border); border-radius:var(--radius-pill); }
+.mh-checklist button i svg { width:10px; height:10px; }
+.mh-checklist button.is-done { color:var(--muted); text-decoration:line-through; }
+.mh-checklist button.is-done i { border-color:var(--ok); background:var(--ok); color:var(--accent-ink); }
+.mh-checklist p { color:var(--muted); font-size:11px; }
+
+@media (max-width: 1180px) {
+  .mh-workspace { grid-template-columns:190px 300px minmax(420px,1fr); }
+  .mh-record-grid { grid-template-columns:1fr; }
+}
+@media (max-width: 980px) {
+  .mh-workspace { grid-template-columns:290px minmax(0,1fr); }
+  .mh-sources { display:none; }
+}
+@media (max-width: 720px) {
+  .mh-workspace { display:block; }
+  .mh-thread-column { min-height:45vh; }
+  .mh-conversation { min-height:55vh; }
+  .mh-pipeline { padding:var(--space-3); }
+  .mh-pipeline b { display:none; }
+  .mh-link-applicant { align-items:flex-start; flex-direction:column; }
+  .mh-subject-bar,.mh-message-list,.mh-composer,.mh-clinical-card {
+    margin-left:var(--space-3); margin-right:var(--space-3); }
 }
 
 /* ---------- Search tool (primary, full-width) ---------- */
@@ -755,19 +1002,8 @@ tr { transition: background .12s; }
 /* Public consumer site (patient-facing)                              */
 /* ------------------------------------------------------------------ */
 body.pub { background: var(--surface); }
-/* Patient-facing site keeps its original blue identity. The sites product
-   (the /for-sites marketing pages add .fs-page; the study app uses the app shell)
-   stays teal — so only the consumer pages are rescoped to blue here. */
+/* Public and product surfaces share one BridgeMD identity. */
 body.pub:not(.fs-page) {
-  --accent: #1257b0;
-  --accent-soft: #e7f0fb;
-  --brand-border: #b9d4f2;
-  --btn: #1257b0;
-  --btn-hover: #0f4a94;
-  --mark-a: #1257b0;
-  --mark-b: #7fb8ee;
-  /* Soft tint painted on the page (not the nav) so the transparent header blends
-     into it continuously, the way the /for-sites header does. */
   background:
     radial-gradient(1100px 520px at 78% -60px, var(--accent-soft), transparent 62%),
     var(--surface);
@@ -811,6 +1047,76 @@ body.pub:not(.fs-page) {
   border-radius: 999px; color: var(--ink); }
 .pub-nav-tools { max-width: 1180px; margin: 0 auto; padding: 2px 32px 10px; display: flex; justify-content: center; }
 .pub-flash-wrap { max-width: 720px; margin: 0 auto; padding: 0 24px; }
+
+/* ============================================================================
+   .pill-nav - the ONE shared floating-pill header (see templates/_nav.html).
+   Used on the patient finder and the site-side marketing pages. Edit here once
+   and both update. A centered, rounded, translucent bar that sticks to the top,
+   frosts + condenses inward on scroll, and collapses to a burger sheet on phones.
+   The block below (between PILL-NAV:START/END) is extracted verbatim by
+   marketing/clean_landing.py and inlined into the static Framer page, so it must
+   stay self-contained (no CSS-var dependencies).
+   ========================================================================== */
+/* PILL-NAV:START */
+.pill-nav { position: sticky; top: 14px; z-index: 60; box-sizing: border-box;
+  display: grid; grid-template-columns: 1fr auto 1fr; align-items: center;
+  max-width: 952px; margin: 16px auto 0; padding: 9px 12px 9px 22px;
+  background: rgba(255,255,255,.72); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+  border: 1px solid rgba(18,40,80,.08); border-radius: 999px;
+  box-shadow: 0 12px 34px -20px rgba(15,26,46,.5);
+  transition: max-width .32s ease, padding .32s ease, background .25s ease, box-shadow .25s ease; }
+.pill-nav .brand { justify-self: start; display: flex; align-items: center; font-weight: 700;
+  letter-spacing: -.02em; font-size: 20px; gap: 10px; color: #0f1a2e; text-decoration: none; }
+.pill-nav .brand .brand-glyph { width: 28px; height: 28px; }
+.pill-brand-suffix { font-weight: 600; color: #5a6a86; font-size: 15px; }
+.pill-nav-center { display: flex; align-items: center; justify-self: center; gap: 6px; }
+.pill-nav-center a { color: #3a4763; text-decoration: none; font-weight: 600; font-size: 14.5px;
+  padding: 8px 14px; border-radius: 999px; transition: background .15s ease, color .15s ease; }
+.pill-nav-center a:hover { color: #0f1a2e; background: rgba(18,40,80,.06); text-decoration: none; }
+.pill-nav-auth { display: flex; align-items: center; justify-self: end; gap: 12px; }
+.pill-nav-signin { color: #3a4763; text-decoration: none; font-weight: 600; font-size: 14.5px; }
+.pill-nav-signin:hover { color: #0f1a2e; text-decoration: none; }
+/* CTA color is a per-page variable (--pill-cta / --pill-cta-sh) so the two sites can
+   carry different brand gradients while sharing this one component. Defaults = blue. */
+.pill-nav-cta { display: inline-flex; align-items: center; gap: 8px; font-weight: 700; font-size: 14.5px;
+  color: #fff; padding: 11px 22px; border-radius: 999px; white-space: nowrap; text-decoration: none;
+  background: var(--pill-cta, linear-gradient(135deg,#3b6ef2,#1257b0));
+  box-shadow: 0 10px 22px -12px var(--pill-cta-sh, rgba(18,87,176,.8)); transition: transform .18s ease, box-shadow .18s ease; }
+.pill-nav-cta:hover { text-decoration: none; transform: translateY(-1px);
+  box-shadow: 0 14px 28px -12px var(--pill-cta-sh, rgba(18,87,176,.9)); }
+.pill-nav-cta .ico { width: 16px; height: 16px; }
+/* Scroll state: narrow inward + frost a touch more. */
+.pill-nav.is-condensed { max-width: 820px; padding-left: 16px; padding-right: 8px;
+  background: rgba(255,255,255,.92); box-shadow: 0 16px 38px -20px rgba(15,26,46,.55); }
+.pill-nav.is-condensed .pill-nav-center { gap: 2px; }
+/* Burger is desktop-hidden; the sheet only exists on phones. */
+.pill-nav-burger { display: none; align-items: center; justify-content: center; width: 40px; height: 40px;
+  border: 1px solid rgba(18,40,80,.12); border-radius: 999px; background: #fff; color: #0f1a2e;
+  cursor: pointer; }
+.pill-nav-burger .ico { width: 20px; height: 20px; }
+.pill-sheet { display: none; }
+@media (max-width: 820px) {
+  .pill-nav { grid-template-columns: auto 1fr; padding: 9px 10px 9px 18px; max-width: none;
+    margin: 12px 12px 0; }
+  .pill-nav.is-condensed { max-width: none; }
+  .pill-nav-center { display: none; }
+  .pill-nav-signin { display: none; }
+  /* The desktop CTA is too wide to sit next to the burger on a phone; move it into
+     the sheet so the collapsed nav is just brand + burger. */
+  .pill-nav-cta { display: none; }
+  .pill-nav-burger { display: inline-flex; }
+  .pill-sheet[hidden] { display: none; }
+  .pill-sheet { display: flex; flex-direction: column; grid-column: 1 / -1; margin-top: 10px;
+    padding: 8px; gap: 2px; border-top: 1px solid rgba(18,40,80,.08); }
+  .pill-sheet a { color: #3a4763; text-decoration: none; font-weight: 600; font-size: 15px;
+    padding: 11px 12px; border-radius: 12px; }
+  .pill-sheet a:hover { background: rgba(18,40,80,.06); color: #0f1a2e; }
+  .pill-sheet-cta { margin-top: 6px; text-align: center; color: #fff !important;
+    font-weight: 700 !important; background: var(--pill-cta, linear-gradient(135deg,#3b6ef2,#1257b0));
+    box-shadow: 0 8px 18px -8px var(--pill-cta-sh, rgba(18,87,176,.6)); }
+  .pill-sheet-cta:hover { color: #fff !important; }
+}
+/* PILL-NAV:END */
 
 /* Demo POV switcher */
 .pov-tools { display: inline-flex; align-items: center; gap: 10px; flex-wrap: wrap; }
@@ -863,7 +1169,7 @@ body.pub:not(.fs-page) {
 .traction-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
 .traction-card { border: 1px solid var(--border); border-radius: 14px;
   padding: 24px 20px; background: var(--surface); text-align: center; }
-.traction-num { display: block; font-family: 'Manrope', system-ui, sans-serif;
+.traction-num { display: block; font-family: var(--sans);
   font-size: 34px; font-weight: 800; letter-spacing: -.02em; color: var(--ink); line-height: 1; }
 .traction-label { display: block; margin-top: 8px; font-size: 13px; color: var(--muted); line-height: 1.4; }
 @media (max-width: 720px) { .traction-grid { grid-template-columns: 1fr 1fr; } }
@@ -943,7 +1249,7 @@ body.demo-home .hero-search { max-width: 680px; margin-top: 14px; }
    ========================================================================== */
 body.home-screen { display: flex; flex-direction: column; min-height: 100vh;
   background: radial-gradient(900px 420px at 50% 16%, #e8f3ff 0%, #f8fafc 62%, var(--bg) 100%);
-  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  font-family: var(--sans); }
 /* Grow to fill tall screens (pins the footer to the bottom) but never shrink
    below the hero's natural height - otherwise short viewports clip the footer
    instead of scrolling. */
@@ -955,6 +1261,11 @@ body.home-screen .hero::before { display: none; }
 body.home-screen .hero-in { max-width: 820px; width: 100%; margin: 0 auto; }
 body.home-screen .hero h1 { font-family: inherit; max-width: none; margin: 0 auto;
   font-size: 44px; line-height: 1.03; letter-spacing: -.04em; font-weight: 800; }
+/* Keep the finder headline on a single line from tablet up; it wraps on phones
+   so it never overflows the viewport. */
+@media (min-width: 760px) {
+  body.home-screen .hero h1 { white-space: nowrap; font-size: clamp(32px, 4.4vw, 44px); }
+}
 body.home-screen .hero-eyebrow { margin-bottom: 12px; border-color: #c9ddf4; color: #31577f;
   background: rgba(255,255,255,.72); box-shadow: none; }
 body.home-screen .hero-sub { font-size: 16px; max-width: 630px; margin-top: 10px; }
@@ -3269,14 +3580,14 @@ main:focus { outline: none; }
   --faint: #71747f;
   --border: #2a2e37;
   --border-strong: #3a3f4b;
-  --accent: #4fb8b0;
+  --accent: #5a9fe6;
   /* Mark tones invert on dark: the light square comes forward. */
-  --mark-a: #7ec9c3;
-  --mark-b: #2b6260;
-  --accent-soft: #123230;
+  --mark-a: #8fbdee;
+  --mark-b: #26497a;
+  --accent-soft: #11243d;
   --accent-ink: #0f1115;
-  --btn: #14807c;
-  --btn-hover: #1a9c96;
+  --btn: #1f6bc0;
+  --btn-hover: #2f82d8;
   --green: #4ecb9c;
   --green-bg: #10261e;
   --amber: #e2ab55;
@@ -3758,7 +4069,7 @@ main:focus { outline: none; }
    ========================================================================== */
 .b2b-hero { max-width: 860px; margin: 0 auto; padding: 56px 24px 8px; text-align: center; }
 .b2b-in { max-width: 720px; margin: 0 auto; }
-.b2b-hero h1 { font-family: "Inter", var(--sans); font-size: 48px; line-height: 1.05;
+.b2b-hero h1 { font-family: var(--sans); font-size: 48px; line-height: 1.05;
   letter-spacing: -.03em; font-weight: 800; color: var(--display-ink); margin: 18px 0 0; }
 .b2b-sub { font-size: 18px; color: var(--muted); line-height: 1.6; margin: 14px auto 0; max-width: 620px; }
 .b2b-cta { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin: 24px 0 0; }
@@ -4285,52 +4596,8 @@ body.is-resizing .appside.is-snapping { transition: width .18s ease; }
 .ctrl-go .ico { width: 16px; height: 16px; }
 .ctrl-card:hover .ctrl-go { opacity: 1; transform: translateX(0); color: var(--accent); }
 
-/* ── Trial-workspace header (Home when a study is selected) ── */
-.ws-head { background: var(--surface); border: 1px solid var(--border);
-  border-radius: var(--radius); padding: var(--space-4) var(--space-5);
-  margin-bottom: var(--space-5); }
-.ws-head-top { display: flex; justify-content: space-between; align-items: flex-start;
-  gap: var(--space-5); flex-wrap: wrap; }
-.ws-head h1 { margin: 4px 0 0; font-size: 22px; }
-.ws-eyebrow { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px;
-  font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
-  color: var(--accent); }
-.ws-eyebrow .ico { width: 14px; height: 14px; }
-.ws-nct { margin: 4px 0 0; font-size: 12.5px; color: var(--faint); }
-.ws-stats { display: flex; gap: var(--space-5); }
-.ws-stat { text-align: center; }
-.ws-stat .n { font-size: 24px; font-weight: 800; line-height: 1; color: var(--ink); }
-.ws-stat .l { font-size: 11.5px; color: var(--faint); margin-top: 3px; }
-.ws-progress { margin-top: var(--space-4); }
-.ws-progress-top { display: flex; justify-content: space-between; font-size: 12.5px;
-  color: var(--muted); margin-bottom: 6px; }
-.ws-progress-top b { color: var(--ink); }
-.ws-nudge { margin: var(--space-3) 0 0; font-size: 12.5px; color: var(--faint); }
-/* Slim header goal: only the North Star (enrolled vs target). */
-.ws-goal { width: 220px; max-width: 100%; text-align: right; }
-.ws-goal-top { font-size: 13px; color: var(--muted); margin-bottom: 6px; }
-.ws-goal-top b { font-size: 18px; font-weight: 800; color: var(--ink); }
-.ws-goal .quota-track { margin-bottom: 6px; }
-.ws-goal-link, .ws-goal-set { display: inline-flex; align-items: center; gap: 4px;
-  font-size: 12.5px; font-weight: 600; color: var(--accent); text-decoration: none; }
-.ws-goal-link .ico, .ws-goal-set .ico { width: 14px; height: 14px; }
-.ws-goal-link:hover, .ws-goal-set:hover { text-decoration: underline; }
-.ws-goal-set { margin-top: 6px; }
-
 /* ── Unified inbox (Gmail-style triage stream) ── */
-.inbox-card { padding: 0; overflow: hidden; }
-.inbox-head { display: flex; align-items: center; justify-content: space-between;
-  gap: var(--space-3); padding: var(--space-3) var(--space-4);
-  border-bottom: 1px solid var(--border); flex-wrap: wrap; }
 .inbox-filters { display: flex; gap: 6px; flex-wrap: wrap; }
-.ichip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px;
-  border: 1px solid var(--border); background: var(--surface); border-radius: var(--radius-pill);
-  font-size: 12.5px; font-weight: 600; color: var(--muted); cursor: pointer;
-  transition: all .12s ease; }
-.ichip:hover { border-color: var(--accent); color: var(--accent); }
-.ichip .c { font-size: 11px; font-weight: 700; color: var(--faint); }
-.ichip.is-active { background: var(--accent); border-color: var(--accent); color: #fff; }
-.ichip.is-active .c { color: rgba(255,255,255,.85); }
 .inbox-alllink { display: inline-flex; align-items: center; gap: 4px; font-size: 12.5px;
   font-weight: 600; color: var(--accent); white-space: nowrap; }
 .inbox-alllink .ico { width: 14px; height: 14px; }
@@ -4584,6 +4851,10 @@ body.is-resizing { cursor: col-resize; user-select: none; }
   outline: 1px solid var(--accent); }
 .appswitch-menu .ss-main { font-size: 13px; font-weight: 700; }
 .appswitch-menu .ss-sub { font-size: 11.5px; color: var(--faint); }
+/* Unread badge per study in the switcher, so activity is visible before you jump. */
+.appswitch-menu .ss-count { display: inline-flex; align-items: center; justify-content: center;
+  min-width: 16px; height: 16px; padding: 0 5px; margin-left: 6px; border-radius: 999px;
+  font-size: 10.5px; font-weight: 700; color: #fff; background: var(--accent); vertical-align: middle; }
 .appswitch-empty { display: block; padding: 12px; font-size: 12.5px; color: var(--faint); }
 
 /* Search - prominent, centered, primary affordance in the top bar */
@@ -5479,10 +5750,11 @@ a.rail-attn:hover { text-decoration: underline; }
 .dock-form button:active:not(:disabled) { transform: scale(.94); }
 .dock-form button:disabled { opacity: .45; cursor: default; }
 .dock-form button svg { width: 17px; height: 17px; }
-/* Collapsed-state launcher: a clean circular button with the brand logo. */
+/* Collapsed-state launcher: a labeled pill so a first-time user knows what it is
+   (Bridget is on-click only now, so the launcher has to be self-explanatory). */
 .copilot-fab {
   position: fixed; right: 22px; bottom: 22px; z-index: 60; display: none;
-  width: 56px; height: 56px; padding: 0; border: 1px solid var(--border);
+  height: 52px; padding: 0 18px 0 13px; gap: 9px; border: 1px solid var(--border);
   cursor: pointer; background: var(--surface);
   border-radius: var(--radius-pill); box-shadow: var(--shadow-lg, 0 12px 30px rgba(2,6,23,.22));
   align-items: center; justify-content: center;
@@ -5490,29 +5762,31 @@ a.rail-attn:hover { text-decoration: underline; }
 }
 .copilot-fab:hover { transform: translateY(-2px) scale(1.03);
   box-shadow: 0 16px 38px rgba(2,6,23,.28); }
-.copilot-fab img { width: 28px; height: 28px; display: block; }
-.copilot-fab .fab-dot { position: absolute; top: 11px; right: 11px; width: 11px; height: 11px;
+.copilot-fab .copilot-fab-ic { position: relative; display: inline-flex;
+  align-items: center; justify-content: center; }
+.copilot-fab img { width: 26px; height: 26px; display: block; }
+.copilot-fab .copilot-fab-label { font-size: 14px; font-weight: 700; color: var(--ink);
+  white-space: nowrap; }
+.copilot-fab .fab-dot { position: absolute; top: -3px; right: -3px; width: 10px; height: 10px;
   border-radius: var(--radius-pill); background: var(--green, #16a34a);
   border: 2px solid var(--surface); }
 .appdock[data-open="0"] ~ .copilot-fab { display: inline-flex; }
 /* Below full-width, the dock overlays as a drawer instead of eating a column
-   (which would squeeze/clip the page's right rail). It only sits inline once the
-   screen is wide enough for sidebar + content + right rail + dock together. */
-@media (max-width: 1439px) {
+   (which would squeeze/clip the page's content). It only sits inline once the
+   screen is wide enough for the sidebar + content + dock together. */
+@media (max-width: 1023px) {
   .appdock { position: fixed; top: 0; right: 0; bottom: 0; height: 100vh;
     width: min(380px, 100vw); z-index: 62; box-shadow: var(--shadow-lift); }
 }
-/* The inbox gives up its right rail, so the assistant fits inline as a true third
-   pane at any desktop width (above the mobile breakpoint) - reserving its own
-   column instead of overlaying and covering the right side of the list. It only
-   becomes a drawer on genuinely small/mobile screens. */
-@media (min-width: 901px) {
-  .appshell:has(.gm) .appdock { position: sticky; inset: 0 auto 0 auto; top: 0;
-    height: 100vh; width: var(--appdock-w, 340px); z-index: auto; box-shadow: none; }
-}
-/* Keep the list breathing when the window is tight: trim the dock a bit. */
-@media (min-width: 901px) and (max-width: 1180px) {
-  .appshell:has(.gm) .appdock { width: 300px; }
+/* Above that, the dock is a real flex sibling of .appmain (see .appshell,
+   .appmain above) - no position override needed, it just reflows inline and
+   .appmain (min-width:0) shrinks to give it room. This used to be gated behind
+   `.appshell:has(.gm)`, a selector that never matches anything in this
+   codebase, so the dock silently stayed a fixed overlay - never resizing the
+   middle content - at every width below 1440px. Deleted; inline is simply the
+   default above the breakpoint now. */
+@media (min-width: 1024px) and (max-width: 1180px) {
+  .appdock { width: 300px; }
 }
 [data-theme="dark"] .appdock, [data-theme="dark"] .copilot-chip,
 [data-theme="dark"] .copilot-cites a { background: var(--surface); }
@@ -5595,7 +5869,7 @@ a.rail-attn:hover { text-decoration: underline; }
 .landing-extra { max-width: 980px; margin: 0 auto; padding: 8px 24px 24px;
   width: 100%; box-sizing: border-box; }
 .lx-section { margin-top: 44px; }
-.lx-h2 { font-family: var(--sans, 'Manrope', system-ui, sans-serif);
+.lx-h2 { font-family: var(--sans);
   font-size: 26px; font-weight: 800; letter-spacing: -.03em; color: var(--ink);
   margin: 0 0 var(--space-6); display: flex; align-items: center; gap: 8px; }
 .lx-h2 .ico { width: 22px; height: 22px; color: var(--accent); }
@@ -5704,12 +5978,52 @@ a.rail-attn:hover { text-decoration: underline; }
   letter-spacing: .1em; text-transform: uppercase; color: var(--accent);
   background: none; border-radius: 0; padding: 0; }
 .home-learn-card h3 { margin: 11px 0 8px;
-  font-family: var(--sans, 'Manrope', system-ui, sans-serif); color: var(--ink);
+  font-family: var(--sans); color: var(--ink);
   font-size: 17px; font-weight: 700; line-height: 1.3; letter-spacing: -.01em; }
 .home-learn-card p { margin: 0; color: var(--muted); font-size: 14px;
   line-height: 1.55; flex: 1; }
 .home-learn-card b { margin-top: var(--space-4); color: var(--faint);
   font-size: 11.5px; font-weight: 600; letter-spacing: .01em; }
+
+/* For-sites embed pitch on the patient finder (doubles as the sites live demo).
+   Framer/Grovia-style: two "ways to run it" cards + numbered how-embedding steps.
+   Separate audience from the patient flow, so it's boxed and clearly labeled. */
+.embed-pitch { max-width: 980px; margin: 60px auto 0;
+  padding: var(--space-8) var(--space-6);
+  background: var(--accent-soft); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); }
+.embed-pitch-head { text-align: center; max-width: 62ch; margin: 0 auto; }
+.embed-pitch-head .lx-h2 { justify-content: center; margin: var(--space-2) 0 var(--space-3); }
+.embed-lead { margin: 0 auto; color: var(--muted); font-size: 15.5px;
+  line-height: 1.6; max-width: 60ch; }
+.embed-ways { display: grid; grid-template-columns: repeat(2, 1fr);
+  gap: var(--space-5); margin-top: var(--space-7); }
+.embed-way { background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: var(--space-6);
+  transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease; }
+.embed-way:hover { border-color: var(--brand-border); box-shadow: var(--shadow-lift);
+  transform: translateY(-2px); }
+.embed-way-ic { display: inline-flex; align-items: center; justify-content: center;
+  width: 40px; height: 40px; border-radius: var(--radius-sm);
+  background: var(--accent-soft); color: var(--accent); margin-bottom: var(--space-4); }
+.embed-way-ic .ico { width: 20px; height: 20px; }
+.embed-way h3 { margin: 0 0 6px; font-family: var(--sans); font-size: 17px;
+  font-weight: 700; letter-spacing: -.01em; color: var(--ink); }
+.embed-way p { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.55; }
+.embed-steps { margin-top: var(--space-7); }
+.embed-steps-label { display: block; text-align: center; font-size: 11px;
+  text-transform: uppercase; letter-spacing: .08em; color: var(--accent);
+  font-weight: 800; margin-bottom: var(--space-5); }
+.embed-steps-grid { display: grid; grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-6); }
+.embed-step { border-top: 2px solid var(--accent); padding-top: var(--space-4); }
+.embed-step-n { display: block; font-family: var(--sans); font-size: 24px;
+  font-weight: 800; letter-spacing: -.02em; color: var(--accent);
+  margin-bottom: 8px; }
+.embed-step h4 { margin: 0 0 5px; font-family: var(--sans); font-size: 15.5px;
+  font-weight: 700; letter-spacing: -.01em; color: var(--ink); }
+.embed-step p { margin: 0; color: var(--muted); font-size: 13.5px; line-height: 1.55; }
+.embed-pitch .lx-cta { margin-top: var(--space-7); }
 
 /* Trust strip */
 .trust-strip { max-width: 980px; margin: 48px auto 8px; padding: 0 24px;
@@ -5723,6 +6037,8 @@ a.rail-attn:hover { text-decoration: underline; }
 
 @media (max-width: 760px) {
   .hiw-grid { grid-template-columns: 1fr; }
+  .embed-pitch { padding: var(--space-6) var(--space-5); margin-top: 40px; }
+  .embed-ways, .embed-steps-grid { grid-template-columns: 1fr; }
   .home-proof { grid-template-columns: 1fr; margin-top: 24px; }
   .home-learn-head { flex-direction: column; align-items: flex-start; }
   .home-learn-grid { grid-template-columns: 1fr; }
@@ -6202,13 +6518,7 @@ body.fs-page { background:
 .fs-qm { display: grid; place-items: center; width: 14px; flex: none; color: var(--muted); }
 .fs-qm svg { width: 14px; height: 14px; }
 
-/* Scroll-reveal: elements get .fs-reveal added by JS (so no-JS keeps them visible),
-   then .is-in when they enter the viewport. Subtle, professional fade-up. */
-.fs-reveal { opacity: 0; transform: translateY(18px);
-  transition: opacity .6s cubic-bezier(.16,1,.3,1), transform .6s cubic-bezier(.16,1,.3,1); }
-.fs-reveal.is-in { opacity: 1; transform: none; }
 @media (prefers-reduced-motion: reduce) {
-  .fs-reveal, .fs-reveal.is-in { opacity: 1; transform: none; transition: none; }
   .fs-hv-panel { transition: none; transform: none; }
   .fs-hv-panel.is-active .fs-qrow,
   .fs-hv-panel.is-active .fs-hv-chip,
@@ -6298,7 +6608,6 @@ body.fs-page { background:
 .fs-btn-primary:hover { background: var(--btn-hover); transform: translateY(-1px); box-shadow: var(--shadow-lift); }
 .fs-btn-ghost { background: var(--surface); color: var(--ink); border-color: var(--border-strong); }
 .fs-btn-ghost:hover { border-color: var(--accent); color: var(--accent); }
-.fs-btn-block { width: 100%; justify-content: center; margin-top: 6px; }
 .fs-btn-sm { padding: 9px 16px; font-size: 14px; }
 /* Hero CTA: the primary conversion button, made long and given an accent-tinted
    glow so it clearly pops off the page. */
@@ -6623,7 +6932,9 @@ body.fs-page { background:
 
 /* Sections */
 .fs-section { padding: 68px 24px; max-width: 1120px; margin: 0 auto; }
-.fs-section[id] { scroll-margin-top: 78px; }   /* clear the sticky nav on anchor jumps */
+/* Clear the sticky nav on anchor jumps, for both section generations: #how,
+   #pricing and #demo are .fsx-section, #security is still .fs-section. */
+.fs-section[id], .fsx-section[id] { scroll-margin-top: 78px; }
 .fs-section-wide { max-width: 1280px; }
 .fs-section-alt { max-width: none; background: var(--bg); }
 .fs-section-alt > * { max-width: 1120px; margin-inline: auto; }
@@ -7201,26 +7512,6 @@ body.fs-page { background:
 .fs-also-card b { font-size: 14.5px; color: #fff; }
 .fs-also-card span { font-size: 12.5px; line-height: 1.5; color: rgba(255,255,255,.62); }
 
-/* Contact */
-.fs-contact { max-width: 1120px; }
-.fs-contact-card { display: grid; grid-template-columns: .9fr 1.1fr; gap: 40px; align-items: center;
-  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg);
-  padding: 40px; box-shadow: var(--shadow-lift); }
-.fs-contact-copy h2 { font-family: var(--sans); font-size: clamp(26px, 3vw, 34px); letter-spacing: -.03em;
-  color: var(--ink); margin: 0 0 12px; font-weight: 800; }
-.fs-contact-copy p { font-size: 15.5px; color: var(--muted); line-height: 1.5; margin: 0 0 18px; }
-.fs-form { display: flex; flex-direction: column; gap: 12px; }
-.fs-form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-.fs-field { display: flex; flex-direction: column; gap: 6px; }
-.fs-field > span { font-size: 13px; font-weight: 600; color: var(--ink); }
-.fs-field em { color: var(--faint); font-weight: 400; font-style: normal; }
-.fs-field input, .fs-field select, .fs-field textarea { width: 100%; padding: 11px 13px;
-  border: 1px solid var(--border-strong); border-radius: var(--radius-sm); font-size: 15px;
-  font-family: inherit; color: var(--ink); background: var(--surface); }
-.fs-field input:focus, .fs-field select:focus, .fs-field textarea:focus { outline: none;
-  border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
-.fs-form-or { font-size: 13px; color: var(--muted); text-align: center; margin: 4px 0 0; }
-
 @media (max-width: 1040px) {
   .fs-also-grid { grid-template-columns: repeat(2, 1fr); }
   .fs-sec-grid-3 { grid-template-columns: repeat(2, 1fr); }
@@ -7228,8 +7519,6 @@ body.fs-page { background:
 }
 
 @media (max-width: 760px) {
-  /* Same 16px floor as the base fields, so focusing one does not zoom iOS. */
-  .fs-field input, .fs-field select, .fs-field textarea { font-size: 16px; }
   /* Tabs scroll sideways instead of stacking into a wall of buttons, and the
      screenshots show whole rather than cropping to the app's sidebar. */
   .fs-tabs { width: auto; flex-wrap: nowrap; justify-content: flex-start; overflow-x: auto; }
@@ -7278,7 +7567,7 @@ body.fs-page { background:
 }
 
 @media (max-width: 900px) {
-  .fs-pillars, .fs-safe, .fs-sec-grid, .fs-stats-in, .fs-contact-card, .fs-soc,
+  .fs-pillars, .fs-safe, .fs-sec-grid, .fs-stats-in, .fs-soc,
   .fs-split { grid-template-columns: 1fr; }
   .fs-stats-in { grid-template-columns: repeat(2, 1fr); gap: 30px 0; }
   /* In a 2-col grid the divider only belongs between the two columns, i.e. on the
@@ -7286,7 +7575,6 @@ body.fs-page { background:
   .fs-stat + .fs-stat { border-left: 0; }
   .fs-stat:nth-child(2n) { border-left: 1px solid var(--border); }
   .fs-safe { grid-template-columns: repeat(2, 1fr); }
-  .fs-form-row { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 520px) {
@@ -7891,9 +8179,7 @@ body.fs-page { background:
 }
 
 /* ============================ Blog / Resources ============================ */
-/* Site-side blog. Inherits fs-page tokens (teal accent). Article body uses the
-   Newsreader serif already loaded in public_base for an editorial, non-"dev-tool"
-   read. All spacing/colours are tokens, no hardcoded brand values. */
+/* Site-side blog. Inherits fs-page tokens and the shared product typography. */
 .blog-hero { padding:78px 24px 20px; text-align:center; }
 .blog-hero-in { max-width:760px; margin:0 auto; }
 .blog-hero-in h1 { font-size:clamp(30px,5vw,46px); letter-spacing:-.03em; margin:12px 0 12px; }
@@ -7961,7 +8247,7 @@ body.fs-page { background:
 .blog-article.blog-article--solo { max-width:720px; margin:0 auto; padding:70px 24px 40px; }
 .blog-art-head .fp-back { margin-bottom:18px; }
 .blog-art-head .blog-tag { margin-bottom:14px; }
-.blog-art-head h1 { font-family:var(--sans, 'Manrope', system-ui, sans-serif);
+.blog-art-head h1 { font-family:var(--sans);
   font-size:clamp(28px,4.3vw,40px); font-weight:800; letter-spacing:-.032em;
   line-height:1.1; color:var(--ink); margin:0 0 14px; }
 .blog-art-dek { font-size:18px; line-height:1.55; color:var(--muted);
@@ -7972,9 +8258,9 @@ body.fs-page { background:
 /* Modern, structured article body: sans throughout, sectioned by an accent tick
    on each heading, square list markers, and callout cards instead of NYT-style
    pull-quotes. */
-.blog-body { font-family:var(--sans, 'Manrope', system-ui, sans-serif);
+.blog-body { font-family:var(--sans);
   font-size:16.5px; line-height:1.68; color:var(--ink-soft); margin-top:28px; }
-.blog-body h2 { position:relative; font-family:var(--sans, 'Manrope', system-ui, sans-serif);
+.blog-body h2 { position:relative; font-family:var(--sans);
   font-size:20px; font-weight:700; letter-spacing:-.02em; color:var(--ink);
   line-height:1.25; margin:38px 0 12px; padding-left:15px; }
 .blog-body h2::before { content:""; position:absolute; left:0; top:3px; bottom:3px;
@@ -8068,511 +8354,18 @@ body.fs-page { background:
   .blog-feature, .blog-card { padding-left:22px; padding-right:22px; }
 }
 
-/* ======================== Unified marketing hub ======================== */
-.mh-shell {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 6px 24px 76px;
-}
-.mh-hero {
-  padding-top: 36px;
-  display: grid;
-  grid-template-columns: minmax(0, 1.08fr) minmax(320px, .92fr);
-  gap: 24px;
-  align-items: stretch;
-}
-.mh-hero-copy h1 {
-  font-family: var(--sans, 'Manrope', system-ui, sans-serif);
-  font-size: clamp(36px, 4.8vw, 60px);
-  line-height: 1.02;
-  letter-spacing: -.04em;
-  margin: 16px 0 14px;
-  color: var(--ink);
-}
-.mh-cta { margin-top: 24px; }
-.mh-kpis {
-  margin-top: 24px;
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-}
-.mh-kpi {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow);
-  padding: 18px;
-}
-.mh-kpi-k {
-  display: block;
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: .08em;
-  text-transform: uppercase;
-  color: var(--faint);
-}
-.mh-kpi b {
-  display: block;
-  margin-top: 10px;
-  font-size: 26px;
-  line-height: 1;
-  letter-spacing: -.03em;
-  color: var(--ink);
-}
-.mh-kpi small {
-  display: block;
-  margin-top: 8px;
-  color: var(--muted);
-  font-size: 13px;
-  line-height: 1.5;
-}
-.mh-hero-panel,
-.mh-card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 28px;
-  box-shadow: var(--shadow-lift);
-}
-.mh-hero-panel {
-  padding: 22px;
-  backdrop-filter: blur(8px);
-}
-.mh-panel-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 14px;
-  margin-bottom: 18px;
-}
-.mh-panel-kicker {
-  margin: 0 0 7px;
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: .1em;
-  text-transform: uppercase;
-  color: var(--accent);
-}
-.mh-panel-head h2,
-.mh-card h2,
-.mh-footer-cta h2,
-.mh-reply h3 {
-  margin: 0;
-  color: var(--ink);
-  letter-spacing: -.03em;
-  line-height: 1.15;
-}
-.mh-panel-head h2 { font-size: 21px; }
-.mh-hero-panel .mh-panel-head { margin-bottom: 16px; }
-.mh-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 10px;
-  border-radius: var(--radius-pill);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 700;
-  white-space: nowrap;
-}
-.mh-badge-live {
-  background: var(--ok-bg);
-  border-color: var(--ok-border);
-  color: var(--ok);
-}
-.mh-mini-stack {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.mh-mini-card,
-.mh-source,
-.mh-thread,
-.mh-team-row,
-.mh-note,
-.mh-reply {
-  border: 1px solid var(--border);
-  background: var(--surface);
-  border-radius: 20px;
-}
-.mh-mini-card {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: 12px;
-  align-items: center;
-  padding: 14px 16px;
-}
-.mh-mini-ic {
-  width: 36px;
-  height: 36px;
-  border-radius: 12px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--accent-soft);
-  color: var(--accent);
-  font-weight: 800;
-  font-size: 12px;
-  flex-shrink: 0;
-}
-.mh-mini-ic .ico { width: 18px; height: 18px; }
-.mh-mini-card b,
-.mh-source b,
-.mh-thread b,
-.mh-team-row b {
-  display: block;
-  color: var(--ink);
-  font-size: 14px;
-}
-.mh-mini-card span,
-.mh-source p,
-.mh-team-row span,
-.mh-thread p,
-.mh-thread-side span,
-.mh-note li,
-.mh-reply-body,
-.mh-hero-label {
-  color: var(--muted);
-}
-.mh-mini-card em {
-  font-style: normal;
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--accent);
-}
-.mh-hero-foot {
-  margin-top: 16px;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-  border-top: 1px solid var(--border);
-  padding-top: 16px;
-}
-.mh-hero-label {
-  display: block;
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: .08em;
-  text-transform: uppercase;
-  margin-bottom: 6px;
-}
-.mh-hero-foot b {
-  font-size: 20px;
-  color: var(--ink);
-  letter-spacing: -.03em;
-}
-.mh-grid {
-  margin-top: 18px;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr) minmax(300px, .8fr);
-  gap: 18px;
-  align-items: start;
-}
-.mh-card {
-  padding: 22px;
-}
-.mh-form {
-  display: grid;
-  grid-template-columns: 170px minmax(0, 1fr) auto;
-  gap: 12px;
-  align-items: end;
-  margin-bottom: 16px;
-}
-.mh-field {
-  margin: 0;
-}
-.mh-field span {
-  display: block;
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--muted);
-  margin-bottom: 7px;
-}
-.mh-field input,
-.mh-field select {
-  width: 100%;
-}
-.mh-add { min-height: 44px; justify-content: center; }
-.mh-source-list,
-.mh-thread-list,
-.mh-team {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.mh-source {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 14px 16px;
-}
-.mh-source-type {
-  margin: 0 0 4px;
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: .08em;
-  text-transform: uppercase;
-  color: var(--accent);
-}
-.mh-source-meta {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
-.mh-thread {
-  width: 100%;
-  text-align: left;
-  padding: 16px;
-  cursor: pointer;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 14px;
-  transition: transform .14s ease, border-color .14s ease, background .14s ease;
-}
-.mh-thread:hover {
-  transform: translateY(-1px);
-  border-color: var(--border-strong);
-}
-.mh-thread.is-active {
-  border-color: var(--brand-border);
-  background: var(--accent-soft);
-}
-.mh-thread-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-.mh-thread h3 {
-  margin: 8px 0 5px;
-  font-size: 16px;
-  color: var(--ink);
-  letter-spacing: -.02em;
-}
-.mh-thread p {
-  margin: 0;
-  font-size: 13.5px;
-  line-height: 1.55;
-}
-.mh-thread-side {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 8px;
-  text-align: right;
-  font-size: 12px;
-}
-.mh-pill,
-.mh-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 9px;
-  border-radius: var(--radius-pill);
-  border: 1px solid var(--brand-border);
-  background: var(--accent-soft);
-  color: var(--accent);
-  font-size: 11px;
-  font-weight: 800;
-  white-space: nowrap;
-}
-.mh-pill.is-soft {
-  background: var(--surface-2);
-  border-color: var(--border);
-  color: var(--muted);
-}
-.mh-reply {
-  margin-top: 16px;
-  padding: 18px;
-}
-.mh-reply-top {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-}
-.mh-reply-top h3 {
-  margin-top: 6px;
-  font-size: 18px;
-}
-.mh-reply-body {
-  margin-top: 14px;
-  padding: 16px;
-  border-radius: 18px;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  font-size: 15px;
-  line-height: 1.7;
-  white-space: pre-wrap;
-}
-.mh-reply-foot {
-  margin-top: 14px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-.mh-side {
-  position: sticky;
-  top: 88px;
-}
-.mh-toggle {
-  border: 1px solid var(--border-strong);
-  background: var(--surface);
-  color: var(--ink);
-  border-radius: var(--radius-pill);
-  padding: 8px 12px;
-  font: inherit;
-  font-size: 12px;
-  font-weight: 800;
-  cursor: pointer;
-  white-space: nowrap;
-}
-.mh-toggle:hover {
-  border-color: var(--accent);
-  color: var(--accent);
-  background: var(--accent-soft);
-}
-.mh-team-row {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-  padding: 14px 16px;
-  cursor: pointer;
-  text-align: left;
-}
-.mh-team-row em {
-  font-style: normal;
-  font-size: 12px;
-  color: var(--faint);
-}
-.mh-team-row.is-active {
-  border-color: var(--brand-border);
-  background: var(--accent-soft);
-}
-.mh-note {
-  margin-top: 14px;
-  padding: 16px;
-}
-.mh-note-soft {
-  background: var(--surface-2);
-}
-.mh-note-title {
-  margin: 0 0 10px;
-  font-size: 12px;
-  font-weight: 800;
-  letter-spacing: .08em;
-  text-transform: uppercase;
-  color: var(--accent);
-}
-.mh-note ul {
-  margin: 0;
-  padding-left: 18px;
-}
-.mh-note li {
-  margin: 0 0 8px;
-  line-height: 1.55;
-}
-.mh-note p {
-  margin: 0;
-  line-height: 1.6;
-}
-.mh-footer-cta {
-  margin-top: 18px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 18px;
-  flex-wrap: wrap;
-  border: 1px solid var(--border);
-  background: var(--accent-soft);
-  border-radius: 28px;
-  padding: 24px 26px;
-}
-.mh-footer-cta p {
-  margin: 0;
-  color: var(--muted);
-  max-width: 68ch;
-}
-@media (max-width: 1100px) {
-  .mh-hero,
-  .mh-grid {
-    grid-template-columns: 1fr;
-  }
-  .mh-side {
-    position: static;
-  }
-}
-@media (max-width: 760px) {
-  .mh-shell {
-    padding-left: 16px;
-    padding-right: 16px;
-  }
-  .mh-kpis,
-  .mh-hero-foot,
-  .mh-form {
-    grid-template-columns: 1fr;
-  }
-  .mh-source,
-  .mh-thread {
-    grid-template-columns: 1fr;
-  }
-  .mh-thread-side {
-    align-items: flex-start;
-    text-align: left;
-    flex-direction: row;
-    justify-content: flex-start;
-    flex-wrap: wrap;
-  }
-  .mh-panel-head,
-  .mh-reply-top {
-    flex-direction: column;
-  }
-}
-
 /* ======================== Marketing inbox workspace ======================== */
 .appbody-wide { max-width: 1480px; }
 /* Full-bleed product surface: no centered max-width column, no page padding -
    the marketing inbox fills the whole frame and IS the screen (like the triage
    inbox). The page is a flex column so the workspace takes all leftover height. */
 .appbody:has(.mh-page) { padding: 0; max-width: none; }
+/* Full-bleed: the inbox route hides .apptop (see .appshell:has(.mh-page) .apptop),
+   so there is no header to subtract - the page fills the whole viewport height and
+   sits flush against the Bridget dock. No padding, or the workspace becomes a short
+   inset card detached from the full-height dock next to it. */
 .mh-page { width: 100%; display: flex; flex-direction: column;
-  height: calc(100dvh - 57px); padding: 14px 22px 16px; }
-.mh-page-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 20px;
-  margin-bottom: 12px;
-}
-.mh-title-block { display: flex; align-items: center; gap: 16px; min-width: 0; flex-wrap: wrap; }
-.mh-page-head h1 {
-  margin: 0;
-  color: var(--ink);
-  font-size: 21px;
-  line-height: 1.1;
-  letter-spacing: -.02em;
-}
-.mh-page-head p { margin: 0; color: var(--muted); font-size: 13.5px; }
-
-/* Slim inline stats: the numbers a coordinator glances at, without the big
-   card band eating the screen. Each is a real filter/action, not decoration. */
-.mh-stat-strip { display: inline-flex; align-items: center; gap: 12px;
-  padding: 5px 14px; background: var(--surface); border: 1px solid var(--border);
-  border-radius: var(--radius-pill); box-shadow: var(--shadow); }
-.mh-stat { display: inline-flex; align-items: baseline; gap: 5px; padding: 0;
-  border: 0; background: none; font: inherit; font-size: 12.5px; font-weight: 600;
-  color: var(--muted); cursor: pointer; text-decoration: none; white-space: nowrap;
-  -webkit-appearance: none; appearance: none; }
-.mh-stat:hover { color: var(--ink); }
-.mh-stat b { font-size: 15px; font-weight: 800; color: var(--ink); }
-.mh-stat.has-work b { color: #c74a24; }
-.mh-stat-sep { width: 1px; height: 15px; background: var(--border); }
+  height: 100dvh; padding: 0; }
 .mh-eyebrow {
   display: flex;
   align-items: center;
@@ -8590,31 +8383,6 @@ body.fs-page { background:
   background: #26a269;
   box-shadow: 0 0 0 4px rgba(38,162,105,.12);
 }
-.mh-head-actions { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
-.mh-head-actions .btn { min-height: 42px; }
-.mh-duty {
-  min-height: 42px;
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  padding: 5px 10px 5px 6px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--surface);
-  color: var(--ink);
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-  box-shadow: 0 1px 3px rgba(15,23,42,.04);
-}
-.mh-duty:hover { border-color: var(--border-strong); background: var(--surface-2); }
-.mh-duty > span:not(.mh-avatar) { min-width: 88px; }
-.mh-duty small,
-.mh-duty b { display: block; line-height: 1.15; }
-.mh-duty small { color: var(--faint); font-size: 9.5px; text-transform: uppercase; letter-spacing: .06em; }
-.mh-duty b { max-width: 130px; margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; }
-.mh-duty > .ico { width: 14px; color: var(--faint); }
-.mh-duty.is-covering { border-color: rgba(38,162,105,.35); background: rgba(38,162,105,.07); }
 
 .mh-avatar {
   width: 34px;
@@ -8658,55 +8426,6 @@ body.fs-page { background:
 .mh-demo-note b { display: block; margin-bottom: 1px; font-size: 12px; }
 .mh-demo-note span { font-size: 11.5px; line-height: 1.45; }
 
-.mh-pulse {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
-  margin-bottom: 14px;
-}
-.mh-pulse-item {
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 11px;
-  padding: 11px 13px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--surface);
-  color: var(--ink);
-  font: inherit;
-  text-align: left;
-  text-decoration: none;
-  cursor: pointer;
-  box-shadow: 0 1px 3px rgba(15,23,42,.035);
-  transition: border-color .14s ease, transform .14s ease, box-shadow .14s ease;
-}
-.mh-pulse-item:hover {
-  border-color: var(--border-strong);
-  box-shadow: 0 5px 16px rgba(15,23,42,.065);
-  transform: translateY(-1px);
-  text-decoration: none;
-}
-.mh-pulse-icon {
-  width: 33px;
-  height: 33px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex: 0 0 auto;
-  border-radius: 10px;
-  background: var(--surface-2);
-  color: var(--muted);
-}
-.mh-pulse-icon .ico { width: 16px; height: 16px; }
-.mh-pulse-item.has-work .mh-pulse-icon { background: #fff0eb; color: #c74a24; }
-.mh-pulse-item > span:last-child { min-width: 0; }
-.mh-pulse-item b,
-.mh-pulse-item small { display: block; }
-.mh-pulse-item b { overflow: hidden; color: var(--ink); font-size: 17px; line-height: 1.05; text-overflow: ellipsis; white-space: nowrap; }
-.mh-pulse-item b.mh-pulse-name { font-size: 13px; }
-.mh-pulse-item small { margin-top: 3px; color: var(--faint); font-size: 10.5px; }
-
 /* The workspace IS the screen: it fills the viewport below the compact header so
    the inbox - the thing coordinators actually work in - is the main surface. */
 .mh-workspace {
@@ -8715,10 +8434,7 @@ body.fs-page { background:
   display: grid;
   grid-template-columns: 250px 345px minmax(440px, 1fr);
   overflow: hidden;
-  border: 1px solid var(--border-strong);
-  border-radius: 16px;
   background: var(--surface);
-  box-shadow: 0 12px 38px rgba(15,23,42,.08);
 }
 .mh-sources,
 .mh-thread-column,
@@ -8730,68 +8446,6 @@ body.fs-page { background:
   border-right: 1px solid var(--border);
   background: var(--surface-2);
 }
-.mh-column-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 0 5px 13px;
-}
-.mh-column-kicker {
-  display: block;
-  margin-bottom: 2px;
-  color: var(--faint);
-  font-size: 9px;
-  font-weight: 800;
-  letter-spacing: .12em;
-  text-transform: uppercase;
-}
-.mh-column-head h2 { margin: 0; color: var(--ink); font-size: 15px; letter-spacing: -.01em; }
-.mh-icon-btn {
-  width: 32px;
-  height: 32px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex: 0 0 auto;
-  border: 1px solid var(--border);
-  border-radius: 9px;
-  background: var(--surface);
-  color: var(--muted);
-  cursor: pointer;
-}
-.mh-icon-btn:hover { border-color: var(--border-strong); color: var(--ink); box-shadow: 0 2px 8px rgba(15,23,42,.07); }
-.mh-icon-btn:disabled { opacity: .4; cursor: not-allowed; }
-.mh-icon-btn .ico { width: 15px; height: 15px; }
-
-.mh-all-inbox,
-.mh-source-link {
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  color: var(--ink);
-  text-decoration: none;
-}
-.mh-all-inbox {
-  margin-bottom: 7px;
-  padding: 10px;
-  border: 1px solid transparent;
-  border-radius: 11px;
-}
-.mh-all-inbox:hover,
-.mh-all-inbox.is-active { background: var(--surface); border-color: var(--border); text-decoration: none; }
-.mh-all-inbox.is-active { box-shadow: 0 2px 9px rgba(15,23,42,.05); }
-.mh-all-inbox > span:nth-child(2),
-.mh-source-copy { min-width: 0; flex: 1; }
-.mh-all-inbox b,
-.mh-all-inbox small,
-.mh-source-copy b,
-.mh-source-copy small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.mh-all-inbox b,
-.mh-source-copy b { color: var(--ink); font-size: 11.5px; }
-.mh-all-inbox small,
-.mh-source-copy small { margin-top: 2px; color: var(--faint); font-size: 9.5px; }
 .mh-channel-ic {
   width: 31px;
   height: 31px;
@@ -8807,10 +8461,10 @@ body.fs-page { background:
 }
 .mh-channel-ic .ico,
 .mh-channel-ic .brand-ico { width: 15px; height: 15px; }
-.mh-channel-ic.is-all { background: #e9f1fb; color: #205c91; }
-.mh-channel-ic.is-email { background: #e8f4f0; color: #187052; }
-.mh-channel-ic.is-instagram { background: linear-gradient(145deg, #fff0e8, #ffeaf3); color: #bc3f66; }
-.mh-channel-ic.is-google { background: #fff; border-color: #e6e9ed; }
+.mh-channel-ic.is-all,.mh-channel-ic.is-email,.mh-channel-ic.is-instagram {
+  background:var(--accent-soft); color:var(--accent); }
+.mh-channel-ic.is-google { background:var(--accent-soft); color:var(--accent);
+  border-color:var(--brand-border); }
 
 .mh-count {
   min-width: 19px;
@@ -8825,121 +8479,16 @@ body.fs-page { background:
   font-size: 9px;
   font-weight: 800;
 }
-.mh-source-stack { flex: 1; min-height: 90px; overflow: auto; padding: 1px; }
-.mh-source-wrap {
-  margin-bottom: 6px;
-  overflow: hidden;
-  border: 1px solid transparent;
-  border-radius: 11px;
-}
-.mh-source-wrap:hover,
-.mh-source-wrap.is-active { border-color: var(--border); background: var(--surface); }
-.mh-source-wrap.is-active { box-shadow: 0 2px 9px rgba(15,23,42,.05); }
-.mh-source-wrap.is-off { opacity: .55; }
-.mh-source-link { padding: 9px 9px 5px; }
-.mh-source-state { padding: 0 10px 7px 50px; }
-.mh-source-state button,
-.mh-source-state a {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--faint);
-  font: inherit;
-  font-size: 8.5px;
-  cursor: pointer;
-  text-decoration: none;
-}
-.mh-source-state button:hover,
-.mh-source-state a:hover { color: var(--ink); text-decoration: none; }
-.mh-status-dot { width: 6px; height: 6px; border-radius: 50%; background: #26a269; }
-.mh-source-wrap.is-off .mh-status-dot { background: var(--faint); }
 .mh-source-live-state {
   display: flex;
   align-items: center;
   gap: 7px;
   padding-right: 8px;
 }
-.mh-source-live-state .mh-sync-meta {
-  min-width: 0;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  flex: 1;
-  overflow: hidden;
-  color: #187052;
-  font-size: 8.5px;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
 .mh-source-live-state form { flex: 0 0 auto; }
 .mh-source-live-state button .ico { width: 9px; height: 9px; }
 .mh-source-live-state button.is-syncing .ico { animation: mh-spin .8s linear infinite; }
-.mh-source-error {
-  display: block;
-  padding: 0 9px 7px 50px;
-  overflow: hidden;
-  color: #a3472d;
-  font-size: 8px;
-  line-height: 1.35;
-}
-.mh-source-error[hidden] { display: none; }
 @keyframes mh-spin { to { transform: rotate(360deg); } }
-.mh-source-empty {
-  padding: 24px 12px;
-  border: 1px dashed var(--border-strong);
-  border-radius: 12px;
-  color: var(--muted);
-  text-align: center;
-}
-.mh-source-empty > span { width: 35px; height: 35px; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 8px; border-radius: 10px; background: var(--surface); }
-.mh-source-empty .ico { width: 17px; }
-.mh-source-empty b { display: block; color: var(--ink); font-size: 12px; }
-.mh-source-empty p { margin: 5px 0 12px; font-size: 10.5px; line-height: 1.45; }
-
-.mh-coverage-card {
-  margin-top: 12px;
-  padding: 12px;
-  border: 1px solid #d7e2ee;
-  border-radius: 12px;
-  background: #f3f8fc;
-}
-.mh-coverage-card.is-on { border-color: #b9dfcc; background: #f0faf5; }
-.mh-coverage-top { display: flex; align-items: center; gap: 9px; }
-.mh-coverage-icon {
-  width: 29px;
-  height: 29px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex: 0 0 auto;
-  border-radius: 9px;
-  background: #dfeaf4;
-  color: #205c91;
-}
-.mh-coverage-card.is-on .mh-coverage-icon { background: #d9f0e4; color: #187052; }
-.mh-coverage-icon .ico { width: 14px; }
-.mh-coverage-top small,
-.mh-coverage-top b { display: block; }
-.mh-coverage-top small { color: var(--faint); font-size: 8.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
-.mh-coverage-top b { margin-top: 2px; color: var(--ink); font-size: 10.5px; }
-.mh-coverage-card p { margin: 9px 0; color: var(--muted); font-size: 9.5px; line-height: 1.5; }
-.mh-coverage-card > button {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: #205c91;
-  font: inherit;
-  font-size: 9.5px;
-  font-weight: 750;
-  cursor: pointer;
-}
-.mh-coverage-card > button .ico { width: 11px; }
 
 .mh-thread-column {
   display: grid;
@@ -8948,6 +8497,14 @@ body.fs-page { background:
   background: var(--surface);
 }
 .mh-thread-toolbar { display: flex; gap: 8px; padding: 15px 13px 10px; }
+/* In-inbox study scoper: swap the inbox between trials without leaving the page
+   (the global top-bar switcher is hidden on .mh-page by design). Compact so the
+   search field keeps flex:1. Reuses base <select> styling + set_scope backend. */
+.mh-scope { flex: 0 0 auto; min-width: 0; display: flex; align-items: center; }
+.mh-scope select { height: 34px; max-width: 148px; padding: 0 26px 0 10px;
+  border: 1px solid var(--border); border-radius: var(--radius-sm); background-color: var(--surface-2);
+  color: var(--ink); font: inherit; font-size: 11.5px; font-weight: 600; cursor: pointer; }
+.mh-scope select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); outline: 0; }
 .mh-search {
   min-width: 0;
   flex: 1;
@@ -8962,11 +8519,28 @@ body.fs-page { background:
 .mh-search:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); background: var(--surface); }
 .mh-search .ico { width: 14px; color: var(--faint); }
 .mh-search input { min-width: 0; width: 100%; height: 32px; padding: 0; border: 0; outline: 0; background: transparent; color: var(--ink); font: inherit; font-size: 11.5px; }
+/* Inbox scope segmented control: My inbox (default, private) vs Unassigned
+   (shared unclaimed queue). No "everyone" option by design. */
+.mh-owner-toggle { display: flex; gap: 4px; margin: 0 13px 10px; padding: 3px;
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: 10px; }
+.mh-owner-toggle a { flex: 1; display: inline-flex; align-items: center;
+  justify-content: center; gap: 5px; padding: 6px 8px; border-radius: 7px;
+  color: var(--muted); font-size: 10.5px; font-weight: 700; text-decoration: none;
+  transition: background .12s ease, color .12s ease; }
+.mh-owner-toggle a .ico { width: 13px; height: 13px; }
+.mh-owner-toggle a:hover { color: var(--ink); text-decoration: none; }
+.mh-owner-toggle a.is-active { background: var(--surface); color: var(--accent);
+  box-shadow: 0 1px 2px rgba(16,16,40,.06); }
+.mh-owner-toggle a span { min-width: 16px; padding: 1px 5px; border-radius: 999px;
+  background: var(--accent-soft); color: var(--accent); font-size: 9px; }
 .mh-thread-tabs { display: flex; gap: 5px; padding: 0 13px 10px; border-bottom: 1px solid var(--border); }
 .mh-thread-tabs a { display: inline-flex; align-items: center; gap: 5px; padding: 6px 9px; border-radius: 8px; color: var(--faint); font-size: 10px; font-weight: 700; text-decoration: none; }
 .mh-thread-tabs a:hover { background: var(--surface-2); color: var(--ink); text-decoration: none; }
-.mh-thread-tabs a.is-active { background: #edf3f8; color: #173f5f; }
-.mh-thread-tabs a span { min-width: 16px; padding: 1px 5px; border-radius: 999px; background: rgba(23,63,95,.09); text-align: center; font-size: 8px; }
+.mh-thread-tabs a.is-active { background:var(--accent-soft); color:var(--accent); }
+.mh-thread-tabs a span { min-width:16px; padding:1px 5px;
+  border-radius:var(--radius-pill); background:var(--neutral-bg);
+  text-align:center; font-size:var(--text-xs); }
 .mh-thread-stack { overflow: auto; }
 .mh-thread-row {
   position: relative;
@@ -8978,9 +8552,10 @@ body.fs-page { background:
   transition: background .12s ease, box-shadow .12s ease;
 }
 .mh-thread-row:hover { background: var(--surface-2); text-decoration: none; }
-.mh-thread-row.is-active { background: #f2f7fb; box-shadow: inset 3px 0 #2f6f9f; }
-.mh-thread-row.is-unread { background: #fbfdff; }
-.mh-thread-row.is-unread.is-active { background: #eef6fb; }
+.mh-thread-row.is-active { background:var(--accent-soft);
+  box-shadow:inset 3px 0 var(--accent); }
+.mh-thread-row.is-unread { background:var(--surface); }
+.mh-thread-row.is-unread.is-active { background:var(--accent-soft); }
 .mh-thread-row-top { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .mh-contact-avatar {
   width: 31px;
@@ -9003,28 +8578,23 @@ body.fs-page { background:
 .mh-thread-row.is-unread .mh-thread-person b { font-weight: 800; }
 .mh-thread-person small { margin-top: 2px; color: var(--faint); font-size: 8.5px; }
 .mh-thread-row time { flex: 0 0 auto; color: var(--faint); font-size: 8.5px; }
-.mh-unread-dot { width: 7px; height: 7px; flex: 0 0 auto; border-radius: 50%; background: #da572e; box-shadow: 0 0 0 3px rgba(218,87,46,.1); }
+.mh-unread-dot { width:7px; height:7px; flex:0 0 auto;
+  border-radius:var(--radius-pill); background:var(--accent); box-shadow:none; }
 .mh-thread-row h3 { margin: 10px 0 4px; overflow: hidden; color: var(--ink); font-size: 12.5px; letter-spacing: -.01em; text-overflow: ellipsis; white-space: nowrap; }
 .mh-thread-row.is-unread h3 { font-weight: 800; }
 .mh-thread-row p { display: -webkit-box; margin: 0; overflow: hidden; color: var(--muted); font-size: 10.5px; line-height: 1.45; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 .mh-thread-row-foot { display: flex; align-items: center; gap: 5px; margin-top: 9px; color: var(--faint); font-size: 8.5px; }
-.mh-connection-tag { display: inline-flex; align-items: center; padding: 2px 5px; border-radius: 999px; font-size: 7.5px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
-.mh-connection-tag.is-live { background: #e6f5ee; color: #187052; }
-.mh-connection-tag.is-demo { background: #f3efe5; color: #796b4a; }
-.mh-resolved-tag { display: inline-flex; align-items: center; gap: 3px; margin-left: auto; color: #187052; font-weight: 700; }
-.mh-resolved-tag .ico { width: 10px; }
-.mh-study-tag { display: inline-flex; align-items: center; gap: 3px; max-width: 100%;
-  overflow: hidden; padding: 1px 8px; border-radius: var(--radius-pill);
-  background: var(--accent-soft); color: var(--accent); font-weight: 700;
-  white-space: nowrap; }
-.mh-study-tag .ico { width: 10px; flex-shrink: 0; }
 .mh-thread-empty { display: flex; min-height: 330px; flex-direction: column; align-items: center; justify-content: center; padding: 28px; color: var(--muted); text-align: center; }
 .mh-thread-empty > span { width: 46px; height: 46px; display: inline-flex; align-items: center; justify-content: center; border-radius: 14px; background: var(--surface-2); color: var(--faint); }
 .mh-thread-empty > span .ico { width: 20px; }
 .mh-thread-empty h3 { margin: 13px 0 5px; color: var(--ink); font-size: 14px; }
 .mh-thread-empty p { max-width: 230px; margin: 0 0 14px; font-size: 10.5px; line-height: 1.5; }
 
-.mh-conversation { display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; background: var(--surface); }
+/* Flex column (not a positional grid): header sections vary in count (pipeline,
+   consent bar, channel alert, clinical card), so a fixed grid-template-rows put the
+   flexible 1fr on the wrong row and crushed the message list. Flex + the message
+   list as the single flex:1 scroll area is resilient to whatever chrome renders. */
+.mh-conversation { display: flex; flex-direction: column; min-height: 0; background: var(--surface); }
 .mh-conversation-head { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 16px 18px 13px; }
 .mh-contact-main { min-width: 0; display: flex; align-items: center; gap: 11px; }
 .mh-contact-main > span:last-child { min-width: 0; }
@@ -9035,14 +8605,15 @@ body.fs-page { background:
 .mh-assign-form label { display: block; margin-bottom: 3px; color: var(--faint); font-size: 8px; font-weight: 750; letter-spacing: .05em; text-transform: uppercase; }
 .mh-assign-form select { width: 130px; height: 32px; padding: 0 25px 0 8px; border-radius: 9px; font-size: 9.5px; }
 .mh-resolve-btn { height: 32px; display: inline-flex; align-items: center; gap: 5px; padding: 0 10px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface); color: var(--muted); font: inherit; font-size: 9.5px; font-weight: 700; cursor: pointer; }
-.mh-resolve-btn:hover { border-color: #8fc9ae; background: #f0faf5; color: #187052; }
+.mh-resolve-btn:hover { border-color:var(--brand-border);
+  background:var(--accent-soft); color:var(--accent); }
 .mh-resolve-btn .ico { width: 12px; }
 .mh-subject-bar { min-width: 0; display: flex; align-items: center; gap: 9px; padding: 9px 18px; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); background: var(--surface-2); }
 .mh-subject-bar > span { color: var(--faint); font-size: 8.5px; font-weight: 750; letter-spacing: .05em; text-transform: uppercase; }
 .mh-subject-bar > b { min-width: 0; flex: 1; overflow: hidden; color: var(--ink); font-size: 10.5px; text-overflow: ellipsis; white-space: nowrap; }
 .mh-subject-bar .ui-badge { font-size: 8px; }
 
-.mh-message-list { min-height: 0; overflow: auto; padding: 20px 20px 16px; background: linear-gradient(180deg, var(--surface) 0%, var(--surface-2) 145%); }
+.mh-message-list { flex: 1 1 auto; min-height: 0; max-height: none; overflow: auto; padding: 20px 20px 16px; background: linear-gradient(180deg, var(--surface) 0%, var(--surface-2) 145%); }
 .mh-day-rule { display: flex; align-items: center; gap: 10px; margin: 0 0 18px; color: var(--faint); font-size: 8px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
 .mh-day-rule::before,
 .mh-day-rule::after { height: 1px; flex: 1; content: ''; background: var(--border); }
@@ -9051,25 +8622,45 @@ body.fs-page { background:
 .mh-message header { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 5px 5px; }
 .mh-message header b { color: var(--muted); font-size: 9px; }
 .mh-message header time { color: var(--faint); font-size: 8px; }
-.mh-message-bubble { padding: 11px 13px; border: 1px solid var(--border); border-radius: 5px 14px 14px 14px; background: var(--surface); color: var(--ink); font-size: 11.5px; line-height: 1.6; white-space: pre-wrap; box-shadow: 0 2px 7px rgba(15,23,42,.04); }
-.mh-message.is-outbound .mh-message-bubble { border-color: #cfe0ec; border-radius: 14px 5px 14px 14px; background: #eaf3f8; }
+.mh-message-bubble { padding:11px 13px; border:1px solid var(--border);
+  border-radius:var(--radius-sm); background:var(--surface); color:var(--ink);
+  font-size:var(--text-sm); line-height:var(--leading-body); white-space:pre-wrap;
+  box-shadow:var(--shadow); }
+.mh-message.is-outbound .mh-message-bubble { border-color:var(--brand-border);
+  border-radius:var(--radius-sm); background:var(--accent-soft); }
 .mh-delivery { display: flex; align-items: center; justify-content: flex-end; gap: 4px; margin: 5px 4px 0; color: var(--faint); font-size: 7.5px; }
 .mh-delivery .ico { width: 9px; }
-.mh-delivery.is-sent { color: #187052; font-weight: 700; }
-.mh-internal-note { display: flex; gap: 9px; width: min(92%, 650px); margin: 10px auto 18px; padding: 10px 12px; border: 1px solid #ebd7a6; border-radius: 11px; background: #fff9eb; color: #6f5419; }
-.mh-note-icon { width: 25px; height: 25px; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; border-radius: 8px; background: #ffefc8; }
+.mh-delivery.is-sent { color:var(--ok); font-weight:700; }
+.mh-internal-note { display:flex; gap:9px; width:min(92%,650px);
+  margin:10px auto 18px; padding:10px 12px; border:1px solid var(--info-border);
+  border-radius:var(--radius-sm); background:var(--info-bg); color:var(--ink-soft); }
+.mh-note-icon { width:25px; height:25px; display:inline-flex; align-items:center;
+  justify-content:center; flex:0 0 auto; border-radius:var(--radius-sm);
+  background:var(--surface); }
 .mh-note-icon .ico { width: 12px; }
 .mh-internal-note > div { min-width: 0; flex: 1; }
 .mh-internal-note header { display: flex; justify-content: space-between; gap: 10px; }
 .mh-internal-note header b { font-size: 9px; }
-.mh-internal-note header time { color: #9b824a; font-size: 8px; }
+.mh-internal-note header time { color:var(--muted); font-size:var(--text-xs); }
 .mh-internal-note p { margin: 5px 0 0; font-size: 10.5px; line-height: 1.5; white-space: pre-wrap; }
 
 .mh-composer { padding: 0 16px 15px; border-top: 1px solid var(--border); background: var(--surface); }
 .mh-compose-tabs { display: flex; gap: 15px; margin-bottom: 9px; }
 .mh-compose-tabs button { display: inline-flex; align-items: center; gap: 5px; padding: 9px 1px 7px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--faint); font: inherit; font-size: 9.5px; font-weight: 700; cursor: pointer; }
-.mh-compose-tabs button.is-active { border-bottom-color: #2f6f9f; color: #205c91; }
+.mh-compose-tabs button.is-active { border-bottom-color:var(--accent); color:var(--accent); }
 .mh-compose-tabs .ico { width: 12px; }
+/* Quick-reply chips: were unstyled (raw browser buttons). Branded pills that tint
+   accent-blue on hover, sized for the compact composer. */
+.mh-quick-replies { display: flex; flex-wrap: wrap; gap: 6px; margin: 9px 0 2px; }
+.mh-quick-chip { display: inline-flex; align-items: center; padding: 6px 12px;
+  border: 1px solid var(--border); border-radius: var(--radius-pill);
+  background: var(--surface); color: var(--ink-soft); font: inherit; font-size: 11px;
+  font-weight: 600; line-height: 1; white-space: nowrap; cursor: pointer;
+  transition: background .12s ease, border-color .12s ease, color .12s ease; }
+.mh-quick-chip:hover { background: var(--accent-soft); border-color: var(--accent);
+  color: var(--accent); }
+.mh-quick-chip:active { transform: translateY(1px); }
+.mh-quick-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .mh-compose-panel[hidden] { display: none; }
 .mh-compose-panel textarea { width: 100%; min-height: 78px; padding: 11px 12px; resize: vertical; border: 1px solid var(--border); border-radius: 11px; background: var(--surface-2); color: var(--ink); font: inherit; font-size: 11.5px; line-height: 1.55; }
 .mh-compose-panel textarea:focus { border-color: var(--accent); background: var(--surface); box-shadow: 0 0 0 3px var(--accent-soft); outline: 0; }
@@ -9095,14 +8686,15 @@ body.fs-page { background:
 .mh-channel-picker input { position: absolute; opacity: 0; pointer-events: none; }
 .mh-channel-picker label > span { min-height: 91px; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 9px; border: 1px solid var(--border); border-radius: 11px; background: var(--surface); text-align: center; transition: border-color .12s ease, background .12s ease, box-shadow .12s ease; }
 .mh-channel-picker label:hover > span { border-color: var(--border-strong); }
-.mh-channel-picker input:checked + span { border-color: #5c8bb0; background: #f2f7fb; box-shadow: 0 0 0 2px rgba(47,111,159,.1); }
+.mh-channel-picker input:checked + span { border-color:var(--accent);
+  background:var(--accent-soft); box-shadow:none; }
 .mh-channel-picker .mh-channel-ic { margin-bottom: 6px; }
 .mh-channel-picker b { color: var(--ink); font-size: 10.5px; }
 .mh-channel-picker small { margin-top: 2px; color: var(--faint); font-size: 8.5px; }
 .mh-oauth-preview,
 .mh-coverage-explainer,
 .mh-invite-nudge { display: flex; align-items: center; gap: 10px; padding: 11px; border: 1px solid var(--border); border-radius: 11px; background: var(--surface-2); }
-.mh-oauth-preview > .ico { width: 20px; flex: 0 0 auto; color: #187052; }
+.mh-oauth-preview > .ico { width:20px; flex:0 0 auto; color:var(--accent); }
 .mh-oauth-preview b,
 .mh-oauth-preview small,
 .mh-coverage-explainer b,
@@ -9149,11 +8741,13 @@ body.fs-page { background:
 .mh-gmail-copy { min-width: 0; }
 .mh-gmail-copy h3 { margin: 4px 0 2px; color: var(--ink); font-size: 13px; }
 .mh-gmail-copy p { margin: 0; color: var(--muted); font-size: 9.5px; line-height: 1.45; }
-.mh-live-pill { color: #187052; font-size: 8px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
-.mh-live-pill i { width: 6px; height: 6px; display: inline-block; margin-right: 4px; border-radius: 50%; background: #26a269; box-shadow: 0 0 0 3px rgba(38,162,105,.12); }
+.mh-live-pill { color:var(--accent); font-size:var(--text-xs); font-weight:800;
+  letter-spacing:.08em; text-transform:uppercase; }
+.mh-live-pill i { width:6px; height:6px; display:inline-block; margin-right:4px;
+  border-radius:var(--radius-pill); background:var(--accent); box-shadow:none; }
 .mh-scope-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 7px; color: var(--muted); font-size: 8.5px; }
 .mh-scope-list span { display: inline-flex; align-items: center; gap: 3px; }
-.mh-scope-list .ico { width: 9px; color: #187052; }
+.mh-scope-list .ico { width:9px; color:var(--accent); }
 .mh-gmail-action { min-width: 135px; text-align: right; }
 .mh-gmail-action .btn { width: 100%; justify-content: center; }
 .mh-gmail-action small { display: block; margin-top: 5px; color: var(--faint); font-size: 7.5px; text-align: center; }
@@ -9169,12 +8763,16 @@ body.fs-page { background:
 .mh-vacation-switch b { color: var(--ink); font-size: 11px; }
 .mh-vacation-switch small { margin-top: 2px; color: var(--faint); font-size: 9px; }
 .mh-vacation-switch input { position: absolute; opacity: 0; pointer-events: none; }
-.mh-vacation-switch i { position: relative; width: 38px; height: 22px; flex: 0 0 auto; border-radius: 999px; background: #cbd3da; transition: background .15s ease; }
-.mh-vacation-switch i::after { position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(15,23,42,.25); content: ''; transition: transform .15s ease; }
-.mh-vacation-switch input:checked + i { background: #26a269; }
+.mh-vacation-switch i { position:relative; width:38px; height:22px; flex:0 0 auto;
+  border-radius:var(--radius-pill); background:var(--border-strong);
+  transition:background var(--duration-fast) var(--ease-standard); }
+.mh-vacation-switch i::after { position:absolute; top:3px; left:3px; width:16px;
+  height:16px; border-radius:var(--radius-pill); background:var(--surface);
+  box-shadow:var(--shadow); content:''; transition:transform var(--duration-fast) var(--ease-standard); }
+.mh-vacation-switch input:checked + i { background:var(--accent); }
 .mh-vacation-switch input:checked + i::after { transform: translateX(16px); }
 .mh-vacation-switch input:focus-visible + i { outline: 2px solid var(--accent); outline-offset: 2px; }
-.mh-coverage-explainer { margin-bottom: 15px; background: #f2f7fb; }
+.mh-coverage-explainer { margin-bottom:15px; background:var(--surface-2); }
 .mh-invite-nudge { color: var(--muted); font-size: 9.5px; }
 .mh-invite-nudge .ico { width: 15px; color: var(--accent); }
 .mh-invite-nudge span { flex: 1; }
@@ -9185,8 +8783,6 @@ body.fs-page { background:
 [data-theme="dark"] .mh-internal-note { background: #302a1e; border-color: #5c4d2d; color: #f0d898; }
 [data-theme="dark"] .mh-demo-note-ic,
 [data-theme="dark"] .mh-note-icon { background: #493b22; }
-[data-theme="dark"] .mh-coverage-card { background: #172632; border-color: #2b4457; }
-[data-theme="dark"] .mh-coverage-card.is-on { background: #172b24; border-color: #2c5644; }
 [data-theme="dark"] .mh-thread-row.is-active,
 [data-theme="dark"] .mh-thread-row.is-unread.is-active { background: #182b39; }
 [data-theme="dark"] .mh-thread-tabs a.is-active,
@@ -9198,7 +8794,6 @@ body.fs-page { background:
 
 @media (max-width: 1250px) {
   .mh-workspace { grid-template-columns: 220px 315px minmax(400px, 1fr); }
-  .mh-pulse { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 1060px) {
   .mh-workspace { grid-template-columns: 320px minmax(0, 1fr); }
@@ -9206,16 +8801,8 @@ body.fs-page { background:
 }
 @media (max-width: 780px) {
   .appbody-wide { padding-left: 14px; padding-right: 14px; }
-  .mh-page-head { align-items: flex-start; flex-direction: column; }
-  .mh-head-actions { width: 100%; }
-  .mh-head-actions .btn { flex: 1; }
-  .mh-duty { width: 100%; }
-  .mh-pulse { grid-template-columns: 1fr 1fr; }
   .mh-workspace { height: auto; max-height: none; display: block; overflow: visible; }
   .mh-sources { display: flex; max-height: none; border-right: 0; border-bottom: 1px solid var(--border); }
-  .mh-source-stack { display: flex; gap: 7px; overflow-x: auto; padding-bottom: 6px; }
-  .mh-source-wrap { min-width: 205px; margin: 0; }
-  .mh-coverage-card { display: none; }
   .mh-thread-column { max-height: 520px; border-right: 0; border-bottom: 1px solid var(--border); }
   .mh-thread-stack { max-height: 430px; }
   .mh-conversation { min-height: 640px; }
@@ -9226,9 +8813,6 @@ body.fs-page { background:
 }
 @media (max-width: 540px) {
   .mh-demo-note { align-items: flex-start; }
-  .mh-pulse { grid-template-columns: 1fr; }
-  .mh-pulse-item { padding: 10px 12px; }
-  .mh-head-actions .btn { width: 100%; flex: 1 1 100%; }
   .mh-channel-picker,
   .mh-two-fields { grid-template-columns: 1fr; }
   .mh-channel-picker label > span { min-height: 68px; flex-direction: row; justify-content: flex-start; gap: 8px; text-align: left; }
@@ -9492,510 +9076,6 @@ body.fs-page { background:
 .src-opt .brand-ico { width:16px; height:16px; vertical-align:0; }
 .field-stack { display:flex; flex-direction:column; gap:14px; }
 
-/* ===================================================================== *
- * Gmail-style inbox (team_inbox.html): label rail + dense thread list.   *
- * ===================================================================== */
-/* Let the inbox go full-bleed inside the app frame (Gmail is edge-to-edge). */
-.appbody:has(.gm) { padding: 0; max-width: none; }
-/* The inbox is the middle pane of the workspace (icon rail · inbox · assistant
-   dock). On its own it's one clean column - the thread list - and it splits into
-   list + reading pane only when a thread is open. Trials switch on the tab strip;
-   the assistant and the calendar peek live elsewhere, so the list gets the room. */
-.gm { display: grid; grid-template-columns: minmax(0, 1fr);
-  height: calc(100dvh - 57px); background: var(--surface); }
-/* The Today strip is a full-width row above the panes. Scoped with :has() so the
-   panes keep filling the whole frame when there's no strip. */
-.gm:has(.gm-today) { grid-template-rows: auto minmax(0, 1fr); }
-/* Today reads as a clean, self-contained card floating above the list (rounded,
-   bordered, soft shadow) rather than a flat full-bleed band - so the calendar
-   feels like a distinct, polished module. */
-.gm-today { grid-column: 1 / -1; margin: 12px 16px 2px; padding: 11px 16px;
-  background: var(--surface); border: 1px solid var(--border);
-  border-radius: var(--radius); box-shadow: var(--shadow); }
-/* Shorter lane than the full calendar page - this is a glance strip, not the
-   planner. */
-.gm-today .today-lane { height: 48px; border-radius: var(--radius);
-  background: var(--bg); box-shadow: inset 0 1px 2px rgba(2, 6, 23, .04); }
-.gm-today .today-ev { border-radius: 8px; }
-.gm-today .today-h { margin-bottom: 10px; }
-.gm-today .today-body { padding-top: 2px; }
-.gm-today .today-next-card { border-radius: var(--radius); }
-/* Rendered as <a> here (a block opens that patient's thread), not <button>. */
-.gm-today .today-next-card { text-decoration: none; }
-
-/* Collapse toggle: a quiet chevron that flips the strip to a one-liner. */
-.today-toggle { display: inline-flex; align-items: center; justify-content: center;
-  width: 24px; height: 24px; padding: 0; margin-right: 2px; border: 0;
-  border-radius: var(--radius-sm); background: transparent; color: var(--muted);
-  cursor: pointer; -webkit-appearance: none; appearance: none; }
-.today-toggle:hover { background: var(--surface-2); color: var(--ink); }
-.today-toggle .ico { width: 16px; height: 16px; transition: transform .15s ease; }
-
-/* Inline "next up" summary: only visible when the strip is slim (nothing today)
-   or the coordinator has collapsed it, so a hidden schedule still surfaces the
-   next thing. */
-.today-inline { display: none; align-items: center; gap: 5px; font-size: 13px;
-  color: var(--muted); }
-.today-inline .ico { width: 15px; height: 15px; color: var(--ok); vertical-align: -2px; }
-
-/* Slim: no visits today -> header only, no timeline, no wasted lane. */
-.gm-today.is-slim { padding: 9px 16px; }
-.gm-today.is-slim .today-inline { display: inline-flex; }
-.gm-today.is-slim .today-h { margin-bottom: 0; }
-
-/* Collapsed by choice: keep the header line, hide the timeline body, show the
-   one-line summary, and rotate the chevron shut. */
-.gm-today.is-collapsed { padding-bottom: 9px; }
-.gm-today.is-collapsed .today-body { display: none; }
-.gm-today.is-collapsed .today-h { margin-bottom: 0; }
-.gm-today.is-collapsed .today-inline { display: inline-flex; }
-.gm-today.is-collapsed .today-toggle .ico { transform: rotate(-90deg); }
-
-/* Left rail: views + studies (labels) */
-.gm-side { border-right: 1px solid var(--border); padding: 14px 10px;
-  overflow-y: auto; display: flex; flex-direction: column; gap: 20px;
-  background: var(--bg); }
-.gm-side-sect { display: flex; flex-direction: column; gap: 2px; }
-.gm-side-h { font-size: 11px; font-weight: 700; text-transform: uppercase;
-  letter-spacing: .06em; color: var(--faint); padding: 0 10px 6px; }
-.gm-view, .gm-label, .gm-side-act { display: flex; align-items: center; gap: 10px;
-  width: 100%; text-align: left; padding: 8px 11px; border-radius: var(--radius-pill);
-  border: 0; background: transparent; color: var(--ink-soft); font-size: 13.5px;
-  font-weight: 600; cursor: pointer; text-decoration: none; line-height: 1.2; }
-.gm-view svg, .gm-label svg, .gm-side-act svg { width: 16px; height: 16px;
-  flex-shrink: 0; color: var(--muted); }
-.gm-view > span:not(.gm-n), .gm-label-name { flex: 1; overflow: hidden;
-  text-overflow: ellipsis; white-space: nowrap; }
-.gm-view:hover, .gm-label:hover, .gm-side-act:hover { background: var(--surface-2); }
-.gm-view.is-active, .gm-label.is-active { background: var(--accent-soft);
-  color: var(--accent); }
-.gm-view.is-active svg { color: var(--accent); }
-.gm-n { font-size: 11px; font-weight: 700; color: var(--muted);
-  background: var(--surface-2); padding: 1px 7px; border-radius: var(--radius-pill); }
-.gm-view.is-active .gm-n, .gm-label.is-active .gm-n { background: var(--surface);
-  color: var(--accent); }
-.gm-label-dot { width: 9px; height: 9px; border-radius: var(--radius-pill);
-  background: var(--dot, var(--faint)); flex-shrink: 0; }
-/* Multicolor study labels (like Gmail). Child 1 is the section header. */
-.gm-side-sect .gm-label:nth-child(2) .gm-label-dot { background: var(--faint); }
-.gm-side-sect .gm-label:nth-child(3) .gm-label-dot { background: #0d6c6a; }
-.gm-side-sect .gm-label:nth-child(4) .gm-label-dot { background: #9d3f6d; }
-.gm-side-sect .gm-label:nth-child(5) .gm-label-dot { background: #97620f; }
-.gm-side-sect .gm-label:nth-child(6) .gm-label-dot { background: #16a34a; }
-.gm-side-sect .gm-label:nth-child(7) .gm-label-dot { background: #4e5a63; }
-.gm-side-sect .gm-label:nth-child(8) .gm-label-dot { background: #b42a1f; }
-.gm-side-sect .gm-label:nth-child(n+9) .gm-label-dot { background: #0d6c6a; }
-.gm-side-foot { margin-top: auto; display: flex; flex-direction: column; gap: 2px;
-  padding-top: 12px; border-top: 1px solid var(--border); }
-.gm-side-act { font-size: 12.5px; color: var(--muted); font-weight: 600; }
-
-/* Main column: tabs + search + filters + list */
-.gm-main { display: flex; flex-direction: column; min-width: 0; overflow: hidden; }
-
-/* Trial switcher tabs (replaces the old Studies rail) on the left; row actions
-   pinned right. One band, with the underline border owned by the bar. */
-.gm-tabsbar { display: flex; align-items: stretch; gap: 8px; padding: 6px 14px 0;
-  border-bottom: 1px solid var(--border); }
-.gm-tabs { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; flex: 1; min-width: 0; }
-.gm-tabs::-webkit-scrollbar { display: none; }
-.gm-tabs-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0;
-  padding-bottom: 6px; }
-.gm-tab { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap;
-  padding: 8px 13px; border-radius: 9px 9px 0 0; color: var(--muted); font-size: 13px;
-  font-weight: 600; text-decoration: none; border-bottom: 2px solid transparent;
-  margin-bottom: -1px; }
-.gm-tab:hover { background: var(--surface-2); color: var(--ink); }
-.gm-tab.is-active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 700; }
-.gm-tab-dot { width: 8px; height: 8px; border-radius: var(--radius-pill);
-  background: var(--dot, var(--faint)); flex-shrink: 0; }
-.gm-tab-name { max-width: 190px; overflow: hidden; text-overflow: ellipsis; }
-/* Multicolor study dots, like Gmail labels. First tab is "All studies" (no dot). */
-.gm-tab:nth-child(2) .gm-tab-dot { background: #0d6c6a; }
-.gm-tab:nth-child(3) .gm-tab-dot { background: #9d3f6d; }
-.gm-tab:nth-child(4) .gm-tab-dot { background: #97620f; }
-.gm-tab:nth-child(5) .gm-tab-dot { background: #16a34a; }
-.gm-tab:nth-child(6) .gm-tab-dot { background: #4e5a63; }
-.gm-tab:nth-child(7) .gm-tab-dot { background: #b42a1f; }
-.gm-tab:nth-child(8) .gm-tab-dot { background: #2563eb; }
-.gm-tab:nth-child(n+9) .gm-tab-dot { background: #0d6c6a; }
-
-.gm-toolbar { display: flex; align-items: center; gap: 8px; padding: 12px 16px 8px; }
-.gm-check { display: inline-flex; align-items: center; padding: 3px; cursor: pointer; }
-.gm-check input { width: 16px; height: 16px; cursor: pointer; accent-color: var(--accent); }
-.gm-tool { background: transparent; border: 0; color: var(--muted); cursor: pointer;
-  padding: 8px; border-radius: 9px; display: inline-flex; align-items: center; gap: 6px;
-  text-decoration: none; font-size: 13px; font-weight: 600; }
-.gm-tool:hover { background: var(--surface-2); color: var(--ink); }
-.gm-tool svg { width: 16px; height: 16px; }
-.gm-tool-lbl { padding: 8px 12px; border: 1px solid var(--border); }
-/* One prominent search - the main way to find a thread. */
-.gm-search { flex: 1; min-width: 180px; display: flex; align-items: center; gap: 10px;
-  background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius-pill);
-  padding: 10px 16px; transition: border-color .12s, box-shadow .12s; }
-.gm-search:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
-.gm-search svg { width: 17px; height: 17px; color: var(--faint); flex-shrink: 0; }
-.gm-search input { border: 0; background: transparent; outline: 0; width: 100%;
-  font-size: 14px; color: var(--ink); }
-.gm-count { font-size: 12px; color: var(--faint); white-space: nowrap; flex-shrink: 0; }
-
-/* Filter row: select-all · scrolling chips · pinned actions. Only the chips
-   scroll, so Cover/Routing never get clipped when the dock narrows the column. */
-/* Gmail-style category tabs: coarse inbox buckets, underline-active. A quiet
-   bottom border spans the row so the active tab's accent underline reads clearly. */
-.gm-cats { display: flex; align-items: stretch; gap: 2px; padding: 0 12px;
-  border-bottom: 1px solid var(--border); overflow-x: auto; scrollbar-width: none; }
-.gm-cats::-webkit-scrollbar { display: none; }
-.gm-cat { display: inline-flex; align-items: center; gap: 8px; flex-shrink: 0;
-  padding: 12px 16px; margin-bottom: -1px; background: transparent; border: 0;
-  border-bottom: 2px solid transparent; font-size: 13.5px; font-weight: 600;
-  color: var(--muted); cursor: pointer; white-space: nowrap;
-  -webkit-appearance: none; appearance: none; transition: color .12s; }
-.gm-cat svg { width: 17px; height: 17px; opacity: .8; }
-.gm-cat:hover { color: var(--ink); }
-.gm-cat.is-on { color: var(--accent); border-bottom-color: var(--accent); }
-.gm-cat.is-on svg { opacity: 1; }
-.gm-cat-n { font-size: 11px; font-weight: 700; color: var(--faint);
-  background: var(--surface-2); padding: 1px 7px; border-radius: var(--radius-pill); }
-.gm-cat.is-on .gm-cat-n { background: var(--accent-soft); color: var(--accent); }
-
-.gm-filters { display: flex; align-items: center; gap: 8px; padding: 9px 16px;
-  border-bottom: 1px solid var(--border); }
-.gm-filters .gm-check { flex-shrink: 0; }
-.gm-chips-scroll { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0;
-  overflow-x: auto; scrollbar-width: none; }
-.gm-chips-scroll::-webkit-scrollbar { display: none; }
-.gm-filter-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
-.gm-filters .chip { flex-shrink: 0; padding: 6px 13px; font-size: 13px; font-weight: 600; }
-.gm-filters .chip.is-on { background: var(--accent); border-color: var(--accent);
-  color: var(--accent-ink); }
-.gm-filters .chip.is-on:hover { transform: none; }
-.gm-filters .chip.is-on .gm-n { background: rgba(255,255,255,.22); color: var(--accent-ink); }
-.gm-filters-div { width: 1px; height: 20px; background: var(--border); flex-shrink: 0; margin: 0 4px; }
-
-/* View = one segmented control, so the mutually-exclusive lens reads as a single
-   switch instead of five loose pills. */
-.gm-seg { display: inline-flex; flex-shrink: 0; border: 1px solid var(--border);
-  border-radius: var(--radius-pill); background: var(--surface-2); overflow: hidden; }
-.gm-seg-b { display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px;
-  font-size: 13px; font-weight: 600; color: var(--muted); background: transparent;
-  border: 0; border-left: 1px solid var(--border); cursor: pointer; white-space: nowrap;
-  -webkit-appearance: none; appearance: none; }
-.gm-seg-b:first-child { border-left: 0; }
-.gm-seg-b:hover { color: var(--ink); background: var(--bg); }
-.gm-seg-b.is-on { background: var(--accent); color: var(--accent-ink); }
-/* Segment counts are plain digits, never the chip's filled pill (that read as a
-   toggle switch on the active tab). */
-.gm-seg-b .gm-n { background: transparent; padding: 0; font-size: 11px;
-  font-weight: 700; color: var(--faint); min-width: 0; }
-.gm-seg-b.is-on .gm-n { color: var(--accent-ink); opacity: .85; }
-
-/* Team actions live in a small "More" menu, not among the filter chips. */
-.gm-more { position: relative; flex-shrink: 0; }
-.gm-more summary { list-style: none; }
-.gm-more summary::-webkit-details-marker { display: none; }
-.gm-more-btn { display: inline-flex; align-items: center; gap: 5px; padding: 6px 12px;
-  font-size: 13px; font-weight: 600; color: var(--muted); background: var(--surface);
-  border: 1px solid var(--border); border-radius: var(--radius-pill); cursor: pointer;
-  white-space: nowrap; }
-.gm-more-btn:hover { color: var(--ink); background: var(--surface-2); }
-.gm-more-btn svg { width: 14px; height: 14px; }
-.gm-more[open] .gm-more-btn { color: var(--ink); border-color: var(--border-strong); }
-.gm-more-menu { position: absolute; top: calc(100% + 6px); right: 0; z-index: 30;
-  min-width: 200px; padding: 6px; background: var(--surface);
-  border: 1px solid var(--border); border-radius: var(--radius);
-  box-shadow: var(--shadow-lift); }
-.gm-more-menu a, .gm-more-menu button { display: flex; align-items: center; gap: 9px;
-  width: 100%; padding: 9px 10px; font-size: 13px; font-weight: 500; color: var(--ink);
-  background: transparent; border: 0; border-radius: var(--radius-sm); cursor: pointer;
-  text-align: left; text-decoration: none; }
-.gm-more-menu a:hover, .gm-more-menu button:hover { background: var(--surface-2); }
-.gm-more-menu svg { width: 15px; height: 15px; color: var(--muted); flex-shrink: 0; }
-/* Source filter chip: brand mark + label. The logo stays full-colour even when
-   the chip is active (it's a brand, not a tinted glyph). */
-.gm-filters .chip-src { display: inline-flex; align-items: center; gap: 6px; padding-left: 9px; }
-.gm-filters .chip-src .brand-ico { width: 15px; height: 15px; vertical-align: 0; }
-
-/* Source pill on each list row: small logo + channel name, so a coordinator sees
-   where every lead came from at a glance (IG DM vs email vs CT.gov). */
-.gm-src { display: inline-flex; align-items: center; gap: 5px; flex-shrink: 0;
-  padding: 2px 9px 2px 6px; font-size: 11.5px; font-weight: 600; color: var(--muted);
-  background: var(--surface-2); border: 1px solid var(--border);
-  border-radius: var(--radius-pill); white-space: nowrap; }
-.gm-src .brand-ico { width: 14px; height: 14px; vertical-align: 0; }
-
-/* Bulk action bar */
-.gm-bulk { display: flex; align-items: center; gap: 10px; padding: 8px 16px;
-  background: var(--accent-soft); border-bottom: 1px solid var(--brand-border); }
-.gm-bulk-count { font-size: 13px; color: var(--accent); font-weight: 600; }
-.gm-bulk-assignee { max-width: 200px; }
-
-/* Thread rows */
-.gm-list { list-style: none; margin: 0; padding: 0; overflow-y: auto; flex: 1; }
-.gm-row { display: flex; align-items: center; gap: 10px; padding: 0 16px; height: 46px;
-  border-bottom: 1px solid var(--border); background: var(--surface); position: relative; }
-.gm-row:hover { z-index: 1; box-shadow: var(--shadow); }
-.gm-row.is-picked { background: var(--accent-soft); }
-.gm-star { color: var(--faint); display: inline-flex; flex-shrink: 0; background: none;
-  border: 0; cursor: default; }
-.gm-star svg { width: 16px; height: 16px; }
-.gm-star.on { color: var(--amber); }
-.gm-star.on svg { fill: currentColor; }
-.gm-open { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px;
-  text-decoration: none; color: inherit; height: 100%; }
-.gm-from { width: 148px; flex-shrink: 0; font-size: 13.5px; color: var(--ink-soft);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: flex;
-  align-items: center; gap: 6px; }
-.gm-row.is-unread .gm-from { font-weight: 800; color: var(--ink); }
-.gm-dot { width: 7px; height: 7px; border-radius: var(--radius-pill);
-  background: var(--accent); flex-shrink: 0; }
-.gm-body { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 8px;
-  overflow: hidden; }
-.gm-subj { font-size: 13.5px; color: var(--ink); flex-shrink: 0; max-width: 44%;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.gm-row.is-unread .gm-subj { font-weight: 700; }
-.gm-snip { font-size: 13px; color: var(--faint); overflow: hidden;
-  text-overflow: ellipsis; white-space: nowrap; }
-.gm-you { color: var(--muted); }
-.gm-tags { display: flex; gap: 5px; flex-shrink: 0; align-items: center; }
-.gm-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0;
-  justify-content: flex-end; }
-.gm-when { font-size: 12px; color: var(--muted); white-space: nowrap; }
-.gm-assignee { font-size: 11px; font-weight: 600; color: var(--muted);
-  background: var(--surface-2); padding: 2px 8px; border-radius: var(--radius-pill);
-  max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.gm-actions { display: none; align-items: center; gap: 6px; flex-shrink: 0; }
-.gm-actions form { margin: 0; }
-.gm-row:hover .gm-actions { display: flex; }
-.gm-row:hover .gm-right { display: none; }
-.gm-actions select { font-size: 12px; padding: 4px 6px; max-width: 150px; }
-.gm-iconbtn { border: 1px solid var(--border); background: var(--surface);
-  border-radius: 8px; padding: 6px; cursor: pointer; color: var(--muted);
-  display: inline-flex; }
-.gm-iconbtn svg { width: 15px; height: 15px; }
-.gm-iconbtn:hover { background: var(--ok-bg); color: var(--ok);
-  border-color: var(--ok-border); }
-.gm-empty-wrap { padding: 44px 16px; }
-
-/* Right: upcoming-visits agenda (calendar peek) */
-.gm-agenda { border-left: 1px solid var(--border); background: var(--bg);
-  display: flex; flex-direction: column; overflow: hidden; }
-.gm-agenda-h { display: flex; align-items: center; gap: 8px; padding: 13px 16px;
-  border-bottom: 1px solid var(--border); font-weight: 700; font-size: 14px;
-  color: var(--ink); }
-.gm-agenda-h svg { width: 16px; height: 16px; color: var(--muted); }
-.gm-agenda-h > span { flex: 1; }
-.gm-agenda-more { font-size: 12px; font-weight: 600; color: var(--accent);
-  text-decoration: none; }
-.gm-agenda-more:hover { text-decoration: underline; }
-.gm-agenda-scroll { overflow-y: auto; padding: 8px 10px 16px; }
-.gm-agenda-day { margin-top: 10px; }
-.gm-agenda-date { font-size: 11px; font-weight: 700; text-transform: uppercase;
-  letter-spacing: .05em; color: var(--faint); padding: 4px 6px; }
-.gm-visit { display: flex; align-items: flex-start; gap: 10px; padding: 8px 8px;
-  border-radius: var(--radius-sm); text-decoration: none; color: inherit; }
-.gm-visit:hover { background: var(--surface-2); }
-.gm-visit-time { font-size: 12px; font-weight: 700; color: var(--ink-soft);
-  width: 62px; flex-shrink: 0; padding-top: 1px; }
-.gm-visit-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
-.gm-visit-who { font-size: 13px; font-weight: 600; color: var(--ink);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.gm-visit-kind { font-size: 11.5px; color: var(--muted); overflow: hidden;
-  text-overflow: ellipsis; white-space: nowrap; }
-.gm-visit-flag { font-size: 10px; font-weight: 700; padding: 1px 6px;
-  border-radius: var(--radius-pill); background: var(--surface-2); color: var(--muted);
-  flex-shrink: 0; }
-.gm-visit-flag.t-soon, .gm-visit-flag.t-today { background: var(--ok-bg); color: var(--ok); }
-.gm-visit-flag.t-overdue, .gm-visit-flag.t-late { background: var(--red-bg); color: var(--red); }
-.gm-agenda-empty { padding: 30px 20px; text-align: center; color: var(--faint); }
-.gm-agenda-empty svg { width: 26px; height: 26px; opacity: .5; }
-.gm-agenda-empty p { font-size: 12.5px; margin: 8px 0 0; }
-
-/* ── Reading pane (_thread_pane.html): the open thread, inline ───────────────
-   Gmail behavior: opening a thread is a READ action - the list steps aside and
-   the thread fills the whole middle pane, so it's never crammed into a sliver
-   between the list and the assistant dock. The dock stays put on the right, so
-   you read the thread with Bridget beside it (draft a reply, ask about them).
-   Get back to the list with the pane's X (or Esc). */
-.gm.is-open { grid-template-columns: minmax(0, 1fr); }
-.gm.is-open .gm-main { display: none; }
-.gm-row.is-open { background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
-
-/* Only truly wide screens keep the list visible alongside the thread + dock
-   (list · thread · assistant). Below that, reading is full-width like Gmail. */
-@media (min-width: 1560px) {
-  .gm.is-open { grid-template-columns: 400px minmax(0, 1fr); }
-  .gm.is-open .gm-main { display: flex; }
-  .gm.is-open .gm-tags, .gm.is-open .gm-actions, .gm.is-open .gm-assignee { display: none; }
-  .gm.is-open .gm-row:hover .gm-right { display: flex; }
-  /* Split view stacks each row: who + when on top, subject + snippet below. */
-  .gm.is-open .gm-row { height: auto; min-height: 60px; padding: 9px 12px; align-items: flex-start; }
-  .gm.is-open .gm-open { flex-direction: column; align-items: stretch; gap: 2px; height: auto; }
-  .gm.is-open .gm-from { width: auto; font-size: 13px; }
-  .gm.is-open .gm-body { flex-direction: column; align-items: stretch; gap: 1px; }
-  .gm.is-open .gm-subj { max-width: 100%; font-size: 13px; }
-  .gm.is-open .gm-right { padding-top: 1px; }
-  .gm.is-open .gm-check, .gm.is-open .gm-star { margin-top: 1px; }
-}
-
-.gm-pane { border-left: 1px solid var(--border); background: var(--surface);
-  display: flex; flex-direction: column; min-width: 0; overflow: hidden; }
-.gm-pane-h { display: flex; align-items: center; gap: 10px; padding: 12px 16px;
-  border-bottom: 1px solid var(--border); flex-shrink: 0; }
-.gm-pane-x { display: inline-flex; align-items: center; justify-content: center;
-  width: 30px; height: 30px; border-radius: var(--radius-sm); color: var(--muted);
-  flex-shrink: 0; }
-.gm-pane-x:hover { background: var(--surface-2); color: var(--ink); }
-.gm-pane-x svg { width: 17px; height: 17px; }
-.gm-pane-av { display: inline-flex; align-items: center; justify-content: center;
-  width: 34px; height: 34px; border-radius: var(--radius-pill); flex-shrink: 0;
-  background: var(--accent-soft); color: var(--accent); font-size: 12px; font-weight: 700; }
-.gm-pane-id { min-width: 0; flex: 1; }
-.gm-pane-name { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
-.gm-pane-name b { font-size: 15px; color: var(--ink); }
-/* One line that wraps only when it truly must - the header should stay short so
-   the conversation gets the vertical space. */
-.gm-pane-meta { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 2px;
-  font-size: 12px; color: var(--muted); line-height: 1.5; }
-.gm-pane-meta span { display: inline-flex; align-items: center; gap: 5px; min-width: 0;
-  max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.gm-pane-meta svg { width: 13px; height: 13px; color: var(--faint); flex-shrink: 0; }
-.gm-pane-act { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
-.gm-pane-act form { margin: 0; }
-.gm-pane-act select { font-size: 12px; padding: 5px 8px; max-width: 150px; width: auto; }
-.gm-pane-full { display: inline-flex; align-items: center; gap: 5px; font-size: 12px;
-  font-weight: 600; color: var(--muted); white-space: nowrap; }
-.gm-pane-full:hover { color: var(--accent); }
-.gm-pane-full svg { width: 14px; height: 14px; }
-
-.gm-pane-scroll { flex: 1; overflow-y: auto; padding: 16px;
-  display: flex; flex-direction: column; gap: 14px; min-height: 0; }
-/* The thread scrolls with the pane, not inside its own box. */
-.gm-pane-scroll .thread { max-height: none; overflow: visible; flex: 1; }
-
-.gm-decide { display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
-  padding: 14px 16px; border: 1px solid var(--brand-border);
-  background: var(--accent-soft); border-radius: var(--radius); }
-.gm-decide.is-done { background: var(--ok-bg); border-color: transparent; }
-.gm-decide-tx { flex: 1; min-width: 180px; display: flex; flex-direction: column; gap: 3px; }
-.gm-decide-tx b { font-size: 14px; color: var(--ink); display: flex; align-items: center; gap: 6px; }
-.gm-decide-tx b svg { width: 15px; height: 15px; }
-.gm-decide-tx span { font-size: 13px; color: var(--muted); line-height: 1.5; }
-.gm-decide-btns { display: flex; gap: 8px; flex-wrap: wrap; }
-.gm-decide form { margin: 0; }
-
-.gm-screen { border: 1px solid var(--border); border-radius: var(--radius);
-  padding: 12px 14px; background: var(--bg); }
-.gm-screen > summary { cursor: pointer; font-size: 13px; font-weight: 700;
-  color: var(--ink-soft); display: flex; align-items: center; gap: 8px; }
-.gm-screen[open] > summary { margin-bottom: 10px; }
-.gm-screen-p { font-size: 13.5px; line-height: 1.55; color: var(--muted); margin: 0 0 10px; }
-.gm-screen-none { font-size: 13px; color: var(--faint); }
-.gm-screen-fine { font-size: 11.5px; color: var(--faint); margin: 12px 0 0; }
-
-.gm-pane-reply { border-top: 1px solid var(--border); padding: 10px 16px 14px;
-  flex-shrink: 0; background: var(--surface); }
-.gm-pane-reply .chat-suggest { margin-bottom: 8px; }
-
-/* Channel pill in the pane header (brand logo + name of the source). */
-.gm-pane-ch { display: inline-flex; align-items: center; gap: 5px;
-  font-weight: 600; color: var(--muted); }
-.gm-pane-ch .brand-ico { width: 14px; height: 14px; }
-
-/* ── Email presentation (email/referral/CT.gov channels) ─────────────────────
-   Reads like a mail client: subject line, From address, stacked message cards,
-   and a formal composer with a To field + Send. Social/ad threads keep the DM
-   bubble layout above instead. */
-.email-subj { padding: 4px 4px 12px; margin-bottom: 6px;
-  border-bottom: 1px solid var(--border); }
-.email-subj b { display: block; font-size: 17px; font-weight: 700; color: var(--ink);
-  line-height: 1.3; }
-.email-subj span { display: inline-flex; align-items: center; gap: 6px; margin-top: 4px;
-  font-size: 12.5px; color: var(--muted); }
-.email-subj .brand-ico { width: 14px; height: 14px; }
-
-.email-thread { display: flex; flex-direction: column; gap: 4px; padding: 0;
-  flex: 1 0 auto; }
-.email-msg { display: flex; gap: 12px; padding: 14px; border-radius: var(--radius);
-  border: 1px solid transparent; }
-.email-msg + .email-msg { border-top: 1px solid var(--border); border-radius: 0; }
-.email-msg.is-out { background: var(--accent-soft); border-radius: var(--radius);
-  border-color: transparent; }
-.email-msg.is-out + .email-msg, .email-msg + .email-msg.is-out { border-top-color: transparent; }
-.email-av { flex-shrink: 0; width: 34px; height: 34px; border-radius: 50%;
-  display: grid; place-items: center; font-size: 12.5px; font-weight: 700;
-  color: var(--accent); background: var(--surface-2); }
-.email-msg.is-out .email-av { color: #fff; background: var(--accent); }
-.email-main { flex: 1; min-width: 0; }
-.email-msg-h { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
-  margin-bottom: 5px; }
-.email-msg-h b { font-size: 13.5px; font-weight: 700; color: var(--ink); }
-.email-addr { font-size: 12px; color: var(--faint); }
-.email-msg-h .msg-time { margin-left: auto; font-size: 11.5px; color: var(--faint);
-  white-space: nowrap; }
-.email-body { font-size: 14px; line-height: 1.55; color: var(--ink);
-  white-space: pre-wrap; word-break: break-word; }
-
-/* Email composer: To field, roomy body, Send button (not a chat send arrow). */
-.email-reply { padding: 12px 16px 16px; }
-.email-compose { border: 1px solid var(--border); border-radius: var(--radius);
-  background: var(--surface); overflow: hidden; box-shadow: var(--shadow); }
-.email-to { display: flex; align-items: center; gap: 8px; padding: 9px 14px;
-  border-bottom: 1px solid var(--border); font-size: 12.5px; color: var(--muted); }
-.email-to-chip { display: inline-flex; align-items: center; padding: 2px 10px;
-  background: var(--surface-2); border: 1px solid var(--border);
-  border-radius: var(--radius-pill); font-size: 12.5px; font-weight: 600; color: var(--ink); }
-.email-textarea { display: block; width: 100%; border: 0; resize: none; outline: none;
-  padding: 12px 14px; font: inherit; font-size: 14px; line-height: 1.55;
-  color: var(--ink); background: transparent; }
-.email-compose-foot { display: flex; align-items: center; gap: 12px;
-  padding: 8px 12px; border-top: 1px solid var(--border); background: var(--surface-2); }
-.email-compose-foot .chatbar-hint { color: var(--faint); }
-
-@media (max-width: 900px) {
-  .gm, .gm.is-open { grid-template-columns: 1fr; height: auto; }
-  .gm-tags, .gm-subj { display: none; }
-  .gm-from { width: 110px; }
-}
-
-/* Unified triage inbox (team_inbox.html) */
-.tinbox { list-style:none; margin:0; padding:0; }
-.tinbox-row { display:grid; grid-template-columns:1fr auto; gap:var(--space-3);
-  align-items:start; padding:var(--space-4); border-bottom:1px solid var(--border); }
-.tinbox-row:last-child { border-bottom:0; }
-.tinbox-row:hover { background:var(--surface-2); }
-.tinbox-row.is-unread { background:var(--accent-soft); }
-.tinbox-row.is-unread:hover { background:var(--accent-soft); }
-.tinbox-main { min-width:0; display:flex; flex-direction:column; gap:var(--space-2); }
-.tinbox-head { display:flex; align-items:center; gap:var(--space-3); color:var(--ink); }
-.tinbox-head:hover { text-decoration:none; }
-.tinbox-who { min-width:0; display:flex; flex-direction:column; line-height:1.3; }
-.tinbox-who b { display:flex; align-items:center; gap:6px; font-size:14px; }
-.tinbox-sub { color:var(--faint); font-size:12px; white-space:nowrap;
-  overflow:hidden; text-overflow:ellipsis; }
-.tinbox-dot { width:8px; height:8px; border-radius:var(--radius-pill);
-  background:var(--accent); display:inline-block; }
-.tinbox-badges { display:flex; flex-wrap:wrap; gap:6px; }
-.tinbox-preview { display:block; color:var(--muted); font-size:13px; line-height:1.45;
-  overflow:hidden; text-overflow:ellipsis; }
-.tinbox-preview:hover { text-decoration:none; color:var(--ink); }
-.tinbox-you { color:var(--faint); font-weight:600; }
-.tinbox-side { display:flex; flex-direction:column; align-items:flex-end;
-  gap:var(--space-2); white-space:nowrap; }
-.tinbox-when { color:var(--faint); font-size:12px; }
-.tinbox-assign select { font-size:12px; padding:4px 8px; border-radius:var(--radius-sm);
-  border:1px solid var(--border); background:var(--surface); color:var(--muted);
-  max-width:160px; }
-.tinbox-actions { display:flex; gap:6px; }
-.tinbox-composer { grid-column:1 / -1; margin-top:var(--space-2);
-  display:flex; flex-direction:column; gap:var(--space-2); }
-.tinbox-composer textarea { width:100%; resize:vertical; }
-.tinbox-composer-foot { display:flex; align-items:center; gap:var(--space-2); }
-.tinbox-composer-foot .spacer { flex:1; }
-@media (max-width:640px) {
-  .tinbox-row { grid-template-columns:1fr; }
-  .tinbox-side { align-items:flex-start; }
-}
-
 /* Onboarding wizard (onboarding.html) */
 .onb { display:flex; flex-direction:column; gap:var(--space-4); max-width:820px; }
 .onb-step { display:flex; gap:var(--space-4); align-items:flex-start; padding:var(--space-5, 20px); }
@@ -10024,19 +9104,22 @@ body.fs-page { background:
 /* ===================================================================== *
  * Sites marketing page v2 (for_sites.html): clean, inbox-focused.        *
  * Namespaced .fsx-* so it never collides with the legacy .fs-* styles     *
- * still used by the security + contact sections on the same page.         *
+ * still used by the security section on the same page.                    *
  * ===================================================================== */
-.fsx-hero { max-width:1120px; margin:0 auto; padding:72px 24px 40px; text-align:center; }
+.fsx-hero { max-width:1120px; margin:0 auto; padding:88px 24px 44px; text-align:center; }
 .fsx-eyebrow { display:inline-flex; align-items:center; gap:7px; font-size:13px;
   font-weight:700; color:var(--accent); background:var(--accent-soft);
-  padding:6px 14px; border-radius:var(--radius-pill); margin-bottom:22px; }
+  padding:6px 14px; border-radius:var(--radius-pill); margin-bottom:26px; }
 .fsx-eyebrow svg { width:15px; height:15px; }
-.fsx-hero h1 { font-family:var(--sans); font-size:clamp(34px, 5.2vw, 60px); line-height:1.05;
-  letter-spacing:-.03em; font-weight:800; color:var(--display); margin:0 0 20px; }
+/* Display-scale headline: the hero carries the page, so the two lines run as
+   large as the column allows before the shot takes over. */
+.fsx-hero h1 { font-family:var(--sans); font-size:clamp(33px, 6.6vw, 76px); line-height:1.02;
+  letter-spacing:-.035em; font-weight:800; color:var(--display); max-width:900px;
+  margin:0 auto 22px; }
 .fsx-grad { background:linear-gradient(100deg, var(--accent), #3fa39a);
   -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; }
-.fsx-sub { max-width:640px; margin:0 auto 28px; font-size:clamp(16px, 2vw, 19px);
-  line-height:1.55; color:var(--muted); }
+.fsx-sub { max-width:700px; margin:0 auto 30px; font-size:clamp(16.5px, 2.1vw, 20px);
+  line-height:1.5; color:var(--muted); text-wrap:balance; }
 .fsx-cta { display:flex; gap:12px; justify-content:center; flex-wrap:wrap; }
 .fsx-btn { display:inline-flex; align-items:center; gap:8px; padding:13px 22px;
   border-radius:var(--radius-pill); font-size:15px; font-weight:700; text-decoration:none;
@@ -10158,14 +9241,235 @@ body.fs-page { background:
 .fsx-list li { display:flex; align-items:center; gap:8px; font-size:14px; color:var(--ink-soft); font-weight:600; }
 .fsx-list svg { width:16px; height:16px; color:var(--ok); flex-shrink:0; }
 
-/* Scroll reveal (shared with the legacy .fs-reveal on this page) */
-.fsx-head.fs-reveal, .fsx-feature.fs-reveal, .fsx-step.fs-reveal {
+/* Closing CTA: one action on the page's last screen — book the demo. */
+.fsx-close { max-width:720px; margin:0 auto; text-align:center; padding:46px 32px;
+  background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-lg);
+  box-shadow:var(--shadow-lift); }
+.fsx-close .brand-glyph { margin:0 auto 18px; }
+.fsx-close h2 { font-size:clamp(26px, 3.4vw, 34px); line-height:1.14; letter-spacing:-.025em;
+  font-weight:800; color:var(--display); margin:0 0 12px; }
+.fsx-close .fsx-lead { max-width:520px; margin:0 auto 26px; }
+
+/* Scroll reveal. The hidden state hangs off html.fs-motion, which an inline
+   script in the head sets before the first paint (see for_sites.html), so a
+   block is never painted visible and then hidden again. */
+html.fs-motion .fsx-head, html.fs-motion .fsx-feature, html.fs-motion .fsx-step,
+html.fs-motion .fsx-proof-stat, html.fs-motion .fsx-close,
+html.fs-motion .fs-frame, html.fs-motion .fs-dt {
   opacity:0; transform:translateY(14px); transition:opacity .5s ease, transform .5s ease; }
-.fsx-head.is-in, .fsx-feature.is-in, .fsx-step.is-in { opacity:1; transform:none; }
+html.fs-motion .is-in { opacity:1; transform:none; }
+/* Stagger the four proof numbers so the value band reads left-to-right. */
+html.fs-motion .fsx-proof-stat:nth-child(2) { transition-delay:.06s; }
+html.fs-motion .fsx-proof-stat:nth-child(3) { transition-delay:.12s; }
+html.fs-motion .fsx-proof-stat:nth-child(4) { transition-delay:.18s; }
+@media (prefers-reduced-motion: reduce) {
+  /* Belt and braces if the preference changes after the class is set. */
+  html.fs-motion .fsx-head, html.fs-motion .fsx-feature, html.fs-motion .fsx-step,
+  html.fs-motion .fsx-proof-stat, html.fs-motion .fsx-close,
+  html.fs-motion .fs-frame, html.fs-motion .fs-dt {
+    opacity:1; transform:none; transition:none; }
+}
+
+/* ── Premium touches: soft hero backdrop, on-load entrance, card lift ── */
+.fsx-hero { position:relative; overflow:hidden; }
+.fsx-hero-bg { position:absolute; inset:-20% -10% auto -10%; height:520px; z-index:0;
+  pointer-events:none;
+  background:
+    radial-gradient(60% 70% at 50% 0%, var(--accent-soft), transparent 70%),
+    radial-gradient(40% 60% at 82% 8%, var(--accent-soft), transparent 72%);
+  opacity:.7; }
+.fsx-hero-in { position:relative; z-index:1; }
+
+/* Feature cards lift subtly on hover for a polished, tactile feel. */
+.fsx-feature { transition:box-shadow .2s ease, transform .2s ease, border-color .2s ease; }
+.fsx-feature:hover { box-shadow:var(--shadow-lift); transform:translateY(-2px);
+  border-color:var(--border-strong); }
+
+/* On-load hero entrance: staggered rise-in of each hero line, then the shot.
+   Purely decorative and disabled for reduced-motion users below. */
+@keyframes fsxRise { from { opacity:0; transform:translateY(16px); } to { opacity:1; transform:none; } }
+.fsx-hero-in > .fsx-eyebrow { animation:fsxRise .55s both; }
+.fsx-hero-in > h1 { animation:fsxRise .55s .08s both; }
+.fsx-hero-in > .fsx-sub { animation:fsxRise .55s .16s both; }
+.fsx-hero-in > .fsx-cta { animation:fsxRise .55s .24s both; }
+.fsx-hero-in > .fsx-trust { animation:fsxRise .55s .32s both; }
+.fsx-shot { animation:fsxRise .7s .3s both; }
+@media (prefers-reduced-motion: reduce) {
+  .fsx-hero-in > *, .fsx-shot { animation:none; }
+}
 
 @media (max-width: 820px) {
   .fsx-feature { grid-template-columns:1fr; gap:22px; padding:26px; }
   .fsx-feature.fsx-rev .fsx-feature-tx { order:0; }
   .fsx-steps { grid-template-columns:1fr; }
   .fsx-price { grid-template-columns:1fr; padding:28px; }
+}
+
+/* Keep the inbox migration authoritative over the legacy marketing-hub block
+   above until that block can be removed as a separate cleanup. */
+/* Two real columns (thread list + conversation) - there's no third "sources"
+   rail element in marketing_hub.html yet, so a 3-column template here just
+   leaves an empty flexible track sitting dead between the conversation and
+   whatever's to its right (visually: a few hundred px of blank space, exactly
+   the "big empty gap next to cramped content" look). Drop back to 2 columns
+   until that rail is actually built into the template. */
+.mh-page .mh-workspace { height:100vh; max-height:100vh;
+  grid-template-columns:330px minmax(0,1fr); }
+.mh-sources { background:var(--surface-2); }
+.mh-thread-column { min-width:0; background:var(--surface);
+  grid-template-rows:auto auto auto minmax(0,1fr); }
+.mh-thread-row { padding:var(--space-3); border-left:3px solid transparent; }
+.mh-thread-row.is-active,.mh-thread-row.is-unread.is-active {
+  border-left-color:var(--accent); background:var(--accent-soft); box-shadow:none; }
+.mh-thread-row.is-unread { background:var(--surface); }
+.mh-thread-row h3 { font-size:12px; margin:var(--space-2) 0 var(--space-1) 38px; }
+.mh-thread-row p { font-size:11.5px; line-height:1.45; margin-left:38px; }
+.mh-thread-row-foot { margin-left:38px; flex-wrap:wrap; }
+.mh-conversation { min-width:0; background:var(--bg); overflow:hidden;
+  container-type:inline-size; container-name:mh-conv; }
+.mh-conversation-head { position:sticky; top:0; z-index:3; background:var(--surface);
+  padding:var(--space-4) var(--space-5); border-bottom:1px solid var(--border); }
+.mh-subject-bar,.mh-message-list,.mh-composer,.mh-clinical-card {
+  margin-left:var(--space-5); margin-right:var(--space-5); }
+.mh-message-list { min-height:0; }
+.mh-composer { margin-bottom:var(--space-5); }
+/* .mh-conversation is `display:grid` (see the legacy block above) - grid items
+   default to min-width:auto, so without this every child here (head, actions,
+   the Stage/Owner selects) ignores the grid track's real width and overflows
+   past it instead of shrinking. That's what let the header silently blow past
+   a narrow conversation column and get clipped by overflow-x:hidden above
+   (invisible instead of wrapped) any time the sources rail, thread list, or
+   Bridget's dock leave the conversation pane less than ~650px wide - which is
+   most laptop widths, dock open or not. */
+.mh-conversation-head,.mh-conversation-actions,.mh-pipeline,.mh-link-applicant,
+.mh-subject-bar,.mh-message-list,.mh-composer,.mh-clinical-card { min-width:0; }
+/* A viewport media query can't see that Bridget's dock (or the sources rail,
+   or the thread list) just ate 300+px of width - it only reacts to the whole
+   window shrinking. This container query reacts to the conversation pane's
+   own rendered width, whatever's eating into it, so opening Bridget on a
+   normal laptop stacks the header gracefully instead of overflowing it. */
+@container mh-conv (max-width:640px) {
+  .mh-conversation-head { align-items:flex-start; flex-direction:column; gap:var(--space-3); }
+  .mh-conversation-actions { width:100%; max-width:none; justify-content:flex-start; flex-wrap:wrap; }
+  .mh-assign-form { flex:1 1 130px; }
+  .mh-assign-form select { width:100%; }
+  .mh-link-applicant { align-items:flex-start; flex-direction:column; }
+  .mh-link-applicant form { width:100%; justify-content:flex-start; }
+  .mh-compose-foot { align-items:stretch; flex-direction:column; }
+  .mh-compose-actions { justify-content:flex-end; flex-wrap:wrap; }
+  .mh-clinical-card > header { align-items:flex-start; flex-wrap:wrap; }
+  .mh-record-action { align-items:flex-start; flex-direction:column; }
+  .mh-criteria-head { align-items:flex-start; flex-direction:column; }
+}
+@media (max-width:1180px) {
+  .mh-page .mh-workspace { grid-template-columns:300px minmax(0,1fr); }
+}
+@media (max-width:980px) {
+  .mh-page .mh-workspace { grid-template-columns:280px minmax(0,1fr); }
+  .mh-sources { display:none; }
+  .mh-conversation-head { align-items:flex-start; flex-direction:column; }
+  .mh-conversation-actions { width:100%; max-width:none; justify-content:flex-start; }
+  .mh-link-applicant { align-items:flex-start; flex-direction:column; }
+  .mh-link-applicant form { width:100%; justify-content:flex-start; }
+  .mh-compose-foot { align-items:stretch; flex-direction:column; }
+  .mh-compose-actions { justify-content:flex-end; flex-wrap:wrap; }
+  .mh-clinical-card > header { align-items:flex-start; flex-wrap:wrap; }
+  .mh-record-action { align-items:flex-start; flex-direction:column; }
+  .mh-criteria-head { align-items:flex-start; flex-direction:column; }
+}
+@media (max-width:720px) {
+  .mh-page .mh-workspace { height:auto; max-height:none; display:block; }
+  .mh-thread-column,.mh-conversation { min-height:50vh; }
+  .mh-subject-bar,.mh-message-list,.mh-composer,.mh-clinical-card {
+    margin-left:var(--space-3); margin-right:var(--space-3); }
+}
+
+/* Inbox visual normalization: one type scale, neutral surfaces, and teal only
+   for selection/action. Status colors remain semantic, never decorative. */
+.mh-page { color:var(--ink); }
+.mh-thread-toolbar { padding:var(--space-3); }
+.mh-search { border-color:var(--border); border-radius:var(--radius-sm);
+  background:var(--surface-2); }
+.mh-search input { height:34px; font-size:var(--text-xs); }
+.mh-thread-tabs { gap:var(--space-1); padding:0 var(--space-3) var(--space-2); }
+.mh-thread-tabs a { padding:6px 8px; border-radius:var(--radius-sm);
+  color:var(--muted); font-size:var(--text-xs); }
+.mh-thread-tabs a.is-active { color:var(--accent); background:var(--accent-soft); }
+.mh-thread-tabs a span { min-width:0; padding:0; border-radius:0;
+  color:inherit; background:transparent; font-size:inherit; }
+.mh-stage-tabs { padding:var(--space-2) var(--space-3); }
+.mh-stage-tabs a { font-size:var(--text-xs); }
+.mh-thread-row { min-height:112px; transition:background var(--duration-fast) var(--ease-standard),
+  border-color var(--duration-fast) var(--ease-standard);
+  content-visibility:auto; contain-intrinsic-size:auto 112px; }
+.mh-thread-row:hover { background:var(--surface-2); }
+.mh-contact-avatar { width:32px; height:32px; border-radius:var(--radius-sm);
+  color:var(--accent); background:var(--accent-soft); font-size:var(--text-xs); }
+.mh-contact-avatar.is-large { width:42px; height:42px; border-radius:var(--radius-sm);
+  font-size:var(--text-sm); }
+.mh-thread-person b { font-size:var(--text-sm); font-weight:750; }
+.mh-thread-person small,.mh-thread-row time { color:var(--faint); font-size:var(--text-xs); }
+.mh-thread-row h3 { color:var(--ink); font-size:var(--text-sm); line-height:var(--leading-tight); }
+.mh-thread-row p { color:var(--muted); font-size:var(--text-xs); line-height:var(--leading-body); }
+.mh-thread-row-foot { gap:var(--space-2); color:var(--muted); font-size:var(--text-xs); }
+.mh-thread-row-foot .mh-avatar { background:var(--neutral-bg); color:var(--ink-soft); }
+.mh-row-context { max-width:130px; overflow:hidden; text-overflow:ellipsis;
+  white-space:nowrap; color:var(--faint); }
+.mh-conversation-head h2 { font-size:var(--text-lg); letter-spacing:-.02em; }
+.mh-contact-main small,.mh-contact-main p,.mh-assign-form label {
+  color:var(--muted); font-size:var(--text-xs); }
+.mh-pipeline b { font-size:var(--text-xs); font-weight:700; }
+.mh-link-applicant { min-height:96px; }
+.mh-link-applicant > div > span:last-child,
+.mh-clinical-card header > div > span:last-child {
+  display:flex; flex-direction:column; gap:2px; min-width:0; }
+.mh-link-applicant b,.mh-clinical-card header b { font-size:var(--text-sm); }
+.mh-link-applicant small,.mh-clinical-card header small {
+  color:var(--muted); font-size:var(--text-xs); line-height:var(--leading-body); }
+.mh-channel-alert { background:var(--surface-2); }
+.mh-subject-bar { font-size:var(--text-xs); }
+.mh-subject-bar b { font-size:var(--text-sm); }
+.mh-message header { font-size:var(--text-xs); }
+.mh-compose-tabs button { font-size:var(--text-xs); }
+.mh-compose-panel textarea { font-size:var(--text-sm); line-height:var(--leading-body); }
+.mh-compose-foot { font-size:var(--text-xs); }
+.mh-compose-actions { max-width:100%; flex-wrap:wrap; }
+.mh-compose-actions .btn { white-space:normal; }
+.mh-clinical-card { box-shadow:none; }
+.mh-record-text,.mh-record-grid span,.mh-criteria > div > span small,
+.mh-checklist button { font-size:var(--text-xs); line-height:var(--leading-body); }
+
+html.ui-motion [data-ui-reveal] { opacity:0; transform:translateY(8px); }
+html.ui-motion [data-ui-reveal].is-visible { opacity:1; transform:none;
+  transition:opacity var(--duration-slow) var(--ease-standard),
+  transform var(--duration-slow) var(--ease-standard); }
+@media (prefers-reduced-motion: reduce) {
+  html.ui-motion [data-ui-reveal] { opacity:1; transform:none; }
+  html.ui-motion [data-ui-reveal].is-visible { transition:none; }
+  .btn,.ui-icon-btn,.mh-thread-row { transition:none; }
+}
+
+.mh-account-list { margin-bottom:var(--space-5); border:1px solid var(--border);
+  border-radius:var(--radius); overflow:hidden; }
+.mh-account-list > header { display:flex; align-items:center; justify-content:space-between;
+  gap:var(--space-3); padding:var(--space-3) var(--space-4); background:var(--surface-2);
+  border-bottom:1px solid var(--border); }
+.mh-account-list > header b { font-size:var(--text-sm); }
+.mh-account-list > header span { color:var(--muted); font-size:var(--text-xs); }
+.mh-account-row { display:flex; align-items:center; gap:var(--space-3);
+  padding:var(--space-3) var(--space-4); background:var(--surface); }
+.mh-account-row + .mh-account-row { border-top:1px solid var(--border); }
+.mh-account-copy { min-width:0; flex:1; display:flex; flex-direction:column; gap:2px; }
+.mh-account-copy b { color:var(--ink); font-size:var(--text-sm); }
+.mh-account-copy small { color:var(--muted); font-size:var(--text-xs); }
+.mh-account-copy em { color:var(--red); font-size:var(--text-xs); font-style:normal; }
+.mh-account-actions { display:flex; align-items:center; gap:var(--space-2); }
+.mh-account-actions form { margin:0; }
+.mh-gmail-connect,.mh-instagram-connect { background:var(--surface-2);
+  border-color:var(--border); }
+.mh-gmail-mark,.mh-instagram-mark { color:var(--accent); background:var(--accent-soft);
+  border-color:var(--brand-border); }
+@media (max-width:640px) {
+  .mh-account-row { align-items:flex-start; flex-wrap:wrap; }
+  .mh-account-actions { width:100%; padding-left:44px; }
 }

@@ -1,21 +1,26 @@
-"""Tests for demo lane 4 — "EHR background matching" (the clinic-wide EHR feed
-that surfaces new trial matches from the clinic's own patients).
+"""Guards the product pivot away from the physician surface.
 
-What it verifies:
-1. /app?wf=proactive renders the dedicated EHR view (not the search dashboard):
-   a real work queue with a workspace heading, a compact connection line, and
-   per-trial patient matches.
-2. It reads like a user-POV tool, not a landing page — no marketing connection
-   banner and no "how it works" explainer strip.
-3. /app (no wf) still renders the normal physician search dashboard.
-4. Compliance guardrails: patients are shown de-identified (no real names) and
-   a "physician confirms before any patient is contacted" note is present, so the
-   demo doesn't imply auto-contacting patients.
+BridgeMD is now hyperfocused on the research-site inbox (see the product-identity
+rule). The old physician-facing surface - the search dashboard AND the demo
+"lane 4" EHR background-matching view, both served from the /app (dashboard)
+endpoint - has been intentionally HIDDEN: `_hide_physician_surface` redirects every
+hidden physician endpoint so "the physician side isn't reachable through any path"
+(see _HIDDEN_PHYSICIAN_ENDPOINTS in app.py).
+
+What this file now verifies:
+1. The EHR-matching demo payload builder still produces a well-formed structure
+   (kept as a pure helper; harmless if the lane is ever re-surfaced).
+2. The physician surface STAYS hidden: /app and /app?wf=proactive redirect a
+   signed-in user to the inbox instead of rendering a physician view.
+
+(Earlier revisions asserted that /app rendered the physician search dashboard and
+the EHR matching workspace with de-identified PT-#### patients. Those views are no
+longer reachable by design, so those assertions were replaced with this
+hidden-surface guard.)
 
 Run: python test_ehr_lane.py   (offline; NO_LOGIN gives a demo user)
 """
 import os
-import re
 import sys
 import tempfile
 
@@ -41,63 +46,30 @@ def test_demo_payload_shape():
     print("PASS: EHR demo payload is well-formed")
 
 
-def test_proactive_renders_ehr_view():
+def test_physician_surface_is_hidden():
+    """The physician surface is deprecated and must not be reachable: both the plain
+    search dashboard (/app) and the EHR-matching deep link (/app?wf=proactive) are
+    served by the hidden `dashboard` endpoint, so a signed-in user is redirected to
+    the inbox instead of seeing any physician view. Guards the pivot so the physician
+    side can't silently come back."""
     c = app.app.test_client()
-    r = c.get("/app?wf=proactive")
-    assert r.status_code == 200, r.status_code
-    html = r.get_data(as_text=True)
-    # Real-workspace header (no marketing banner / "how it works" strip).
-    assert "New matches from your patients" in html, "workspace heading missing"
-    assert "records scanned" in html, "scan stat not shown"
-    # Compact, functional connection line — not a promo banner.
-    assert "Epic" in html and "synced" in html, "connection state not shown"
-    # The only action is routing to the treating physician + expandable detail.
-    assert "Send to physician" in html and "Details" in html, "actions missing"
-    # grouped by trial (NCT ids present)
-    assert "NCT05869903" in html
-    print("PASS: /app?wf=proactive renders the EHR matching workspace")
-
-
-def test_no_marketing_slop():
-    """The lane is a user-POV work queue, not a landing page: no connection
-    banner, no 'connect once -> we screen -> matches appear' explainer strip."""
-    c = app.app.test_client()
-    html = c.get("/app?wf=proactive").get_data(as_text=True)
-    assert "ehr-banner" not in html, "marketing connection banner should be gone"
-    assert "ehr-how" not in html, "3-step 'how it works' explainer should be gone"
-    assert "Matching in the background" not in html
-    print("PASS: no marketing banner / how-it-works slop on the lane")
-
-
-def test_plain_dashboard_is_search():
-    c = app.app.test_client()
-    r = c.get("/app")
-    assert r.status_code == 200, r.status_code
-    html = r.get_data(as_text=True)
-    assert "Physician matching workspace" in html, "plain /app should be the search view"
-    # The EHR workspace heading is unique to the lane-4 body (the POV switcher
-    # label appears on every page, so key off the heading instead).
-    assert "New matches from your patients" not in html, "plain /app must not be the EHR view"
-    print("PASS: plain /app stays the physician search dashboard")
-
-
-def test_compliance_deidentified_and_review_note():
-    c = app.app.test_client()
-    html = c.get("/app?wf=proactive").get_data(as_text=True)
-    # de-identified patient handles (PT-#### + initials), not real names
-    assert re.search(r"PT-\d{4}", html), "patients should use de-identified refs"
-    assert "before any patient" in html, \
-        "must state a clinician confirms before contact (no auto-outreach)"
-    print("PASS: patients de-identified + physician-review-before-contact stated")
+    for path in ("/app", "/app?wf=proactive"):
+        r = c.get(path)
+        assert r.status_code == 302, (path, r.status_code)
+        assert r.headers.get("Location", "").endswith("/app/inbox"), \
+            (path, r.headers.get("Location"))
+    # Following the redirect lands on the inbox (the actual product home), not a
+    # physician EHR workspace.
+    html = c.get("/app", follow_redirects=True).get_data(as_text=True)
+    assert "New matches from your patients" not in html, \
+        "physician EHR view leaked through the redirect"
+    print("PASS: physician search + EHR lane stay hidden (redirect to the inbox)")
 
 
 def main():
     tests = [
         test_demo_payload_shape,
-        test_proactive_renders_ehr_view,
-        test_no_marketing_slop,
-        test_plain_dashboard_is_search,
-        test_compliance_deidentified_and_review_note,
+        test_physician_surface_is_hidden,
     ]
     failed = 0
     for t in tests:

@@ -70,7 +70,7 @@ def _setup_site_account():
         db.upsert_site_profile(
             uid, "Test Research Site", "Site Coordinator", "site@test.local", "+1 555 0100"
         )
-        db.add_study_claim(uid, "NCTTEST001", "Test Study")
+        db.add_study_claim(uid, "NCTTEST001", "Test Study", verified=True)
         return uid
 
 
@@ -98,16 +98,17 @@ def main():
     site = webapp.app.test_client()
 
     # 1) Anonymous discovery still works.
-    r = patient.get("/")
+    r = patient.get("/find-trial")
     if r.status_code != 200:
-        _fail("home page", f"status {r.status_code}")
-    _pass("home page")
+        _fail("patient search page", f"status {r.status_code}")
+    _pass("patient search page")
 
     # 2) Patient signup + verify + onboarding.
     r = _post(
         patient,
         "/account/signup",
-        data={"full_name": "Mock Patient", "email": "patient@test.local", "password": "StrongPass123"},
+        data={"full_name": "Mock Patient", "email": "patient@test.local",
+              "password": "StrongPass123", "agree": "on"},
         follow_redirects=False,
     )
     if r.status_code not in (302, 303):

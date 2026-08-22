@@ -21,24 +21,17 @@ from playwright.sync_api import sync_playwright
 
 STATIC = pathlib.Path(__file__).resolve().parent.parent / "static"
 
-TEAL = "#0d6c6a"          # --accent, the deep tone
-TINT = "#7ec9c3"          # the light tone
+ACCENT = "#1257b0"        # --accent, one BridgeMD blue everywhere - app and site
+TINT = "#7fb8ee"          # the light tone (--mark-b)
 CHARCOAL = "#17191d"      # --ink
 TILE_SCALE = 0.84         # breathing room when the mark sits inside a tile
 
-# White at 46% over TEAL, pre-mixed to solid hex. Alpha in a presentation
+# White at 46% over ACCENT, pre-mixed to solid hex. Alpha in a presentation
 # attribute is not portable across rasterisers, so the tile ships flat colours.
-ON_TEAL = ("#ffffff", "#86b5b4")
+ON_ACCENT = ("#ffffff", "#8ab4e6")
 # On the charcoal card the tones flip: the light square comes forward so the
-# mark still reads teal rather than sinking into the background.
-ON_CHARCOAL = ("#7ec9c3", "#3a7f7b")
-
-# Patient-facing (consumer) side keeps its blue identity (--accent #1257b0), so it
-# needs its own favicon/app-icon set: the browser tab must match the page you are
-# on (blue on the patient site, teal on the sites/app side). Same mark, blue tile,
-# white tones pre-mixed over the blue.
-BLUE = "#1257b0"
-ON_BLUE = ("#ffffff", "#8ab4e6")
+# mark still reads blue rather than sinking into the background.
+ON_CHARCOAL = ("#7fb8ee", "#0f4a94")
 
 # Both squares carry the same 22.5% corner radius as the tile they sit in. Each
 # is drawn with the intersection appended as a second subpath and an even-odd
@@ -52,7 +45,7 @@ LAP = ("M258 212 H300 V254 A46 46 0 0 1 254 300 H212 V258 "
        "A46 46 0 0 1 258 212 Z")
 
 
-def mark(tones: tuple[str, str] = (TEAL, TINT), scale: float = 1.0) -> str:
+def mark(tones: tuple[str, str] = (ACCENT, TINT), scale: float = 1.0) -> str:
     """The mark, as two even-odd paths in a 512 box: back square, front square,
     each with the overlap cut away."""
     a, b = tones
@@ -67,8 +60,8 @@ def mark(tones: tuple[str, str] = (TEAL, TINT), scale: float = 1.0) -> str:
     )
 
 
-def tile_svg(radius: int = 116, bg: str = TEAL,
-             tones: tuple[str, str] = ON_TEAL) -> str:
+def tile_svg(radius: int = 116, bg: str = ACCENT,
+             tones: tuple[str, str] = ON_ACCENT) -> str:
     """The app-icon lockup: mark in white tones on a rounded coloured tile."""
     return (
         '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" '
@@ -97,13 +90,13 @@ def write_ico(pngs: list[pathlib.Path], out: pathlib.Path) -> None:
 def og_html() -> str:
     """Social card: same mark, same charcoal, so shares look like the product."""
     return f"""<!doctype html><meta charset="utf-8">
-<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@600;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@600;800&display=swap" rel="stylesheet">
 <style>
   html, body {{ margin: 0; width: 1536px; height: 1024px; }}
-  body {{ background:
-      radial-gradient(900px 620px at 78% -12%, rgba(13,108,106,.46), transparent 62%),
+    body {{ background:
+      radial-gradient(900px 620px at 78% -12%, rgba(18,87,176,.46), transparent 62%),
       {CHARCOAL};
-    font-family: Manrope, "Helvetica Neue", Helvetica, Arial, sans-serif;
+    font-family: Inter, "Helvetica Neue", Helvetica, Arial, sans-serif;
     display: flex; flex-direction: column; justify-content: center;
     padding: 0 118px; box-sizing: border-box; color: #fff; }}
   .lock {{ display: flex; align-items: center; gap: 30px; }}
@@ -130,8 +123,7 @@ def og_html() -> str:
 
 
 def manifest_json(theme: str, suffix: str) -> str:
-    """PWA manifest for one palette. Icons point at that palette's app icons so an
-    installed patient PWA matches the blue site, not the teal one."""
+    """PWA manifest for the one BridgeMD palette."""
     return (
         "{\n"
         '  "name": "BridgeMD",\n'
@@ -140,7 +132,7 @@ def manifest_json(theme: str, suffix: str) -> str:
         '  "start_url": "/",\n'
         '  "scope": "/",\n'
         '  "display": "standalone",\n'
-        '  "background_color": "#f8fafc",\n'
+        '  "background_color": "#f6f6fb",\n'
         f'  "theme_color": "{theme}",\n'
         '  "icons": [\n'
         f'    {{ "src": "/static/icon{suffix}-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" }},\n'
@@ -151,11 +143,10 @@ def manifest_json(theme: str, suffix: str) -> str:
     )
 
 
-# Each palette produces a full icon set. "" is the default (teal) sites/app brand;
-# "-blue" is the consumer/patient brand. Templates pick the set to match the page.
+# One palette, one brand: the app and the patient-facing site share the same
+# blue everywhere, so there is only one icon set to generate.
 PALETTES = [
-    ("", TEAL, ON_TEAL, "#0d6c6a"),
-    ("-blue", BLUE, ON_BLUE, "#1257b0"),
+    ("", ACCENT, ON_ACCENT, ACCENT),
 ]
 
 

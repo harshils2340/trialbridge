@@ -7,9 +7,9 @@
    ========================================================================= #}
 {# ---- Static index: pages + studies + actions (built with url_for) ---- #}
 {% set items = [] %}
-{% set _ = items.append({'g':'Pages','label':'Inbox','kw':'home inbox threads messages inquiries email','url':url_for('team_inbox')}) %}
+{% set _ = items.append({'g':'Pages','label':'Inbox','kw':'home inbox threads messages inquiries email','url':url_for('marketing_hub')}) %}
 {% set _ = items.append({'g':'Pages','label':'Applicants','kw':'leads patients candidates people referrals queue','url':url_for('leads')}) %}
-{% set _ = items.append({'g':'Pages','label':'Unread','kw':'inbox chat conversations replies messages waiting needs reply','url':url_for('team_inbox')}) %}
+{% set _ = items.append({'g':'Pages','label':'Unread','kw':'inbox chat conversations replies messages waiting needs reply','url':url_for('marketing_hub', status='open')}) %}
 {% set _ = items.append({'g':'Pages','label':'Applicant intake','kw':'intake import csv email forwarding studies trials','url':url_for('intake_page')}) %}
 {# Campaigns + Recruitment dashboards are hidden CTMS surfaces now, so they are
    out of the palette too - the nav and the palette should agree. #}

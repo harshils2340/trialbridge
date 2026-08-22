@@ -79,6 +79,50 @@ def test_css_mobile_sidebar_and_scroll():
     print("PASS: mobile sidebar wraps; wide tables/tab-bars scroll")
 
 
+def test_visual_system_is_single_source():
+    css = _read(CSS)
+    bases = _read(TPL, "base.html") + _read(TPL, "public_base.html")
+    assert css.count(":root {") == 1, "design tokens must have one :root source"
+    for token in ("--text-xs", "--text-md", "--duration-base", "--ease-standard"):
+        assert token in css, f"missing shared visual token {token}"
+    assert "Manrope" not in css + bases and "Newsreader" not in css + bases, \
+        "multiple UI typefaces reintroduced"
+    assert "brand-blue" not in css + bases, "split blue/teal brand reintroduced"
+    assert "prefers-reduced-motion: reduce" in css
+    assert "data-ui-reveal" in bases
+    print("PASS: typography, brand, and motion use one shared system")
+
+
+def test_demo_tour_starts_on_canonical_inbox():
+    tour = _read(TPL, "_demo_tour.html")
+    inbox = _read(TPL, "marketing_hub.html")
+    assert "path: '/app/home'" not in tour, "tour still targets retired dashboard"
+    assert "path: '/app/inbox'" in tour
+    assert 'data-demo-tour-target="inbox"' in inbox
+    print("PASS: demo tour starts on the canonical inbox")
+
+
+def test_inbox_uses_shared_site_shell():
+    """The inbox is deliberately FULL-BLEED: it hides the top bar (.apptop) and the
+    left sidebar, and the workspace fills the whole viewport flush against the
+    Bridget dock - so it never reads as a short "inset card" (see the CSS comment
+    above .mh-page). This test pins that contract: it fails if someone re-adds a
+    header height offset, re-shows the top bar, or shrinks the workspace back into a
+    detached card. (Earlier revisions achieved the no-card look by stripping the
+    workspace border/radius/shadow and subtracting a 57px header; the current design
+    achieves it more completely via a hidden header + 100vh fill.)"""
+    css = _read(CSS)
+    # Top bar hidden on the inbox route -> no header to subtract.
+    assert ".appshell:has(.mh-page) .apptop { display:none; }" in css
+    # With no header, the body fills the full viewport (not calc(100dvh - 57px)).
+    assert ".appshell:has(.mh-page) .appbody { min-height:100vh; }" in css
+    # Workspace fills the viewport height instead of sitting as an inset card.
+    assert ".mh-page .mh-workspace { height:100vh; max-height:100vh; }" in css
+    # Full-bleed page: no padding, or the workspace detaches from the dock.
+    assert "height: 100dvh; padding: 0;" in css
+    print("PASS: inbox uses shared site shell as a full-bleed workspace")
+
+
 def _fake_result(nct, verdict):
     return {
         "trial": {"nctId": nct, "title": f"Study {nct}", "phase": "PHASE2",
@@ -124,6 +168,9 @@ def main():
         test_css_has_dark_theme_and_focus,
         test_css_colorblind_shapes,
         test_css_mobile_sidebar_and_scroll,
+        test_visual_system_is_single_source,
+        test_demo_tour_starts_on_canonical_inbox,
+        test_inbox_uses_shared_site_shell,
         test_fit_badges_have_distinct_icons,
     ]
     failed = 0

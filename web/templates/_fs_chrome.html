@@ -2,94 +2,18 @@
    header and footer cannot drift between them. Anchors are absolute on purpose:
    the same markup works on the hub (in-page jump) and on a feature page. #}
 {% import "_icons.html" as ic %}
+{% import "_nav.html" as pillnav %}
 
+{# Delegates to the ONE shared floating-pill header (templates/_nav.html) so the
+   site-side pages and the patient finder share a single header component. Only
+   the links + CTA are site-specific. #}
 {% macro nav(cal_link) %}
 {% set hub = url_for('for_sites') %}
-<header class="fs-nav" id="fsNav">
-  <div class="fs-nav-in">
-    <a class="fs-nav-brand" href="{{ hub }}">
-      {{ ic.icon('mark', 'brand-glyph') }}BridgeMD <span>for sites</span></a>
-    {# One product, one page. The old "Platform" mega-menu advertised four CTMS
-       pillars, which contradicted the pitch the moment you read the hero. #}
-    <nav class="fs-nav-links" aria-label="Primary">
-      <a href="{{ hub }}#how">How it works</a>
-      <a href="{{ hub }}#pricing">Pricing</a>
-      <a href="{{ hub }}#security">Security</a>
-      <a href="{{ url_for('blog_index') }}">Resources</a>
-      <a href="{{ hub }}#contact">Contact</a>
-    </nav>
-    <div class="fs-nav-cta">
-      <a class="fs-nav-signin" href="{{ url_for('login') }}">Sign in</a>
-      <a class="fs-btn fs-btn-primary fs-btn-sm" href="{{ cal_link }}" target="_blank" rel="noopener">Book a demo {{ ic.icon('arrow-right') }}</a>
-      {# Phone-only: the link row above is hidden below 760px, so it reopens here. #}
-      <button type="button" class="fs-nav-burger" id="fsBurger" aria-expanded="false"
-              aria-controls="fsSheet" aria-label="Open menu">{{ ic.icon('menu') }}</button>
-    </div>
-  </div>
-  <div class="fs-sheet" id="fsSheet" hidden>
-    <div class="fs-sheet-in">
-      <a class="fs-sheet-row" href="{{ hub }}#how">How it works</a>
-      <a class="fs-sheet-row" href="{{ hub }}#pricing">Pricing</a>
-      <a class="fs-sheet-row" href="{{ hub }}#security">Security &amp; legal</a>
-      <a class="fs-sheet-row" href="{{ url_for('blog_index') }}">Resources</a>
-      <a class="fs-sheet-row" href="{{ hub }}#contact">Contact</a>
-      <a class="fs-sheet-row" href="{{ url_for('login') }}">Sign in</a>
-    </div>
-  </div>
-</header>
-<script>
-(function () {
-  // Sticky nav: transparent over the hero, frosted glass once the page moves, so
-  // there is no hard seam under the header on arrival.
-  var nav = document.getElementById('fsNav');
-  if (nav) {
-    var stick = function () { nav.classList.toggle('is-stuck', window.scrollY > 8); };
-    window.addEventListener('scroll', stick, { passive: true });
-    stick();
-  }
-  // Phone menu sheet.
-  var burger = document.getElementById('fsBurger');
-  var sheet = document.getElementById('fsSheet');
-  if (burger && sheet) {
-    var setSheet = function (on) {
-      sheet.hidden = !on;
-      nav.classList.toggle('is-menu', on);
-      burger.setAttribute('aria-expanded', on ? 'true' : 'false');
-      burger.setAttribute('aria-label', on ? 'Close menu' : 'Open menu');
-    };
-    burger.addEventListener('click', function () { setSheet(sheet.hidden); });
-    sheet.addEventListener('click', function (e) {
-      if (e.target.closest('a')) setSheet(false);
-    });
-    document.addEventListener('keydown', function (e) {
-      if (e.key === 'Escape') setSheet(false);
-    });
-    window.addEventListener('resize', function () {
-      if (window.innerWidth > 760) setSheet(false);
-    });
-  }
-  // Platform menu. Hover and keyboard focus are handled in CSS; this adds click
-  // (for touch and for anyone who clicks the label) plus Escape and click-away.
-  var wrap = nav && nav.querySelector('.fs-has-menu');
-  var trig = wrap && wrap.querySelector('.fs-nav-trig');
-  if (!wrap || !trig) return;
-  var setOpen = function (on) {
-    wrap.classList.toggle('is-open', on);
-    trig.setAttribute('aria-expanded', on ? 'true' : 'false');
-  };
-  trig.addEventListener('click', function (e) {
-    e.preventDefault();
-    setOpen(!wrap.classList.contains('is-open'));
-  });
-  document.addEventListener('click', function (e) {
-    if (!wrap.contains(e.target)) setOpen(false);
-  });
-  document.addEventListener('keydown', function (e) {
-    if (e.key === 'Escape') { setOpen(false); trig.blur(); }
-  });
-  wrap.addEventListener('mouseleave', function () { setOpen(false); });
-})();
-</script>
+{{ pillnav.pill(
+     [('How it works', hub ~ '#how'), ('Pricing', hub ~ '#pricing'), ('Security', hub ~ '#security')],
+     'Book a demo', cal_link, cta_blank=true,
+     brand_href=hub, brand_suffix='for sites',
+     secondary_label='Sign in', secondary_href=url_for('login')) }}
 {% endmacro %}
 
 {% macro foot() %}
@@ -104,7 +28,9 @@
       <a href="{{ hub }}#how">How it works</a>
       <a href="{{ hub }}#pricing">Pricing</a>
       <a href="{{ hub }}#security">Security</a>
-      <a href="{{ url_for('blog_index') }}">Resources</a>
+      {# The root is the site-side pitch now, so patients who land here need a
+         way through to the trial search. #}
+      <a href="{{ url_for('home') }}">Find a trial</a>
       <a href="{{ url_for('login') }}">Sign in</a>
       <a href="{{ url_for('privacy') }}">Privacy</a>
       <a href="{{ url_for('terms') }}">Terms</a>

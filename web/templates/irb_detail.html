@@ -20,7 +20,7 @@
 <div class="irb-banner ok{{ ' warn' if (days_left is not none and days_left <= 45) }}">
   <span class="irb-banner-ic">{{ ic.icon('shield-check') }}</span>
   <div>
-    <b>Approved &mdash; {{ sub.approved_version or 'current version' }} cleared for use.</b>
+    <b>Approved. {{ sub.approved_version or 'current version' }} cleared for use.</b>
     <span>
       {% if sub.expires_at %}Continuing review due by {{ sub.expires_at[:10] }}{% if days_left is not none %} ({{ days_left }} days){% endif %}. {% endif %}
       Linked campaigns are cleared to go live.
@@ -112,7 +112,7 @@
       <p class="irb-action-hint">Everything ready? Submit the package to {{ sub.irb_name or 'the IRB' }} for review.</p>
       <form method="post" action="{{ url_for('irb_status', sub_id=sub.id) }}" class="cal-form">
         <input type="hidden" name="status" value="submitted">
-        <div class="field"><label>IRB tracking # <span class="cal-hint">optional &mdash; add it once assigned</span></label>
+        <div class="field"><label>IRB tracking # <span class="cal-hint">optional, add it once assigned</span></label>
           <input type="text" name="submission_ref" placeholder="e.g. WCG #20260142" autocomplete="off"></div>
         {{ ui.btn('Submit to IRB', 'primary', size='block', type='submit', icon='arrow-right') }}
       </form>
@@ -171,8 +171,8 @@
     {# ---- Submission facts ---- #}
     <div class="app-card pad irb-meta">
       <dl>
-        <div><dt>Study</dt><dd>{{ sub.nct or '&mdash;' }}</dd></div>
-        <div><dt>Reviewing board</dt><dd>{{ sub.irb_name or '&mdash;' }}</dd></div>
+        <div><dt>Study</dt><dd>{{ sub.nct or '&ndash;' }}</dd></div>
+        <div><dt>Reviewing board</dt><dd>{{ sub.irb_name or '&ndash;' }}</dd></div>
         <div><dt>Type</dt><dd>{{ sub_types.get(sub.submission_type, sub.submission_type) }}</dd></div>
         {% if sub.pi_name %}<div><dt>Principal investigator</dt><dd>{{ sub.pi_name }}</dd></div>{% endif %}
         {% if sub.protocol_version %}<div><dt>Protocol version</dt><dd>{{ sub.protocol_version }}</dd></div>{% endif %}

@@ -60,7 +60,7 @@
 {% block body %}
 <article class="study">
   <nav class="crumbs">
-    <a href="{{ url_for('home') }}">Home</a>
+    <a href="{{ url_for('home') }}">Find a trial</a>
     {% if condition %} › <a href="{{ url_for('condition_page', slug=slugify(condition)) }}">{{ condition }}</a>{% endif %}
     › <span>Trial</span>
   </nav>

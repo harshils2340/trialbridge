@@ -8,6 +8,7 @@ import hmac
 import json
 import os
 import tempfile
+import time
 import urllib.parse
 
 
@@ -100,7 +101,7 @@ def test_instagram_webhook():
         "/integrations/instagram/webhook", data=payload,
         content_type="application/json", headers=headers)
     assert accepted.status_code == 200
-    assert accepted.get_json() == {"ok": True}
+    assert accepted.get_json() == {"ok": True, "imported_messages": 0}
 
     duplicate = client.post(
         "/integrations/instagram/webhook", data=payload,
@@ -113,7 +114,7 @@ def test_instagram_webhook():
         assert len(rows) == 1
         assert rows[0]["provider"] == "instagram"
         assert rows[0]["account_external_id"] == "ig-professional-123"
-        assert rows[0]["status"] == "pending"
+        assert rows[0]["status"] == "ignored"
         assert json.loads(rows[0]["payload_json"])["object"] == "instagram"
 
 
@@ -152,6 +153,7 @@ def test_instagram_oauth_and_lifecycle_callbacks():
         "profile": webapp._instagram_profile,
         "subscribe": webapp._instagram_subscribe_webhooks,
         "unsubscribe": webapp._instagram_unsubscribe_webhooks,
+        "send_reply": webapp._instagram_send_reply,
     }
     subscriptions = []
     unsubscriptions = []
@@ -176,13 +178,15 @@ def test_instagram_oauth_and_lifecycle_callbacks():
             subscriptions.append((token, account_id)) or True)
         webapp._instagram_unsubscribe_webhooks = lambda token, account_id: (
             unsubscriptions.append((token, account_id)) or True)
+        webapp._instagram_send_reply = lambda token, account_id, recipient, body: (
+            "ig-outbound-1")
 
         callback = client.get(
             "/integrations/instagram/callback",
             query_string={"state": state, "code": "instagram-auth-code"})
         assert callback.status_code == 302
         assert urllib.parse.urlparse(callback.headers["Location"]).path == \
-            "/marketing-hub"
+            "/app/inbox"
         assert subscriptions == [
             ("long-instagram-token", "ig-professional-123")]
 
@@ -208,12 +212,63 @@ def test_instagram_oauth_and_lifecycle_callbacks():
             source_id = source["id"]
             connection_id = connection["id"]
 
-        page = client.get("/marketing-hub")
+        inbound_payload = json.dumps({
+            "object": "instagram",
+            "entry": [{
+                "id": "ig-professional-123",
+                "time": int(time.time()),
+                "messaging": [{
+                    "sender": {"id": "ig-patient-789"},
+                    "recipient": {"id": "ig-professional-123"},
+                    "timestamp": int(time.time() * 1000),
+                    "message": {
+                        "mid": "ig-inbound-1",
+                        "text": "Can I learn more about the study?",
+                    },
+                }],
+            }],
+        }, separators=(",", ":")).encode("utf-8")
+        ingested = client.post(
+            "/integrations/instagram/webhook", data=inbound_payload,
+            content_type="application/json",
+            headers={"X-Hub-Signature-256": _signature(inbound_payload)})
+        assert ingested.status_code == 200
+        assert ingested.get_json()["imported_messages"] == 1
+        with webapp.app.app_context():
+            thread = db.list_marketing_threads(
+                user_id, channel="instagram")[0]
+            assert thread["external_ref"] == "ig-patient-789"
+            thread_id = thread["id"]
+
+        delivered = client.post(
+            f"/marketing-hub/threads/{thread_id}/reply",
+            data={"_csrf_token": CSRF, "body": "Thanks for reaching out."})
+        assert delivered.status_code == 302
+        with webapp.app.app_context():
+            messages = db.list_marketing_messages(user_id, thread_id)
+            assert messages[-1]["external_ref"] == "ig-outbound-1"
+            assert messages[-1]["delivery_status"] == "sent"
+            before_count = len(messages)
+            db.get_db().execute(
+                "UPDATE marketing_messages SET created_at = ? "
+                "WHERE thread_id = ? AND kind = 'inbound'",
+                ("2020-01-01 00:00", thread_id))
+            db.get_db().commit()
+        stale_reply = client.post(
+            f"/marketing-hub/threads/{thread_id}/reply",
+            data={"_csrf_token": CSRF, "body": "This must not be sent."})
+        assert stale_reply.status_code == 302
+        with webapp.app.app_context():
+            assert len(db.list_marketing_messages(
+                user_id, thread_id)) == before_count
+
+        page = client.get("/app/inbox")
         html = page.get_data(as_text=True)
         assert page.status_code == 200
         assert "Connect Instagram" in html
         assert "@bridgemd_trials" in html
-        assert "Webhook subscribed" in html
+        assert "Workspace accounts" in html
+        assert "Live" in html
 
         invalid_start = client.get("/marketing-hub/connect/instagram")
         invalid_query = urllib.parse.parse_qs(
@@ -327,6 +382,7 @@ def test_instagram_oauth_and_lifecycle_callbacks():
         webapp._instagram_profile = originals["profile"]
         webapp._instagram_subscribe_webhooks = originals["subscribe"]
         webapp._instagram_unsubscribe_webhooks = originals["unsubscribe"]
+        webapp._instagram_send_reply = originals["send_reply"]
 
 
 def main():

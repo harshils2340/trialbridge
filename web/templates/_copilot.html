@@ -1,5 +1,5 @@
 {% import "_icons.html" as ic %}
-<aside class="appdock" id="copilot" data-open="1" aria-label="Bridget assistant">
+<aside class="appdock" id="copilot" data-open="0" aria-label="Bridget assistant">
   <div class="dock-resize" id="dockResize" role="separator" aria-orientation="vertical" aria-label="Resize Bridget" title="Drag to resize · double-click to reset"></div>
   <header class="dock-head">
     <div class="dock-title">
@@ -22,9 +22,9 @@
     </div>
   </form>
 </aside>
-<button type="button" class="copilot-fab" id="copilotReopen" aria-label="Open Bridget, your enrollment copilot" title="Ask Bridget">
-  {{ ic.icon('mark', 'brand-glyph brand-glyph-lg') }}
-  <span class="fab-dot"></span>
+<button type="button" class="copilot-fab" id="copilotReopen" aria-label="Open Bridget, your AI assistant" title="Ask Bridget">
+  <span class="copilot-fab-ic">{{ ic.icon('mark', 'brand-glyph brand-glyph-lg') }}<span class="fab-dot"></span></span>
+  <span class="copilot-fab-label">Ask Bridget</span>
 </button>
 {# Reusable icon library so JS-built cards use the same real icons (not inline one-offs). #}
 <div id="bridgetIcons" hidden aria-hidden="true">
@@ -41,9 +41,6 @@
   var form = document.getElementById('copilotForm');
   var input = document.getElementById('copilotInput');
   var sendBtn = form.querySelector('button[type="submit"]');
-  var STARTERS = (window.BRIDGET_STARTERS && window.BRIDGET_STARTERS.length)
-    ? window.BRIDGET_STARTERS
-    : ["Who's waiting on my decision?", "Draft a booking reminder for everyone stuck", "How's my funnel this week?"];
   var busy = false, briefLoaded = false;
 
   // Map a live digest section to the icon + the question that runs its tool, so a
@@ -75,11 +72,19 @@
     var m = (window.location.pathname || '').match(/\/app\/applicant\/(\d+)/);
     return m ? parseInt(m[1], 10) : null;
   }
-  function setOpen(open) {
+  // applyOpen only paints the state - used for the computed per-page default,
+  // which must NOT get written to localStorage (or the very first page's
+  // guess would "stick" and silently override every later page's own
+  // context-aware default). setOpen is for an actual user action (FAB, close
+  // button, Bridget-open links) and remembers the choice across navigation.
+  function applyOpen(open) {
     dock.setAttribute('data-open', open ? '1' : '0');
     reopen.style.display = open ? 'none' : '';
-    try { localStorage.setItem('bm_copilot_open', open ? '1' : '0'); } catch (e) {}
     if (open) { input.focus(); if (!briefLoaded) renderIntro(); }
+  }
+  function setOpen(open) {
+    applyOpen(open);
+    try { localStorage.setItem('bm_copilot_open', open ? '1' : '0'); } catch (e) {}
   }
   function scroll() { log.scrollTop = log.scrollHeight; }
   function escapeHtml(s) {
@@ -141,16 +146,6 @@
       brief.appendChild(ok);
     }
 
-    // A couple of light suggestions — no heading, keep it quiet.
-    var chips = document.createElement('div');
-    chips.className = 'copilot-suggest brief-suggest';
-    STARTERS.slice(0, 3).forEach(function (s) {
-      var c = document.createElement('button');
-      c.type = 'button'; c.className = 'copilot-chip'; c.textContent = s;
-      c.addEventListener('click', function () { ask(s); });
-      chips.appendChild(c);
-    });
-    brief.appendChild(chips);
     scroll();
   }
 
@@ -472,12 +467,12 @@
 
   var saved = null;
   try { saved = localStorage.getItem('bm_copilot_open'); } catch (e) {}
-  // The dock is a first-class pane now, so it opens by default whenever there's
-  // room for it inline (the inbox drops its right rail to make that room). Only
-  // truly narrow screens start collapsed, where it opens as a drawer via the FAB.
-  var wide = window.matchMedia('(min-width: 1000px)').matches;
-  var startOpen = saved === null ? wide : saved === '1';
-  setOpen(startOpen);
+  // On-click only: Bridget never auto-opens, so it never steals width from the
+  // page or greets you with canned prompts. It opens from the FAB (or
+  // window.bridgetOpen / bridgetAsk) and remembers an explicit open across
+  // navigation so it doesn't slam shut mid-task.
+  var startOpen = saved === '1';
+  applyOpen(startOpen);
   if (startOpen) renderIntro();
 
   // Let any page open Bridget or ask it something (e.g. the Calendar's "Ask AI").

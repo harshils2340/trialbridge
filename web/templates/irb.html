@@ -19,13 +19,13 @@
 {% else %}
 
 <div class="irb-flow">
-  <div class="irb-flow-step"><span class="irb-flow-n">1</span><div><b>Build the package</b><span>Flyers, ads, screening scripts, letters &mdash; each with a version.</span></div></div>
+  <div class="irb-flow-step"><span class="irb-flow-n">1</span><div><b>Build the package</b><span>Flyers, ads, screening scripts, and letters, each with a version.</span></div></div>
   <div class="irb-flow-arrow">{{ ic.icon('chevron-right') }}</div>
   <div class="irb-flow-step"><span class="irb-flow-n">2</span><div><b>Submit for review</b><span>Initial, a modification, or annual continuing review.</span></div></div>
   <div class="irb-flow-arrow">{{ ic.icon('chevron-right') }}</div>
   <div class="irb-flow-step"><span class="irb-flow-n">3</span><div><b>Board reviews</b><span>They approve, or send back modifications to fix and resubmit.</span></div></div>
   <div class="irb-flow-arrow">{{ ic.icon('chevron-right') }}</div>
-  <div class="irb-flow-step is-done"><span class="irb-flow-n">{{ ic.icon('check') }}</span><div><b>Approved &amp; live</b><span>Stamped version on file with an expiry &mdash; campaigns can run.</span></div></div>
+  <div class="irb-flow-step is-done"><span class="irb-flow-n">{{ ic.icon('check') }}</span><div><b>Approved &amp; live</b><span>Stamped version on file with an expiry, so campaigns can run.</span></div></div>
 </div>
 
 <div class="app-stats">
@@ -65,7 +65,7 @@
 {% call ui.modal('irb-new', 'New IRB submission', icon='shield-check') %}
 <form method="post" action="{{ url_for('irb_create') }}" class="cal-form">
   <div class="field"><label>Package name</label>
-    <input type="text" name="title" placeholder="Recruitment materials &ndash; initial review" required
+    <input type="text" name="title" placeholder="Recruitment materials, initial review" required
            autocomplete="off">
   </div>
   <div class="field"><label>Study</label>

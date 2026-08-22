@@ -264,6 +264,7 @@ CREATE TABLE IF NOT EXISTS leads (
     status          TEXT NOT NULL DEFAULT 'submitted',
     records_connected INTEGER DEFAULT 0,
     record_summary  TEXT DEFAULT '',
+    records_authorized_at TEXT DEFAULT '',
     screener        TEXT DEFAULT '',
     eligibility     TEXT DEFAULT '',
     prescreen_readiness TEXT DEFAULT '',
@@ -1097,11 +1098,14 @@ CREATE TABLE IF NOT EXISTS marketing_threads (
     priority       TEXT NOT NULL DEFAULT 'normal',
     nct            TEXT DEFAULT '',  -- study this conversation is about ('' = general)
     study_label    TEXT DEFAULT '',
+    pipeline_stage TEXT NOT NULL DEFAULT 'new',
+    linked_lead_id INTEGER,
     created_at     TEXT NOT NULL,
     updated_at     TEXT NOT NULL,
     FOREIGN KEY (org_id) REFERENCES organizations(id),
     FOREIGN KEY (source_id) REFERENCES marketing_sources(id),
-    FOREIGN KEY (assigned_to) REFERENCES users(id)
+    FOREIGN KEY (assigned_to) REFERENCES users(id),
+    FOREIGN KEY (linked_lead_id) REFERENCES leads(id)
 );
 
 CREATE TABLE IF NOT EXISTS marketing_messages (
@@ -1365,6 +1369,8 @@ _MIGRATIONS = {
     "marketing_threads": {
         "nct": "TEXT DEFAULT ''",
         "study_label": "TEXT DEFAULT ''",
+        "pipeline_stage": "TEXT NOT NULL DEFAULT 'new'",
+        "linked_lead_id": "INTEGER",
     },
     "marketing_messages": {
         "external_ref": "TEXT DEFAULT ''",
@@ -1455,6 +1461,7 @@ _MIGRATIONS = {
         "updated_at": "TEXT DEFAULT ''",
         "records_connected": "INTEGER DEFAULT 0",
         "record_summary": "TEXT DEFAULT ''",
+        "records_authorized_at": "TEXT DEFAULT ''",
         "screener": "TEXT DEFAULT ''",
         "eligibility": "TEXT DEFAULT ''",
         "prescreen_readiness": "TEXT DEFAULT ''",
@@ -1955,6 +1962,19 @@ def record_marketing_webhook_event(provider, event_key, payload_json,
     return bool(cur.rowcount)
 
 
+def finish_marketing_webhook_event(provider, event_key, status="processed",
+                                   error_message=""):
+    if status not in ("processed", "ignored", "error"):
+        status = "error"
+    conn = get_db()
+    conn.execute(
+        "UPDATE marketing_webhook_events SET status = ?, error_message = ?, "
+        "processed_at = ? WHERE provider = ? AND event_key = ?",
+        (status, (error_message or "")[:500], now(),
+         (provider or "").strip().lower(), (event_key or "").strip()[:128]))
+    conn.commit()
+
+
 def deauthorize_marketing_account(provider, external_account_id):
     """Erase provider credentials without deleting retained inbox history."""
     provider = (provider or "").strip().lower()
@@ -2142,6 +2162,18 @@ def get_marketing_connection_by_account(user_id, provider,
         "WHERE org_id = ? AND provider = ? AND external_account_id = ?",
         (oid, (provider or "").strip(),
          (external_account_id or "").strip())).fetchone()
+
+
+def get_marketing_connection_global(provider, external_account_id):
+    """Provider webhook lookup. Caller must already have verified its signature."""
+    return get_db().execute(
+        "SELECT c.*, s.channel, s.label AS source_label, "
+        "s.identifier AS source_identifier FROM marketing_connections c "
+        "JOIN marketing_sources s ON s.id = c.source_id "
+        "WHERE c.provider = ? AND c.external_account_id = ? "
+        "AND c.status = 'connected' AND s.status = 'connected'",
+        ((provider or "").strip(), (external_account_id or "").strip())
+    ).fetchone()
 
 
 def _marketing_scopes_json(granted_scopes):
@@ -2604,13 +2636,66 @@ def upsert_gmail_thread(user_id, source_id, *, external_ref, contact_name,
     }
 
 
+def ingest_instagram_message(account_external_id, sender_id, message_id, body,
+                             created_at):
+    """Idempotently turn one verified Instagram webhook message into a thread."""
+    connection = get_marketing_connection_global(
+        "instagram", account_external_id)
+    sender_id = (sender_id or "").strip()[:255]
+    message_id = (message_id or "").strip()[:255]
+    body = (body or "").strip()[:4000]
+    if not connection or not sender_id or not message_id or not body:
+        return None
+    conn = get_db()
+    oid, source_id = connection["org_id"], connection["source_id"]
+    row = conn.execute(
+        "SELECT * FROM marketing_threads WHERE org_id = ? AND source_id = ? "
+        "AND external_ref = ?", (oid, source_id, sender_id)).fetchone()
+    if not row:
+        handoff = conn.execute(
+            "SELECT * FROM marketing_handoffs WHERE org_id = ?", (oid,)).fetchone()
+        assigned_to = None
+        if handoff:
+            assigned_to = (handoff["cover_user_id"] if handoff["vacation_mode"]
+                           and handoff["cover_user_id"]
+                           else handoff["primary_user_id"])
+        cur = conn.execute(
+            "INSERT OR IGNORE INTO marketing_threads "
+            "(org_id, source_id, external_ref, contact_name, contact_handle, "
+            "subject, status, assigned_to, unread, pipeline_stage, created_at, "
+            "updated_at) VALUES (?,?,?,?,?,?,'open',?,1,'new',?,?)",
+            (oid, source_id, sender_id, "Instagram contact", sender_id,
+             "Instagram message", assigned_to, created_at, created_at))
+        row = conn.execute(
+            "SELECT * FROM marketing_threads WHERE org_id = ? AND source_id = ? "
+            "AND external_ref = ?", (oid, source_id, sender_id)).fetchone()
+        if not cur.rowcount and not row:
+            conn.rollback()
+            return None
+    cur = conn.execute(
+        "INSERT OR IGNORE INTO marketing_messages "
+        "(org_id, thread_id, external_ref, kind, body, author_name, "
+        "delivery_status, created_at) VALUES (?,?,?,?,?,?,?,?)",
+        (oid, row["id"], message_id, "inbound", body, "Instagram contact",
+         "received", created_at))
+    if cur.rowcount:
+        conn.execute(
+            "UPDATE marketing_threads SET status = 'open', unread = 1, "
+            "updated_at = ? WHERE id = ? AND org_id = ?",
+            (created_at, row["id"], oid))
+    conn.commit()
+    return {"thread_id": row["id"], "inserted": bool(cur.rowcount)}
+
+
 def get_marketing_thread(user_id, thread_id):
     oid = user_org_id(user_id)
     return get_db().execute(
         "SELECT t.*, s.channel, s.label AS source_label, "
         "s.identifier AS source_identifier, s.connection_mode, "
         "s.status AS source_status, c.id AS connection_id, c.provider, "
-        "c.status AS connection_status, u.name AS assigned_name, "
+        "c.status AS connection_status, c.external_account_id, "
+        "c.instagram_account_id, c.access_token_encrypted, "
+        "u.name AS assigned_name, "
         "u.email AS assigned_email "
         "FROM marketing_threads t "
         "LEFT JOIN marketing_sources s ON s.id = t.source_id "
@@ -2621,7 +2706,7 @@ def get_marketing_thread(user_id, thread_id):
 
 
 def list_marketing_threads(user_id, status="open", channel="", query="",
-                           source_id=None, nct=""):
+                           source_id=None, nct="", assignee=""):
     oid = user_org_id(user_id)
     where = ["t.org_id = ?"]
     args = [oid]
@@ -2637,6 +2722,14 @@ def list_marketing_threads(user_id, status="open", channel="", query="",
     if nct:
         where.append("(t.nct = ? OR COALESCE(t.nct, '') = '')")
         args.append(nct)
+    # Ownership triage: "mine" = threads routed to me, "unassigned" = threads
+    # nobody owns yet (so nothing sits unclaimed). Unlike nct, unassigned is NOT
+    # folded into every view - the whole point is to isolate the unclaimed queue.
+    if assignee == "mine":
+        where.append("t.assigned_to = ?")
+        args.append(user_id)
+    elif assignee == "unassigned":
+        where.append("t.assigned_to IS NULL")
     query = (query or "").strip().lower()[:100]
     if query:
         where.append(
@@ -2656,6 +2749,12 @@ def list_marketing_threads(user_id, status="open", channel="", query="",
         "COALESCE((SELECT m.kind FROM marketing_messages m "
         "WHERE m.thread_id = t.id ORDER BY m.created_at DESC, m.id DESC "
         "LIMIT 1), '') AS last_kind, "
+        # Kind of the last real MESSAGE (ignores internal notes) so we can tell
+        # "patient wrote, we still owe a reply" (inbound) from "we already
+        # replied" (outbound) - an internal note must not look like a response.
+        "COALESCE((SELECT m.kind FROM marketing_messages m "
+        "WHERE m.thread_id = t.id AND m.kind != 'note' "
+        "ORDER BY m.created_at DESC, m.id DESC LIMIT 1), '') AS last_reply_kind, "
         "(SELECT COUNT(*) FROM marketing_messages m "
         "WHERE m.thread_id = t.id) AS message_count "
         "FROM marketing_threads t "
@@ -2663,15 +2762,31 @@ def list_marketing_threads(user_id, status="open", channel="", query="",
         "LEFT JOIN users u ON u.id = t.assigned_to WHERE "
         + " AND ".join(where) +
         " ORDER BY t.unread DESC, t.updated_at DESC, t.id DESC")
-    return get_db().execute(sql, tuple(args)).fetchall()
+    rows = get_db().execute(sql, tuple(args)).fetchall()
+    # Triage default: float threads we still OWE a reply to (open + last real
+    # message inbound) to the top, so an aging owed reply can't get buried under
+    # newer threads we've already answered. Stable, so the SQL order (unread,
+    # then recency) is preserved WITHIN the owed / not-owed groups. This is the
+    # only place this ordering lives; revert this sort to restore pure recency.
+    return sorted(
+        rows,
+        key=lambda r: 0 if (r["status"] == "open"
+                            and r["last_reply_kind"] == "inbound") else 1)
 
 
-def marketing_thread_counts(user_id, nct=""):
+def marketing_thread_counts(user_id, nct="", assignee=""):
     oid = user_org_id(user_id)
     where, args = ["org_id = ?"], [oid]
     if nct:
         where.append("(nct = ? OR COALESCE(nct, '') = '')")
         args.append(nct)
+    # Keep the status-tab counts honest when the owner triage filter is active,
+    # so "Open 5" matches the 5 rows shown (mirrors the list's assignee filter).
+    if assignee == "mine":
+        where.append("assigned_to = ?")
+        args.append(user_id)
+    elif assignee == "unassigned":
+        where.append("assigned_to IS NULL")
     row = get_db().execute(
         "SELECT COUNT(*) AS total, "
         "SUM(CASE WHEN status = 'open' THEN 1 ELSE 0 END) AS open_count, "
@@ -2685,6 +2800,18 @@ def marketing_thread_counts(user_id, nct=""):
         "resolved": int(row["resolved_count"] or 0),
         "unread": int(row["unread_count"] or 0),
     }
+
+
+def marketing_unread_by_study(user_id):
+    """Unread thread counts grouped by study NCT, for the top-bar switcher badges
+    (so a coordinator sees which trial has activity and jumps straight to it).
+    One query; returns {nct: count}. Unassigned (no NCT) threads are omitted."""
+    oid = user_org_id(user_id)
+    rows = get_db().execute(
+        "SELECT nct, SUM(CASE WHEN unread = 1 THEN 1 ELSE 0 END) AS unread_count "
+        "FROM marketing_threads WHERE org_id = ? AND COALESCE(nct, '') != '' "
+        "GROUP BY nct", (oid,)).fetchall()
+    return {r["nct"]: int(r["unread_count"] or 0) for r in rows}
 
 
 def list_marketing_messages(user_id, thread_id):
@@ -2773,6 +2900,63 @@ def set_marketing_thread_status(user_id, thread_id, status):
     return bool(cur.rowcount)
 
 
+MARKETING_PIPELINE_STAGES = (
+    "new", "outreach", "prescreen", "screening", "enrolled",
+    "disqualified", "archived",
+)
+
+
+def set_marketing_thread_stage(user_id, thread_id, stage):
+    """Persist the recruitment stage without conflating it with open/resolved."""
+    if stage not in MARKETING_PIPELINE_STAGES:
+        return False
+    oid = user_org_id(user_id)
+    conn = get_db()
+    cur = conn.execute(
+        "UPDATE marketing_threads SET pipeline_stage = ?, updated_at = ? "
+        "WHERE id = ? AND org_id = ?", (stage, now(), thread_id, oid))
+    conn.commit()
+    return bool(cur.rowcount)
+
+
+def link_marketing_thread_lead(user_id, thread_id, lead_id):
+    """Explicitly link an org-owned inbox thread to an accessible applicant.
+
+    Identity is never inferred from name/email. The caller must provide the lead
+    created or selected after consent and study ownership have been checked.
+    """
+    thread = get_marketing_thread(user_id, thread_id)
+    lead = get_lead(lead_id)
+    if not thread or not lead:
+        return False
+    member_ids = set(org_member_ids(user_id))
+    owner_id = lead["owner_user_id"] if "owner_user_id" in lead.keys() else None
+    if owner_id not in member_ids:
+        claimed = set(user_claimed_ncts(user_id))
+        if not lead["nct"] or lead["nct"] not in claimed:
+            return False
+    conn = get_db()
+    cur = conn.execute(
+        "UPDATE marketing_threads SET linked_lead_id = ?, pipeline_stage = ?, "
+        "updated_at = ? WHERE id = ? AND org_id = ?",
+        (lead_id, lead["status"] if lead["status"] in MARKETING_PIPELINE_STAGES
+         else "prescreen", now(), thread_id, thread["org_id"]))
+    conn.commit()
+    return bool(cur.rowcount)
+
+
+def authorize_lead_records(lead_id):
+    lead = get_lead(lead_id)
+    if not lead:
+        return False
+    conn = get_db()
+    conn.execute(
+        "UPDATE leads SET records_authorized_at = ?, updated_at = ? WHERE id = ?",
+        (now(), now(), lead_id))
+    conn.commit()
+    return True
+
+
 # The account the study-team demo runs as (see app._DEMO_EMAIL). The rich
 # marketing-hub demo is only ever seeded onto this throwaway account.
 _MARKETING_DEMO_EMAIL = "dejosama@fieveclinical.com"
@@ -2787,7 +2971,12 @@ def seed_demo_marketing_hub(user_id):
     Idempotent: seeds once (detected via a sentinel source) so a coordinator can
     click around, reply, and reassign during a live clinic demo without the data
     resetting under them. The first run also clears any throwaway accounts the
-    demo user hand-added, so the inbox reads like a real, busy site."""
+    demo user hand-added, so the inbox reads like a real, busy site.
+
+    Deliberately gated to the throwaway demo account ONLY: the seeder assumes the
+    demo org (and wipes existing marketing data on first run), so it is NOT safe
+    to point at an arbitrary account. A fresh real account correctly gets an empty
+    inbox to connect its own channels."""
     if not user_id:
         return
     conn = get_db()
@@ -2805,7 +2994,21 @@ def seed_demo_marketing_hub(user_id):
     tagged = conn.execute(
         "SELECT 1 FROM marketing_threads WHERE org_id = ? AND nct != '' LIMIT 1",
         (oid,)).fetchone()
-    if seeded and tagged:
+    linked = conn.execute(
+        "SELECT 1 FROM marketing_threads WHERE org_id = ? "
+        "AND linked_lead_id IS NOT NULL LIMIT 1", (oid,)).fetchone()
+    ad_lead = conn.execute(
+        "SELECT 1 FROM marketing_threads t "
+        "JOIN marketing_sources s ON s.id = t.source_id "
+        "WHERE t.org_id = ? AND s.channel = 'google_ads' "
+        "AND t.contact_handle != 'Automated alert' LIMIT 1", (oid,)).fetchone()
+    # Re-seed once more for orgs seeded before every claimed trial had its own
+    # conversations - otherwise switching the top switcher to one of the newer
+    # trials (e.g. the Azetukalner OLE) shows an empty inbox.
+    all_trials_covered = conn.execute(
+        "SELECT 1 FROM marketing_threads WHERE org_id = ? "
+        "AND nct = 'NCT07076407' LIMIT 1", (oid,)).fetchone()
+    if seeded and tagged and linked and ad_lead and all_trials_covered:
         get_marketing_handoff(user_id)
         return
 
@@ -2815,6 +3018,22 @@ def seed_demo_marketing_hub(user_id):
         "DELETE FROM marketing_messages WHERE thread_id IN "
         "(SELECT id FROM marketing_threads WHERE org_id = ?)", (oid,))
     conn.execute("DELETE FROM marketing_threads WHERE org_id = ?", (oid,))
+    demo_lead_ids = [
+        row["id"] for row in conn.execute(
+            "SELECT id FROM leads WHERE applicant_token LIKE 'demo-inbox-%' "
+            "AND owner_user_id IN (SELECT user_id FROM memberships "
+            "WHERE org_id = ?)", (oid,)).fetchall()
+    ]
+    if demo_lead_ids:
+        placeholders = ",".join("?" for _ in demo_lead_ids)
+        conn.execute("DELETE FROM records_profiles WHERE applicant_token "
+                     "LIKE 'demo-inbox-%'")
+        conn.execute(f"DELETE FROM lead_tasks WHERE lead_id IN ({placeholders})",
+                     demo_lead_ids)
+        conn.execute(f"DELETE FROM lead_events WHERE lead_id IN ({placeholders})",
+                     demo_lead_ids)
+        conn.execute(f"DELETE FROM leads WHERE id IN ({placeholders})",
+                     demo_lead_ids)
     # Connection rows reference sources. The shared demo must never retain real
     # provider credentials, and deleting these rows first preserves FK ordering.
     conn.execute("DELETE FROM marketing_connections WHERE org_id = ?", (oid,))
@@ -2857,7 +3076,7 @@ def seed_demo_marketing_hub(user_id):
     migraine_id = _source("email", "Migraine study inbox",
                           "migraine@fieveclinical.com")
     instagram_id = _source("instagram", "Instagram DMs", "@fieveclinical")
-    ads_id = _source("google_ads", "Google Ads — Migraine Search",
+    ads_id = _source("google_ads", "Google Ads: Migraine Search",
                      "Fieve Migraine Search")
     # One disconnected account so the connect/reconnect state is visible.
     _source("email", "Newsletter replies", "news@fieveclinical.com",
@@ -2868,20 +3087,31 @@ def seed_demo_marketing_hub(user_id):
             "%Y-%m-%d %H:%M")
 
     def _seq(source_id, contact, handle, subject, assignee, status, unread,
-             messages, study=("", "")):
+             messages, study=("", ""), stage=None):
         """messages: list of (kind, by, body, minutes_ago).
         kind: inbound|outbound|note ; by: 'contact'|'system'|<user_id>.
-        study: (nct, label) so switching the top trial scopes the inbox."""
+        study: (nct, label) so switching the top trial scopes the inbox.
+        stage: recruitment pipeline stage for the thread's stage tab/pill
+        (defaults to the schema default 'new' when omitted)."""
         nct, study_label = study
         mins = [m[3] for m in messages]
         created, updated = _ago(max(mins)), _ago(min(mins))
-        cur = conn.execute(
-            "INSERT INTO marketing_threads "
-            "(org_id, source_id, contact_name, contact_handle, subject, status, "
-            "assigned_to, unread, nct, study_label, created_at, updated_at) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
-            (oid, source_id, contact, handle, subject, status, assignee,
-             1 if unread else 0, nct, study_label, created, updated))
+        if stage:
+            cur = conn.execute(
+                "INSERT INTO marketing_threads "
+                "(org_id, source_id, contact_name, contact_handle, subject, status, "
+                "assigned_to, unread, nct, study_label, pipeline_stage, created_at, "
+                "updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (oid, source_id, contact, handle, subject, status, assignee,
+                 1 if unread else 0, nct, study_label, stage, created, updated))
+        else:
+            cur = conn.execute(
+                "INSERT INTO marketing_threads "
+                "(org_id, source_id, contact_name, contact_handle, subject, status, "
+                "assigned_to, unread, nct, study_label, created_at, updated_at) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                (oid, source_id, contact, handle, subject, status, assignee,
+                 1 if unread else 0, nct, study_label, created, updated))
         tid = cur.lastrowid
         for kind, by, body, minutes in messages:
             if kind == "inbound":
@@ -2912,28 +3142,32 @@ def seed_demo_marketing_hub(user_id):
     seed_demo_claims(user_id)
     claims = list_team_studies(user_id)
     _pairs = [(c["nct"], c["title"] or c["nct"]) for c in claims]
-
-    def _pick(*kws):
-        for nct, title in _pairs:
-            low = (title or "").lower()
-            if any(k in low for k in kws):
-                return (nct, title)
-        return None
+    _by_nct = {nct: (nct, title) for nct, title in _pairs}
 
     def _fb(i):
         return _pairs[i % len(_pairs)] if _pairs else ("", "")
 
-    # Pick psilocybin first: its title contains "depression", so MDD keywords
-    # must stay specific (mdd/insomnia/seltorexant) to land on a different trial.
-    psi = _pick("psilocybin", "comp360") or _fb(0)
-    mig = _pick("migraine", "ubrogepant") or _fb(1)
-    mdd = _pick("mdd", "insomnia", "seltorexant", "azetukalner") or _fb(2)
+    # Fieve's 8 active trials (see seed_demo_leads' _S map) are looked up by
+    # exact NCT rather than fuzzy title keywords - several titles share words
+    # like "MDD" and "Azetukalner", and a fuzzy match silently left some trials
+    # with zero conversations whenever the top switcher scoped to them.
+    def _study(nct, fallback_i):
+        return _by_nct.get(nct) or _fb(fallback_i)
+
+    psi = _study("NCT05711940", 0)  # COMP360 Psilocybin in TRD
+    mig = _study("NCT07645924", 1)  # Elismetrep (K-304) acute migraine
+    mdd = _study("NCT06559306", 2)  # Adjunctive Seltorexant in MDD w/ insomnia
+    aze = _study("NCT07076407", 3)  # Azetukalner vs Placebo in MDD (X-NOVA3)
+    azeo = _study("NCT06922110", 4)  # Azetukalner Open-Label Extension
+    selm = _study("NCT07573176", 5)  # Seltorexant Monotherapy in MDD
+    migl = _study("NCT07674654", 6)  # Elismetrep long-term safety
+    umm = _study("NCT06417775", 7)  # Ubrogepant for Menstrual Migraine
 
     # ── Recruitment inbox (email) ──────────────────────────────────────────
     _seq(recruit_id, "Nadia Brooks", "nadia.brooks@gmail.com",
          "Do you offer evening screening appointments?", me, "open", True,
          [("inbound", "contact",
-           "Hi — I saw your migraine study online. I work until 5 most days, so "
+           "Hi, I saw your migraine study online. I work until 5 most days, so "
            "are evening screening appointments possible? Also, is parking "
            "covered when I come in?", 6)], study=mig)
     _seq(recruit_id, "Marcus Reed", "marcus.reed@outlook.com",
@@ -2942,11 +3176,11 @@ def seed_demo_marketing_hub(user_id):
            "I'd have to drive about 45 minutes each way. Is mileage or travel "
            "reimbursed for the visits?", 52),
           ("outbound", jordan_id,
-           "Hi Marcus — yes, we reimburse travel for every completed visit, and "
+           "Hi Marcus, yes, we reimburse travel for every completed visit, and "
            "it's paid the same week. Want me to hold a screening slot for you?",
            41),
           ("note", casey_id,
-           "He's a strong fit — flagging so we prioritize the callback.", 39)],
+           "He's a strong fit, flagging so we prioritize the callback.", 39)],
          study=mdd)
     _seq(recruit_id, "Dr. Sam Patel", "spatel@riversidefamilymed.com",
          "Referring a patient who may qualify", me, "open", True,
@@ -2962,24 +3196,24 @@ def seed_demo_marketing_hub(user_id):
          [("inbound", "contact",
            "How much is the compensation, and when is it paid?", 1520),
           ("outbound", casey_id,
-           "Hi Priya — participants receive up to $1,200 across the study, paid "
+           "Hi Priya, participants receive up to $1,200 across the study, paid "
            "per completed visit. I've emailed the full schedule. Let me know if "
            "you'd like to book screening!", 1505)], study=psi)
 
     # ── Migraine study inbox (email) ───────────────────────────────────────
-    _seq(migraine_id, "Lauren Fitzgerald", "lauren.f@yahoo.com",
+    lauren_thread = _seq(migraine_id, "Lauren Fitzgerald", "lauren.f@yahoo.com",
          "Eligible with 16 migraine days a month?", me, "open", True,
          [("inbound", "contact",
            "I get migraines about 16 days a month and I'm 34. Would I qualify "
            "for this study?", 19)], study=mig)
-    _seq(migraine_id, "Tomás Rivera", "trivera@gmail.com",
+    tomas_thread = _seq(migraine_id, "Tomás Rivera", "trivera@gmail.com",
          "Need to reschedule my screening visit", jordan_id, "open", False,
          [("inbound", "contact",
-           "Something came up at work — can I move my Thursday screening to next "
+           "Something came up at work, can I move my Thursday screening to next "
            "week?", 215),
           ("outbound", jordan_id,
            "No problem at all, Tomás. I have Tuesday 10:00am or Wednesday 2:00pm "
-           "open — which works better?", 205),
+           "open. Which works better?", 205),
           ("inbound", "contact", "Tuesday 10am is perfect, thank you!", 150)],
          study=mig)
     _seq(migraine_id, "Grace Kim", "grace.kim@icloud.com",
@@ -2988,7 +3222,7 @@ def seed_demo_marketing_hub(user_id):
            "I've decided not to move forward right now. Thanks for your time.",
            2950),
           ("outbound", casey_id,
-           "Completely understand, Grace — thank you for letting us know. The "
+           "Completely understand, Grace. Thank you for letting us know. The "
            "door's open if anything changes down the road.", 2940)], study=mig)
 
     # ── Instagram DMs ──────────────────────────────────────────────────────
@@ -3000,48 +3234,210 @@ def seed_demo_marketing_hub(user_id):
     _seq(instagram_id, "Mina Chen", "@healthwithmina",
          "Community partnership question", casey_id, "open", False,
          [("inbound", "contact",
-           "hi! i run a local health education page — who can i talk to about "
+           "hi! i run a local health education page, who can i talk to about "
            "sharing your study with my followers?", 72),
           ("note", casey_id,
-           "Legit micro-influencer, ~18k local followers. Worth a call — could be "
-           "a cheap referral channel.", 66)], study=mdd)
-    _seq(instagram_id, "Rob Torres", "@rob.torres.tx",
+           "Local health educator with about 18k followers. Worth a call if the "
+           "study team has approved materials they can share.", 66)], study=mdd)
+    rob_thread = _seq(instagram_id, "Rob Torres", "@rob.torres.tx",
          "Do I need a referral?", me, "open", False,
          [("inbound", "contact",
            "do i need a referral from my own doctor to join or can i just apply "
            "directly?", 330),
           ("outbound", me,
-           "You can apply directly — no referral needed! I'll send a quick link "
+           "You can apply directly, no referral needed! I'll send a quick link "
            "to check if you're eligible. 👍", 322)], study=psi)
-    _seq(instagram_id, "Sam W.", "@skeptical_sam", "Is this real?", jordan_id,
+    # Unassigned on purpose: a brand-new DM nobody has claimed yet, so the
+    # "Unassigned" owner filter shows a real inquiry to pick up (no lead lost).
+    _seq(instagram_id, "Sam W.", "@skeptical_sam", "Is this real?", None,
          "open", True,
          [("inbound", "contact",
            "is this legit or a scam lol. how do i know my info is safe?", 145)],
          study=mdd)
 
-    # ── Google Ads alerts ──────────────────────────────────────────────────
+    # ── Google Ads leads and one operational alert ─────────────────────────
     _seq(ads_id, "Google Ads", "Automated alert",
          "Ad disapproved: landing page policy", me, "open", True,
          [("inbound", "system",
            "One ad in 'Migraine Search' was disapproved for a landing page "
            "policy issue. Affected ad is not serving. Review and resubmit to "
            "resume delivery.", 9)], study=mig)
-    _seq(ads_id, "Google Ads", "Automated alert",
-         "Cost per application up 22% this week", jordan_id, "open", False,
-         [("inbound", "system",
-           "'Migraine Search' is pacing 22% above its 7-day cost-per-application "
-           "average. Review search terms and budget allocation.", 58),
-          ("note", jordan_id,
-           "Added 6 negative keywords and trimmed broad match. Watching CPA "
-           "through the weekend.", 44)], study=mig)
-    _seq(ads_id, "Google Ads", "Automated alert",
-         "Budget 90% spent — Migraine Search", jordan_id, "resolved", False,
-         [("inbound", "system",
-           "'Migraine Search' has spent 90% of its monthly budget with 8 days "
-           "remaining.", 1810),
-          ("note", jordan_id,
-           "Topped up budget by $500 for the month — approved by Danny-Elle.",
-           1790)], study=mig)
+    # Unassigned on purpose: a fresh ad lead lands with no owner (ad leads
+    # routinely arrive unclaimed), so triaging the "Unassigned" queue has teeth.
+    _seq(ads_id, "Maya Chen", "maya.chen@gmail.com",
+         "Can I join while taking topiramate?", None, "open", True,
+         [("inbound", "contact",
+           "I clicked your Google ad for the migraine study. I have around 10 "
+           "to 12 migraine days a month and take topiramate. Could I still be "
+           "eligible?", 58),
+          ("outbound", jordan_id,
+           "Thanks, Maya. Medication history is part of screening, so we can't "
+           "confirm eligibility by message. I can send the secure pre-screen "
+           "link if you'd like to continue.", 51)], study=mig)
+    _seq(ads_id, "Ben Walsh", "ben.walsh@outlook.com",
+         "Question about visits and travel", me, "open", False,
+         [("inbound", "contact",
+           "I saw the study in a Google ad. How many clinic visits are involved, "
+           "and is there any help with travel costs?", 180),
+          ("outbound", me,
+           "Hi Ben, I can send the study-team-approved visit schedule and "
+           "reimbursement details. What is the best email for you?", 168)],
+         study=mig)
+
+    # ── Azetukalner vs Placebo (X-NOVA3, main phase 3) ──────────────────────
+    aze_thread = _seq(recruit_id, "Denise Okafor", "denise.okafor@gmail.com",
+         "Currently on sertraline, still qualify?", me, "open", True,
+         [("inbound", "contact",
+           "I have depression and I'm on 100mg sertraline but it's not helping "
+           "much. Can I still apply for the Azetukalner study or does being on "
+           "medication rule me out?", 24)], study=aze)
+    _seq(recruit_id, "Robert Klein", "rklein@protonmail.com",
+         "Follow-up after phone screen", jordan_id, "open", False,
+         [("inbound", "contact",
+           "Following up on the phone screen from last week, any update on a "
+           "screening visit date?", 260),
+          ("outbound", jordan_id,
+           "Hi Robert, you're through the phone screen. I have Monday 9am or "
+           "Wednesday 1pm for your in-person screening visit, which works?",
+           248)], study=aze, stage="outreach")
+    _seq(instagram_id, "Priya N.", "@priya.n.writes", "MDD study question",
+         casey_id, "open", False,
+         [("inbound", "contact",
+           "saw the depression study ad, do you need a referral from my "
+           "psychiatrist or can i self refer?", 410)], study=aze)
+
+    # ── Azetukalner Open-Label Extension (existing X-NOVA3 completers) ──────
+    _seq(migraine_id, "Grace Kim", "grace.kim@icloud.com",
+         "Eligible for the extension study?", me, "open", True,
+         [("inbound", "contact",
+           "I just finished the 12-week Azetukalner study. My coordinator "
+           "mentioned an open-label extension, am I eligible, and when would "
+           "it start?", 40),
+          ("outbound", me,
+           "Hi Grace, yes, everyone who completes the double-blind period is "
+           "eligible for the OLE. I'll confirm your exact start window and send "
+           "the visit schedule by end of day.", 31)], study=azeo,
+         stage="screening")
+    _seq(recruit_id, "Marcus Reed", "marcus.reed@outlook.com",
+         "OLE consent form questions", casey_id, "resolved", False,
+         [("inbound", "contact",
+           "Got the extension consent form, two questions on the med washout "
+           "section before I sign.", 1980),
+          ("outbound", casey_id,
+           "Happy to walk through it, no washout needed since you're already "
+           "on study drug. I'll call you this afternoon to go over the rest.",
+           1965)], study=azeo, stage="enrolled")
+
+    # ── Seltorexant Monotherapy in MDD ───────────────────────────────────────
+    _seq(recruit_id, "Wanda Price", "wanda.price@yahoo.com",
+         "Not currently on any antidepressant, eligible?", jordan_id, "open",
+         True,
+         [("inbound", "contact",
+           "I stopped my antidepressant a few months ago and haven't restarted. "
+           "Is the monotherapy study still an option for me, or do I need to be "
+           "on a medication already?", 65)], study=selm)
+    _seq(instagram_id, "@calm_and_c", "@calm_and_c",
+         "How long is the study?", jordan_id, "open", False,
+         [("inbound", "contact",
+           "how many weeks total is the seltorexant study and how many visits "
+           "in person vs phone?", 320),
+          ("outbound", jordan_id,
+           "It's 8 weeks total, 2 in-person visits (screening + baseline) and "
+           "the rest are quick phone or video check-ins.", 305)], study=selm,
+         stage="outreach")
+
+    # ── Elismetrep (K-304) long-term safety in acute migraine ───────────────
+    _seq(migraine_id, "Isla Thompson", "isla.thompson@gmail.com",
+         "Long-term study after finishing the acute trial", me, "open", True,
+         [("inbound", "contact",
+           "I completed the short acute-treatment migraine study in the "
+           "spring. Is the long-term safety study something I can join, or is "
+           "it only for new patients?", 95)], study=migl, stage="screening")
+    _seq(ads_id, "Colin Deb", "colin.deb@icloud.com",
+         "Long-term safety study, side effect history", me, "open", False,
+         [("inbound", "contact",
+           "Saw the ad for the long-term migraine safety study. I had a bad "
+           "reaction to a triptan a few years back, does that exclude me?",
+           500)], study=migl)
+
+    # ── Ubrogepant for Menstrual Migraine ────────────────────────────────────
+    _seq(recruit_id, "Nadia Haddad", "nadia.haddad@gmail.com",
+         "Timing screening visit around my cycle", casey_id, "open", True,
+         [("inbound", "contact",
+           "My migraines are tied to my period, so timing matters, do I need "
+           "to schedule the screening visit for a specific day of my cycle?",
+           50),
+          ("outbound", casey_id,
+           "Good question. We'll time your screening to your expected next "
+           "cycle so we can confirm the pattern. What's your cycle length "
+           "usually?", 44)], study=umm, stage="prescreen")
+    _seq(instagram_id, "Tara O.", "@tara.okonkwo", "Menstrual migraine study",
+         casey_id, "open", False,
+         [("inbound", "contact",
+           "do you need a formal diagnosis of menstrual migraine or is a "
+           "regular migraine diagnosis + tracking my period enough?", 610)],
+         study=umm)
+
+    # A raw conversation is not automatically an applicant. Seed three explicit,
+    # consented links so the demo shows both sides of that boundary: general
+    # inquiries stay inbox-only, while linked applicants can use records and
+    # screening workflow tools.
+    def _demo_applicant(thread_id, name, email, age, study, stage, criteria):
+        nct, title = study
+        applicant_token = f"demo-inbox-{thread_id}"
+        token = create_lead({
+            "applicant_token": applicant_token,
+            "nct": nct,
+            "title": title,
+            "name": name,
+            "email": email if "@" in email else "",
+            "age": str(age),
+            "consent": 1,
+            "source": "inbox",
+            "owner_user_id": user_id,
+            "eligibility": json.dumps({
+                "verdict": "possible",
+                "met": [],
+                "unknown": criteria,
+                "not_met": [],
+            }),
+        })
+        lead = get_lead_by_token(token)
+        if not lead:
+            return
+        conn.execute(
+            "UPDATE leads SET status = ?, records_authorized_at = ?, "
+            "updated_at = ? WHERE id = ?",
+            (stage, ts, ts, lead["id"]))
+        conn.execute(
+            "UPDATE marketing_threads SET linked_lead_id = ?, "
+            "pipeline_stage = ? WHERE id = ? AND org_id = ?",
+            (lead["id"], stage, thread_id, oid))
+        if stage in ("screening", "enrolled"):
+            add_task(lead["id"], "Confirm screening appointment",
+                     assigned_to="site", created_by="site")
+            add_task(lead["id"], "Review patient-authorized records",
+                     assigned_to="site", created_by="site")
+
+    _demo_applicant(
+        lauren_thread, "Lauren Fitzgerald", "lauren.f@yahoo.com", 34, mig,
+        "prescreen",
+        ["Migraine diagnosis and monthly migraine-day count",
+         "Current preventive medications", "No conflicting neurologic condition"])
+    _demo_applicant(
+        tomas_thread, "Tomás Rivera", "trivera@gmail.com", 41, mig,
+        "screening",
+        ["Migraine diagnosis confirmed", "Screening visit completed",
+         "Medication washout requirements reviewed"])
+    _demo_applicant(
+        rob_thread, "Rob Torres", "@rob.torres.tx", 38, psi, "outreach",
+        ["Age requirement", "Current depression treatment",
+         "No excluded psychiatric history"])
+    _demo_applicant(
+        aze_thread, "Denise Okafor", "denise.okafor@gmail.com", 45, aze,
+        "outreach",
+        ["Current MDE severity (MADRS)", "Antidepressant washout timeline",
+         "No bipolar or psychotic history"])
 
     conn.execute(
         "INSERT INTO marketing_handoffs "
@@ -6206,7 +6602,7 @@ def promote_doc_versions_for_update(user_id, update_id, effective_at=""):
 
 def reconsent_candidates(user_id, nct):
     """Enrolled/active (already-consented) participants on a trial this user
-    runs — the people who must re-consent when the protocol changes."""
+    runs, the people who must re-consent when the protocol changes."""
     if nct not in user_claimed_ncts(user_id):
         return []
     qs = ",".join("?" * len(RECONSENT_STATUSES))

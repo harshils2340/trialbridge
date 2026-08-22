@@ -1,12 +1,28 @@
 {% extends "public_base.html" %}
 {% import "_icons.html" as ic %}
-{% block title %}BridgeMD: the inbox built for clinical trial coordinators{% endblock %}
-{% block description %}Every patient inquiry — email, Facebook & Instagram ads, ClinicalTrials.gov, referrals — in one inbox, auto-sorted and routed to the right coordinator. Free for research sites.{% endblock %}
-{% block og_title %}BridgeMD: the inbox built for clinical trial coordinators{% endblock %}
-{% block og_description %}One inbox for every study inquiry, from every channel — auto-triaged and auto-assigned so nothing gets missed. Free for research sites.{% endblock %}
+{% block title %}BridgeMD: the inbox built for clinical trial recruitment{% endblock %}
+{% block description %}Every patient inquiry lands in one inbox: email, Facebook & Instagram ads, ClinicalTrials.gov, and referrals. Sorted and assigned the moment it lands. Free for research sites.{% endblock %}
+{% block og_title %}BridgeMD: the inbox built for clinical trial recruitment{% endblock %}
+{% block og_description %}One inbox for every study inquiry, from every channel, auto-triaged and auto-assigned so nothing gets missed. Free for research sites.{% endblock %}
 {% block canonical %}<link rel="canonical" href="{{ sites_home_url if sites_home_url.startswith('http') else request.base_url }}">{% endblock %}
 
 {% import "_fs_chrome.html" as chrome with context %}
+
+{# Decide the scroll-reveal state before the first paint. The hidden state hangs
+   off html.fs-motion, so a block can never render visible and then be pulled
+   back out by a script at the end of the body. No JS (or reduced motion) means
+   the class is never set and everything stays visible. #}
+{% block head_extra %}
+<script>
+(function () {
+  try {
+    if (!('IntersectionObserver' in window)) return;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    document.documentElement.classList.add('fs-motion');
+  } catch (e) {}
+})();
+</script>
+{% endblock %}
 
 {% block site_header %}{{ chrome.nav(cal_link) }}{% endblock %}
 
@@ -16,22 +32,23 @@
 
 <!-- ───────────────────────── Hero ───────────────────────── -->
 <section class="fsx-hero">
+  <div class="fsx-hero-bg" aria-hidden="true"></div>
   <div class="fsx-hero-in">
-    <span class="fsx-eyebrow">{{ ic.icon('inbox') }} Free for research sites</span>
-    <h1>The inbox built for<br><span class="fsx-grad">clinical trial coordinators.</span></h1>
-    <p class="fsx-sub">Every patient who contacts your site — from email, Facebook &amp; Instagram ads,
-      ClinicalTrials.gov and referrals — lands in one inbox, sorted by what it needs and handed to the
-      right coordinator automatically. Less admin. Nothing missed.</p>
+    <span class="fsx-eyebrow">{{ ic.icon('inbox') }} One inbox for every recruitment channel</span>
+    <h1>Every study inquiry,<br><span class="fsx-grad">in one clean inbox.</span></h1>
+    <p class="fsx-sub">The first unlimited recruitment inbox for research sites, so you spend less
+      time on admin and never miss a patient who was ready to enroll.</p>
     <div class="fsx-cta">
       <a class="fsx-btn fsx-btn-primary" href="{{ cal_link }}" target="_blank" rel="noopener">Book a demo {{ ic.icon('arrow-right') }}</a>
-      <a class="fsx-btn fsx-btn-ghost" href="#how">See how it works</a>
-      <a class="fsx-btn fsx-btn-ghost" href="{{ url_for('marketing_hub') }}">Open marketing hub {{ ic.icon('arrow-right') }}</a>
+      {% if site_demo %}
+      <a class="fsx-btn fsx-btn-ghost" href="{{ url_for('marketing_hub') }}">See it live {{ ic.icon('arrow-right') }}</a>
+      {% endif %}
     </div>
-    <p class="fsx-trust">Free for your site &middot; HIPAA-minded, BAA on request &middot; No per-referral fees</p>
+    <p class="fsx-trust">Free for your team &middot; HIPAA-minded, BAA on request &middot; No per-referral fees</p>
   </div>
   <div class="fsx-shot">
     <div class="fsx-shot-bar"><span></span><span></span><span></span><b>app.bridgemd.health · inbox</b></div>
-    <img src="{{ static_url('shots/inbox_hero.png') }}" width="1800" height="950"
+    <img src="{{ static_url('shots/inbox_hero.png') }}" width="1600" height="850"
          alt="The BridgeMD inbox: every study inquiry in one place, auto-sorted and assigned" loading="eager">
   </div>
 </section>
@@ -40,13 +57,13 @@
 <section class="fsx-proof" aria-label="What changes for your team">
   <div class="fsx-proof-in">
     <div class="fsx-proof-stat"><b>5 &rarr; 1</b>
-      <span>inboxes your team watches — email, Meta ads, CT.gov &amp; referrals in one place</span></div>
-    <div class="fsx-proof-stat"><b>Minutes</b>
-      <span>to first reply, not days — the urgent inquiries never sink to the bottom</span></div>
+      <span>inboxes merged into one</span></div>
+    <div class="fsx-proof-stat"><b>100%</b>
+      <span>human-reviewed before it sends</span></div>
     <div class="fsx-proof-stat"><b>Zero</b>
-      <span>inquiries lost between apps — every one is sorted and assigned on arrival</span></div>
+      <span>inquiries lost between apps</span></div>
     <div class="fsx-proof-stat"><b>~10 min</b>
-      <span>to get set up — forward your email, add your studies, done</span></div>
+      <span>average setup time</span></div>
   </div>
 </section>
 
@@ -54,8 +71,9 @@
 <section class="fsx-section" id="how">
   <div class="fsx-head">
     <p class="fsx-kicker">What it does</p>
-    <h2>Four things, done for you.</h2>
-    <p class="fsx-lead">No dashboards to learn. It's an inbox — it just handles the busywork underneath.</p>
+    <h2>Designed to fuel every study you run.</h2>
+    <p class="fsx-lead">Unlimited studies, every channel in one inbox, and AI triage the moment a
+      message lands. Everything you need to answer faster, with nothing new to learn.</p>
   </div>
 
   <div class="fsx-features">
@@ -65,7 +83,7 @@
         <span class="fsx-feature-ic">{{ ic.icon('inbox') }}</span>
         <h3>Every inquiry, one inbox</h3>
         <p>Stop juggling five inboxes, ad dashboards, and voicemails. Email, Facebook &amp; Instagram
-          lead ads, ClinicalTrials.gov, and referrals all land in the same place — deduplicated and
+          lead ads, ClinicalTrials.gov, and referrals all land in the same place, deduplicated and
           tagged by where they came from.</p>
       </div>
       <div class="fsx-feature-viz" aria-hidden="true">
@@ -104,8 +122,8 @@
       <div class="fsx-feature-tx">
         <span class="fsx-feature-ic">{{ ic.icon('sparkle') }}</span>
         <h3>Sorted the moment it arrives</h3>
-        <p>Every message is read and labeled by what it needs — scheduling, a question, documents, an
-          opt-out — and how urgent it is. Your team works the inbox top-down instead of digging, and
+        <p>Every message is read and labeled by what it needs: scheduling, a question, documents, an
+          opt-out, and how urgent it is. Your team works the inbox top-down instead of digging, and
           the important stuff never sinks to the bottom.</p>
       </div>
       <div class="fsx-feature-viz" aria-hidden="true">
@@ -124,10 +142,10 @@
     <div class="fsx-feature fsx-rev">
       <div class="fsx-feature-tx">
         <span class="fsx-feature-ic">{{ ic.icon('users') }}</span>
-        <h3>The right coordinator, automatically</h3>
-        <p>Set it once: all email to your intake coordinator, all Instagram leads to your outreach lead.
-          New inquiries route straight to that person's inbox — no manual hand-offs. And when someone's
-          on vacation, send their whole queue to whoever's covering in one click.</p>
+        <h3>Every inquiry has an owner</h3>
+        <p>Set it once: each channel goes to whoever owns it. New inquiries land in that person's
+          queue automatically. No hand-offs, no "who's got this?" in a group chat. And when someone
+          is away, move their whole queue to whoever is covering in one click.</p>
       </div>
       <div class="fsx-feature-viz" aria-hidden="true">
         <div class="fsx-rule">{{ ic.icon('inbox') }} Meta ads {{ ic.icon('arrow-right') }}
@@ -159,8 +177,8 @@
     <div class="fsx-step">
       <span class="fsx-step-n">2</span>
       <h3>It sorts &amp; routes</h3>
-      <p>Every new inquiry is triaged by what it needs and auto-assigned to the right coordinator by
-        your rules.</p>
+      <p>Every new inquiry is triaged by what it needs and assigned automatically, by your own
+        rules.</p>
     </div>
     <div class="fsx-step">
       <span class="fsx-step-n">3</span>
@@ -178,11 +196,11 @@
       <p class="fsx-kicker">Pricing</p>
       <h2>Free for your site.</h2>
       <p class="fsx-lead">Unlimited studies, unlimited teammates, every channel. We license to sponsors
-        and CROs — we never charge a site, and never charge per referral.</p>
+        and CROs. We never charge a site, and never charge per referral.</p>
       <ul class="fsx-list">
-        <li>{{ ic.icon('check') }} Unlimited studies &amp; coordinators</li>
+        <li>{{ ic.icon('check') }} Unlimited studies &amp; teammates</li>
         <li>{{ ic.icon('check') }} Every intake channel included</li>
-        <li>{{ ic.icon('check') }} Works with the tools you already use — REDCap, your calendar, email</li>
+        <li>{{ ic.icon('check') }} Works with the tools you already use: REDCap, your calendar, email</li>
         <li>{{ ic.icon('check') }} No per-referral fees, ever</li>
       </ul>
     </div>
@@ -226,66 +244,52 @@
   </div>
   <div class="fs-secure-foot">
     <span>{{ ic.icon('lock') }} Need our security overview, DPA, or a BAA for review?</span>
-    <a href="#contact">Request security docs {{ ic.icon('arrow-right') }}</a>
+    <a href="mailto:{{ legal_contact }}?subject=BridgeMD%20security%20documents">Request security docs {{ ic.icon('arrow-right') }}</a>
   </div>
 </section>
 
-<!-- ─────────────────── Contact ─────────────────── -->
-<section id="contact" class="fs-section fs-contact">
-  <div class="fs-contact-card">
-    <div class="fs-contact-copy">
-      <h2>Bring BridgeMD to your site or CRO.</h2>
-      <p>Whatever you're recruiting for now, or lining up next, it works across all of it. Tell us
-        about your studies and we'll walk you through the live product in about 20 minutes, then
-        scope a setup that fits how your team already works.</p>
-      <ul class="fs-list">
-        <li>{{ ic.icon('check') }} Works across every study you run, not just one</li>
-        <li>{{ ic.icon('check') }} Custom setups for sites, CROs and sponsors</li>
-        <li>{{ ic.icon('check') }} Fits alongside the tools you already run — REDCap, calendar, email</li>
-        <li>{{ ic.icon('check') }} Free for your site, no per-referral fees</li>
-      </ul>
+<!-- ─────────────────── Closing CTA ─────────────────── -->
+<section id="demo" class="fsx-section fsx-close-sec">
+  <div class="fsx-close">
+    {{ ic.icon('mark', 'brand-glyph brand-glyph-lg') }}
+    <h2>Bring BridgeMD to your site or CRO.</h2>
+    <p class="fsx-lead">Whatever you're recruiting for now, or lining up next, it works across all of
+      it. Pick a time and we'll walk you through the live product in about 20 minutes, then scope a
+      setup that fits how your team already works.</p>
+    <div class="fsx-cta">
+      <a class="fsx-btn fsx-btn-primary fsx-btn-lg" href="{{ cal_link }}" target="_blank" rel="noopener">Request a demo {{ ic.icon('arrow-right') }}</a>
+      {# The live demo only exists while the study-team side runs as a public
+         demo (SITE_DEMO); without it the link would land on a login. #}
+      {% if site_demo %}
+      <a class="fsx-btn fsx-btn-ghost fsx-btn-lg" href="{{ url_for('marketing_hub') }}">Live demo {{ ic.icon('arrow-right') }}</a>
+      {% endif %}
     </div>
-    <form method="post" action="{{ url_for('demo_request') }}" class="fs-form js-pending-submit" data-pending-text="Sending…">
-      <input type="hidden" name="source" value="sites">
-      <div class="fs-form-row">
-        <label class="fs-field"><span>Name</span>
-          <input type="text" name="name" autocomplete="name" required></label>
-        <label class="fs-field"><span>Organization</span>
-          <input type="text" name="org" autocomplete="organization" placeholder="Site, clinic, or sponsor" required></label>
-      </div>
-      <div class="fs-form-row">
-        <label class="fs-field"><span>Work email</span>
-          <input type="email" name="email" autocomplete="email" required></label>
-        <label class="fs-field"><span>You are a…</span>
-          <select name="role">
-            <option value="Research site / coordinator">Research site / coordinator</option>
-            <option value="Sponsor / CRO">Sponsor / CRO</option>
-            <option value="Clinic / health system">Clinic / health system</option>
-            <option value="Other">Other</option>
-          </select></label>
-      </div>
-      <label class="fs-field"><span>Your studies, or anything custom you need <em>(optional)</em></span>
-        <textarea name="message" rows="3" placeholder="e.g. a Phase 2 obesity study plus 4 others across 3 sites, and a custom intake flow"></textarea></label>
-      <button class="fs-btn fs-btn-primary fs-btn-block" type="submit">Request a demo {{ ic.icon('arrow-right') }}</button>
-      <p class="fs-form-or">Prefer email? <a href="mailto:{{ legal_contact }}?subject=BridgeMD%20demo%20for%20my%20site">{{ legal_contact }}</a></p>
-    </form>
+    <p class="fsx-trust">Free for your site &middot; No per-referral fees &middot; Sites, clinics, CROs &amp; sponsors</p>
   </div>
 </section>
 
 <script>
 (function () {
-  var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var root = document.documentElement;
+  if (!root.classList.contains('fs-motion')) return;
   var blocks = Array.prototype.slice.call(
-    document.querySelectorAll('.fsx-head, .fsx-feature, .fsx-step, .fs-frame, .fs-dt, .fs-contact-card'));
-  if (!blocks.length || reduce || !('IntersectionObserver' in window)) return;
-  blocks.forEach(function (b) { b.classList.add('fs-reveal'); });
+    document.querySelectorAll('.fsx-head, .fsx-feature, .fsx-step, .fsx-proof-stat, .fs-frame, .fs-dt, .fsx-close'));
+  if (!blocks.length) { root.classList.remove('fs-motion'); return; }
+  // Whatever is already on screen shows immediately. Waiting for the observer's
+  // first callback is what made the top of the page arrive a beat late.
+  var fold = window.innerHeight || 0;
+  var pending = blocks.filter(function (b) {
+    if (b.getBoundingClientRect().top >= fold) return true;
+    b.classList.add('is-in');
+    return false;
+  });
   var obs = new IntersectionObserver(function (entries, o) {
     entries.forEach(function (e) {
       if (!e.isIntersecting) return;
       e.target.classList.add('is-in'); o.unobserve(e.target);
     });
   }, { threshold: 0.12, rootMargin: '0px 0px -8% 0px' });
-  blocks.forEach(function (b) { obs.observe(b); });
+  pending.forEach(function (b) { obs.observe(b); });
 })();
 </script>
 {% endblock %}

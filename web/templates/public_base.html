@@ -23,17 +23,12 @@
   {# Self-referencing canonical by default (strips query string); SEO pages like
      condition.html override this block with their absolute canonical URL. #}
   {% block canonical %}<link rel="canonical" href="{{ request.base_url }}">{% endblock %}
-  {# The browser-tab icon must match the brand of the page you are on: teal on the
-     sites/app pages (for_sites, for_sites_feature), blue on the consumer/patient
-     pages (which use the blue --accent identity). Same endpoint test as the
-     body.fs-page class below, so tab colour and page colour never disagree. #}
-  {% set _fs = request.endpoint in ('for_sites', 'for_sites_feature') %}
-  <link rel="icon" type="image/svg+xml" href="{{ static_url('logo.svg' if _fs else 'logo-blue.svg') }}">
-  <link rel="icon" type="image/png" sizes="32x32" href="{{ static_url('favicon-32.png' if _fs else 'favicon-blue-32.png') }}">
-  <link rel="icon" type="image/png" sizes="16x16" href="{{ static_url('favicon-16.png' if _fs else 'favicon-blue-16.png') }}">
-  <link rel="icon" href="{{ static_url('favicon.ico' if _fs else 'favicon-blue.ico') }}" sizes="any">
-  <link rel="apple-touch-icon" sizes="180x180" href="{{ static_url('apple-touch-icon.png' if _fs else 'apple-touch-icon-blue.png') }}">
-  <link rel="manifest" href="{{ static_url('site.webmanifest' if _fs else 'site-blue.webmanifest') }}">
+  <link rel="icon" type="image/svg+xml" href="{{ static_url('logo.svg') }}">
+  <link rel="icon" type="image/png" sizes="32x32" href="{{ static_url('favicon-32.png') }}">
+  <link rel="icon" type="image/png" sizes="16x16" href="{{ static_url('favicon-16.png') }}">
+  <link rel="icon" href="{{ static_url('favicon.ico') }}" sizes="any">
+  <link rel="apple-touch-icon" sizes="180x180" href="{{ static_url('apple-touch-icon.png') }}">
+  <link rel="manifest" href="{{ static_url('site.webmanifest') }}">
   <meta name="theme-color" content="#f8f9fa" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#17191d" media="(prefers-color-scheme: dark)">
   {# Social share cards: rich preview when a link is posted to Reddit / Facebook /
@@ -55,7 +50,7 @@
   {% endblock %}
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Inter:wght@400;500;600;700&family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ static_url('style.css') }}">
   {# Sitewide brand entity so Google + answer engines recognize BridgeMD as one
      consistent organization/site across every page. Page-specific schema (e.g.
@@ -66,18 +61,18 @@
     "@graph": [
       {
         "@type": "Organization",
-        "@id": "{{ url_for('home', _external=True) }}#org",
+        "@id": "{{ url_for('for_sites', _external=True) }}#org",
         "name": "BridgeMD",
-        "url": "{{ url_for('home', _external=True) }}",
+        "url": "{{ url_for('for_sites', _external=True) }}",
         "logo": "{{ url_for('static', filename='logo.svg', _external=True) }}",
         "description": "BridgeMD helps people find recruiting clinical trials near them and apply online, free."
       },
       {
         "@type": "WebSite",
-        "@id": "{{ url_for('home', _external=True) }}#website",
+        "@id": "{{ url_for('for_sites', _external=True) }}#website",
         "name": "BridgeMD",
-        "url": "{{ url_for('home', _external=True) }}",
-        "publisher": {"@id": "{{ url_for('home', _external=True) }}#org"}
+        "url": "{{ url_for('for_sites', _external=True) }}",
+        "publisher": {"@id": "{{ url_for('for_sites', _external=True) }}#org"}
       }
     ]
   }
@@ -96,35 +91,12 @@
 <a class="skip-link" href="#main">Skip to main content</a>
 {% block site_header %}
 <header class="pub-nav">
-  <a class="brand" href="{{ url_for('home') }}">{{ ic.icon('mark', 'brand-glyph brand-blue') }}BridgeMD</a>
-  {% if not demo_home %}
+  <a class="brand" href="{{ url_for('home') }}">{{ ic.icon('mark', 'brand-glyph') }}BridgeMD</a>
+  {# Landing pages for both patients and sites - no login/account UI anywhere. #}
   <nav class="pub-nav-center" aria-label="Primary">
-    <a href="{{ url_for('find') }}">Find a trial</a>
-    <a href="{{ url_for('trials_index') }}">Browse trials</a>
-    <a href="{{ url_for('how_it_works') }}">How it works</a>
-    <a href="{{ url_for('blog_index') }}">Learn</a>
     <a href="{{ sites_home_url }}">For sites</a>
-    <a href="{{ url_for('alerts') }}" class="pub-nav-alerts">{{ ic.icon('bell') }} Alerts{% if alerts_new_count %} <span class="nav-badge nav-badge-new">{{ alerts_new_count }}</span>{% endif %}</a>
   </nav>
-  {% endif %}
   <div class="pub-nav-auth">
-    {% if not demo_home %}
-    {% if patient_user %}
-    <a href="{{ url_for('applications') }}" class="pub-apps">My applications{% if messages_unread %} <span class="nav-badge nav-badge-new">{{ messages_unread }}</span>{% elif applications_count %} <span class="nav-badge">{{ applications_count }}</span>{% endif %}</a>
-    {% block pub_nav_extra %}{% endblock %}
-    <a href="{{ url_for('patient_settings') }}">Settings</a>
-    {% set nu_name = (patient_user.full_name.split(' ')[0] if patient_user.full_name else (patient_user.email.split('@')[0] if patient_user.email else 'Account')) %}
-    <span class="nav-user" title="Signed in as {{ patient_user.email or nu_name }}">
-      <span class="nav-user-av">{{ (patient_user.full_name or patient_user.email or 'P')[0]|upper }}</span>
-      <b>{{ nu_name }}</b></span>
-    <form method="post" action="{{ url_for('patient_logout') }}" style="margin:0;">
-      <button type="submit" class="link-btn">Sign out</button>
-    </form>
-    {% else %}
-    <a href="{{ url_for('patient_login') }}">Sign in</a>
-    <a class="btn btn-primary btn-sm pub-signup" href="{{ url_for('patient_signup') }}">Sign up</a>
-    {% endif %}
-    {% endif %}
     <button type="button" class="theme-toggle" id="themeToggle" aria-label="Switch between light and dark theme" title="Toggle light / dark theme">
       {{ ic.icon('sun', 'ico icon-sun') }}{{ ic.icon('moon', 'ico icon-moon') }}
     </button>
@@ -149,14 +121,14 @@
 <footer class="pub-foot">
   <div class="pub-foot-in">
     <div class="pub-foot-brand">
-      <span>{{ ic.icon('mark', 'brand-glyph brand-glyph-sm brand-blue') }}BridgeMD</span>
+      <span>{{ ic.icon('mark', 'brand-glyph brand-glyph-sm') }}BridgeMD</span>
       <span class="pub-foot-note">Connecting people to the care that's looking for them.</span>
     </div>
   </div>
   <div class="pub-foot-legal">
     <p class="pub-foot-disc">Information and trial-matching tool - not medical advice, and not the study
       sponsor. Trial details come from ClinicalTrials.gov; the study team decides eligibility.</p>
-    <p class="pub-foot-links"><a href="{{ url_for('trials_index') }}">Browse trials</a> · <a href="{{ url_for('blog_index') }}">Learn</a> · <a href="{{ url_for('privacy') }}">Privacy</a> · <a href="{{ url_for('terms') }}">Terms</a></p>
+    <p class="pub-foot-links"><a href="{{ url_for('trials_index') }}">Browse trials</a> · <a href="{{ url_for('privacy') }}">Privacy</a> · <a href="{{ url_for('terms') }}">Terms</a></p>
   </div>
 </footer>
 {% endblock %}

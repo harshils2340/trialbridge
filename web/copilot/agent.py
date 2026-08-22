@@ -247,15 +247,9 @@ _PROPOSAL_INTRO = {
 
 def _help_payload():
     return {
-        "summary": ("I can help across your studies - your inbox, the queue, "
-                    "calendar, documents, campaigns, and record matches. Try: "
-                    "\u201cdraft replies to my inbox\u201d, \u201cwho's waiting on "
-                    "my decision?\u201d, \u201cwho's stuck in screening?\u201d, "
-                    "\u201chow's my funnel?\u201d, \u201cwhat documents are "
-                    "due?\u201d, \u201cwhich campaign enrolls cheapest?\u201d, "
-                    "\u201cwhat should I prep for tomorrow?\u201d, or open an "
-                    "applicant and ask \u201csummarize this applicant\u201d or "
-                    "\u201cdraft a reply\u201d."),
+        "summary": ("I work across your studies \u2014 inbox, review queue, "
+                    "calendar, documents, and campaigns. Tell me what you want "
+                    "to do, or pick one below."),
         "items": [], "citations": [],
     }
 
