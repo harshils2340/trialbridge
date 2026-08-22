@@ -5,6 +5,8 @@ Run: python test_gmail_oauth.py
 import base64
 import json
 import os
+import subprocess
+import sys
 import tempfile
 import urllib.parse
 from email import message_from_bytes
@@ -17,8 +19,10 @@ os.environ["SITE_DEMO"] = "0"
 os.environ["ALERTS_BACKGROUND"] = "0"
 os.environ["REMINDERS_BACKGROUND"] = "0"
 os.environ["SECRET_KEY"] = "gmail-oauth-test-secret"
-os.environ["GOOGLE_CLIENT_ID"] = "test-client.apps.googleusercontent.com"
-os.environ["GOOGLE_CLIENT_SECRET"] = "test-client-secret"
+os.environ.pop("GOOGLE_CLIENT_ID", None)
+os.environ.pop("GOOGLE_CLIENT_SECRET", None)
+os.environ["GOOGLE_CLIENT_ID_DEV"] = "test-client.apps.googleusercontent.com"
+os.environ["GOOGLE_CLIENT_SECRET_DEV"] = "test-client-secret"
 os.environ["PUBLIC_BASE_URL"] = ""
 os.environ["OAUTH_TOKEN_ENCRYPTION_KEY"] = base64.urlsafe_b64encode(
     b"0123456789abcdef0123456789abcdef").decode("ascii")
@@ -48,6 +52,7 @@ def _oauth_state(response):
 
 
 def test_gmail_oauth_flow():
+    assert webapp.GOOGLE_CLIENT_ENV == "DEV"
     with webapp.app.app_context():
         user_id = db.create_user(
             "owner.gmail@example.com", "disabled", "Gmail Owner", verified=True)
@@ -256,6 +261,38 @@ def test_gmail_oauth_flow():
         webapp._sync_gmail_connection = originals["sync"]
 
     print("PASS: Gmail OAuth, encrypted tokens, refresh, and disconnect")
+
+
+def test_google_prod_client_selection():
+    prod_db = tempfile.NamedTemporaryFile(suffix=".db", delete=False).name
+    env = os.environ.copy()
+    env.update({
+        "BEHIND_PROXY": "1",
+        "DB_PATH": prod_db,
+        "GOOGLE_CLIENT_ID_DEV": "dev-client.apps.googleusercontent.com",
+        "GOOGLE_CLIENT_SECRET_DEV": "dev-client-secret",
+        "GOOGLE_CLIENT_ID_PROD": "prod-client.apps.googleusercontent.com",
+        "GOOGLE_CLIENT_SECRET_PROD": "prod-client-secret",
+        "GOOGLE_CLIENT_ID": "legacy-client.apps.googleusercontent.com",
+        "GOOGLE_CLIENT_SECRET": "legacy-client-secret",
+    })
+    check = (
+        "import app; "
+        "assert app.GOOGLE_CLIENT_ENV == 'PROD'; "
+        "assert app.GOOGLE_CLIENT_ID == 'prod-client.apps.googleusercontent.com'; "
+        "assert app.GOOGLE_CLIENT_SECRET == 'prod-client-secret'"
+    )
+    try:
+        result = subprocess.run(
+            [sys.executable, "-c", check], cwd=os.path.dirname(__file__),
+            env=env, capture_output=True, text=True, check=False)
+        assert result.returncode == 0, result.stderr
+    finally:
+        try:
+            os.unlink(prod_db)
+        except OSError:
+            pass
+    print("PASS: production selects the production Google client")
 
 
 def test_gmail_oauth_rejects_bad_state():
@@ -603,6 +640,7 @@ def test_gmail_full_and_incremental_sync():
 def main():
     try:
         test_gmail_oauth_flow()
+        test_google_prod_client_selection()
         test_gmail_oauth_rejects_bad_state()
         test_logged_out_connect_creates_private_workspace()
         test_gmail_reply_context_preserves_blank_subject()

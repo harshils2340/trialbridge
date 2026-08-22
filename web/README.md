@@ -38,13 +38,26 @@ The app automatically loads local variables from the ignored repository-root
 
 ### Gmail OAuth for the marketing hub
 
-Set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` in the root `.env`. For local
-development, configure the Google OAuth web client with:
+Set `GOOGLE_CLIENT_ID_DEV` and `GOOGLE_CLIENT_SECRET_DEV` in the root `.env`.
+For local development, configure that Google OAuth web client with:
 
 - Authorized JavaScript origin: `http://127.0.0.1:5000`
+- Authorized redirect URI: `http://127.0.0.1:5000/login/google/callback`
+- Authorized redirect URI: `http://127.0.0.1:5000/account/google/callback`
 - Authorized redirect URI: `http://127.0.0.1:5000/integrations/gmail/callback`
 
-For production, also set `OAUTH_TOKEN_ENCRYPTION_KEY` to a stable Fernet key:
+Set `GOOGLE_CLIENT_ID_PROD` and `GOOGLE_CLIENT_SECRET_PROD` in Render. The
+production Google client must allow:
+
+- Authorized JavaScript origin: `https://bridgemd.health`
+- Authorized redirect URI: `https://bridgemd.health/login/google/callback`
+- Authorized redirect URI: `https://bridgemd.health/account/google/callback`
+- Authorized redirect URI: `https://bridgemd.health/integrations/gmail/callback`
+
+The legacy `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` names are accepted as
+a complete-pair migration fallback, but should be removed after the new names
+are deployed. For production, also set `OAUTH_TOKEN_ENCRYPTION_KEY` to a stable
+Fernet key:
 
 ```bash
 python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
@@ -209,7 +222,8 @@ commented `disk:` block in `render.yaml`).
 | `NOTIFY_SMS` | `1` enables optional Twilio SMS for patient-facing notifications |
 | `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER` | Twilio REST credentials + sender number (E.164) |
 | `SMS_DEFAULT_COUNTRY_CODE` | Default country code when normalizing 10-digit numbers (`+1` default) |
-| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Enable Google sign-in and Gmail OAuth in the marketing hub |
+| `GOOGLE_CLIENT_ID_DEV`, `GOOGLE_CLIENT_SECRET_DEV` | Local Google sign-in and Gmail OAuth web client |
+| `GOOGLE_CLIENT_ID_PROD`, `GOOGLE_CLIENT_SECRET_PROD` | Production Google sign-in and Gmail OAuth web client |
 | `OAUTH_TOKEN_ENCRYPTION_KEY` | Recommended stable Fernet key for provider tokens at rest |
 | `GMAIL_INITIAL_THREAD_LIMIT` | Latest inbox threads imported by a full sync (default `20`, maximum `50`) |
 | `GMAIL_THREAD_MESSAGE_LIMIT` | Messages retained from each imported Gmail thread (default `50`, maximum `100`) |

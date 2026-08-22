@@ -1,0 +1,7 @@
+{
+    "company": "Centre de recherche du CHUM (CRCHUM)",
+    "trial_finder_url": "",
+    "trial_finder_weakness": 10,
+    "reason": "The provided results do not show a primary CRCHUM patient-facing clinical-trial finder. The CRCHUM careers page mentions clinical trials in a research context, while the only apparent trial listing is hosted by CenterWatch and directs users to an external trial-discovery service. There is no evidence of condition or location search, patient-friendly study summaries, eligibility guidance, or an express-interest flow.",
+    "confidence": "low"
+}

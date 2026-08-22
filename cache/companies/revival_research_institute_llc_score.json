@@ -1,0 +1,7 @@
+{
+    "company": "Revival Research Institute, LLC",
+    "trial_finder_url": "https://revivalresearch.org/studies/psoriasis-clinical-trials-in-michigan/",
+    "trial_finder_weakness": 6,
+    "reason": "The psoriasis clinical-trials page appears to be a patient-facing study landing page and includes a form with phone-contact consent. However, the evidence shows only condition-specific pages, with no indication of a broader condition or location search, meaningful filtering, understandable study cards, or clear eligibility summaries. The experience appears noticeably difficult for browsing multiple trials.",
+    "confidence": "low"
+}

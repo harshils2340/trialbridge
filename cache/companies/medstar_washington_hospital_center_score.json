@@ -1,0 +1,7 @@
+{
+    "company": "MedStar Washington Hospital Center",
+    "trial_finder_url": "https://www.medstarhealth.org/innovation-and-research/medstar-health-research-institute/clinical-trials",
+    "trial_finder_weakness": 8,
+    "reason": "A dedicated clinical-trials page appears to be the primary patient-facing discovery page, but the evidence only shows an 'All clinical trials' listing with protocol numbers and no condition or location search, meaningful filters, eligibility summaries, or clear express-interest flow. It appears more research-oriented than patient-friendly.",
+    "confidence": "low"
+}

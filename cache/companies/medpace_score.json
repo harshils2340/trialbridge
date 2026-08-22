@@ -1,0 +1,7 @@
+{
+    "company": "Medpace",
+    "trial_finder_url": "https://www.medpace.com/study-participants/browse-studies/",
+    "trial_finder_weakness": 4,
+    "reason": "Medpace has a clearly patient-facing Study Participant Opportunities section with a dedicated Browse Studies/Paid Clinical Trials page and FAQs. However, the provided evidence does not show condition or location search, filtering, eligibility summaries, study cards, or an express-interest flow.",
+    "confidence": "low"
+}

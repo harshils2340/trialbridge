@@ -1,0 +1,7 @@
+{
+    "company": "MSD in the UK",
+    "trial_finder_url": "",
+    "trial_finder_weakness": 10,
+    "reason": "The provided results do not show a patient-facing clinical-trial finder. The MSD UK Patient Engagement page discusses trial design and partnerships but does not indicate condition or location search, study browsing, eligibility information, or an express-interest flow.",
+    "confidence": "low"
+}

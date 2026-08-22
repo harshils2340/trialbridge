@@ -1,0 +1,7 @@
+{
+    "company": "Merck",
+    "trial_finder_url": "https://www.merckclinicaltrials.com/",
+    "trial_finder_weakness": 4,
+    "reason": "Merck has a dedicated patient-facing clinical-trials website with a prominent trial-finding function and a search page. However, the provided evidence does not show whether it supports condition or location search, useful filters, eligibility summaries, or an easy express-interest flow.",
+    "confidence": "low"
+}

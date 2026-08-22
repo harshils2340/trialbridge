@@ -1,0 +1,7 @@
+{
+    "company": "University Health Network",
+    "trial_finder_url": "https://www.uhn.ca/PrincessMargaret/Research/Cancer_Clinical_Research/Pages/clinical_trials.aspx",
+    "trial_finder_weakness": 6,
+    "reason": "This appears to be the primary patient-facing clinical-trials page, but the available evidence presents it mainly as a Cancer Clinical Research Unit resource. The search results do not show condition or location filters, study cards, eligibility summaries, or a clear express-interest action, so the experience appears research-oriented and its usability is uncertain.",
+    "confidence": "low"
+}

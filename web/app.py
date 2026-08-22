@@ -437,8 +437,16 @@ PATIENT_GOOGLE_STATE_KEY = "patient_google_state"
 MARKETING_GOOGLE_STATE_KEY = "marketing_google_state"
 MARKETING_INSTAGRAM_STATE_KEY = "marketing_instagram_state"
 CSRF_SESSION_KEY = "_csrf_token"
-GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "").strip()
-GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "").strip()
+GOOGLE_CLIENT_ENV = "PROD" if IS_PROD else "DEV"
+GOOGLE_CLIENT_ID = os.environ.get(
+    f"GOOGLE_CLIENT_ID_{GOOGLE_CLIENT_ENV}", "").strip()
+GOOGLE_CLIENT_SECRET = os.environ.get(
+    f"GOOGLE_CLIENT_SECRET_{GOOGLE_CLIENT_ENV}", "").strip()
+# Compatibility for existing deployments during the key-name migration. Only
+# fall back as a complete pair so credentials from different clients never mix.
+if not GOOGLE_CLIENT_ID and not GOOGLE_CLIENT_SECRET:
+    GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "").strip()
+    GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "").strip()
 INSTAGRAM_APP_ID = (
     os.environ.get("INSTAGRAM_APP_ID", "").strip()
     or os.environ.get("META_APP_ID", "").strip())
@@ -1202,6 +1210,13 @@ def _abs_url(endpoint, **kw):
     return url_for(endpoint, _external=True, **kw)
 
 
+def _oauth_redirect_url(endpoint):
+    """Use the configured public host in production and the request host locally."""
+    if IS_PROD:
+        return _abs_url(endpoint)
+    return url_for(endpoint, _external=True)
+
+
 def notifications_ready():
     return _NOTIFIER.email_ready()
 
@@ -1887,7 +1902,7 @@ def user_google_start():
     session[USER_GOOGLE_STATE_KEY] = state
     qs = urllib.parse.urlencode({
         "client_id": GOOGLE_CLIENT_ID,
-        "redirect_uri": _abs_url("user_google_callback"),
+        "redirect_uri": _oauth_redirect_url("user_google_callback"),
         "response_type": "code",
         "scope": GOOGLE_OAUTH_SCOPE,
         "state": state,
@@ -2196,7 +2211,7 @@ def _instagram_authorization_url(state):
     params = dict(urllib.parse.parse_qsl(parts.query, keep_blank_values=True))
     params.update({
         "client_id": INSTAGRAM_APP_ID,
-        "redirect_uri": _abs_url("marketing_instagram_callback"),
+        "redirect_uri": _oauth_redirect_url("marketing_instagram_callback"),
         "response_type": "code",
         "scope": ",".join(INSTAGRAM_OAUTH_SCOPES),
         "state": state,
@@ -2213,7 +2228,7 @@ def _instagram_exchange_code(code):
         "client_id": INSTAGRAM_APP_ID,
         "client_secret": INSTAGRAM_APP_SECRET,
         "grant_type": "authorization_code",
-        "redirect_uri": _abs_url("marketing_instagram_callback"),
+        "redirect_uri": _oauth_redirect_url("marketing_instagram_callback"),
         "code": code,
     }).encode("utf-8")
     payload = _instagram_json_request(
@@ -2311,7 +2326,7 @@ def _google_exchange_code(code, redirect_endpoint="patient_google_callback"):
         "code": code,
         "client_id": GOOGLE_CLIENT_ID,
         "client_secret": GOOGLE_CLIENT_SECRET,
-        "redirect_uri": _abs_url(redirect_endpoint),
+        "redirect_uri": _oauth_redirect_url(redirect_endpoint),
         "grant_type": "authorization_code",
     }).encode("utf-8")
     req = urllib.request.Request(
@@ -3375,7 +3390,7 @@ def patient_google_start():
     session[PATIENT_GOOGLE_STATE_KEY] = state
     qs = urllib.parse.urlencode({
         "client_id": GOOGLE_CLIENT_ID,
-        "redirect_uri": _abs_url("patient_google_callback"),
+        "redirect_uri": _oauth_redirect_url("patient_google_callback"),
         "response_type": "code",
         "scope": GOOGLE_OAUTH_SCOPE,
         "state": state,
@@ -5544,7 +5559,7 @@ def marketing_gmail_connect():
     }
     qs = urllib.parse.urlencode({
         "client_id": GOOGLE_CLIENT_ID,
-        "redirect_uri": _abs_url("marketing_gmail_callback"),
+        "redirect_uri": _oauth_redirect_url("marketing_gmail_callback"),
         "response_type": "code",
         "scope": " ".join(GMAIL_OAUTH_SCOPES),
         "state": state,

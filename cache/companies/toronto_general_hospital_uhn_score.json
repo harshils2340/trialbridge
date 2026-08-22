@@ -1,0 +1,7 @@
+{
+    "company": "Toronto General Hospital, UHN",
+    "trial_finder_url": "",
+    "trial_finder_weakness": 10,
+    "reason": "The provided results do not show a primary patient-facing clinical-trial finder for Toronto General Hospital, UHN. The Osteoporosis Clinic page mentions clinical-trial staff, and the Guided Therapeutics Program page describes research infrastructure, but neither appears to offer condition or location search, trial browsing, eligibility summaries, or an express-interest flow.",
+    "confidence": "low"
+}

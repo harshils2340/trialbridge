@@ -1,0 +1,7 @@
+{
+    "company": "ClinSurge Research",
+    "trial_finder_url": "https://clinsurge.ca/patients/",
+    "trial_finder_weakness": 10,
+    "reason": "The For Participants page appears to be the primary patient-facing page, but the available evidence only mentions compensation and does not show a clinical-trial finder, study listings, condition or location search, filters, eligibility summaries, or an express-interest flow.",
+    "confidence": "low"
+}

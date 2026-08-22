@@ -1,0 +1,7 @@
+{
+    "company": "Sunnybrook Research Institute",
+    "trial_finder_url": "https://research.sunnybrook.ca/trials/",
+    "trial_finder_weakness": 6,
+    "reason": "The Trials page appears to be the primary patient-facing entry point because the main SRI site directs visitors to it for patient research opportunities. However, the provided evidence does not show condition or location search, meaningful filters, eligibility summaries, study cards, or a clear express-interest flow. The reference to more than 600 clinical trials also suggests that browsing may be difficult without stronger discovery tools.",
+    "confidence": "low"
+}

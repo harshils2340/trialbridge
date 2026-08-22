@@ -1,0 +1,7 @@
+{
+    "company": "Kingston Health Sciences Centre",
+    "trial_finder_url": "",
+    "trial_finder_weakness": 10,
+    "reason": "The provided results do not identify a primary Kingston Health Sciences Centre patient-facing clinical-trial finder. The visible results are primarily research or ethics resources, a third-party trial listing, and an individual study page; none shows condition or location search, patient-friendly study information, meaningful filters, or an express-interest flow.",
+    "confidence": "low"
+}

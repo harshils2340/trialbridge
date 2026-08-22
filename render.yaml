@@ -22,9 +22,9 @@ services:
     envVars:
       - key: SECRET_KEY
         generateValue: true      # Render generates a stable random secret
-      - key: GOOGLE_CLIENT_ID
+      - key: GOOGLE_CLIENT_ID_PROD
         sync: false              # Google OAuth web client
-      - key: GOOGLE_CLIENT_SECRET
+      - key: GOOGLE_CLIENT_SECRET_PROD
         sync: false
       - key: INSTAGRAM_APP_ID
         sync: false              # Meta app ID for Instagram API

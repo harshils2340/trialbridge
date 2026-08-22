@@ -1,0 +1,7 @@
+{
+    "company": "Merck Canada",
+    "trial_finder_url": "https://www.merck.ca/en/research-and-products/",
+    "trial_finder_weakness": 10,
+    "reason": "The search results point to a research-oriented Research & Products page with a Clinical Trials link, but provide no evidence of a patient-facing trial finder, condition or location search, study filters, eligibility summaries, or an express-interest flow.",
+    "confidence": "low"
+}

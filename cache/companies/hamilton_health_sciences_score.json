@@ -1,0 +1,7 @@
+{
+    "company": "Hamilton Health Sciences",
+    "trial_finder_url": "https://www.hamiltonhealthsciences.ca/research-innovation/research/explore-research/",
+    "trial_finder_weakness": 6,
+    "reason": "Explore Research appears to be the primary patient-facing entry point because it is described as a new approach to recruiting patients for clinical trials. However, the provided evidence does not show condition or location search, filtering, eligibility summaries, study cards, or a clear express-interest flow. The separate JCC Clinical Trials page is also patient-relevant, but its discovery functionality is not evident from the results.",
+    "confidence": "low"
+}

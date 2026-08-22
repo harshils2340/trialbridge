@@ -1,0 +1,7 @@
+{
+    "company": "Bertucci MedSpa",
+    "trial_finder_url": "https://www.bertuccimedspa.com/research/study/help-shape-the-future-of-cosmetic-dermatology/",
+    "trial_finder_weakness": 8,
+    "reason": "The Bertucci MedSpa research page appears to be a patient-facing study landing page, but the evidence does not show a searchable or browsable trial finder. There is no indication of condition or location search, meaningful filters, eligibility summaries, or a clear multi-study discovery experience. Other results point to external trial-listing sites rather than an integrated patient-friendly finder.",
+    "confidence": "low"
+}

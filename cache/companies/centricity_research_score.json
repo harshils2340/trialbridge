@@ -1,0 +1,7 @@
+{
+    "company": "Centricity Research",
+    "trial_finder_url": "https://centricityresearch.com/clinical-studies/",
+    "trial_finder_weakness": 6,
+    "reason": "The Clinical Studies page appears to be the primary patient-facing location for browsing trials, and the Contact and FAQ pages direct prospective participants to current enrolling studies. However, the provided evidence does not show condition or location search, meaningful filters, eligibility summaries, study cards, or a clear express-interest flow, so the discovery experience appears noticeably difficult. Confidence is low because the page contents are not shown.",
+    "confidence": "low"
+}

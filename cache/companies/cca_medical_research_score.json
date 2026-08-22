@@ -1,0 +1,7 @@
+{
+    "company": "CCA Medical Research",
+    "trial_finder_url": "",
+    "trial_finder_weakness": 10,
+    "reason": "No obvious patient-facing clinical trial finder was found in the public search results.",
+    "confidence": "medium"
+}

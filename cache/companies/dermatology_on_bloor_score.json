@@ -1,0 +1,7 @@
+{
+    "company": "Dermatology on Bloor",
+    "trial_finder_url": "https://dermonbloor.com/research/",
+    "trial_finder_weakness": 6,
+    "reason": "The research page appears to be the primary patient-facing destination because it advertises actively recruiting trials. However, the available evidence does not show condition or location search, meaningful filtering, eligibility summaries, understandable study cards, or a clear express-interest flow. The page is described primarily as the site's clinical research arm, suggesting a research-oriented rather than clearly patient-friendly trial discovery experience.",
+    "confidence": "low"
+}

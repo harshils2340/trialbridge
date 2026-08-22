@@ -1,0 +1,7 @@
+{
+    "company": "Sunnybrook",
+    "trial_finder_url": "https://research.sunnybrook.ca/trials/",
+    "trial_finder_weakness": 8,
+    "reason": "This appears to be Sunnybrook's primary clinical-trials page, but the available evidence presents it as a research-oriented information hub rather than a patient-friendly trial finder. There is no demonstrated condition or location search, meaningful filtering, study-card presentation, eligibility summary, or clear express-interest flow.",
+    "confidence": "low"
+}

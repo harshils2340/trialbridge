@@ -1,0 +1,7 @@
+{
+    "company": "Pharma Medica Research Inc.",
+    "trial_finder_url": "https://www.pharmamedica.com/volunteer",
+    "trial_finder_weakness": 10,
+    "reason": "The volunteer page appears to be the primary patient-facing entry point, but the provided evidence shows no condition or location search, study browsing, filters, eligibility summaries, or clear trial-specific discovery experience. It appears focused on recruiting volunteers generally, with a separate volunteer form and FAQ.",
+    "confidence": "low"
+}

@@ -1,0 +1,65 @@
+[
+    {
+        "title": "Clinical Trials",
+        "link": "https://www.roche.com/innovation/clinical-trials",
+        "snippet": "Our statement on advancing inclusive research in clinical trials. Roche believes that improving health outcomes for all patients is core to our mission, and we ...",
+        "sitelinks": [
+            {
+                "title": "Frequently asked questions on ...",
+                "link": "https://www.roche.com/innovation/clinical-trials/frequently-asked-questions"
+            },
+            {
+                "title": "Clinical study data and ...",
+                "link": "https://www.roche.com/innovation/clinical-trials/data-sharing/request"
+            },
+            {
+                "title": "Investigator initiated studies",
+                "link": "https://www.roche.com/innovation/clinical-trials/investigator-initiated-studies"
+            },
+            {
+                "title": "Our commitment to data sharing",
+                "link": "https://www.roche.com/innovation/clinical-trials/data-sharing"
+            },
+            {
+                "title": "Access to investigational ...",
+                "link": "https://www.roche.com/innovation/clinical-trials/investigational-medicines"
+            },
+            {
+                "title": "Roche Clinical Site Support ...",
+                "link": "https://www.roche.com/innovation/clinical-trials/clinical-site-support"
+            }
+        ],
+        "position": 1
+    },
+    {
+        "title": "Clinical trials - Roche",
+        "link": "https://www.roche.com/topic/clinical-trials",
+        "snippet": "What is a phase 4 clinical trial? And why is it important? Discover what Phase 4 clinical trials involve, their role in ensuring long-term drug safety and ...",
+        "position": 2
+    },
+    {
+        "title": "Product Development Pipeline - Roche",
+        "link": "https://www.roche.com/solutions/pipeline",
+        "snippet": "Clinical trials are essential to determine whether new drugs or ... Roche websites. Diagnostics portal · Suppliers information · Roche around the ...",
+        "date": "Jul 23, 2026",
+        "position": 3
+    },
+    {
+        "title": "Roche in Clinical Trials | ForPatients-Roche",
+        "link": "https://genentech-clinicaltrials.com/en/faq/roche-in-clinical-trials.html",
+        "snippet": "All Roche clinical trials are carried out according to the laws of the country in which the trial is being done. Roche follows the 'Guideline for Good Clinical ...",
+        "position": 4
+    },
+    {
+        "title": "Roche Clinical Trials | Medically Roche Science Hub",
+        "link": "https://medically.roche.com/global/en/clinical-trial.html",
+        "snippet": "Healthcare Professionals can search the Medically Science Hub from Roche for interventional & no Interventional clinical trials worldwide. Read more >>",
+        "position": 5
+    },
+    {
+        "title": "Diseases, Medical Info & Clinical Studies | ForPatients-R...",
+        "link": "https://forpatients.roche.com/en.html",
+        "snippet": "Explore our comprehensive guides to understand the symptoms, causes, and medical research Roche/Genentech is conducting in areas such as Oncology, Neurology, ...",
+        "position": 7
+    }
+]

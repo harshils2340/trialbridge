@@ -1,0 +1,7 @@
+{
+    "company": "Providence Health Care",
+    "trial_finder_url": "https://www.providencehealthcare.org/en/get-involved/research-studies",
+    "trial_finder_weakness": 4,
+    "reason": "This appears to be the primary patient-facing page because it directs visitors to a clinical trials directory for currently enrolling studies. The evidence confirms a searchable directory, but does not show condition or location filters, eligibility summaries, study cards, or a clear online express-interest flow; patients are told to ask their care team or contact Providence for more information.",
+    "confidence": "low"
+}

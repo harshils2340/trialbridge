@@ -1,0 +1,7 @@
+{
+    "company": "Roche",
+    "trial_finder_url": "https://forpatients.roche.com/en.html",
+    "trial_finder_weakness": 8,
+    "reason": "The ForPatients-Roche page appears to be the primary patient-facing destination because it references clinical studies and patient-oriented disease information. However, the provided evidence does not show condition or location search, meaningful filters, eligibility summaries, study cards, or a clear express-interest flow. Other prominent results appear research-oriented or intended for healthcare professionals.",
+    "confidence": "low"
+}

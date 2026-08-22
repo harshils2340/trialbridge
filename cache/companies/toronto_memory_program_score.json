@@ -1,0 +1,7 @@
+{
+    "company": "Toronto Memory Program",
+    "trial_finder_url": "https://torontomemoryprogram.com/clinical-trials/",
+    "trial_finder_weakness": 6,
+    "reason": "The site has dedicated Clinical Trials and Current Studies pages, suggesting patients can browse research opportunities. However, the provided evidence does not show condition or location search, meaningful filters, eligibility summaries, study cards, or a clear express-interest flow. The experience therefore appears to be a basic browsing destination rather than a patient-friendly trial finder.",
+    "confidence": "low"
+}

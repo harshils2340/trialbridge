@@ -1,0 +1,7 @@
+{
+    "company": "Dynamic drug advancement",
+    "trial_finder_url": "https://www.dynamicdrugadvancement.com/clinical-trials",
+    "trial_finder_weakness": 8,
+    "reason": "The company's Clinical Trials page appears to be the primary patient-facing destination for browsing studies, but the provided evidence only indicates a general list and does not show condition or location search, meaningful filters, eligibility summaries, or a clear express-interest flow. Other results point to individual third-party study pages rather than a unified patient-friendly finder.",
+    "confidence": "low"
+}

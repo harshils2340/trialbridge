@@ -1,0 +1,7 @@
+{
+    "company": "Toronto General Hospital",
+    "trial_finder_url": "",
+    "trial_finder_weakness": 10,
+    "reason": "The provided results are primarily research-oriented pages, including the Toronto General Hospital Research Institute and a UHN research page mentioning a Clinical Trials Unit. None clearly presents a patient-facing trial finder with condition or location search, meaningful filters, eligibility summaries, or an express-interest flow. Other results are a restart article, a PDF, or third-party listings.",
+    "confidence": "low"
+}

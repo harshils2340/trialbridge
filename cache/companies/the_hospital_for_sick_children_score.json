@@ -1,0 +1,7 @@
+{
+    "company": "The Hospital for Sick Children",
+    "trial_finder_url": "https://www.sickkids.ca/en/research/clinical-research/participate-clinical-research/",
+    "trial_finder_weakness": 6,
+    "reason": "This appears to be the hospital's primary patient-facing entry point for participating in clinical research. However, the available evidence does not show condition or location search, study filters, eligibility summaries, study cards, or a clear express-interest flow. A separate cancer-centre clinical-trials page exists, but the evidence does not establish a comprehensive patient trial finder.",
+    "confidence": "low"
+}

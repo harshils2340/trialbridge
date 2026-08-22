@@ -1,0 +1,7 @@
+{
+    "company": "Inflamax Research",
+    "trial_finder_url": "",
+    "trial_finder_weakness": 10,
+    "reason": "The provided results do not show a dedicated, patient-facing trial finder for Inflamax Research. The ClinicalConnection result is a single healthy-volunteer study, and the Cortico result appears to be a clinic directory listing rather than a searchable trial-browsing experience. Other results are research, corporate acquisition, publication, or sponsor trial pages.",
+    "confidence": "low"
+}

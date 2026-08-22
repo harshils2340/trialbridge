@@ -1,0 +1,7 @@
+{
+    "company": "DermEdge",
+    "trial_finder_url": "https://dermedge.com/clinical-trials",
+    "trial_finder_weakness": 6,
+    "reason": "The DermEdge clinical trials page appears to be the primary patient-facing destination because it explicitly discusses clinical trials and how to participate. However, the provided evidence does not show condition or location search, filtering, study cards, eligibility summaries, or an easy expression-of-interest flow, so the discovery experience appears noticeably limited.",
+    "confidence": "low"
+}

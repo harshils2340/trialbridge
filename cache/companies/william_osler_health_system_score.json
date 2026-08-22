@@ -1,0 +1,7 @@
+{
+    "company": "William Osler Health System",
+    "trial_finder_url": "https://www.williamoslerhs.ca/research-and-outreach/osler-research-institute-for-health-innovation/open-clinical-trials/",
+    "trial_finder_weakness": 6,
+    "reason": "This appears to be the primary patient-facing clinical-trial page, but the available evidence only indicates that patients can ask about open oncology trials. There is no evidence of condition or location search, filtering, eligibility summaries, study cards, or a clear online expression-of-interest flow.",
+    "confidence": "low"
+}

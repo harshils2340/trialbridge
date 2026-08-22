@@ -1,0 +1,7 @@
+{
+    "company": "Bristol NHS Foundation Trust",
+    "trial_finder_url": "https://www.uhbristol.nhs.uk/patients-and-visitors/your-hospitals/bhoc/treatments/research-and-clinical-trials/",
+    "trial_finder_weakness": 8,
+    "reason": "The apparent patient-facing page is a general Clinical Trials Unit information page rather than a demonstrated trial finder. The available evidence shows no condition or location search, filters, eligibility summaries, or clear patient expression-of-interest flow. Related guidance directs users to the UK Clinical Trials Gateway, suggesting patients may be sent elsewhere.",
+    "confidence": "low"
+}

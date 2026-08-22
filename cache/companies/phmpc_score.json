@@ -1,0 +1,7 @@
+{
+    "company": "PHMPC",
+    "trial_finder_url": "",
+    "trial_finder_weakness": 10,
+    "reason": "The provided search results do not show a company patient-facing page for finding or browsing clinical trials. The top result is a scientific-evidence page for a nasal allergy product, and the other result is unrelated TikTok content. There is no evidence of condition or location search, trial listings, eligibility information, or an interest/signup flow.",
+    "confidence": "low"
+}
