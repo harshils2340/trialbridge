@@ -201,10 +201,14 @@ EMBED_CSS = (
     "transition:filter .15s ease,transform .15s ease}"
     "#bmd-embed .bmd-tc-apply:hover{filter:brightness(1.08)}"
     "#bmd-embed .bmd-tc-apply:active{transform:translateY(1px)}"
-    "@media(max-width:640px){#bmd-embed .bmd-host-links{display:none}"
+    "@media(max-width:640px){#bmd-embed{padding:72px 16px 84px}"
+    "#bmd-embed .bmd-host-links{display:none}"
     "#bmd-embed .bmd-tcard{flex-direction:column}"
     "#bmd-embed .bmd-tc-side{flex-direction:row;align-items:center;"
-    "justify-content:space-between;width:100%}}"
+    "justify-content:space-between;width:100%}"
+    "#bmd-embed .bmd-finder-search{flex-direction:column}"
+    "#bmd-embed .bmd-finder-search .fbtn,#bmd-embed .bmd-tc-apply{"
+    "width:100%;min-height:44px;justify-content:center}}"
     # --- Stage: browser mockup + floating "auto-routed to a person" card ---
     "#bmd-embed .bmd-embed-stage{position:relative;max-width:1000px;margin:0 auto 64px}"
     "#bmd-embed .bmd-embed-stage .bmd-embed-frame{margin:0 auto}"
@@ -1087,8 +1091,8 @@ def _inject_pill_nav(h):
         '</header>')
     # Overlay as a fixed pill (so the hero keeps the top padding it already had for
     # Framer's own fixed nav) and hide Framer's nav + its fixed positioner entirely.
-    override = ('.pill-nav{position:fixed;top:14px;left:12px;right:12px;margin:0 auto;'
-                'z-index:1000}'
+    override = ('.pill-nav{position:fixed;top:max(10px,env(safe-area-inset-top));'
+                'left:12px;right:12px;margin:0 auto;z-index:1000}'
                 '[data-framer-name="NavBar"],.framer-bfsnv8-container{display:none!important}')
     style = '<style id="bmd-pill-nav">' + css + override + '</style>'
     js = ('<script>(function(){var n=document.getElementById("pillNav");if(!n)return;'
@@ -1357,7 +1361,7 @@ def build(dst, colormap, asset_prefix, raster_hue=None, accent="#1257b0"):
     # - one fewer item and no cloned slot means a smoother header on hydrate.
     h = _wire_nav(h, "Why us", "#features")
     h = _wire_nav(h, "Product", APP_HOME)
-    h = _wire_nav(h, "Trial finder", FINDER_URL, newtab=True)
+    h = _wire_nav(h, "Trial finder", FINDER_URL)
     h = _wire_nav(h, "Embed", "#bmd-embed")
 
     # The footer "Product" link ships as a bare <a>Product</a> (no inner <p>), so it
@@ -1836,6 +1840,9 @@ def build(dst, colormap, asset_prefix, raster_hue=None, accent="#1257b0"):
     # catches every SSR inline style and <style> declaration.
     h = h.replace('"Inter Placeholder"', '"Figtree Placeholder"')
     h = h.replace('"Inter"', '"Figtree"')
+
+    h = h.replace('name="viewport" content="width=device-width"',
+                  'name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"')
 
     # Swap Framer's own nav for the shared .pill-nav header (single source: style.css).
     # Runs last so the extracted CSS isn't touched by the font/color rewrites above.

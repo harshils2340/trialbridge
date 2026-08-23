@@ -246,21 +246,29 @@ body.home-screen .hero-reassurance{ justify-content:center; }
   border:1px solid rgba(18,87,176,.2); color:var(--fx-accent); font-size:11.5px;
   font-weight:700; padding:3px 10px 3px 8px; border-radius:999px; }
 .bmd-widget-tag svg{ width:14px; height:14px; }
-.bmd-finder-search{ display:flex; gap:10px; flex-wrap:wrap; margin-bottom:14px; }
-.bmd-finder-search .fld{ flex:1 1 180px; min-width:0; display:inline-flex;
-  align-items:center; gap:8px; background:#fff; border:1px solid #dbe4f0;
-  border-radius:10px; padding:10px 12px; font-size:13px; color:var(--fx-faint); }
+/* Stacked, not a wrapping row. The right-hand pane is too narrow for two
+   180px fields plus a button, and `width:100%` on the condition input made it
+   as wide as its parent label - so it painted over the location field. That is
+   the white box sitting on top of "Condition". */
+.bmd-finder-search{ display:flex; flex-direction:column; gap:8px;
+  margin-bottom:14px; }
+.bmd-finder-search .fld{ display:flex; align-items:center; gap:8px;
+  min-width:0; width:100%; box-sizing:border-box; overflow:hidden;
+  background:#fff; border:1px solid #dbe4f0; border-radius:10px;
+  padding:10px 12px; font-size:13px; color:var(--fx-faint); }
 .bmd-finder-search .fld svg{ width:15px; height:15px; color:var(--bx);
   flex:0 0 auto; transition:color .55s var(--ez); }
 .bmd-finder-search .fld > span{ flex:0 0 auto; }
-.bmd-finder-search .fld input{ width:100%; min-width:0; border:0; outline:0;
-  padding:0; color:var(--fx-ink); background:transparent; font:inherit;
-  font-weight:700; text-overflow:ellipsis; }
+.bmd-finder-search .fld input{ flex:1 1 auto; min-width:0; width:auto;
+  border:0; outline:0; padding:0; color:var(--fx-ink);
+  background:transparent; font:inherit; font-weight:700;
+  text-overflow:ellipsis; }
 .bmd-finder-search .fld:focus-within{ border-color:var(--bx);
   box-shadow:0 0 0 3px rgba(18,87,176,.1); }
-.bmd-finder-search .fbtn{ display:inline-flex; align-items:center; border:0;
-  font:inherit; color:#fff; font-weight:700; font-size:13.5px; padding:10px 22px;
-  border-radius:10px; cursor:pointer; background:var(--bx);
+.bmd-finder-search .fbtn{ display:inline-flex; align-items:center;
+  justify-content:center; width:100%; border:0; font:inherit; color:#fff;
+  font-weight:700; font-size:13.5px; padding:10px 22px; border-radius:10px;
+  cursor:pointer; background:var(--bx);
   box-shadow:0 12px 22px -12px var(--bxs2);
   transition:background .55s var(--ez), filter .15s ease, transform .15s ease,
     box-shadow .35s var(--ez); }
@@ -562,7 +570,7 @@ body.home-screen.is-fy-left .pill-nav-cta:hover{ background:#0b2340; }
 
 .fy{ --fy-ez:cubic-bezier(.22,1,.36,1); --fy-dur:.8s;
   display:flex; height:100vh; min-height:0; position:relative; overflow:hidden;
-  touch-action:pan-y pinch-zoom; user-select:none; }
+  touch-action:pan-y pinch-zoom; }
 .fy-panel{ flex:0 0 50%; min-width:0; min-height:0; position:relative;
   overflow:hidden; transition:flex-basis var(--fy-dur) var(--fy-ez); }
 .fy.is-left .fy-left{ flex-basis:90%; }
@@ -679,9 +687,24 @@ body.home-screen .fy-left .hero-card .search-modes{
 .bmd-host-utility button:hover{ color:#1257b0; }
 .bmd-host-kicker{ margin:0 0 5px; color:var(--bx); font-size:10px;
   font-weight:800; letter-spacing:.1em; text-transform:uppercase; }
+.fy-right .bmd-host-nav{ position:sticky; top:0; z-index:5; background:#fff; }
+.fy-right .bmd-host-hero{ padding:16px 22px 0; }
 .fy-right .bmd-host-hero p{ display:block; max-width:540px; line-height:1.45; }
-.fy-right .bmd-widget{ flex:0 0 auto; min-height:0; margin:18px 16px 22px;
-  overflow:visible; }
+.fy-right .bmd-widget{ flex:0 0 auto; min-height:0; margin:12px 16px 16px;
+  padding:16px 14px 14px; overflow:visible; }
+/* After "Find a trial", drop the page intro so the widget sits under the
+   sticky nav and two result cards actually fit. */
+.bmd-site-scroll.is-finder .bmd-host-utility,
+.bmd-site-scroll.is-finder .bmd-host-hero{ display:none; }
+.bmd-site-scroll.is-finder .bmd-widget{ margin:8px 16px 12px; }
+/* One compact row on the wide mock, so the result cards start higher. Inputs
+   flex inside the field instead of width:100%, which is what used to overlay
+   the location box. */
+.fy-right .bmd-finder-search{ flex-direction:row; flex-wrap:nowrap; gap:8px;
+  align-items:stretch; margin-bottom:10px; }
+.fy-right .bmd-finder-search .fld{ flex:1 1 0; width:auto; }
+.fy-right .bmd-finder-search .fbtn{ width:auto; flex:0 0 auto; padding:10px 18px; }
+.fy-right .bmd-finder-meta{ margin-bottom:8px; }
 .fy-right .bmd-tc-why{ display:none; }
 .fy-right .bmd-tcard:nth-child(n+3){ display:none; }
 .bmd-host-section{ padding:30px 28px; border-top:1px solid #e8eef4; }
@@ -786,14 +809,16 @@ body.home-screen .fy-left .hero-card .search-modes{
 .bmd-site-toast.is-show{ opacity:1; transform:translate(-50%,0); }
 
 .fy-grip{ position:absolute; z-index:65; left:50%; top:50%;
-  transform:translate(-50%,-50%); width:30px; height:42px;
+  transform:translate(-50%,-50%); width:32px; height:26px;
   display:flex; align-items:center; justify-content:center; gap:0;
-  color:#1257b0; background:rgba(255,255,255,.94);
-  border:1px solid rgba(18,87,176,.18); border-radius:999px;
-  box-shadow:0 8px 22px -14px rgba(5,35,64,.65);
+  background:linear-gradient(90deg,#f2f7fc 0 50%,#0b2340 50% 100%);
+  border:1px solid rgba(145,170,194,.5); border-radius:10px;
+  box-shadow:0 5px 14px -10px rgba(5,35,64,.8);
   pointer-events:none;
   transition:left var(--fy-dur) var(--fy-ez), opacity .25s ease; }
-.fy-grip svg{ width:9px; height:9px; stroke-width:2.25; }
+.fy-grip svg{ width:8px; height:8px; stroke-width:2.35; }
+.fy-grip svg:first-child{ color:#1257b0; }
+.fy-grip svg:last-child{ color:#f2f7fc; }
 .fy.is-left .fy-grip, .fy.is-split.is-hover-left .fy-grip{ left:90%; }
 .fy.is-right .fy-grip, .fy.is-split.is-hover-right .fy-grip{ left:10%; }
 
@@ -840,22 +865,61 @@ body.home-screen.is-fy-split .fy-brand{ left:28px; color:#153554; }
 @media (max-height:820px){
   .fy-left-in.hero-in, .fy-right-in{ padding-top:72px; padding-bottom:28px; }
   .fy-who{ font-size:clamp(30px,4vw,44px); }
-  .fy-left .hero-reassurance{ display:none; }
-  .fy-right .bmd-host-nav{ display:none; }
-  .fy-right .bmd-route-card{ display:none; }
 }
 @media (max-width:980px){
-  body.home-screen{ height:auto !important; max-height:none; overflow:auto !important; }
-  .fy{ flex-direction:column; height:auto; touch-action:auto; }
+  body.home-screen{
+    height:auto !important; max-height:none; overflow:auto !important;
+    background:#f2f7fc !important; }
+  body.home-screen .landing-extra,
+  body.home-screen .landing-legal{ display:block !important; }
+  body.home-screen .pill-nav{
+    position:sticky; top:max(10px, env(safe-area-inset-top)); left:12px; right:12px;
+    transform:none; width:auto; z-index:90;
+    display:grid; grid-template-columns:auto 1fr; justify-content:stretch;
+    margin:max(10px, env(safe-area-inset-top)) 12px 0;
+    padding:9px 10px 9px 16px;
+    background:rgba(255,255,255,.94); border:1px solid rgba(18,40,80,.08);
+    border-radius:22px; box-shadow:0 12px 34px -20px rgba(15,26,46,.45); }
+  body.home-screen .pill-nav .brand{ display:flex; }
+  body.home-screen .pill-nav-auth{ justify-self:end; }
+  body.home-screen .fy-brand{ display:none; }
+  .fy{ flex-direction:column; height:auto; overflow:visible; touch-action:auto; }
   .fy-panel, .fy.is-left .fy-left, .fy.is-left .fy-right,
-  .fy.is-right .fy-left, .fy.is-right .fy-right{ flex-basis:auto !important; cursor:default; }
+  .fy.is-right .fy-left, .fy.is-right .fy-right{
+    flex-basis:auto !important; cursor:default; overflow:visible; }
   .fy-peek{ display:none !important; }
   .fy-body{ opacity:1 !important; pointer-events:auto !important; transform:none !important; }
   .fy-grip, .fy-rail, .fy-pager, .fy-skip{ display:none; }
-  body.home-screen .fy-brand{ left:22px; color:#153554; }
-  .fy-left-in.hero-in{ padding:80px 22px 32px; max-width:none; }
-  .fy-right-in{ padding:32px 18px; }
-  .fy-right .bmd-embed-frame{ min-height:380px; }
+  body.home-screen .fy-left-in.hero-in{
+    height:auto; max-width:none; padding:28px 18px 36px; }
+  body.home-screen .fy-left .fy-who,
+  body.home-screen .fy-right .fy-who{ font-size:clamp(34px,10vw,48px); }
+  body.home-screen .fy-left h1,
+  body.home-screen .fy-right .fy-lead{ max-width:none; font-size:clamp(20px,6vw,26px); }
+  .fy-left .hero-reassurance{ display:flex; flex-wrap:wrap; gap:10px 16px; justify-content:flex-start; }
+  .fy-right-in{ padding:28px 16px 36px; }
+  .fy-right .fy-who, .fy-right .fy-lead{ width:100%; }
+  .fy-right .bmd-embed-frame{ min-height:min(78vh,720px); max-width:none; border-radius:14px; }
+  .bmd-host-utility{ flex-wrap:wrap; gap:10px 14px; }
+  .bmd-host-links{ flex-wrap:wrap; gap:10px 14px; }
+  .bmd-finder-search{ flex-direction:column; }
+  .bmd-finder-search .fld{ flex-basis:auto; }
+  .bmd-finder-search .fbtn{ width:100%; justify-content:center; min-height:48px; }
+  .bmd-finder-search .fld input{ font-size:16px; }
+  .bmd-host-stats, .bmd-programs{ grid-template-columns:1fr; }
+  .bmd-host-cta{ flex-direction:column; align-items:stretch; }
+  .bmd-host-cta button{ width:100%; min-height:44px; }
+  .bmd-host-footer{ flex-direction:column; }
+  .bmd-tcard{ flex-direction:column; }
+  .bmd-tc-side{ align-items:stretch; width:100%; }
+  .bmd-tc-apply{ width:100%; justify-content:center; min-height:44px; }
+  .bmd-apply-flow{
+    position:fixed; inset:0; z-index:220; padding:max(12px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom)); }
+  .bmd-flow-card{ width:100%; max-height:100%; }
+  .bmd-flow-grid{ grid-template-columns:1fr; }
+  .bmd-flow-submit, .bmd-flow-done{ min-height:48px; }
+  .bmd-site-toast{ white-space:normal; text-align:center; }
+  .hero-card .btn, .hero-card input{ min-height:48px; }
 }
 @media (prefers-reduced-motion:reduce){
   .fy-panel, .fy-body, .fy-rail{ transition:none; }
@@ -1937,7 +2001,6 @@ body.home-screen.is-fy-split .fy-brand{ left:28px; color:#153554; }
   var splitBtn = document.getElementById('fySplit');
   var numEl = document.getElementById('fyNum');
   var slide = 1;
-  var hasChosenSide = false;
 
   function apply(n) {
     slide = Math.max(0, Math.min(2, n));
@@ -1977,13 +2040,21 @@ body.home-screen.is-fy-split .fy-brand{ left:28px; color:#153554; }
     });
   });
 
+  // Using the search (or switching By condition / Describe it / Near me) must
+  // NOT collapse the other half. The hospital preview is the point of the
+  // split, and hovering/focusing an input used to send the carousel to
+  // left-only, which hid the mock and crushed its fields on top of each other.
+  var SEARCH_KEEP = 'input, textarea, select, button, a, label, .hero-card, .bmd-widget, .bmd-finder-search, .search-modes';
+  function keepPreview() {
+    if (slide !== 1) apply(1);
+  }
+
   root.querySelectorAll('.fy-panel').forEach(function (panel) {
-    panel.addEventListener('mouseenter', function () {
-      if (hasChosenSide || slide !== 1) return;
-      hasChosenSide = true;
-      apply(panel.classList.contains('fy-left') ? 0 : 2);
-    });
     panel.addEventListener('click', function (e) {
+      if (e.target.closest(SEARCH_KEEP)) {
+        keepPreview();
+        return;
+      }
       if (panel.classList.contains('fy-left') && slide === 2) {
         e.preventDefault();
         apply(0);
@@ -1992,6 +2063,17 @@ body.home-screen.is-fy-split .fy-brand{ left:28px; color:#153554; }
         apply(2);
       }
     });
+  });
+  ['conditionInput', 'describeInput', 'location', 'bxCondition', 'bxLocation']
+    .forEach(function (id) {
+      var node = document.getElementById(id);
+      if (node) {
+        node.addEventListener('focus', keepPreview);
+        node.addEventListener('input', keepPreview);
+      }
+    });
+  document.querySelectorAll('.search-mode').forEach(function (btn) {
+    btn.addEventListener('click', keepPreview);
   });
 
   apply(1);
@@ -2203,14 +2285,25 @@ body.home-screen.is-fy-split .fy-brand{ left:28px; color:#153554; }
     btn.addEventListener('click', function () {
       var scroller = root.querySelector('.bmd-site-scroll');
       var widget = root.querySelector('.bmd-widget');
+      if (scroller) scroller.classList.add('is-finder');
       if (scroller && widget) {
-        scroller.scrollTo({ top:Math.max(0, widget.offsetTop - 16), behavior:'smooth' });
+        requestAnimationFrame(function () {
+          var next = widget.getBoundingClientRect().top
+            - scroller.getBoundingClientRect().top
+            + scroller.scrollTop - 4;
+          scroller.scrollTo({ top:Math.max(0, next), behavior:'smooth' });
+        });
       }
       if (el.bxCondition) el.bxCondition.focus({ preventScroll:true });
     });
   });
   root.querySelectorAll('[data-bmd-host-link]').forEach(function (btn) {
     btn.addEventListener('click', function () {
+      var scroller = root.querySelector('.bmd-site-scroll');
+      if (scroller) {
+        scroller.classList.remove('is-finder');
+        scroller.scrollTo({ top:0, behavior:'smooth' });
+      }
       showSiteToast(btn.textContent.trim() + ' is simulated in this website preview.');
     });
   });

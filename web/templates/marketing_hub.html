@@ -23,7 +23,13 @@
 
 {% block body %}
 <div class="mh-page">
-  <section class="mh-workspace {{ 'is-list-only' if not active }}">
+  <div class="mh-mobile-bar">
+    <div class="mh-mobile-bar-in">
+      <button type="button" class="mh-nav-toggle" id="mhNavToggle" aria-label="Open menu">{{ ic.icon('menu') }}</button>
+      <b>Inbox</b>
+    </div>
+  </div>
+  <section class="mh-workspace {{ 'is-list-only' if not request.args.get('thread') }}">
     <section class="mh-thread-column" aria-label="Conversations" data-demo-tour-target="inbox">
       <div class="mh-thread-toolbar">
         {% if nav_studies and nav_studies|length > 1 %}
@@ -147,6 +153,7 @@
       {% set instagram_delivery_ready = active.connection_mode == 'live' and active.provider == 'instagram' and active.connection_status == 'connected' and active.external_ref %}
       {% set live_delivery_ready = gmail_delivery_ready or instagram_delivery_ready %}
       <header class="mh-conversation-head">
+        <a class="mh-back" href="{{ url_for('marketing_hub', status=status_filter, stage=stage_filter, source=source_filter, channel=channel_filter, q=search_query) }}" aria-label="Back to conversations">{{ ic.icon('chevron-left') }}</a>
         <div class="mh-contact-main">
           <span class="mh-contact-avatar-wrap is-large">
             <span class="mh-contact-avatar is-large">{{ (active.contact_name or active.contact_handle or '?')[:1]|upper }}</span>
@@ -816,6 +823,12 @@
       if (prev) window.location.href = prev.href;
     }
   });
+
+  var navToggle = document.getElementById('mhNavToggle');
+  var sideToggle = document.getElementById('appSideToggle');
+  if (navToggle && sideToggle) {
+    navToggle.addEventListener('click', function () { sideToggle.click(); });
+  }
 })();
 </script>
 {% endblock %}
