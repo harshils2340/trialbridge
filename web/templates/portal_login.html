@@ -1,0 +1,38 @@
+{% extends "public_base.html" %}
+{% block title %}Your study portal · BridgeMD{% endblock %}
+{% block description %}Sign in to follow your clinical trial application.{% endblock %}
+{% import "_icons.html" as ic %}
+{% import "_ui.html" as ui %}
+
+{# The wall in front of the portal. Deliberately says NOTHING identifying - not
+   the person's name, not the trial, not their status - so a link that reaches
+   the wrong inbox leaks nothing, and a revoked link is indistinguishable from a
+   live one until the password is right. #}
+{% block body %}
+<section class="portal-gate">
+  <div class="portal-gate-card">
+    <span class="portal-gate-mark">{{ ic.icon('mark', 'brand-glyph') }}</span>
+    {% if gone %}
+    <h1>This link isn't active</h1>
+    <p>It may have expired or been turned off by the study team. Reply to the
+      message they sent you and they can send a new one.</p>
+    {% else %}
+    <h1>Your study portal</h1>
+    <p>Enter the password your study coordinator sent you to see where your
+      application stands.</p>
+    {% if error %}
+    <p class="portal-gate-error" role="alert">{{ ic.icon('alert') }} {{ error }}</p>
+    {% endif %}
+    <form method="post" action="{{ url_for('portal_login', token=token) }}" class="portal-gate-form">
+      <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+      <label for="portalPw">Password</label>
+      <input id="portalPw" name="password" type="password" required autofocus
+             autocomplete="current-password" placeholder="e.g. K7MP-3RXQ-9TFA">
+      {{ ui.btn('Continue', 'primary', 'block', type='submit') }}
+    </form>
+    <p class="portal-gate-fine">{{ ic.icon('lock') }} This page only ever shows
+      your own application. Don't share this link or password with anyone.</p>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

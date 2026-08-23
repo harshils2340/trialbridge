@@ -295,6 +295,78 @@
       <p class="pt-stage-note">Stage advances from what you do. Accepting marks them likely eligible; booking a visit moves them to screening.</p>
     </div>
 
+    {# ── Patient portal: give this person a window onto their own application ── #}
+    <div class="app-card pad pt-side-card" id="portal">
+      <div class="app-card-title">{{ ic.icon('lock') }} Patient portal</div>
+
+      {% if portal_reveal %}
+      {# Shown exactly once, straight after issuing. The invite has already been
+         posted to the applicant's thread - this copy is so a coordinator can
+         read it back on a call. The password is not stored in readable form, so
+         leaving this page loses it; reissue if that happens. #}
+      <div class="portal-issue">
+        <p class="portal-issue-lead">{{ ic.icon('check') }} Sent to
+          {{ view.name }} in their message thread. Here it is again in case you
+          need to read it out &mdash; the password works once, then they pick
+          their own.</p>
+        <label>Link</label>
+        <div class="portal-copy">
+          <input type="text" readonly value="{{ portal_reveal.link }}" data-copy>
+          <button type="button" class="btn btn-ghost btn-sm" data-copy-btn>Copy</button>
+        </div>
+        <label>Temporary password</label>
+        <div class="portal-copy">
+          <input type="text" readonly value="{{ portal_reveal.password }}" data-copy>
+          <button type="button" class="btn btn-ghost btn-sm" data-copy-btn>Copy</button>
+        </div>
+        <p class="portal-issue-warn">{{ ic.icon('alert') }} This password isn't
+          shown again. If it's lost, reissue access below.</p>
+      </div>
+      {% endif %}
+
+      {% if portal and portal['status'] == 'active' %}
+      <div class="portal-state">
+        {% if portal['first_seen_at'] %}
+          {{ ui.badge('Active', 'ok', 'check') }}
+          <small>Last opened {{ portal['last_seen_at'][:16] }}</small>
+        {% else %}
+          {{ ui.badge('Not opened yet', 'warn') }}
+          <small>Issued {{ portal['created_at'][:16] }}</small>
+        {% endif %}
+        {% if portal['must_change'] %}
+        <small class="portal-state-note">Still on the temporary password.</small>
+        {% endif %}
+      </div>
+      {% if portal_url and not portal_reveal %}
+      <div class="portal-copy">
+        <input type="text" readonly value="{{ portal_url }}" data-copy>
+        <button type="button" class="btn btn-ghost btn-sm" data-copy-btn>Copy link</button>
+      </div>
+      {% endif %}
+      <div class="portal-actions">
+        <form method="post" action="{{ url_for('issue_portal', lead_id=l['id']) }}">
+          {{ ui.btn('Resend invite', 'ghost', 'sm', type='submit') }}
+        </form>
+        <form method="post" action="{{ url_for('revoke_portal', lead_id=l['id']) }}">
+          {{ ui.btn('Revoke', 'ghost', 'sm', type='submit') }}
+        </form>
+      </div>
+
+      {% elif l['revealed'] %}
+      <p class="portal-pitch">Give {{ view.name }} a private page to follow their
+        own status, see what's outstanding, and message you back &mdash; no
+        account signup. The link and a one-time password are sent straight to
+        their message thread.</p>
+      <form method="post" action="{{ url_for('issue_portal', lead_id=l['id']) }}">
+        {{ ui.btn('Send portal invite', 'primary', 'sm', icon='send', type='submit') }}
+      </form>
+
+      {% else %}
+      <p class="portal-pitch">Accept this applicant first, then you can give them
+        portal access.</p>
+      {% endif %}
+    </div>
+
     {# ── Notes: internal team scratchpad ── #}
     <div class="app-card pad pt-side-card">
       <div class="app-card-title">{{ ic.icon('file') }} Notes <span class="pt-hint">team-only</span></div>

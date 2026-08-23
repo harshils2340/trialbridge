@@ -377,6 +377,21 @@
           </span>
           {{ ui.badge('Linked', 'ok', 'check') }}
         </header>
+        {# Portal access from the conversation itself - this is where a recruiter
+           actually is when they decide to refer someone to their own page. The
+           one-time password is revealed on the applicant record, so the flow
+           lands them there rather than exposing a credential in the inbox. #}
+        <div class="mh-portal-row">
+          {% if applicant_portal and applicant_portal['status'] == 'active' %}
+            {{ ic.icon('lock') }}
+            <span>Portal {{ 'active' if applicant_portal['first_seen_at'] else 'sent, not opened yet' }}</span>
+            {{ ui.btn('Manage', 'ghost', 'sm', href=url_for('applicant_detail', lead_id=applicant.id) ~ '#portal') }}
+          {% else %}
+            {{ ic.icon('lock') }}
+            <span>Let them follow their own status</span>
+            {{ ui.btn('Send portal invite', 'ghost', 'sm', href=url_for('applicant_detail', lead_id=applicant.id) ~ '#portal') }}
+          {% endif %}
+        </div>
         {% set met = eligibility.get('met', []) %}
         {% set unknown = eligibility.get('unknown', []) %}
         {% set not_met = eligibility.get('not_met', []) %}

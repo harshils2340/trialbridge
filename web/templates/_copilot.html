@@ -698,3 +698,32 @@
   });
 })();
 </script>
+
+<script>
+/* Copy-to-clipboard for the one-time portal credential. The password is shown
+   exactly once, so the click has to be reliable - hence the execCommand
+   fallback for browsers/contexts where the async clipboard API is blocked. */
+(function () {
+  document.addEventListener('click', function (e) {
+    var btn = e.target.closest && e.target.closest('[data-copy-btn]');
+    if (!btn) return;
+    var wrap = btn.closest('.portal-copy') || btn.parentElement;
+    var input = wrap && wrap.querySelector('[data-copy]');
+    if (!input) return;
+    input.select();
+    input.setSelectionRange(0, 99999);
+    var done = function () {
+      var was = btn.textContent;
+      btn.textContent = 'Copied';
+      setTimeout(function () { btn.textContent = was; }, 1400);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(input.value).then(done, function () {
+        try { document.execCommand('copy'); done(); } catch (err) {}
+      });
+    } else {
+      try { document.execCommand('copy'); done(); } catch (err) {}
+    }
+  });
+})();
+</script>

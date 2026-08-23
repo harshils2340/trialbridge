@@ -1,0 +1,186 @@
+{% extends "public_base.html" %}
+{% block title %}Your study portal · BridgeMD{% endblock %}
+{% import "_icons.html" as ic %}
+{% import "_ui.html" as ui %}
+
+{# One applicant following their OWN application. Everything here is assembled
+   from the same helpers the study team's screens use, so the patient never sees
+   a second, drifting version of their status. #}
+{% block body %}
+<section class="portal-wrap">
+
+  <header class="portal-head">
+    <div>
+      <p class="portal-kicker">Your application</p>
+      <h1>{{ lead['title'] or lead['nct'] or 'Your study' }}</h1>
+      {% if lead['nct'] %}<p class="portal-nct">{{ lead['nct'] }}{% if lead['site'] %} · {{ lead['site'] }}{% endif %}</p>{% endif %}
+    </div>
+    <form method="post" action="{{ url_for('portal_signout', token=token) }}">
+      <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+      {{ ui.btn('Sign out', 'ghost', 'sm', type='submit') }}
+    </form>
+  </header>
+
+  {# ── Where things stand ── #}
+  <div class="portal-card portal-status">
+    <div class="portal-status-top">
+      <span class="portal-status-badge{{ ' is-closed' if closed }}">{{ status_label }}</span>
+      {% if next_visit %}
+      <span class="portal-next">{{ ic.icon('calendar') }} Next visit {{ next_visit['visit_at'] }}</span>
+      {% endif %}
+    </div>
+    {% if blurb %}<p class="portal-blurb">{{ blurb }}</p>{% endif %}
+
+    {% if stages %}
+    <ol class="portal-track" aria-label="Your progress">
+      {% for s in stages %}
+      <li class="{{ 'is-done' if s.done }}{{ ' is-current' if s.current }}">
+        <span class="portal-track-dot">{% if s.done %}{{ ic.icon('check') }}{% endif %}</span>
+        <span class="portal-track-label">{{ s.label }}</span>
+      </li>
+      {% endfor %}
+    </ol>
+    {% endif %}
+  </div>
+
+  <div class="portal-grid">
+    <div class="portal-col">
+
+      {# ── What we need from you ── #}
+      <div class="portal-card" id="todos">
+        <h2>{{ ic.icon('check') }} What we need from you</h2>
+        {% if tasks %}
+        <ul class="portal-tasks">
+          {% for t in tasks %}
+          <li class="{{ 'is-done' if t['status'] == 'done' }}">
+            <form method="post" action="{{ url_for('portal_toggle_task', token=token, task_id=t['id']) }}">
+              <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" class="portal-check" aria-label="{{ 'Mark not done' if t['status'] == 'done' else 'Mark done' }}">
+                {% if t['status'] == 'done' %}{{ ic.icon('check') }}{% endif %}
+              </button>
+            </form>
+            <span>{{ t['title'] }}</span>
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <p class="portal-empty">Nothing outstanding right now.</p>
+        {% endif %}
+
+        {% if doc_requests %}
+        <h3 class="portal-subhead">Records the team asked for</h3>
+        <ul class="portal-docreqs">
+          {% for d in doc_requests %}
+          <li>
+            <span>{{ d['title'] }}</span>
+            {% set st = d['status'] or 'requested' %}
+            {{ ui.badge('Received' if st in ('received','accepted') else ('Needs another copy' if st == 'rejected' else 'Requested'),
+                        'ok' if st in ('received','accepted') else ('warn' if st == 'rejected' else 'neutral')) }}
+          </li>
+          {% endfor %}
+        </ul>
+        <p class="portal-fine">Your coordinator can take these over the phone or
+          by email &mdash; just reply below if you're not sure how to send one.</p>
+        {% endif %}
+      </div>
+
+      {# ── Messages ── #}
+      <div class="portal-card" id="messages">
+        <h2>{{ ic.icon('chat') }} Messages with your study team</h2>
+        <div class="portal-thread">
+          {% for m in messages %}
+          {% if m['sender'] != 'system' %}
+          <div class="portal-msg {{ 'is-mine' if m['sender'] == 'patient' else 'is-team' }}">
+            <span class="portal-msg-who">{{ 'You' if m['sender'] == 'patient' else 'Study team' }}</span>
+            <p>{{ m['body'] }}</p>
+            <time>{{ m['created_at'][:16] }}</time>
+          </div>
+          {% endif %}
+          {% else %}
+          <p class="portal-empty">No messages yet. Ask anything &mdash; a real
+            person on the study team reads these.</p>
+          {% endfor %}
+        </div>
+        <form method="post" action="{{ url_for('portal_message', token=token) }}" class="portal-reply">
+          <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+          <textarea name="body" rows="3" required
+                    placeholder="Ask your study team a question…"></textarea>
+          {{ ui.btn('Send', 'primary', icon='send', type='submit') }}
+        </form>
+      </div>
+
+    </div>
+
+    <div class="portal-col portal-col-side">
+
+      {# ── Visits ── #}
+      <div class="portal-card">
+        <h2>{{ ic.icon('calendar') }} Visits</h2>
+        {% if visits %}
+        <ul class="portal-visits">
+          {% for v in visits %}
+          <li>
+            <b>{{ (v['kind'] or 'study')|capitalize }} visit</b>
+            <span>{{ v['visit_at'] }}</span>
+            {% if v['location'] %}<small>{{ v['location'] }}</small>{% endif %}
+            {% if v['note'] %}<small>{{ v['note'] }}</small>{% endif %}
+            <a class="portal-ics" href="{{ url_for('visit_ics', token=lead['token'], visit_id=v['id']) }}">Add to calendar</a>
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <p class="portal-empty">No visits booked yet.</p>
+        {% endif %}
+      </div>
+
+      {# ── Documents shared with you ── #}
+      {% if files %}
+      <div class="portal-card">
+        <h2>{{ ic.icon('file') }} Your documents</h2>
+        <ul class="portal-files">
+          {% for f in files %}
+          <li>{{ ic.icon('file') }} <span>{{ f['orig_name'] }}</span></li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endif %}
+
+      {# ── History ── #}
+      <div class="portal-card">
+        <h2>{{ ic.icon('activity') }} History</h2>
+        <ul class="portal-events">
+          {% for e in events %}
+          <li>
+            <span class="portal-event-dot"></span>
+            <span>
+              <b>{{ (e['status'] or '')|replace('_',' ')|title }}</b>
+              {% if e['note'] %}<small>{{ e['note'] }}</small>{% endif %}
+              <time>{{ e['created_at'][:16] }}</time>
+            </span>
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+
+      <div class="portal-card portal-safety">
+        <h2>{{ ic.icon('shield') }} Your choices</h2>
+        <p>Taking part is completely voluntary. You can stop at any time, for any
+          reason, and it won't affect your regular care. Your study team is the
+          right place for any medical question &mdash; message them above.</p>
+        <form method="post" class="portal-pw-inline" id="changepw" action="{{ url_for('portal_change_password', token=token) }}">
+          <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+          <details>
+            <summary>Change my password</summary>
+            <label for="np1">New password</label>
+            <input id="np1" name="password" type="password" minlength="8" autocomplete="new-password">
+            <label for="np2">Confirm</label>
+            <input id="np2" name="confirm" type="password" minlength="8" autocomplete="new-password">
+            {{ ui.btn('Update password', 'ghost', 'sm', type='submit') }}
+          </details>
+        </form>
+      </div>
+
+    </div>
+  </div>
+</section>
+{% endblock %}

@@ -1383,6 +1383,34 @@ CREATE TABLE IF NOT EXISTS blasts (
     FOREIGN KEY (sent_by) REFERENCES users(id)
 );
 CREATE INDEX IF NOT EXISTS idx_blasts_org ON blasts(org_id, created_at);
+
+-- Recruiter-issued patient portal. A coordinator hands one applicant a link and
+-- a one-time password so they can follow their OWN application - no signup, no
+-- email round-trip, which is what makes it usable for someone the team is
+-- already messaging. Separate from patient_users (the self-serve account behind
+-- /applications) on purpose: access is granted per lead and can be revoked.
+-- Only the password HASH is stored; the plaintext is shown to the recruiter once
+-- at creation and is unrecoverable afterwards. must_change forces rotation on
+-- first sign-in, so the credential typed into a chat stops working as soon as
+-- the patient actually uses it.
+CREATE TABLE IF NOT EXISTS portal_access (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    lead_id         INTEGER NOT NULL UNIQUE,     -- one portal per application
+    token           TEXT UNIQUE NOT NULL,        -- the /portal/<token> link
+    password_hash   TEXT NOT NULL,
+    must_change     INTEGER NOT NULL DEFAULT 1,  -- force rotation on first use
+    status          TEXT NOT NULL DEFAULT 'active',   -- active | revoked
+    created_by      INTEGER,
+    created_at      TEXT NOT NULL,
+    first_seen_at   TEXT DEFAULT '',
+    last_seen_at    TEXT DEFAULT '',
+    password_set_at TEXT DEFAULT '',
+    failed_attempts INTEGER NOT NULL DEFAULT 0,
+    locked_until    TEXT DEFAULT '',
+    FOREIGN KEY (lead_id) REFERENCES leads(id),
+    FOREIGN KEY (created_by) REFERENCES users(id)
+);
+CREATE INDEX IF NOT EXISTS idx_portal_token ON portal_access(token, status);
 """
 
 # Recognized team roles + display labels. 'coordinator' is the admin role.
@@ -7019,6 +7047,163 @@ def leads_blasted_since(user_id, lead_ids, hours=24):
                 recent.add(int(chunk))
     return len(ids & recent)
 
+
+
+
+# --------------------------------------------------------------------------- #
+# Patient portal - recruiter-issued access to one applicant's own record
+# --------------------------------------------------------------------------- #
+# Distinct from the self-serve `patient_users` account behind /applications: the
+# recruiter hands a specific person a link plus a one-time password for THEIR
+# application only. No signup, no email round-trip - which is what makes it
+# usable for someone the team is already messaging.
+#
+# The temporary password is returned to the recruiter exactly once, at creation,
+# and only its hash is ever stored - so it cannot be recovered from the database
+# or re-displayed later, only reissued. `must_change` forces rotation on first
+# successful sign-in, so the credential the recruiter typed into a chat stops
+# working the moment the patient actually uses it.
+PORTAL_MAX_ATTEMPTS = 8          # wrong passwords before a timed lockout
+PORTAL_LOCKOUT_MINUTES = 15
+PORTAL_MIN_PASSWORD = 8
+
+# Ambiguous glyphs are excluded: this password gets read off a screen and typed
+# by hand, so 0/O and 1/l/I would turn into support load.
+_PORTAL_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
+
+
+def generate_portal_password(words=3, size=4):
+    """A readable one-time password, e.g. 'K7MP-3RXQ-9TFA'."""
+    return "-".join(
+        "".join(secrets.choice(_PORTAL_ALPHABET) for _ in range(size))
+        for _ in range(words))
+
+
+def get_portal_by_lead(lead_id):
+    return get_db().execute(
+        "SELECT * FROM portal_access WHERE lead_id = ?", (lead_id,)).fetchone()
+
+
+def get_portal_by_token(token):
+    token = (token or "").strip()
+    if not token:
+        return None
+    return get_db().execute(
+        "SELECT * FROM portal_access WHERE token = ? AND status = 'active'",
+        (token,)).fetchone()
+
+
+def issue_portal_access(lead_id, created_by, password_hasher):
+    """Create or re-issue portal access for one applicant.
+
+    Returns (row, plaintext_password). The plaintext is handed back to the
+    caller ONCE so the recruiter can pass it on; it is never stored. Re-issuing
+    keeps the same link but rotates the password and re-arms the forced change,
+    so a lost credential is recoverable without breaking a link already sent."""
+    existing = get_portal_by_lead(lead_id)
+    pw = generate_portal_password()
+    db = get_db()
+    ts = now()
+    if existing:
+        db.execute(
+            "UPDATE portal_access SET password_hash = ?, must_change = 1, "
+            "status = 'active', failed_attempts = 0, locked_until = '', "
+            "created_by = ?, created_at = ? WHERE lead_id = ?",
+            (password_hasher(pw), created_by, ts, lead_id))
+        db.commit()
+        return get_portal_by_lead(lead_id), pw
+    db.execute(
+        "INSERT INTO portal_access (lead_id, token, password_hash, must_change, "
+        "status, created_by, created_at) VALUES (?,?,?,1,'active',?,?)",
+        (lead_id, gen_token(), password_hasher(pw), created_by, ts))
+    db.commit()
+    return get_portal_by_lead(lead_id), pw
+
+
+def revoke_portal_access(lead_id):
+    db = get_db()
+    cur = db.execute(
+        "UPDATE portal_access SET status = 'revoked' WHERE lead_id = ?",
+        (lead_id,))
+    db.commit()
+    return cur.rowcount > 0
+
+
+def portal_locked_for(row):
+    """Minutes remaining on a lockout, or 0. Lockout is time-based rather than
+    permanent so a patient fat-fingering their own code isn't locked out for
+    good with no way to self-serve."""
+    if not row:
+        return 0
+    until = _parse_ts(_row_val(row, "locked_until", "") or "")
+    if not until:
+        return 0
+    left = (until - dt.datetime.now()).total_seconds()
+    return max(0, int(left // 60) + (1 if left > 0 else 0))
+
+
+def portal_check_password(token, password, verifier):
+    """Verify a portal password. Returns (row, error).
+
+    Counts failures and locks the link for a while once they pile up, so the
+    link plus a short password can't be brute-forced."""
+    row = get_portal_by_token(token)
+    if not row:
+        return None, "That link is no longer active."
+    mins = portal_locked_for(row)
+    if mins:
+        return None, (f"Too many incorrect attempts. Try again in about "
+                      f"{mins} minute(s).")
+    if not verifier(row["password_hash"], password or ""):
+        db = get_db()
+        attempts = int(_row_val(row, "failed_attempts", 0) or 0) + 1
+        locked = ""
+        if attempts >= PORTAL_MAX_ATTEMPTS:
+            locked = (dt.datetime.now()
+                      + dt.timedelta(minutes=PORTAL_LOCKOUT_MINUTES)).strftime(
+                          "%Y-%m-%d %H:%M")
+            attempts = 0
+        db.execute(
+            "UPDATE portal_access SET failed_attempts = ?, locked_until = ? "
+            "WHERE id = ?", (attempts, locked, row["id"]))
+        db.commit()
+        if locked:
+            return None, (f"Too many incorrect attempts. Try again in about "
+                          f"{PORTAL_LOCKOUT_MINUTES} minutes.")
+        return None, "That password doesn't match. Check it and try again."
+    db = get_db()
+    ts = now()
+    db.execute(
+        "UPDATE portal_access SET failed_attempts = 0, locked_until = '', "
+        "last_seen_at = ?, first_seen_at = CASE WHEN first_seen_at = '' THEN ? "
+        "ELSE first_seen_at END WHERE id = ?", (ts, ts, row["id"]))
+    db.commit()
+    return get_portal_by_token(token), None
+
+
+def portal_set_password(token, new_password, password_hasher):
+    """Rotate the password and clear the forced-change flag."""
+    row = get_portal_by_token(token)
+    if not row:
+        return False, "That link is no longer active."
+    new_password = (new_password or "").strip()
+    if len(new_password) < PORTAL_MIN_PASSWORD:
+        return False, (f"Choose a password of at least {PORTAL_MIN_PASSWORD} "
+                       "characters.")
+    db = get_db()
+    db.execute(
+        "UPDATE portal_access SET password_hash = ?, must_change = 0, "
+        "password_set_at = ? WHERE id = ?",
+        (password_hasher(new_password), now(), row["id"]))
+    db.commit()
+    return True, None
+
+
+def portal_touch(token):
+    db = get_db()
+    db.execute("UPDATE portal_access SET last_seen_at = ? WHERE token = ?",
+               (now(), token))
+    db.commit()
 
 # --------------------------------------------------------------------------- #
 # Thread documents + per-candidate task checklist (collaboration layer)

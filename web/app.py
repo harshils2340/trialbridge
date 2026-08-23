@@ -503,6 +503,9 @@ RATE_LIMIT_ROUTES = {
     "account_verify_resend": max(
         1, int(os.environ.get("RATE_LIMIT_VERIFY_RESEND_MAX", "5"))),
     "interest": max(1, int(os.environ.get("RATE_LIMIT_INTEREST_MAX", "12"))),
+    # Patient-portal password wall. The link is unguessable, but the password is
+    # short enough to type, so the per-IP cap backs up the per-link lockout.
+    "portal_login": max(1, int(os.environ.get("RATE_LIMIT_PORTAL_LOGIN_MAX", "12"))),
     # Inline "verify your email to apply" flow. Sending a code hits SMTP, so keep
     # it tighter than the verify check (which just compares a code).
     "apply_send_code": max(1, int(os.environ.get("RATE_LIMIT_APPLY_SEND_MAX", "6"))),
@@ -719,6 +722,12 @@ if NO_LOGIN:
             _seed_demo_surfaces(_demo["id"] if _demo else None)
     except Exception:
         app.logger.exception("demo engagement seeding failed")
+
+
+def _hash_password(raw):
+    """Single place that decides how a password is stored. Same method as the
+    study-team and patient accounts, so the portal never becomes the weak one."""
+    return generate_password_hash(raw, method="pbkdf2:sha256")
 
 
 def login_required(view):
@@ -5563,6 +5572,8 @@ def marketing_hub():
         stage_filter=stage_filter, stage_counts=stage_counts,
         owner_filter=owner_filter, unassigned_count=unassigned_count,
         applicant=applicant, eligibility=eligibility,
+        applicant_portal=(db.get_portal_by_lead(applicant["id"])
+                          if applicant else None),
         records_profile=records_profile, records_data=records_data,
         checklist=checklist,
         bridget_draft=bridget_draft, is_demo=_is_demo_account(g.user),
@@ -12032,11 +12043,22 @@ def applicant_detail(lead_id):
             app.logger.exception("forward draft failed")
             fwd = None
     notes = db.list_notes(lead_id)
+    # The one-time portal password is popped from the session so it is rendered
+    # exactly once and never survives a refresh.
+    reveal = session.pop("portal_reveal", None)
+    if reveal and reveal.get("lead_id") != lead_id:
+        reveal = None
+    portal = db.get_portal_by_lead(lead_id)
+    portal_url = ""
+    if portal and portal["status"] == "active":
+        portal_url = url_for("portal", token=portal["token"], _external=True)
     return render_template("applicant_detail.html", it=it, l=lead, view=view,
                            statuses=db.LEAD_STATUSES, labels=db.LEAD_LABELS,
                            screener_labels=SCREENER_LABELS,
                            screener_flags=SCREENER_FLAGS, notes=notes,
-                           default_schedule=default_schedule, fwd=fwd)
+                           default_schedule=default_schedule, fwd=fwd,
+                           portal=portal, portal_reveal=reveal,
+                           portal_url=portal_url)
 
 
 @app.route("/app/dashboard")
@@ -13106,6 +13128,245 @@ def blast_draft():
             "count": _int_or(request.form.get("count"), 0),
         }),
     })
+
+
+# --------------------------------------------------------------------------- #
+# Patient portal - one applicant following their own application
+# --------------------------------------------------------------------------- #
+# The session key is scoped to a single portal token, so signing in to one
+# person's portal can never carry over to another. It is deliberately separate
+# from the patient_users session (PATIENT_SESSION_KEY): this is not an account,
+# it is access to one record.
+PORTAL_SESSION_KEY = "portal_token"
+
+
+def _portal_session_ok(token):
+    return session.get(PORTAL_SESSION_KEY) == token
+
+
+def _portal_lead(row):
+    """The lead a portal row points at, or None if it went away."""
+    return db.get_lead(row["lead_id"]) if row else None
+
+
+def _portal_view(lead):
+    """Everything the portal shows, assembled from the same helpers the study
+    team's own screens use - so the patient is never shown a second, drifting
+    version of their status."""
+    status = (lead["status"] or "prescreen").strip()
+    stages = []
+    reached = True
+    for key in db.LEAD_PIPELINE:
+        is_now = key == status
+        stages.append({
+            "key": key,
+            "label": db.LEAD_LABELS.get(key, key.title()),
+            "done": reached and not is_now,
+            "current": is_now,
+        })
+        if is_now:
+            reached = False
+    closed = status in db.LEAD_CLOSED
+    visits = db.get_visits(lead["id"]) or []
+    # lead_visits has no status column - "upcoming" is simply anything still in
+    # the future, matching how the patient's own /applications page reads it.
+    _now = db.now()
+    upcoming = [v for v in visits if (v["visit_at"] or "") >= _now]
+    tasks = db.list_tasks(lead["id"]) or []
+    return {
+        "lead": lead,
+        "status": status,
+        "status_label": db.LEAD_LABELS.get(status, status.title()),
+        "blurb": db.LEAD_BLURB.get(status, ""),
+        "stages": ([] if closed else stages),
+        "closed": closed,
+        "events": db.get_lead_events(lead["id"]),
+        "messages": db.get_messages(lead["id"]),
+        "visits": visits,
+        "next_visit": (upcoming[0] if upcoming else None),
+        "tasks": [t for t in tasks if t["assigned_to"] == "patient"],
+        "doc_requests": db.list_doc_requests(lead["id"]) or [],
+        "files": db.list_attachments(lead["id"]) or [],
+    }
+
+
+@app.route("/portal/<token>", methods=["GET"])
+def portal(token):
+    """The portal itself, or the password wall in front of it.
+
+    Nothing identifying is rendered before sign-in: an unauthenticated visitor
+    sees only a generic prompt, never the person's name, their trial, or their
+    status. A wrong or revoked link is indistinguishable from a right one until
+    the password is correct."""
+    row = db.get_portal_by_token(token)
+    if not row:
+        return render_template("portal_login.html", token=token,
+                               gone=True), 410
+    if not _portal_session_ok(token):
+        return render_template("portal_login.html", token=token, gone=False)
+    lead = _portal_lead(row)
+    if not lead:
+        session.pop(PORTAL_SESSION_KEY, None)
+        return render_template("portal_login.html", token=token,
+                               gone=True), 410
+    if row["must_change"]:
+        return render_template("portal_password.html", token=token,
+                               first_time=True)
+    db.portal_touch(token)
+    db.mark_thread_read(lead["id"], "patient")
+    return render_template("portal.html", token=token, **_portal_view(lead))
+
+
+@app.route("/portal/<token>/login", methods=["POST"])
+def portal_login(token):
+    blocked = _guard_ip_rate_limit("portal_login", template_name=
+                                   "portal_login.html", token=token, gone=False)
+    if blocked:
+        return blocked
+    row, err = db.portal_check_password(
+        token, request.form.get("password", ""), check_password_hash)
+    if err:
+        # Rendered inline rather than flashed: a toast that fades after a few
+        # seconds is the wrong pattern for the door itself - someone who looks
+        # away is left staring at a form with no idea why it didn't work.
+        return render_template("portal_login.html", token=token, gone=False,
+                               error=err), 401
+    session[PORTAL_SESSION_KEY] = token
+    return redirect(url_for("portal", token=token))
+
+
+@app.route("/portal/<token>/password", methods=["POST"])
+def portal_change_password(token):
+    """Set a new password. Required on first sign-in, available any time after -
+    the credential the recruiter read out loud should not stay valid."""
+    if not _portal_session_ok(token):
+        return redirect(url_for("portal", token=token))
+    row = db.get_portal_by_token(token)
+    if not row:
+        abort(410)
+    new = request.form.get("password", "")
+    if new != request.form.get("confirm", ""):
+        flash("Those passwords don't match.", "error")
+        return redirect(url_for("portal", token=token))
+    ok, err = db.portal_set_password(token, new, _hash_password)
+    if not ok:
+        flash(err, "error")
+        return redirect(url_for("portal", token=token))
+    flash("Password updated. This is now the only password for this link.",
+          "success")
+    return redirect(url_for("portal", token=token))
+
+
+@app.route("/portal/<token>/message", methods=["POST"])
+def portal_message(token):
+    """Patient replies into the SAME thread the study team already works from,
+    so an answer here lands in the recruiter's inbox rather than a side channel."""
+    if not _portal_session_ok(token):
+        return redirect(url_for("portal", token=token))
+    row = db.get_portal_by_token(token)
+    lead = _portal_lead(row)
+    if not row or not lead or row["must_change"]:
+        abort(410)
+    body = (request.form.get("body") or "").strip()
+    if not body:
+        flash("Write a message first.", "error")
+        return redirect(url_for("portal", token=token) + "#messages")
+    db.add_message(lead["id"], "patient", body[:4000])
+    flash("Sent to your study team.", "success")
+    return redirect(url_for("portal", token=token) + "#messages")
+
+
+@app.route("/portal/<token>/task/<int:task_id>", methods=["POST"])
+def portal_toggle_task(token, task_id):
+    """Tick off one of the to-dos the study team assigned."""
+    if not _portal_session_ok(token):
+        return redirect(url_for("portal", token=token))
+    row = db.get_portal_by_token(token)
+    lead = _portal_lead(row)
+    if not row or not lead or row["must_change"]:
+        abort(410)
+    task = db.get_task(task_id)
+    # Scope the write to THIS applicant - a task id from another record must not
+    # be reachable just because this portal session is valid.
+    if not task or task["lead_id"] != lead["id"]:
+        abort(404)
+    db.set_task_status(task_id,
+                       "open" if (task["status"] or "") == "done" else "done")
+    return redirect(url_for("portal", token=token) + "#todos")
+
+
+@app.route("/portal/<token>/signout", methods=["POST"])
+def portal_signout(token):
+    session.pop(PORTAL_SESSION_KEY, None)
+    flash("Signed out.", "success")
+    return redirect(url_for("portal", token=token))
+
+
+def _portal_invite_text(link, password):
+    """The message the applicant actually receives.
+
+    Delivery has to go through the thread: it is the one channel the applicant
+    is already reading, and a credential the coordinator merely copies to their
+    own clipboard reaches nobody. The password is safe to leave in the history
+    because it dies the moment it is used - the portal forces a rotation on
+    first sign-in - so what remains in the thread is a spent token plus a link
+    the applicant will need again later anyway."""
+    return ("You can now follow your application on your own private page.\n\n"
+            f"Open it here: {link}\n"
+            f"Temporary password: {password}\n\n"
+            "You'll be asked to pick your own password the first time you sign "
+            "in, and this temporary one stops working straight after. Only you "
+            "should use this link - please don't forward it.")
+
+
+# --- Study-team side: hand a patient access ---------------------------------
+@app.route("/app/leads/<int:lead_id>/portal", methods=["POST"])
+@login_required
+def issue_portal(lead_id):
+    """Create or re-issue portal access for one applicant.
+
+    Two deliveries, on purpose: the invite is posted into the applicant's own
+    thread (the only channel they actually read), and the same credential is
+    shown to the coordinator once so they can repeat it on a call if asked. Only
+    the hash is stored, so it can never be shown again - only reissued."""
+    _ensure_site_access_for_lead(lead_id)
+    # Always land back on the applicant record: that is the only place the
+    # one-time password renders, so honouring a "next" from the leads board
+    # would silently throw the credential away.
+    back = url_for("applicant_detail", lead_id=lead_id) + "#portal"
+    lead = db.get_lead(lead_id)
+    if not lead:
+        flash("Couldn't find that applicant.", "error")
+        return redirect(url_for("leads"))
+    if not lead["revealed"]:
+        flash("Accept the applicant first, then you can give them portal "
+              "access.", "error")
+        return redirect(back)
+    row, pw = db.issue_portal_access(lead_id, g.user["id"], _hash_password)
+    link = url_for("portal", token=row["token"], _external=True)
+
+    invite = _portal_invite_text(link, pw)
+    db.add_message(lead_id, "site", invite)
+    _notify_applicant_message(lead, invite)
+
+    # Also carried in the session (not the URL, so it never lands in a browser
+    # history entry or a server log) so the coordinator can read it back to
+    # someone on the phone without reissuing.
+    session["portal_reveal"] = {"lead_id": lead_id, "link": link, "password": pw}
+    flash("Portal invite sent to the applicant's thread.", "success")
+    return redirect(back)
+
+
+@app.route("/app/leads/<int:lead_id>/portal/revoke", methods=["POST"])
+@login_required
+def revoke_portal(lead_id):
+    _ensure_site_access_for_lead(lead_id)
+    back = url_for("applicant_detail", lead_id=lead_id) + "#portal"
+    if db.revoke_portal_access(lead_id):
+        flash("Portal access revoked. That link no longer works.", "success")
+    else:
+        flash("That applicant doesn't have portal access.", "error")
+    return redirect(back)
 
 
 @app.route("/app/leads/<int:lead_id>/attach", methods=["POST"])
