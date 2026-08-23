@@ -27,7 +27,9 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 os.chdir(HERE)
 
 SRC = "marketing_test"
-CAL = "https://cal.com/harshil-shah-7tkvs7/30min"
+# Same default (and same override) as web/app.py's CAL_LINK, so the static landing
+# and the Jinja pages can never point at two different booking links.
+CAL = os.environ.get("CAL_LINK", "https://cal.com/harshil-shah-7tkvs7/30min").strip()
 FINDER_URL = "/find-trial"
 # "Product" opens the actual app. /app/home is login-gated and redirects to the inbox.
 APP_HOME = "/app/home"
