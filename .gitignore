@@ -25,6 +25,11 @@ web/.env
 .venv/
 __pycache__/
 
+# Local browser profiles and captures created by landing-page smoke tests.
+cache/chrome-*/
+cache/landing-demo*.png
+cache/tella-direct.png
+
 # Uploaded documents (candidate-thread + team-room files) — runtime data,
 # may contain PHI. The directory is auto-created by the app on startup.
 web/uploads/

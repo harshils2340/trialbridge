@@ -493,7 +493,7 @@
 </section>
 
 <section class="mh-gmail-connect mh-instagram-connect">
-  <div class="mh-gmail-mark mh-instagram-mark">IG</div>
+      <div class="mh-gmail-mark mh-instagram-mark">{{ ic.icon('instagram', 'brand-ico') }}</div>
   <div class="mh-gmail-copy">
     <span class="mh-live-pill"><i></i> Live connection</span>
     <h3>Connect Instagram</h3>
@@ -883,6 +883,12 @@
       if (prev) window.location.href = prev.href;
     }
   });
+
+  var navToggle = document.getElementById('mhNavToggle');
+  var sideToggle = document.getElementById('appSideToggle');
+  if (navToggle && sideToggle) {
+    navToggle.addEventListener('click', function () { sideToggle.click(); });
+  }
 })();
 </script>
 {% endblock %}

@@ -263,7 +263,23 @@ def test_demo_seed_preserves_live_connections_and_fills_each_trial():
         thread_count = len(threads)
         db.seed_demo_marketing_hub(demo_id)
         assert len(db.list_marketing_threads(demo_id, status="all")) == thread_count
-    print("PASS: demo top-up preserves live accounts and fills every trial")
+        demo_ncts = {
+            "NCT05711940", "NCT07645924", "NCT06559306", "NCT07076407",
+            "NCT06922110", "NCT07573176", "NCT07674654", "NCT06417775",
+        }
+        mine = db.list_marketing_threads(demo_id, status="open", assignee="mine")
+        mine_ncts = {t["nct"] for t in mine if t["nct"]}
+        assert demo_ncts <= mine_ncts, (
+            "every demo trial needs coordinator-owned sample threads; missing "
+            + ", ".join(sorted(demo_ncts - mine_ncts)))
+        # Switching studies should change the people, not replay one shared cast.
+        by_nct = {}
+        for t in db.list_marketing_threads(demo_id, status="all"):
+            by_nct.setdefault(t["nct"], set()).add(t["contact_name"])
+        names = [frozenset(by_nct.get(nct) or ()) for nct in demo_ncts]
+        assert len({frozenset(n) for n in names}) == len(demo_ncts), (
+            "demo trials must not share the same contact set")
+    print("PASS: demo seed is distinct, idempotent, dense, and preserves live accounts")
 
 
 def test_demo_records_and_checklist():

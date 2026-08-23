@@ -27,7 +27,9 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 os.chdir(HERE)
 
 SRC = "marketing_test"
-CAL = "https://cal.com/harshil-shah-7tkvs7/30min"
+# Same default (and same override) as web/app.py's CAL_LINK, so the static landing
+# and the Jinja pages can never point at two different booking links.
+CAL = os.environ.get("CAL_LINK", "https://cal.com/harshil-shah-7tkvs7/30min").strip()
 FINDER_URL = "/find-trial"
 # "Product" opens the actual app. /app/home is login-gated and redirects to the inbox.
 APP_HOME = "/app/home"
@@ -199,10 +201,14 @@ EMBED_CSS = (
     "transition:filter .15s ease,transform .15s ease}"
     "#bmd-embed .bmd-tc-apply:hover{filter:brightness(1.08)}"
     "#bmd-embed .bmd-tc-apply:active{transform:translateY(1px)}"
-    "@media(max-width:640px){#bmd-embed .bmd-host-links{display:none}"
+    "@media(max-width:640px){#bmd-embed{padding:72px 16px 84px}"
+    "#bmd-embed .bmd-host-links{display:none}"
     "#bmd-embed .bmd-tcard{flex-direction:column}"
     "#bmd-embed .bmd-tc-side{flex-direction:row;align-items:center;"
-    "justify-content:space-between;width:100%}}"
+    "justify-content:space-between;width:100%}"
+    "#bmd-embed .bmd-finder-search{flex-direction:column}"
+    "#bmd-embed .bmd-finder-search .fbtn,#bmd-embed .bmd-tc-apply{"
+    "width:100%;min-height:44px;justify-content:center}}"
     # --- Stage: browser mockup + floating "auto-routed to a person" card ---
     "#bmd-embed .bmd-embed-stage{position:relative;max-width:1000px;margin:0 auto 64px}"
     "#bmd-embed .bmd-embed-stage .bmd-embed-frame{margin:0 auto}"
@@ -790,7 +796,7 @@ FOOTER_HTML = (
     '<nav class="bmd-footer-links">'
     + ''.join(
         f'<a href="{href}"'
-        + (' target="_blank" rel="noopener"' if href.startswith('http') else '')
+        + (' target="_blank" rel="noopener"' if href.startswith('http') or href == FINDER_URL else '')
         + f'>{label}</a>'
         for href, label in FOOTER_LINKS)
     + '</nav></div>'
@@ -1016,6 +1022,16 @@ def _localize_brand_logos(h, adir, asset_prefix):
         shutil.copyfile(cache_fp, os.path.join(adir, out_name))
         h = h.replace(LOGO_API + dom, asset_prefix + out_name)
         fetched += 1
+    # The Framer refresh rmtree's landing/assets. If the page was already rewritten
+    # to local paths, the API-URL loop above finds nothing and the copies never
+    # land — Chrome then paints a broken-image placeholder over the SVG fallback.
+    for name in sorted(set(re.findall(r'bmd-logo-([a-z0-9\-]+)\.webp', h))):
+        cache_fp = os.path.join(LOGO_CACHE, f"{name}.webp")
+        dest = os.path.join(adir, f"bmd-logo-{name}.webp")
+        if os.path.exists(cache_fp) and not os.path.exists(dest):
+            shutil.copyfile(cache_fp, dest)
+            fetched += 1
+            print(f"  [logo] restored {name} from cache")
     print(f"  [logo] localized {fetched}/{len(domains)} brand logos")
     return h
 
@@ -1068,7 +1084,10 @@ def _inject_pill_nav(h):
         return h
     links = [("How it works", "#features"),
              ("Trial finder", FINDER_URL), ("FAQ", "#bmd-faq")]
-    center = ''.join('<a href="%s">%s</a>' % (href, lbl) for lbl, href in links)
+    def _link(lbl, href):
+        extra = ' target="_blank" rel="noopener"' if href == FINDER_URL else ''
+        return '<a href="%s"%s>%s</a>' % (href, extra, lbl)
+    center = ''.join(_link(lbl, href) for lbl, href in links)
     header = (
         '<header class="pill-nav" id="pillNav">'
         '<a class="brand" href="/">' + _PILL_MARK + 'BridgeMD</a>'
@@ -1085,8 +1104,8 @@ def _inject_pill_nav(h):
         '</header>')
     # Overlay as a fixed pill (so the hero keeps the top padding it already had for
     # Framer's own fixed nav) and hide Framer's nav + its fixed positioner entirely.
-    override = ('.pill-nav{position:fixed;top:14px;left:12px;right:12px;margin:0 auto;'
-                'z-index:1000}'
+    override = ('.pill-nav{position:fixed;top:max(10px,env(safe-area-inset-top));'
+                'left:12px;right:12px;margin:0 auto;z-index:1000}'
                 '[data-framer-name="NavBar"],.framer-bfsnv8-container{display:none!important}')
     style = '<style id="bmd-pill-nav">' + css + override + '</style>'
     js = ('<script>(function(){var n=document.getElementById("pillNav");if(!n)return;'
@@ -1834,6 +1853,9 @@ def build(dst, colormap, asset_prefix, raster_hue=None, accent="#1257b0"):
     # catches every SSR inline style and <style> declaration.
     h = h.replace('"Inter Placeholder"', '"Figtree Placeholder"')
     h = h.replace('"Inter"', '"Figtree"')
+
+    h = h.replace('name="viewport" content="width=device-width"',
+                  'name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"')
 
     # Swap Framer's own nav for the shared .pill-nav header (single source: style.css).
     # Runs last so the extracted CSS isn't touched by the font/color rewrites above.

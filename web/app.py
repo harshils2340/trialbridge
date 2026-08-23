@@ -1683,6 +1683,7 @@ def inject_globals():
             "matches_new": matches_new, "cal_due": cal_due,
             "pay_due": pay_due, "upd_due": upd_due,
             "sites_home_url": _sites_home_url(),
+            "cal_link": CAL_LINK,
             "sites_nav_features": sites_features.nav_items(),
             "guest_roles": db.GUEST_ROLES,
             "is_owner": _is_owner()}
