@@ -139,7 +139,10 @@
         <h2>{{ ic.icon('file') }} Your documents</h2>
         <ul class="portal-files">
           {% for f in files %}
-          <li>{{ ic.icon('file') }} <span>{{ f['orig_name'] }}</span></li>
+          <li>
+            {{ ic.icon('file') }}
+            <a href="{{ url_for('download_lead_file', att_id=f['id']) }}">{{ f['orig_name'] }}</a>
+          </li>
           {% endfor %}
         </ul>
       </div>

@@ -5571,6 +5571,11 @@ a.rail-attn:hover { text-decoration: underline; }
   background: var(--accent-soft); color: var(--accent); display: grid;
   place-items: center; margin-top: 1px; }
 .copilot-avatar svg { width: 15px; height: 15px; }
+/* Bridget's avatar carries the BridgeMD mark. Inside the tinted tile the mark's
+   own two-tone blue would muddy, so it runs on the accent with a softened
+   second square - the same treatment as a filled Bridget button. */
+.copilot-avatar { --mark-a: var(--accent); --mark-b: var(--accent-soft); }
+[data-theme="dark"] .copilot-avatar { --mark-b: var(--border-strong); }
 .copilot-body { min-width: 0; display: flex; flex-direction: column; gap: 8px; }
 .copilot-body:empty { display: none; }
 .copilot-msg p {
@@ -10548,4 +10553,273 @@ html.ui-motion [data-ui-reveal].is-visible { opacity:1; transform:none;
   .portal-grid { grid-template-columns: minmax(0, 1fr); }
   .portal-track { flex-wrap: wrap; gap: var(--space-2); }
   .portal-track li { flex: 0 0 calc(50% - var(--space-2)); }
+}
+
+/* ---------- Controls: select, checkbox, radio ---------- */
+/* The browser's native select, checkbox and radio are drawn by the OS. They
+   ignore the design tokens, look different on every machine, and stay light in
+   dark mode. These rules replace the rendering while keeping the real elements,
+   so keyboard behaviour, form submission and validation are untouched. */
+
+/* Select: strip the OS arrow and draw our own chevron so it matches the input
+   next to it. The arrow is an inline SVG data URI, which is the one place a
+   token cannot reach - a data URI has no access to var(). The two stroke values
+   below are --muted in each theme (#5c646e light, #9ea1ae dark); if those
+   tokens move, these move with them. */
+select {
+  -webkit-appearance: none;
+  appearance: none;
+  padding-right: 38px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%235c646e' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 16px 16px;
+  cursor: pointer;
+}
+/* The dark theme sets `background:` as a SHORTHAND at higher specificity, which
+   resets repeat/position/size back to their initial values - so overriding only
+   the image here tiled the chevron across the whole control. Restate the three
+   companions alongside it. */
+[data-theme="dark"] select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239ea1ae' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 16px 16px;
+}
+[data-theme="dark"] .alert-radius-in select,
+[data-theme="dark"] .visit-form select,
+[data-theme="dark"] .camp-form select,
+[data-theme="dark"] .flow-fld select,
+[data-theme="dark"] .ats-row select,
+[data-theme="dark"] .outreach-form select,
+[data-theme="dark"] .trial-filter-bar select,
+[data-theme="dark"] .tev-guest-add select,
+[data-theme="dark"] .lead-sort select,
+[data-theme="dark"] .mh-assign-form select,
+[data-theme="dark"] .mh-scope select {
+  background-position: right 9px center;
+  background-size: 14px 14px;
+}
+select:hover { border-color: var(--border-strong); }
+/* A select with no room for the chevron (compact toolbars) keeps the arrow but
+   tightens the padding rather than overlapping the label. */
+.mh-scope select, .lead-sort select, .list-toolbar select {
+  background-position: right 9px center;
+  padding-right: 30px;
+}
+
+/* Checkbox + radio: the input itself becomes the box, so there is no wrapper to
+   add and every existing `<input type=checkbox>` in the app upgrades at once. */
+input[type="checkbox"],
+input[type="radio"] {
+  -webkit-appearance: none;
+  appearance: none;
+  display: inline-grid;
+  place-content: center;
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  padding: 0;
+  border: 1.5px solid var(--border-strong);
+  border-radius: 5px;
+  background: var(--surface);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-standard),
+              border-color var(--duration-fast) var(--ease-standard);
+}
+input[type="radio"] { border-radius: var(--radius-pill); }
+input[type="checkbox"]::before,
+input[type="radio"]::before {
+  width: 10px;
+  height: 10px;
+  transform: scale(0);
+  transition: transform var(--duration-fast) var(--ease-standard);
+  content: "";
+}
+/* The tick is drawn with clip-path so it needs no icon font or extra element. */
+input[type="checkbox"]::before {
+  background: var(--accent-ink);
+  clip-path: polygon(14% 44%, 0 60%, 39% 100%, 100% 22%, 84% 6%, 39% 68%);
+}
+input[type="radio"]::before {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-pill);
+  background: var(--accent-ink);
+}
+input[type="checkbox"]:checked,
+input[type="radio"]:checked {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+input[type="checkbox"]:checked::before,
+input[type="radio"]:checked::before { transform: scale(1); }
+input[type="checkbox"]:focus-visible,
+input[type="radio"]:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3.5px var(--accent-soft);
+}
+input[type="checkbox"]:disabled,
+input[type="radio"]:disabled { opacity: .5; cursor: not-allowed; }
+/* The legacy .check row put the input at auto width; keep it aligned now that
+   the box has a fixed size. */
+.check input { width: 18px; }
+
+.ui-check {
+  display: flex;
+  gap: var(--space-2);
+  align-items: flex-start;
+  margin: 0;
+  font-weight: 500;
+  cursor: pointer;
+}
+.ui-check input { margin-top: 1px; }
+.ui-check-box { display: none; }   /* the input draws itself; kept for markup parity */
+.ui-check-copy { display: grid; gap: 2px; font-size: var(--text-sm); }
+.ui-check-copy small { color: var(--faint); font-size: var(--text-xs); }
+
+/* ---------- File upload ---------- */
+/* The native control renders an OS button plus "No file chosen" and cannot be
+   styled. The real input stays in the DOM (hidden but focusable) so nothing
+   about form behaviour changes; this is purely what the user sees. */
+.ui-file { position: relative; }
+.ui-file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  opacity: 0;
+  clip: rect(0 0 0 0);
+}
+.ui-file-zone {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  margin: 0;
+  padding: var(--space-3);
+  border: 1.5px dashed var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  cursor: pointer;
+  transition: border-color var(--duration-fast) var(--ease-standard),
+              background var(--duration-fast) var(--ease-standard);
+}
+.ui-file-zone:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+/* Focus lives on the hidden input, so mirror it onto the zone the user sees. */
+.ui-file-input:focus-visible + .ui-file-zone {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3.5px var(--accent-soft);
+}
+.ui-file.is-over .ui-file-zone {
+  border-color: var(--accent);
+  border-style: solid;
+  background: var(--accent-soft);
+}
+.ui-file.has-file .ui-file-zone {
+  border-style: solid;
+  border-color: var(--ok-border);
+  background: var(--green-bg);
+}
+.ui-file-ico {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--muted);
+}
+.ui-file.has-file .ui-file-ico { color: var(--green); }
+.ui-file-copy { display: grid; gap: 2px; min-width: 0; flex: 1; }
+.ui-file-copy b {
+  overflow: hidden;
+  font-size: var(--text-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ui-file-copy small { color: var(--faint); font-size: var(--text-xs); }
+.ui-file-clear {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-pill);
+  color: var(--muted);
+  cursor: pointer;
+}
+.ui-file-clear:hover { background: var(--surface); color: var(--red); }
+
+/* ---------- Bridget button ---------- */
+/* Bridget is the product's own assistant, so it wears the BridgeMD mark rather
+   than a generic sparkle. The mark keeps its two brand tones on light buttons;
+   on a filled/primary button it would fight the fill, so it goes monochrome. */
+.btn-bridget { gap: 7px; }
+.btn-bridget-mark {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 15px;
+  height: 15px;
+}
+.btn-bridget-mark svg { width: 100%; height: 100%; }
+.btn-bridget.btn-primary .btn-bridget-mark,
+.btn-bridget.btn-ok .btn-bridget-mark,
+.btn-bridget.btn-danger .btn-bridget-mark {
+  --mark-a: currentColor;
+  --mark-b: rgba(255, 255, 255, .55);
+}
+.btn-bridget.is-thinking .btn-bridget-mark { animation: bridgetPulse 1s ease-in-out infinite; }
+@keyframes bridgetPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: .55; transform: scale(.9); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .btn-bridget.is-thinking .btn-bridget-mark { animation: none; }
+}
+
+/* ---------- Select chevron: compact variants ---------- */
+/* Many older rules set `padding` as a shorthand, which resets the right padding
+   the drawn chevron needs and lets the value run underneath it. These restate
+   just the right padding at matching specificity (and later in the file, so
+   they win) rather than editing a dozen scattered rules. Kept in one place so
+   the next compact select only needs adding here. */
+.alert-radius-in select,
+.visit-form select,
+.camp-form select,
+.flow-fld select,
+.ats-row select,
+.outreach-form select,
+.trial-filter-bar select,
+.tev-guest-add select,
+.lead-sort select,
+.mh-assign-form select,
+.mh-stage-form select {
+  padding-right: 28px;
+  background-position: right 9px center;
+  background-size: 14px 14px;
+}
+/* The owner/stage pickers in the conversation header are the tightest of the
+   lot: keep the chevron but let a long teammate name fade rather than collide. */
+.mh-assign-form select,
+.mh-stage-form select { text-overflow: ellipsis; }
+
+/* ---------- Floating Bridget button: stay off primary actions ---------- */
+/* On the inbox the composer's Send button sits in the same bottom-right corner
+   as the FAB, so the FAB covered it. Lift the FAB above the composer there.
+   Only while the FAB is actually up - when the dock is open it is hidden and
+   nothing needs moving. */
+body.has-bridget-fab[data-page="marketing_hub"] .copilot-fab {
+  bottom: max(104px, calc(env(safe-area-inset-bottom) + 104px));
+}
+@media (max-width: 1100px) {
+  body.has-bridget-fab[data-page="marketing_hub"] .copilot-fab {
+    bottom: max(16px, env(safe-area-inset-bottom));
+  }
 }

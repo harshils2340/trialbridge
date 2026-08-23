@@ -13144,6 +13144,21 @@ def _portal_session_ok(token):
     return session.get(PORTAL_SESSION_KEY) == token
 
 
+def portal_session_lead_id():
+    """The applicant this browser is signed in to via the portal, or None.
+
+    Used by shared endpoints (file downloads) that already serve the study team
+    and patient-account holders and now need to recognise a portal visitor too.
+    A session still on the temporary password does not count as signed in."""
+    token = session.get(PORTAL_SESSION_KEY)
+    if not token:
+        return None
+    row = db.get_portal_by_token(token)
+    if not row or row["must_change"]:
+        return None
+    return row["lead_id"]
+
+
 def _portal_lead(row):
     """The lead a portal row points at, or None if it went away."""
     return db.get_lead(row["lead_id"]) if row else None
@@ -13634,7 +13649,10 @@ def download_lead_file(att_id):
     site_ok = bool(g.user and db.lead_belongs_to_user(lead["id"], g.user["id"]))
     patient_ok = bool(g.patient_user
                       and lead["applicant_token"] == get_applicant_token())
-    if not (site_ok or patient_ok):
+    # A portal visitor is signed in to exactly one applicant, so they may open
+    # that applicant's documents and no one else's.
+    portal_ok = portal_session_lead_id() == lead["id"]
+    if not (site_ok or patient_ok or portal_ok):
         abort(403)
     return _send_stored_file(att["stored_name"], att["orig_name"])
 

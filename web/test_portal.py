@@ -178,6 +178,37 @@ def test_one_portal_cannot_reach_another(uid, lead_a, lead_b):
     print("PASS: a portal session is scoped to one applicant")
 
 
+def test_documents_open_for_the_right_applicant_only(uid, lead_a, lead_b):
+    """A portal visitor can open their own documents, and only their own.
+
+    /files/lead/<id> already served the study team and patient-account holders;
+    a portal session is a third kind of caller, so the widening has to be
+    checked in both directions."""
+    with webapp.app.app_context():
+        att_a = db.add_attachment(lead_a, "site", "consent-a.txt", "stored-a.txt")
+        att_b = db.add_attachment(lead_b, "site", "consent-b.txt", "stored-b.txt")
+
+    token_a, pw_a = _issue(uid, lead_a)
+    c = _patient_client()
+    _post(c, f"/portal/{token_a}/login", {"password": pw_a})
+
+    # Still on the temporary password: not signed in yet, so no access.
+    assert c.get(f"/files/lead/{att_a}").status_code == 403, \
+        "documents opened before the forced password change"
+
+    _post(c, f"/portal/{token_a}/password",
+          {"password": "docs-pass-77", "confirm": "docs-pass-77"})
+
+    # Their own document: allowed through the access check (the file itself is
+    # not on disk in a test, so a 404 here still proves authorization passed).
+    assert c.get(f"/files/lead/{att_a}").status_code != 403, \
+        "a portal visitor cannot open their own document"
+    # Someone else's: refused.
+    assert c.get(f"/files/lead/{att_b}").status_code == 403, \
+        "a portal session reached another applicant's document"
+    print("PASS: portal documents open for that applicant and nobody else")
+
+
 def test_reply_reaches_the_team_thread(uid, lead_id):
     token, pw = _issue(uid, lead_id)
     c = _patient_client()
@@ -239,6 +270,7 @@ def main():
     test_temp_password_dies_on_first_use(uid, lead_a)
     test_short_password_refused(uid, lead_a)
     test_one_portal_cannot_reach_another(uid, lead_a, lead_b)
+    test_documents_open_for_the_right_applicant_only(uid, lead_a, lead_b)
     test_reply_reaches_the_team_thread(uid, lead_a)
     test_lockout_after_repeated_failures(uid, lead_a)
     test_revoke_kills_the_link(uid, lead_a)

@@ -53,7 +53,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ static_url('style.css') }}">
 </head>
-<body>
+<body data-page="{{ request.endpoint or '' }}">
 {% import "_icons.html" as ic %}
 {% import "_ui.html" as ui %}
 <a class="skip-link" href="#main">Skip to main content</a>

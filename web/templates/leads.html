@@ -183,7 +183,7 @@
   {% endcall %}
 
   {% call ui.field('Attach a document', hint='Optional - each person gets their own copy') %}
-    <input type="file" name="file">
+    {{ ui.file('file', label='Choose a file', hint='PDF, image or doc - or drag it here') }}
   {% endcall %}
 
   <p class="blast-note">Delivered to each person's own private thread, so nobody

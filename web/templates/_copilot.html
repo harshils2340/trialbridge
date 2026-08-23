@@ -28,7 +28,7 @@
 </button>
 {# Reusable icon library so JS-built cards use the same real icons (not inline one-offs). #}
 <div id="bridgetIcons" hidden aria-hidden="true">
-  <i data-ic="inbox">{{ ic.icon('inbox') }}</i><i data-ic="clock">{{ ic.icon('clock') }}</i><i data-ic="calendar">{{ ic.icon('calendar') }}</i><i data-ic="file">{{ ic.icon('file') }}</i><i data-ic="shield">{{ ic.icon('shield') }}</i><i data-ic="users">{{ ic.icon('users') }}</i><i data-ic="sparkle">{{ ic.icon('sparkle') }}</i><i data-ic="check">{{ ic.icon('check') }}</i><i data-ic="chevron-right">{{ ic.icon('chevron-right') }}</i>
+  <i data-ic="inbox">{{ ic.icon('inbox') }}</i><i data-ic="clock">{{ ic.icon('clock') }}</i><i data-ic="calendar">{{ ic.icon('calendar') }}</i><i data-ic="file">{{ ic.icon('file') }}</i><i data-ic="shield">{{ ic.icon('shield') }}</i><i data-ic="users">{{ ic.icon('users') }}</i><i data-ic="sparkle">{{ ic.icon('sparkle') }}</i><i data-ic="mark">{{ ic.icon('mark') }}</i><i data-ic="check">{{ ic.icon('check') }}</i><i data-ic="chevron-right">{{ ic.icon('chevron-right') }}</i>
 </div>
 <script>
 (function () {
@@ -57,7 +57,7 @@
     for (var i = 0; i < SECTION_MAP.length; i++) {
       if (SECTION_MAP[i].re.test(title || '')) return SECTION_MAP[i];
     }
-    return { icon: 'sparkle', q: title };
+    return { icon: 'mark', q: title };
   }
   function iconHtml(name) {
     var el = document.querySelector('#bridgetIcons [data-ic="' + name + '"]');
@@ -80,6 +80,9 @@
   function applyOpen(open) {
     dock.setAttribute('data-open', open ? '1' : '0');
     reopen.style.display = open ? 'none' : '';
+    // The FAB is fixed to the bottom-right, which is exactly where the inbox
+    // keeps its Send button. Flag it so CSS can lift the FAB clear.
+    document.body.classList.toggle('has-bridget-fab', !open);
     if (open) { input.focus(); if (!briefLoaded) renderIntro(); }
   }
   function setOpen(open) {
@@ -102,7 +105,7 @@
     log.innerHTML = '';
     var hello = document.createElement('div');
     hello.className = 'copilot-msg bot';
-    hello.innerHTML = '<div class="copilot-avatar">' + iconHtml('sparkle') + '</div>'
+    hello.innerHTML = '<div class="copilot-avatar">' + iconHtml('mark') + '</div>'
       + '<div class="copilot-hello"><b>Hi, I\u2019m Bridget.</b> Here\u2019s where to start '
       + '\u2014 or just ask.</div>';
     log.appendChild(hello);
@@ -156,7 +159,7 @@
     if (role === 'bot') {
       var av = document.createElement('div');
       av.className = 'copilot-avatar';
-      av.innerHTML = iconHtml('sparkle');
+      av.innerHTML = iconHtml('mark');
       wrap.appendChild(av);
     }
     var body = document.createElement('div');
@@ -318,7 +321,7 @@
   function addWorking() {
     var wrap = document.createElement('div');
     wrap.className = 'copilot-msg bot';
-    wrap.innerHTML = '<div class="copilot-avatar">' + iconHtml('sparkle') + '</div>';
+    wrap.innerHTML = '<div class="copilot-avatar">' + iconHtml('mark') + '</div>';
     var body = document.createElement('div'); body.className = 'copilot-body';
     var w = document.createElement('div');
     w.className = 'copilot-working';
@@ -433,7 +436,7 @@
       if (d.trace && d.trace.length) {
         var sw = document.createElement('div');
         sw.className = 'copilot-msg bot';
-        sw.innerHTML = '<div class="copilot-avatar">' + iconHtml('sparkle') + '</div>'
+        sw.innerHTML = '<div class="copilot-avatar">' + iconHtml('mark') + '</div>'
           + '<div class="copilot-body"></div>';
         log.appendChild(sw);
         renderSteps(sw, d.trace, deliver);
@@ -724,6 +727,89 @@
     } else {
       try { document.execCommand('copy'); done(); } catch (err) {}
     }
+  });
+})();
+</script>
+
+<script>
+/* Drives the [data-file] upload zones. The real <input type=file> does all the
+   work; this only reflects its state, so with JS off the control still submits
+   (it just won't show the filename or accept a drag). */
+(function () {
+  function label(el, name, hint, has) {
+    var n = el.querySelector('[data-file-name]');
+    var h = el.querySelector('[data-file-hint]');
+    var x = el.querySelector('[data-file-clear]');
+    if (n) n.textContent = name;
+    if (h) h.textContent = hint;
+    if (x) x.hidden = !has;
+    el.classList.toggle('has-file', has);
+  }
+
+  function sync(el) {
+    var input = el.querySelector('[data-file-input]');
+    if (!input) return;
+    var f = input.files && input.files[0];
+    if (f) {
+      var kb = f.size / 1024;
+      var size = kb >= 1024 ? (kb / 1024).toFixed(1) + ' MB'
+                            : Math.max(1, Math.round(kb)) + ' KB';
+      label(el, f.name, size + ' · click to replace', true);
+    } else {
+      label(el, el.dataset.emptyName || 'Choose a file',
+            el.dataset.emptyHint || 'or drag it here', false);
+    }
+  }
+
+  document.querySelectorAll('[data-file]').forEach(function (el) {
+    var n = el.querySelector('[data-file-name]');
+    var h = el.querySelector('[data-file-hint]');
+    // Remember the original copy so clearing can restore it verbatim.
+    el.dataset.emptyName = n ? n.textContent : 'Choose a file';
+    el.dataset.emptyHint = h ? h.textContent : 'or drag it here';
+  });
+
+  document.addEventListener('change', function (e) {
+    if (e.target.matches && e.target.matches('[data-file-input]')) {
+      sync(e.target.closest('[data-file]'));
+    }
+  });
+
+  document.addEventListener('click', function (e) {
+    var clear = e.target.closest && e.target.closest('[data-file-clear]');
+    if (!clear) return;
+    // The clear control sits inside the <label>, so a click would re-open the
+    // picker without this.
+    e.preventDefault();
+    e.stopPropagation();
+    var el = clear.closest('[data-file]');
+    var input = el.querySelector('[data-file-input]');
+    input.value = '';
+    sync(el);
+  });
+
+  ['dragenter', 'dragover'].forEach(function (evt) {
+    document.addEventListener(evt, function (e) {
+      var el = e.target.closest && e.target.closest('[data-file]');
+      if (!el) return;
+      e.preventDefault();
+      el.classList.add('is-over');
+    });
+  });
+  ['dragleave', 'drop'].forEach(function (evt) {
+    document.addEventListener(evt, function (e) {
+      var el = e.target.closest && e.target.closest('[data-file]');
+      if (el) el.classList.remove('is-over');
+    });
+  });
+  document.addEventListener('drop', function (e) {
+    var el = e.target.closest && e.target.closest('[data-file]');
+    if (!el || !e.dataTransfer || !e.dataTransfer.files.length) return;
+    e.preventDefault();
+    var input = el.querySelector('[data-file-input]');
+    input.files = e.dataTransfer.files;
+    sync(el);
+    input.dispatchEvent(new Event('change', { bubbles: true }));
   });
 })();
 </script>

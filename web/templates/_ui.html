@@ -121,7 +121,51 @@
   {%- if ask %}{% set attrs = attrs ~ ' data-bridget-ask="' ~ ask ~ '"' %}{% endif -%}
   {%- if target %}{% set attrs = attrs ~ ' data-bridget-target="' ~ target ~ '"' %}{% endif -%}
   {%- if fields %}{% set attrs = attrs ~ ' data-bridget-fields="' ~ fields ~ '"' %}{% endif -%}
-  {{ btn(label, variant, size, icon='sparkle', extra=attrs) }}
+  {%- set cls = 'btn btn-' ~ variant ~ (' btn-' ~ size if size else '') ~ ' btn-bridget' -%}
+  <button class="{{ cls }}" type="button" {{ attrs|safe }}>
+    <span class="btn-bridget-mark">{{ ic.icon('mark') }}</span>{{ label }}
+  </button>
+{%- endmacro %}
+
+{# --- File upload ----------------------------------------------------------
+   Replaces the browser's native "Choose File" control, which is unstyleable,
+   says nothing useful, and looks like 1998 next to everything else. The real
+   <input type=file> is still there (visually hidden) so keyboard focus, form
+   submission and validation all behave normally - this only changes what you
+   see. Drop a file anywhere on the zone or click it.
+     name   : form field name
+     accept : passed straight through to the input
+     hint   : small line under the label (e.g. what formats are allowed) #}
+{% macro file(name="file", label="", accept="", hint="", required=False, id="") -%}
+  {%- set fid = id or ('f-' ~ name) -%}
+  <div class="ui-file" data-file>
+    <input class="ui-file-input" id="{{ fid }}" type="file" name="{{ name }}"
+           {% if accept %}accept="{{ accept }}"{% endif %}
+           {% if required %}required{% endif %} data-file-input>
+    <label class="ui-file-zone" for="{{ fid }}" data-file-zone>
+      <span class="ui-file-ico">{{ ic.icon('upload') }}</span>
+      <span class="ui-file-copy">
+        <b data-file-name>{{ label or 'Choose a file' }}</b>
+        <small data-file-hint>{{ hint or 'or drag it here' }}</small>
+      </span>
+      <span class="ui-file-clear" data-file-clear hidden role="button"
+            aria-label="Remove file" tabindex="0">{{ ic.icon('x') }}</span>
+    </label>
+  </div>
+{%- endmacro %}
+
+{# --- Checkbox / radio -----------------------------------------------------
+   A real input under a drawn box, so the control matches the design system in
+   both themes instead of inheriting whatever the OS draws. #}
+{% macro check(label, name="", value="", type="checkbox", checked=False,
+               hint="", extra="") -%}
+  <label class="ui-check">
+    <input type="{{ type }}"{% if name %} name="{{ name }}"{% endif %}
+           {% if value %}value="{{ value }}"{% endif %}
+           {% if checked %}checked{% endif %} {{ extra|safe }}>
+    <span class="ui-check-box">{{ ic.icon('check') }}</span>
+    <span class="ui-check-copy">{{ label }}{% if hint %}<small>{{ hint }}</small>{% endif %}</span>
+  </label>
 {%- endmacro %}
 
 {# --- Modal ----------------------------------------------------------------
