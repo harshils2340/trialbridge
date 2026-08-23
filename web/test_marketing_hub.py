@@ -231,6 +231,22 @@ def test_demo_reseed_removes_connection_before_source():
         assert any(t["assigned_to"] is None
                    for t in db.list_marketing_threads(demo_id, status="all")), \
             "demo seed has no unassigned thread; Unassigned filter would be empty"
+        demo_ncts = {
+            "NCT05711940", "NCT07645924", "NCT06559306", "NCT07076407",
+            "NCT06922110", "NCT07573176", "NCT07674654", "NCT06417775",
+        }
+        mine = db.list_marketing_threads(demo_id, status="open", assignee="mine")
+        mine_ncts = {t["nct"] for t in mine if t["nct"]}
+        assert demo_ncts <= mine_ncts, (
+            "every demo trial needs coordinator-owned sample threads; missing "
+            + ", ".join(sorted(demo_ncts - mine_ncts)))
+        # Switching studies should change the people, not replay one shared cast.
+        by_nct = {}
+        for t in db.list_marketing_threads(demo_id, status="all"):
+            by_nct.setdefault(t["nct"], set()).add(t["contact_name"])
+        names = [frozenset(by_nct.get(nct) or ()) for nct in demo_ncts]
+        assert len({frozenset(n) for n in names}) == len(demo_ncts), (
+            "demo trials must not share the same contact set")
     print("PASS: demo reseed preserves marketing connection FK ordering")
 
 
