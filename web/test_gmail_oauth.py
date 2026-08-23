@@ -239,6 +239,28 @@ def test_gmail_oauth_flow():
             assert connection["last_error_code"] == ""
             assert source["status"] == "connected"
 
+            imported_thread_id = db.create_marketing_thread(
+                user_id, source_id, "Live sender", "sender@example.com",
+                "Imported live conversation", "This came from Gmail.")
+            assert imported_thread_id
+            assert any(thread["id"] == imported_thread_id
+                       for thread in db.list_marketing_threads(user_id))
+
+            # Defense in depth: even before destructive disconnect cleanup runs,
+            # stale rows from a disconnected source cannot appear or inflate badges.
+            db.get_db().execute(
+                "UPDATE marketing_sources SET status = 'disconnected' WHERE id = ?",
+                (source_id,))
+            db.get_db().commit()
+            assert db.get_marketing_thread(user_id, imported_thread_id) is None
+            assert not db.list_marketing_threads(user_id)
+            assert db.marketing_thread_counts(user_id)["open"] == 0
+            assert db.list_marketing_sources(user_id)[0]["open_count"] == 0
+            db.get_db().execute(
+                "UPDATE marketing_sources SET status = 'connected' WHERE id = ?",
+                (source_id,))
+            db.get_db().commit()
+
         webapp._google_revoke_token = lambda token: revoked.append(token) or True
         disconnected = client.post(
             f"/marketing-hub/connections/{connection_id}/disconnect",
@@ -252,6 +274,9 @@ def test_gmail_oauth_flow():
             assert connection["access_token_encrypted"] == ""
             assert connection["refresh_token_encrypted"] == ""
             assert source["status"] == "disconnected"
+            assert db.get_db().execute(
+                "SELECT COUNT(*) FROM marketing_threads WHERE source_id = ?",
+                (source_id,)).fetchone()[0] == 0
     finally:
         webapp._google_exchange_code = originals["exchange"]
         webapp._google_userinfo = originals["userinfo"]

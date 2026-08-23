@@ -357,7 +357,26 @@
 	<script>typeof document<"u"&&(window.process={...window.process,env:{...window.process?.env,NODE_ENV:"production"}});</script><div id="svg-templates" style="position: absolute; overflow: hidden; bottom: 0; left: 0; width: 0; height: 0; z-index: 0; contain: strict" aria-hidden="true">
 </div>
 	<!-- Start of bodyEnd -->
-    
+    <script id="bridgemd-product-demo">
+      (() => {
+        if (document.querySelector(".landing-product-demo")) return;
+        const hero = document.querySelector('img[alt="Hero Image"]');
+        if (!hero) return;
+
+        const demo = document.createElement("iframe");
+        demo.className = "landing-product-demo";
+        demo.src = "https://www.tella.tv/video/vid_cmt4v8b38002r09gccedm4nys/embed?b=1&title=1&a=1&loop=1&autoPlay=true&t=0&muted=1&wt=1&o=1";
+        demo.title = "BridgeMD product demo";
+        demo.width = "800";
+        demo.height = "476";
+        demo.allow = "autoplay; fullscreen";
+        demo.allowFullscreen = true;
+        demo.loading = "eager";
+        demo.setAttribute("allowtransparency", "true");
+        demo.style.cssText = "display:block;width:100%;height:100%;border:0;border-radius:inherit";
+        hero.replaceWith(demo);
+      })();
+    </script>
     <!-- End of bodyEnd -->
 
 

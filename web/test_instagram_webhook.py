@@ -291,6 +291,9 @@ def test_instagram_oauth_and_lifecycle_callbacks():
             disconnected = db.get_marketing_connection(user_id, connection_id)
             assert disconnected["status"] == "disconnected"
             assert disconnected["access_token_encrypted"] == ""
+            assert db.get_db().execute(
+                "SELECT COUNT(*) FROM marketing_threads WHERE source_id = ?",
+                (source_id,)).fetchone()[0] == 0
             reauthorized = db.connect_marketing_account(
                 user_id, provider="instagram", channel="instagram",
                 external_account_id="ig-professional-123",

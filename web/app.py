@@ -5274,15 +5274,26 @@ def for_clinicians():
 
 # Self-hosted marketing shell (Framer-exported, no Framer runtime/fee).
 _LANDING_DIR = HERE / "landing"
+_LANDING_HERO_IMAGE_RE = re.compile(
+    r'<img\b(?=[^>]*\balt="Hero Image")[^>]*>', re.IGNORECASE)
+_LANDING_DEMO_IFRAME = (
+    '<iframe class="landing-product-demo" '
+    'style="display:block;width:100%;height:100%;border:0;'
+    'border-radius:inherit" width="800" height="476" '
+    'src="https://www.tella.tv/video/vid_cmt4v8b38002r09gccedm4nys/'
+    'embed?b=1&amp;title=1&amp;a=1&amp;loop=1&amp;autoPlay=true&amp;t=0&amp;'
+    'muted=1&amp;wt=1&amp;o=1" title="BridgeMD product demo" '
+    'allow="autoplay; fullscreen" allowtransparency="true" allowfullscreen '
+    'loading="eager"></iframe>'
+)
 
 
 def _serve_landing():
-    """Serve the static marketing shell with the live CSRF token injected as a meta
-    tag, so the embedded trial-finder widget can POST /find (the guard accepts the
-    X-CSRF-Token header)."""
+    """Serve the marketing shell with its live token and product demo injected."""
     html = (_LANDING_DIR / "index.html").read_text(encoding="utf-8")
     meta = f'<meta name="csrf-token" content="{_csrf_token()}">'
     html = html.replace("<head>", "<head>" + meta, 1)
+    html = _LANDING_HERO_IMAGE_RE.sub(_LANDING_DEMO_IFRAME, html, count=1)
     resp = Response(html, mimetype="text/html")
     # The shell is rebuilt out-of-band by clean_landing.py; without this the browser
     # serves a stale cached copy and edits look like they didn't apply.
@@ -5975,12 +5986,17 @@ def marketing_connection_disconnect(connection_id):
             # the user has already revoked the grant remotely.
             app.logger.warning(
                 "Instagram webhook unsubscription failed", exc_info=True)
-    if not db.disconnect_marketing_connection(g.user["id"], connection_id):
+    result = db.disconnect_marketing_connection(
+        g.user["id"], connection_id, purge_imported_threads=True)
+    if not result:
         abort(404)
     provider_label = (
         "Instagram" if connection["provider"] == "instagram" else "Gmail")
-    flash(f"{provider_label} disconnected and its stored credentials were removed.",
-          "ok")
+    removed = result["deleted_threads"]
+    conversation_label = "conversation" if removed == 1 else "conversations"
+    flash(
+        f"{provider_label} disconnected. Stored credentials and {removed} "
+        f"imported {conversation_label} were removed.", "ok")
     return redirect(url_for("marketing_hub"))
 
 

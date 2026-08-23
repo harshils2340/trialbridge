@@ -115,12 +115,44 @@ def test_inbox_uses_shared_site_shell():
     # Top bar hidden on the inbox route -> no header to subtract.
     assert ".appshell:has(.mh-page) .apptop { display:none; }" in css
     # With no header, the body fills the full viewport (not calc(100dvh - 57px)).
-    assert ".appshell:has(.mh-page) .appbody { min-height:100vh; }" in css
+    assert ".appshell:has(.mh-page) .appbody { min-height:100vh;" in css
     # Workspace fills the viewport height instead of sitting as an inset card.
     assert ".mh-page .mh-workspace { height:100vh; max-height:100vh; }" in css
     # Full-bleed page: no padding, or the workspace detaches from the dock.
     assert "height: 100dvh; padding: 0;" in css
     print("PASS: inbox uses shared site shell as a full-bleed workspace")
+
+
+def test_inbox_detail_is_focused_and_responsive():
+    """The queue must not stretch its stage tabs, and applicant tools should be
+    separated from the primary conversation instead of extending one long page."""
+    css = _read(CSS)
+    inbox = _read(TPL, "marketing_hub.html")
+    assert "grid-template-rows:auto auto auto minmax(0,1fr)" in css, \
+        "the four-part queue is missing a grid row"
+    assert 'class="mh-thread-tabs"' not in inbox
+    assert 'aria-label="Conversation status"' not in inbox
+    assert 'class="mh-detail-layout' in inbox
+    assert 'class="mh-dialogue is-active"' in inbox
+    assert 'class="mh-applicant-panel"' in inbox
+    assert 'data-detail-tab="conversation"' in inbox
+    assert '<details class="mh-clinical-card" id="records"' in inbox
+    assert ".mh-workspace:not(.is-thread-selected) .mh-conversation" in css
+    assert "@container mh-conv (max-width:900px)" in css
+    print("PASS: inbox detail separates conversation, applicant tools, and mobile state")
+
+
+def test_landing_hero_embeds_product_demo():
+    response = app.app.test_client().get("/")
+    html = response.get_data(as_text=True)
+    assert response.status_code == 200
+    assert 'class="landing-product-demo"' in html
+    assert 'title="BridgeMD product demo"' in html
+    assert "vid_cmt4v8b38002r09gccedm4nys/embed" in html
+    assert 'allow="autoplay; fullscreen"' in html
+    assert not re.search(r'<img\b[^>]*alt="Hero Image"', html), \
+        "the old hero screenshot is still rendered"
+    print("PASS: landing hero renders the responsive Tella product demo")
 
 
 def _fake_result(nct, verdict):
@@ -171,6 +203,8 @@ def main():
         test_visual_system_is_single_source,
         test_demo_tour_starts_on_canonical_inbox,
         test_inbox_uses_shared_site_shell,
+        test_inbox_detail_is_focused_and_responsive,
+        test_landing_hero_embeds_product_demo,
         test_fit_badges_have_distinct_icons,
     ]
     failed = 0

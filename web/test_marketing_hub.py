@@ -207,7 +207,7 @@ def test_marketing_hub_flow():
     print("PASS: persistent inbox, replies, notes, assignment, handoff, isolation")
 
 
-def test_demo_reseed_removes_connection_before_source():
+def test_demo_seed_preserves_live_connections_and_fills_each_trial():
     with webapp.app.app_context():
         demo_id = db.create_user(
             "dejosama@fieveclinical.com", "disabled", "Demo Owner",
@@ -220,18 +220,50 @@ def test_demo_reseed_removes_connection_before_source():
             granted_scopes=[], token_expires_at="2099-01-01T00:00:00+00:00")
         assert connected
         db.seed_demo_marketing_hub(demo_id)
-        assert db.get_db().execute(
-            "SELECT COUNT(*) FROM marketing_connections WHERE org_id = ?",
-            (db.user_org_id(demo_id),)).fetchone()[0] == 0
+        connection = db.get_marketing_connection(
+            demo_id, connected["connection_id"])
+        assert connection["status"] == "connected"
+        assert db.get_marketing_source(
+            demo_id, connected["source_id"])["connection_mode"] == "live"
         assert any(source["identifier"] == "recruit@fieveclinical.com"
                    for source in db.list_marketing_sources(demo_id))
+        threads = db.list_marketing_threads(demo_id, status="all")
+        comp360 = [thread for thread in threads
+                   if thread["nct"] == "NCT05711940"
+                   and thread["status"] == "open"]
+        assert {"new", "outreach", "prescreen", "screening"}.issubset(
+            {thread["pipeline_stage"] for thread in comp360})
+        assert any(thread["contact_handle"] == "emily.carter@gmail.com"
+                   for thread in comp360)
+        assert sum(1 for thread in comp360 if thread["linked_lead_id"]) >= 3
+        required_stages = {"new", "outreach", "prescreen", "screening"}
+        assert set(db._MARKETING_DEMO_STUDIES).issubset(
+            {study["nct"] for study in db.list_team_studies(demo_id)})
+        for nct in db._MARKETING_DEMO_STUDIES:
+            scoped = db.list_marketing_threads(
+                demo_id, status="open", nct=nct, assignee="mine")
+            unassigned = db.list_marketing_threads(
+                demo_id, status="open", nct=nct, assignee="unassigned")
+            assert required_stages.issubset(
+                {thread["pipeline_stage"] for thread in scoped}), \
+                f"demo trial {nct} is missing a working pipeline stage"
+            assert len(scoped) >= 12, \
+                f"demo trial {nct} does not look like a busy assigned inbox"
+            assert len(unassigned) >= 2, \
+                f"demo trial {nct} has no meaningful intake queue"
+            assert {"email", "instagram", "google_ads"}.issubset(
+                {thread["channel"] for thread in scoped + unassigned})
+            assert sum(thread["message_count"] for thread in scoped) >= 25, \
+                f"demo trial {nct} has too little conversation history"
         # Day-0 demo must include at least one UNASSIGNED thread so the inbox's
         # "Unassigned" owner filter has real unclaimed inquiries to triage (and
         # the "no inquiry sits unclaimed" story is demonstrable out of the box).
-        assert any(t["assigned_to"] is None
-                   for t in db.list_marketing_threads(demo_id, status="all")), \
+        assert any(t["assigned_to"] is None for t in threads), \
             "demo seed has no unassigned thread; Unassigned filter would be empty"
-    print("PASS: demo reseed preserves marketing connection FK ordering")
+        thread_count = len(threads)
+        db.seed_demo_marketing_hub(demo_id)
+        assert len(db.list_marketing_threads(demo_id, status="all")) == thread_count
+    print("PASS: demo top-up preserves live accounts and fills every trial")
 
 
 def test_demo_records_and_checklist():
@@ -520,8 +552,8 @@ def test_inbox_study_scoper():
 
 def test_inbox_owner_filter():
     """Ownership triage: 'Mine' shows threads assigned to me, 'Unassigned' shows
-    threads nobody owns yet (so nothing sits unclaimed), 'All owners' shows the
-    whole team inbox. The filter persists in the session across navigation."""
+    threads nobody owns yet, and another teammate's private queue stays hidden.
+    The filter persists in the session across navigation."""
     with webapp.app.app_context():
         owner_id = db.create_user(
             "own-filter-a@example.com", "disabled", "Owner A", verified=True)
@@ -554,11 +586,12 @@ def test_inbox_owner_filter():
                      (ids["NobodyThread"],))
         conn.commit()
 
-    # All owners (default): every thread shows, and the owner control renders.
-    allv = client.get("/app/inbox?status=all").get_data(as_text=True)
-    assert 'name="owner"' in allv, "owner filter control did not render"
-    assert ("MineThread" in allv and "MateThread" in allv
-            and "NobodyThread" in allv)
+    # Mine is the privacy-preserving default; the two-bucket control renders.
+    default = client.get("/app/inbox?status=all").get_data(as_text=True)
+    assert 'aria-label="Inbox scope"' in default, \
+        "owner filter control did not render"
+    assert "MineThread" in default
+    assert "MateThread" not in default and "NobodyThread" not in default
 
     # Mine: only my thread.
     mine = client.get("/app/inbox?status=all&owner=mine").get_data(as_text=True)
@@ -574,10 +607,10 @@ def test_inbox_owner_filter():
     assert "NobodyThread" in un
     assert "MineThread" not in un and "MateThread" not in un
 
-    # Clear back to everyone.
+    # Invalid/empty values safely reset to Mine, never expose every owner.
     cleared = client.get("/app/inbox?status=all&owner=").get_data(as_text=True)
-    assert ("MineThread" in cleared and "MateThread" in cleared
-            and "NobodyThread" in cleared)
+    assert "MineThread" in cleared
+    assert "MateThread" not in cleared and "NobodyThread" not in cleared
 
     # Contract lock: marketing_thread_counts must stay GLOBAL with no assignee
     # (the site-wide unread badge relies on this) and only narrow when asked.
@@ -588,7 +621,7 @@ def test_inbox_owner_filter():
         assert db.marketing_thread_counts(owner_id, assignee="mine")["total"] == 1
         assert db.marketing_thread_counts(
             owner_id, assignee="unassigned")["total"] == 1
-    print("PASS: inbox owner filter (mine/unassigned/all) + session persistence")
+    print("PASS: private inbox owner filter (mine/unassigned) + session persistence")
 
 
 def test_claim_unassigned_thread_end_to_end():
@@ -742,7 +775,7 @@ def main():
         test_awaiting_reply_badge()
         test_empty_inbox_prompts_channel_connect()
         test_marketing_seed_is_gated_to_demo_account()
-        test_demo_reseed_removes_connection_before_source()
+        test_demo_seed_preserves_live_connections_and_fills_each_trial()
         test_demo_records_and_checklist()
         print("PASS: marketing hub tests")
     finally:

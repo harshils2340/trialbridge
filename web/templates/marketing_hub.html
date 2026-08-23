@@ -23,7 +23,7 @@
 
 {% block body %}
 <div class="mh-page">
-  <section class="mh-workspace {{ 'is-list-only' if not active }}">
+  <section class="mh-workspace {{ 'has-active' if active }} {{ 'is-thread-selected' if active and request.args.get('thread') }} {{ 'is-list-only' if not active }}">
     <section class="mh-thread-column" aria-label="Conversations" data-demo-tour-target="inbox">
       <div class="mh-thread-toolbar">
         {% if nav_studies and nav_studies|length > 1 %}
@@ -62,11 +62,6 @@
            href="{{ url_for('marketing_hub', owner='unassigned', status=status_filter) }}">Unassigned{% if unassigned_count %} <span>{{ unassigned_count }}</span>{% endif %}</a>
       </div>
       {% endif %}
-      <nav class="mh-thread-tabs" aria-label="Conversation status">
-        <a class="{{ 'is-active' if status_filter == 'open' else '' }}" href="{{ url_for('marketing_hub', status='open', source=source_filter, channel=channel_filter, q=search_query) }}">Open <span>{{ counts.open }}</span></a>
-        <a class="{{ 'is-active' if status_filter == 'resolved' else '' }}" href="{{ url_for('marketing_hub', status='resolved', source=source_filter, channel=channel_filter, q=search_query) }}">Resolved <span>{{ counts.resolved }}</span></a>
-        <a class="{{ 'is-active' if status_filter == 'all' else '' }}" href="{{ url_for('marketing_hub', status='all', source=source_filter, channel=channel_filter, q=search_query) }}">All</a>
-      </nav>
       {% set stage_labels = {
         'all':'All', 'new':'New', 'outreach':'Outreach',
         'prescreen':'Pre-screen', 'screening':'Screening',
@@ -147,15 +142,23 @@
       {% set instagram_delivery_ready = active.connection_mode == 'live' and active.provider == 'instagram' and active.connection_status == 'connected' and active.external_ref %}
       {% set live_delivery_ready = gmail_delivery_ready or instagram_delivery_ready %}
       <header class="mh-conversation-head">
+        <a class="mh-mobile-back" href="{{ url_for('marketing_hub', stage=stage_filter, status=status_filter, source=source_filter, channel=channel_filter, q=search_query) }}">
+          {{ ic.icon('arrow-left') }} Inbox
+        </a>
         <div class="mh-contact-main">
           <span class="mh-contact-avatar-wrap is-large">
             <span class="mh-contact-avatar is-large">{{ (active.contact_name or active.contact_handle or '?')[:1]|upper }}</span>
             {{ channel_icon(active.channel, 'is-header-channel') }}
           </span>
-          <span>
-            <small>{{ channel_labels.get(active.channel, 'Message') }}{% if active.source_label %} via {{ active.source_label }}{% endif %}{% if active.study_label %} · {{ active.study_label }}{% endif %}</small>
+          <span class="mh-contact-copy">
+            <small>{{ channel_labels.get(active.channel, 'Message') }}{% if active.source_label %} via {{ active.source_label }}{% endif %}</small>
             <h2>{{ active.contact_name or active.contact_handle or 'Unknown contact' }}</h2>
-            <p>{{ active.contact_handle or active.source_identifier }}</p>
+            <p>
+              <span>{{ active.contact_handle or active.source_identifier }}</span>
+              {% if active.study_label %}
+              <span class="mh-study-context" title="{{ active.study_label }}">{{ ic.icon('file') }} {{ active.study_label }}</span>
+              {% endif %}
+            </p>
           </span>
         </div>
         <div class="mh-conversation-actions">
@@ -196,6 +199,20 @@
         </div>
       </header>
 
+      {% if applicant %}
+      <nav class="mh-detail-tabs" role="tablist" aria-label="Conversation workspace">
+        <button type="button" class="is-active" data-detail-tab="conversation" role="tab" aria-selected="true">
+          {{ ic.icon('chat') }} Conversation
+        </button>
+        <button type="button" data-detail-tab="applicant" role="tab" aria-selected="false">
+          {{ ic.icon('user') }} Applicant tools
+        </button>
+      </nav>
+      {% endif %}
+
+      <div class="mh-detail-layout {{ 'has-applicant' if applicant }}" data-detail-layout>
+      <main class="mh-dialogue is-active" data-detail-panel="conversation">
+      <div class="mh-dialogue-top">
       {% if not applicant and not (active.channel == 'google_ads' and active.contact_handle == 'Automated alert') %}
       <section class="mh-link-applicant" data-ui-reveal>
         <div>
@@ -225,6 +242,7 @@
         <span>Subject</span>
         <b>{{ active.subject or 'New conversation' }}</b>
         {{ ui.badge('Resolved' if active.status == 'resolved' else 'Open', 'ok' if active.status == 'resolved' else 'brand') }}
+      </div>
       </div>
 
       <div class="mh-message-list" id="messageList" aria-live="polite">
@@ -306,11 +324,26 @@
           </div>
         </form>
       </div>
+      </main>
 
       {% if applicant %}
-      <section class="mh-clinical-card" id="records" data-ui-reveal>
-        <header>
+      <aside class="mh-applicant-panel" data-detail-panel="applicant" aria-label="Applicant tools">
+        <header class="mh-applicant-panel-head">
+          <span class="mh-section-icon">{{ ic.icon('user') }}</span>
+          <span>
+            <small>Applicant workspace</small>
+            <b>{{ active.contact_name or active.contact_handle or 'Applicant' }}</b>
+            <em>{{ stage_labels.get(active.pipeline_stage or 'new', 'New') }} stage</em>
+          </span>
+          {{ ui.badge('Linked', 'ok', 'check') }}
+        </header>
+        {% set met = eligibility.get('met', []) %}
+        {% set unknown = eligibility.get('unknown', []) %}
+        {% set not_met = eligibility.get('not_met', []) %}
+      <details class="mh-clinical-card" id="records" data-ui-reveal {% if not records_profile or unknown or not_met %}open{% endif %}>
+        <summary>
           <div><span class="mh-section-icon">{{ ic.icon('file') }}</span><span><b>Patient-authorized records</b><small>Decision support for coordinator review</small></span></div>
+          <span class="mh-tool-status">
           {% if records_profile %}
           {{ ui.badge('Retrieved', 'ok') }}
           {% elif applicant.records_authorized_at %}
@@ -318,7 +351,10 @@
           {% else %}
           {{ ui.badge('Authorization needed', 'warn') }}
           {% endif %}
-        </header>
+          </span>
+          <span class="mh-summary-chevron">{{ ic.icon('chevron-down') }}</span>
+        </summary>
+        <div class="mh-clinical-content">
 
         {% if records_profile %}
         <div class="mh-record-summary">
@@ -329,7 +365,7 @@
         <div class="mh-record-grid">
           <div><b>Conditions</b><span>{{ (records_data.conditions or [])|join(', ') or 'No conditions returned' }}</span></div>
           <div><b>Medications</b><span>{{ (records_data.meds or [])|join(', ') or 'No medications returned' }}</span></div>
-          <div><b>Recent observations</b><span>{{ (records_data.labs or [])|join(' · ') or 'No observations returned' }}</span></div>
+          <div><b>Recent observations</b><span>{{ (records_data.labs or [])|join(' | ') or 'No observations returned' }}</span></div>
         </div>
         {% else %}
         <div class="mh-record-empty">
@@ -342,13 +378,10 @@
         </form>
         {% endif %}
 
-        {% set met = eligibility.get('met', []) %}
-        {% set unknown = eligibility.get('unknown', []) %}
-        {% set not_met = eligibility.get('not_met', []) %}
         <div class="mh-criteria">
           <div class="mh-criteria-head">
             <b>Criteria review</b>
-            <span>{{ met|length }} supported · {{ unknown|length }} needs review · {{ not_met|length }} not met</span>
+            <span>{{ met|length }} supported &middot; {{ unknown|length }} needs review &middot; {{ not_met|length }} not met</span>
           </div>
           {% for criterion in met %}
           <div class="is-met">{{ ic.icon('check') }}<span><b>Supported by available information</b><small>{{ criterion }}</small></span></div>
@@ -360,13 +393,17 @@
           <div class="is-failed">{{ ic.icon('x') }}<span><b>Criterion not met</b><small>{{ criterion }}</small></span></div>
           {% endfor %}
         </div>
-      </section>
+        </div>
+      </details>
 
-      <section class="mh-clinical-card" id="checklist" data-ui-reveal>
-        <header>
+      {% set checklist_done = checklist|selectattr('status', 'equalto', 'done')|list|length %}
+      <details class="mh-clinical-card" id="checklist" data-ui-reveal {% if checklist and (active.pipeline_stage or 'new') in ['screening', 'enrolled'] %}open{% endif %}>
+        <summary>
           <div><span class="mh-section-icon">{{ ic.icon('check') }}</span><span><b>Screening workflow</b><small>Team checklist, not electronic consent or randomization</small></span></div>
-          <span>{{ checklist|selectattr('status', 'equalto', 'done')|list|length }}/{{ checklist|length }} complete</span>
-        </header>
+          <span class="mh-tool-status">{{ checklist_done }}/{{ checklist|length }}</span>
+          <span class="mh-summary-chevron">{{ ic.icon('chevron-down') }}</span>
+        </summary>
+        <div class="mh-clinical-content">
         <div class="mh-checklist">
           {% for task in checklist %}
           <form method="post" action="{{ url_for('marketing_thread_checklist', thread_id=active.id, task_id=task.id) }}">
@@ -380,8 +417,11 @@
           <p>No screening tasks yet. Move the applicant into screening to create a workflow.</p>
           {% endfor %}
         </div>
-      </section>
+        </div>
+      </details>
+      </aside>
       {% endif %}
+      </div>
       {% else %}
       <div class="mh-no-conversation">
         <span>{{ ic.icon('chat') }}</span>
@@ -416,7 +456,8 @@
           {{ ui.btn('Sync', 'ghost', 'sm', icon='refresh', type='submit') }}
         </form>
         {% endif %}
-        <form method="post" action="{{ url_for('marketing_connection_disconnect', connection_id=source.connection_id) }}">
+        <form method="post" action="{{ url_for('marketing_connection_disconnect', connection_id=source.connection_id) }}"
+              onsubmit="return confirm('Disconnect this account and remove all of its imported conversations from this inbox?');">
           {{ ui.btn('Disconnect', 'ghost', 'sm', type='submit') }}
         </form>
       {% elif source.connection_mode == 'demo' %}
@@ -626,6 +667,28 @@
     });
   });
 
+  var detailTabs = document.querySelectorAll('[data-detail-tab]');
+  var detailPanels = document.querySelectorAll('[data-detail-panel]');
+  function showDetailPanel(target) {
+    detailTabs.forEach(function (tab) {
+      var active = tab.getAttribute('data-detail-tab') === target;
+      tab.classList.toggle('is-active', active);
+      tab.setAttribute('aria-selected', active ? 'true' : 'false');
+    });
+    detailPanels.forEach(function (panel) {
+      panel.classList.toggle(
+        'is-active', panel.getAttribute('data-detail-panel') === target);
+    });
+  }
+  detailTabs.forEach(function (tab) {
+    tab.addEventListener('click', function () {
+      showDetailPanel(tab.getAttribute('data-detail-tab'));
+    });
+  });
+  if (window.location.hash === '#records' || window.location.hash === '#checklist') {
+    showDetailPanel('applicant');
+  }
+
   var sourceForm = document.getElementById('sourceForm');
   if (sourceForm) {
     var label = document.getElementById('sourceIdentifierLabel');
@@ -799,6 +862,10 @@
 
   // ---- Arrow keys move through the queue - no letter shortcuts to learn. ---
   var rows = Array.prototype.slice.call(document.querySelectorAll('.mh-thread-row'));
+  var activeRow = rows.find(function (row) {
+    return row.classList.contains('is-active');
+  });
+  if (activeRow) activeRow.scrollIntoView({block: 'center'});
   function isTypingTarget(el) {
     return el && (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT' || el.isContentEditable);
   }

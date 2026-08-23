@@ -8492,7 +8492,7 @@ body.fs-page { background:
 
 .mh-thread-column {
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: auto auto auto minmax(0, 1fr);
   border-right: 1px solid var(--border);
   background: var(--surface);
 }
@@ -8534,13 +8534,6 @@ body.fs-page { background:
   box-shadow: 0 1px 2px rgba(16,16,40,.06); }
 .mh-owner-toggle a span { min-width: 16px; padding: 1px 5px; border-radius: 999px;
   background: var(--accent-soft); color: var(--accent); font-size: 9px; }
-.mh-thread-tabs { display: flex; gap: 5px; padding: 0 13px 10px; border-bottom: 1px solid var(--border); }
-.mh-thread-tabs a { display: inline-flex; align-items: center; gap: 5px; padding: 6px 9px; border-radius: 8px; color: var(--faint); font-size: 10px; font-weight: 700; text-decoration: none; }
-.mh-thread-tabs a:hover { background: var(--surface-2); color: var(--ink); text-decoration: none; }
-.mh-thread-tabs a.is-active { background:var(--accent-soft); color:var(--accent); }
-.mh-thread-tabs a span { min-width:16px; padding:1px 5px;
-  border-radius:var(--radius-pill); background:var(--neutral-bg);
-  text-align:center; font-size:var(--text-xs); }
 .mh-thread-stack { overflow: auto; }
 .mh-thread-row {
   position: relative;
@@ -8785,7 +8778,6 @@ body.fs-page { background:
 [data-theme="dark"] .mh-note-icon { background: #493b22; }
 [data-theme="dark"] .mh-thread-row.is-active,
 [data-theme="dark"] .mh-thread-row.is-unread.is-active { background: #182b39; }
-[data-theme="dark"] .mh-thread-tabs a.is-active,
 [data-theme="dark"] .mh-message.is-outbound .mh-message-bubble,
 [data-theme="dark"] .mh-channel-picker input:checked + span,
 [data-theme="dark"] .mh-coverage-explainer { background: #182b39; }
@@ -9391,12 +9383,6 @@ html.fs-motion .fsx-proof-stat:nth-child(4) { transition-delay:.18s; }
 .mh-search { border-color:var(--border); border-radius:var(--radius-sm);
   background:var(--surface-2); }
 .mh-search input { height:34px; font-size:var(--text-xs); }
-.mh-thread-tabs { gap:var(--space-1); padding:0 var(--space-3) var(--space-2); }
-.mh-thread-tabs a { padding:6px 8px; border-radius:var(--radius-sm);
-  color:var(--muted); font-size:var(--text-xs); }
-.mh-thread-tabs a.is-active { color:var(--accent); background:var(--accent-soft); }
-.mh-thread-tabs a span { min-width:0; padding:0; border-radius:0;
-  color:inherit; background:transparent; font-size:inherit; }
 .mh-stage-tabs { padding:var(--space-2) var(--space-3); }
 .mh-stage-tabs a { font-size:var(--text-xs); }
 .mh-thread-row { min-height:112px; transition:background var(--duration-fast) var(--ease-standard),
@@ -9438,6 +9424,200 @@ html.fs-motion .fsx-proof-stat:nth-child(4) { transition-delay:.18s; }
 .mh-clinical-card { box-shadow:none; }
 .mh-record-text,.mh-record-grid span,.mh-criteria > div > span small,
 .mh-checklist button { font-size:var(--text-xs); line-height:var(--leading-body); }
+
+/* Focused inbox detail: messages stay primary while applicant-only tools live in
+   a clearly separated context panel. This block supersedes the legacy stacked
+   card layout above without changing any backend forms or actions. */
+.mh-page .mh-workspace { grid-template-columns:350px minmax(0,1fr); }
+.mh-thread-column { grid-template-rows:auto auto auto minmax(0,1fr); }
+.mh-thread-toolbar { display:grid; grid-template-columns:minmax(0,1fr) auto auto;
+  gap:var(--space-2); padding:var(--space-3); border-bottom:1px solid var(--border); }
+.mh-thread-toolbar .mh-scope { min-width:0; }
+.mh-thread-toolbar .mh-scope select { width:100%; max-width:none; height:36px;
+  background-color:var(--surface); }
+.mh-thread-toolbar .mh-search { min-height:36px; background:var(--surface); }
+.mh-thread-toolbar:has(.mh-scope) .mh-search { grid-column:1 / -1; grid-row:2; }
+.mh-thread-toolbar .ui-icon-btn { width:36px; height:36px; }
+.mh-owner-toggle { margin-top:var(--space-2); }
+.mh-stage-tabs { min-height:45px; align-items:center; gap:2px; }
+.mh-stage-tabs a { padding:6px; }
+
+.mh-conversation { display:flex; flex-direction:column; min-height:0; overflow:hidden;
+  background:var(--surface); }
+.mh-conversation-head { position:relative; top:auto; flex:0 0 auto; gap:var(--space-5);
+  min-height:82px; padding:var(--space-4) var(--space-5); }
+.mh-mobile-back { display:none; }
+.mh-contact-main { min-width:0; flex:1; }
+.mh-contact-copy { min-width:0; flex:1; }
+.mh-contact-copy > small { color:var(--accent); font-weight:750;
+  letter-spacing:.02em; text-transform:none; }
+.mh-contact-copy > p { display:flex; align-items:center; gap:var(--space-2); min-width:0;
+  margin:0; overflow:visible; white-space:normal; }
+.mh-contact-copy > p > span:first-child { flex:0 1 auto; min-width:0; overflow:hidden;
+  color:var(--muted); text-overflow:ellipsis; white-space:nowrap; }
+.mh-study-context { min-width:0; max-width:min(42vw,480px); display:inline-flex;
+  align-items:center; gap:5px; padding:3px 8px; overflow:hidden;
+  border:1px solid var(--border); border-radius:var(--radius-pill);
+  background:var(--surface-2); color:var(--muted); font-size:var(--text-xs);
+  text-overflow:ellipsis; white-space:nowrap; }
+.mh-study-context .ico { width:11px; height:11px; flex:0 0 auto; color:var(--accent); }
+.mh-conversation-actions { max-width:52%; }
+.mh-assign-form select,.mh-resolve-btn { height:36px; }
+
+.mh-detail-tabs { display:none; flex:0 0 auto; gap:var(--space-2);
+  padding:var(--space-2) var(--space-4); border-bottom:1px solid var(--border);
+  background:var(--surface); }
+.mh-detail-tabs button { min-height:34px; display:inline-flex; align-items:center;
+  justify-content:center; gap:6px; padding:0 var(--space-3); border:0;
+  border-radius:var(--radius-sm); background:transparent; color:var(--muted);
+  font:inherit; font-size:var(--text-xs); font-weight:750; cursor:pointer; }
+.mh-detail-tabs button.is-active { color:var(--accent); background:var(--accent-soft); }
+.mh-detail-tabs button:focus-visible,.mh-clinical-card > summary:focus-visible {
+  outline:2px solid var(--accent); outline-offset:-2px; }
+.mh-detail-tabs button .ico { width:13px; height:13px; }
+.mh-detail-layout { min-width:0; min-height:0; flex:1; display:grid;
+  grid-template-columns:minmax(0,1fr); overflow:hidden; }
+.mh-detail-layout.has-applicant {
+  grid-template-columns:minmax(420px,1fr) minmax(310px,370px); }
+.mh-dialogue { min-width:0; min-height:0; display:grid;
+  grid-template-rows:auto minmax(0,1fr) auto; overflow:hidden;
+  background:var(--surface); }
+.mh-dialogue-top { min-width:0; }
+.mh-dialogue .mh-link-applicant { min-height:0; margin:var(--space-3);
+  padding:var(--space-3); border-radius:var(--radius-sm); }
+.mh-dialogue .mh-subject-bar,.mh-dialogue .mh-message-list,
+.mh-dialogue .mh-composer { margin-left:0; margin-right:0; }
+.mh-dialogue .mh-subject-bar { margin-top:0; padding:10px var(--space-5);
+  border-width:0 0 1px; border-radius:0; background:var(--surface); }
+.mh-dialogue .mh-subject-bar > span { color:var(--accent); }
+.mh-dialogue .mh-message-list { min-height:0; padding:var(--space-5);
+  border:0; background:linear-gradient(180deg,var(--surface-2),var(--surface)); }
+.mh-dialogue .mh-message { width:min(82%,620px); }
+.mh-dialogue .mh-message-bubble { padding:12px 14px; border-radius:12px;
+  font-size:var(--text-sm); box-shadow:0 4px 14px rgba(18,35,52,.06); }
+.mh-dialogue .mh-message.is-outbound .mh-message-bubble { border-radius:12px; }
+.mh-dialogue .mh-composer { margin-bottom:0; padding:0 var(--space-5) var(--space-4);
+  border-width:1px 0 0; border-radius:0; overflow:visible;
+  box-shadow:0 -8px 24px rgba(18,35,52,.035); }
+.mh-dialogue .mh-compose-panel textarea { min-height:76px; max-height:150px;
+  background:var(--surface); }
+.mh-dialogue .mh-quick-replies { flex-wrap:nowrap; overflow-x:auto;
+  padding:1px 1px 4px; scrollbar-width:none; }
+.mh-dialogue .mh-quick-replies::-webkit-scrollbar { display:none; }
+.mh-dialogue .mh-quick-chip { flex:0 0 auto; }
+
+.mh-applicant-panel { min-width:0; min-height:0; overflow-y:auto;
+  padding:var(--space-4); border-left:1px solid var(--border);
+  background:var(--surface-2); }
+.mh-applicant-panel-head { display:grid; grid-template-columns:auto minmax(0,1fr) auto;
+  align-items:center; gap:var(--space-3); padding:2px 2px var(--space-4); }
+.mh-applicant-panel-head > span:nth-child(2) { min-width:0; display:flex;
+  flex-direction:column; gap:1px; }
+.mh-applicant-panel-head small { color:var(--faint); font-size:var(--text-xs);
+  font-weight:750; letter-spacing:.05em; text-transform:uppercase; }
+.mh-applicant-panel-head b { overflow:hidden; color:var(--ink);
+  font-size:var(--text-sm); text-overflow:ellipsis; white-space:nowrap; }
+.mh-applicant-panel-head em { color:var(--muted); font-size:var(--text-xs);
+  font-style:normal; }
+.mh-applicant-panel .mh-clinical-card { margin:0 0 var(--space-3);
+  border-radius:var(--radius); background:var(--surface); box-shadow:none; }
+.mh-clinical-card > summary { min-height:68px; display:grid;
+  grid-template-columns:minmax(0,1fr) auto 16px; align-items:center;
+  gap:var(--space-2); padding:var(--space-3); list-style:none; cursor:pointer;
+  user-select:none; }
+.mh-clinical-card > summary::-webkit-details-marker { display:none; }
+.mh-clinical-card > summary > div { min-width:0; display:flex; align-items:center;
+  gap:var(--space-3); }
+.mh-clinical-card > summary > div > span:last-child { min-width:0; display:flex;
+  flex-direction:column; gap:2px; }
+.mh-clinical-card > summary b { color:var(--ink); font-size:var(--text-sm); }
+.mh-clinical-card > summary small { overflow:hidden; color:var(--muted);
+  font-size:var(--text-xs); text-overflow:ellipsis; white-space:nowrap; }
+.mh-clinical-card[open] > summary { border-bottom:1px solid var(--border); }
+.mh-clinical-card > summary:hover { background:var(--surface-2); }
+.mh-tool-status { color:var(--muted); font-size:var(--text-xs); white-space:nowrap; }
+.mh-summary-chevron { display:flex; color:var(--faint);
+  transition:transform var(--duration-fast) var(--ease-standard); }
+.mh-summary-chevron .ico { width:14px; height:14px; }
+.mh-clinical-card[open] .mh-summary-chevron { transform:rotate(180deg); }
+.mh-clinical-content { min-width:0; }
+.mh-applicant-panel .mh-record-summary { margin:var(--space-3); }
+.mh-applicant-panel .mh-record-text { margin:0 var(--space-3) var(--space-3); }
+.mh-applicant-panel .mh-record-grid { grid-template-columns:1fr;
+  margin:0 var(--space-3) var(--space-3); }
+.mh-applicant-panel .mh-record-empty { align-items:flex-start;
+  padding:var(--space-4) var(--space-3) var(--space-3); }
+.mh-applicant-panel .mh-record-empty > span { display:flex; flex:0 0 auto;
+  color:var(--accent); }
+.mh-applicant-panel .mh-record-action { align-items:stretch; flex-direction:column;
+  gap:var(--space-3); padding:0 var(--space-3) var(--space-3); }
+.mh-applicant-panel .mh-record-action .btn { justify-content:center; }
+.mh-applicant-panel .mh-criteria { margin:0 var(--space-3) var(--space-3); }
+.mh-applicant-panel .mh-criteria-head { align-items:flex-start;
+  flex-direction:column; gap:3px; }
+.mh-applicant-panel .mh-checklist { padding:var(--space-2) var(--space-3) var(--space-3); }
+
+/* The full assistant duplicates the contextual Draft with Bridget action here.
+   Keep its launcher available, but reduce it to an unobtrusive icon button. */
+.appshell:has(.mh-page) .copilot-fab { width:46px; height:46px; padding:0;
+  justify-content:center; border-radius:14px; }
+.appshell:has(.mh-page) .copilot-fab .copilot-fab-label { display:none; }
+
+@container mh-conv (max-width:900px) {
+  .mh-detail-tabs { display:flex; }
+  .mh-detail-layout.has-applicant { display:block; }
+  .mh-detail-layout.has-applicant > [data-detail-panel] { display:none; height:100%; }
+  .mh-detail-layout.has-applicant > .mh-dialogue.is-active { display:grid; }
+  .mh-detail-layout.has-applicant > .mh-applicant-panel.is-active { display:block;
+    border-left:0; }
+}
+
+@media (max-width:1180px) {
+  .mh-page .mh-workspace { grid-template-columns:310px minmax(0,1fr); }
+  .mh-conversation-actions { max-width:58%; }
+}
+@media (max-width:980px) {
+  .mh-page .mh-workspace { grid-template-columns:280px minmax(0,1fr); }
+  .mh-conversation-actions { max-width:none; }
+}
+@media (max-width:720px) {
+  .mh-page,.mh-page .mh-workspace { height:100dvh; max-height:100dvh; }
+  .mh-page .mh-workspace { display:grid; grid-template-columns:1fr; overflow:hidden; }
+  .mh-workspace:not(.is-thread-selected) .mh-conversation { display:none; }
+  .mh-workspace.is-thread-selected .mh-thread-column { display:none; }
+  .mh-thread-column { min-height:0; height:100dvh; max-height:none;
+    border-right:0; border-bottom:0; }
+  .mh-thread-stack { min-height:0; max-height:none; }
+  .mh-conversation { min-height:0; height:100dvh; }
+  .mh-conversation-head { align-items:stretch; gap:var(--space-3);
+    padding:var(--space-3); }
+  .mh-mobile-back { width:max-content; display:inline-flex; align-items:center;
+    gap:6px; color:var(--accent); font-size:var(--text-xs); font-weight:750;
+    text-decoration:none; }
+  .mh-mobile-back .ico { width:13px; height:13px; }
+  .mh-contact-main { width:100%; max-width:100%; align-items:flex-start; }
+  .mh-contact-copy { width:calc(100% - 54px); max-width:calc(100% - 54px); }
+  .mh-contact-copy > p { align-items:flex-start; flex-direction:column; gap:3px; }
+  .mh-study-context { max-width:100%; }
+  .mh-conversation-actions { width:100%; max-width:none; display:grid;
+    grid-template-columns:minmax(0,1fr) minmax(0,1fr); align-items:end; }
+  .mh-conversation-actions > form { min-width:0; }
+  .mh-conversation-actions > form:last-child { grid-column:1 / -1; }
+  .mh-assign-form { min-width:0; }
+  .mh-assign-form select,.mh-resolve-btn { width:100%; }
+  .mh-resolve-btn { justify-content:center; }
+  .mh-detail-layout,.mh-dialogue,.mh-dialogue-top,.mh-message-list,.mh-composer {
+    width:100%; max-width:100%; }
+  .mh-dialogue .mh-subject-bar { padding-left:var(--space-3);
+    padding-right:var(--space-3); }
+  .mh-dialogue .mh-message-list { padding:var(--space-4) var(--space-3); }
+  .mh-dialogue .mh-composer { padding-left:var(--space-3);
+    padding-right:var(--space-3); }
+  .mh-dialogue .mh-message { width:94%; max-width:100%; }
+  .mh-dialogue .mh-message-bubble { max-width:100%; overflow-wrap:anywhere; }
+  .mh-applicant-panel { padding:var(--space-3); }
+  .appshell:has(.mh-page) .copilot-fab { display:none !important; }
+}
 
 html.ui-motion [data-ui-reveal] { opacity:0; transform:translateY(8px); }
 html.ui-motion [data-ui-reveal].is-visible { opacity:1; transform:none;
