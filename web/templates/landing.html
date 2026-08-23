@@ -239,13 +239,14 @@ body.home-screen .hero-reassurance{ justify-content:center; }
 
 /* The BridgeMD widget as it appears on the partner page. */
 .bmd-widget{ position:relative; margin:20px 26px 30px;
-  border:1px solid rgba(18,87,176,.18); border-radius:14px; padding:20px 18px;
-  background:linear-gradient(180deg,#f7faff,#fff); }
-.bmd-widget-tag{ position:absolute; top:-12px; left:18px; display:inline-flex;
-  align-items:center; gap:6px; background:#fff;
-  border:1px solid rgba(18,87,176,.2); color:var(--fx-accent); font-size:11.5px;
-  font-weight:700; padding:3px 10px 3px 8px; border-radius:999px; }
-.bmd-widget-tag svg{ width:14px; height:14px; }
+  border:1px solid #e6edf5; border-radius:14px; padding:20px 18px 16px;
+  background:#fff; }
+.bmd-widget-foot{ display:flex; align-items:center; margin:12px 0 0;
+  padding-top:10px; border-top:1px solid #eef2f6; }
+.bmd-widget-tag{ display:inline-flex; align-items:center; gap:5px;
+  margin:0; padding:0; background:none; border:0;
+  color:#94a3b8; font-size:11px; font-weight:600; }
+.bmd-widget-tag svg{ width:12px; height:12px; color:#94a3b8; }
 /* Stacked, not a wrapping row. The right-hand pane is too narrow for two
    180px fields plus a button, and `width:100%` on the condition input made it
    as wide as its parent label - so it painted over the location field. That is
@@ -553,10 +554,12 @@ body.home-screen .pub-main{
 body.home-screen .landing-extra,
 body.home-screen .landing-legal{ display:none !important; }
 body.home-screen .pill-nav{
-  position:fixed; top:20px; left:50%; transform:translateX(-50%); z-index:80;
+  position:fixed; top:20px; left:75%; transform:translateX(-50%); z-index:80;
   width:auto; max-width:none; margin:0; padding:0;
   display:flex; justify-content:center; background:transparent; border:none;
-  box-shadow:none; -webkit-backdrop-filter:none; backdrop-filter:none; }
+  box-shadow:none; -webkit-backdrop-filter:none; backdrop-filter:none;
+  transition:left var(--fy-dur, .8s) var(--fy-ez, cubic-bezier(.22,1,.36,1)); }
+body.home-screen.is-fy-right .pill-nav{ left:55%; }
 body.home-screen .pill-nav .brand{ display:none; }
 body.home-screen .pill-nav-center{ display:none; }
 body.home-screen .pill-nav-auth{ justify-self:center; }
@@ -564,13 +567,20 @@ body.home-screen .pill-nav-cta{
   background:rgba(255,255,255,.92); color:#153554; border:1px solid rgba(255,255,255,.75);
   -webkit-backdrop-filter:blur(14px); backdrop-filter:blur(14px); box-shadow:none; }
 body.home-screen .pill-nav-cta:hover{ transform:none; background:#fff; }
-body.home-screen.is-fy-left .pill-nav-cta{
-  background:#153554; color:#fff; border-color:#153554; }
-body.home-screen.is-fy-left .pill-nav-cta:hover{ background:#0b2340; }
+/* Hidden until the research side expands. Default-hide so the button
+   never flashes on first paint before JS adds is-fy-split. */
+body.home-screen .pill-nav-cta,
+body.home-screen .pill-sheet-cta{ display:none !important; }
+body.home-screen.is-fy-right .pill-nav-cta{ display:inline-flex !important; }
+body.home-screen.is-fy-right .pill-sheet-cta{ display:block !important; }
 
 .fy{ --fy-ez:cubic-bezier(.22,1,.36,1); --fy-dur:.8s;
   display:flex; height:100vh; min-height:0; position:relative; overflow:hidden;
   touch-action:pan-y pinch-zoom; }
+body.home-screen:not(.is-fy-ready) .fy-panel,
+body.home-screen:not(.is-fy-ready) .fy-body,
+body.home-screen:not(.is-fy-ready) .pill-nav,
+body.home-screen:not(.is-fy-ready) .bmd-site-extra{ transition:none !important; }
 .fy-panel{ flex:0 0 50%; min-width:0; min-height:0; position:relative;
   overflow:hidden; transition:flex-basis var(--fy-dur) var(--fy-ez); }
 .fy.is-left .fy-left{ flex-basis:90%; }
@@ -619,7 +629,7 @@ body.home-screen .fy-left-in.hero-in{
 body.home-screen .fy-left .fy-who,
 body.home-screen .fy-right .fy-who{
   margin:0 0 10px; max-width:none; text-align:left;
-  font-size:clamp(38px,4.8vw,64px); font-weight:800;
+  font-size:clamp(42px,5.4vw,76px); font-weight:800;
   letter-spacing:-.045em; line-height:.94; color:#102a43; }
 body.home-screen .fy-right .fy-who{ color:#f7fbff; }
 body.home-screen .fy-left h1,
@@ -688,25 +698,93 @@ body.home-screen .fy-left .hero-card .search-modes{
 .bmd-host-kicker{ margin:0 0 5px; color:var(--bx); font-size:10px;
   font-weight:800; letter-spacing:.1em; text-transform:uppercase; }
 .fy-right .bmd-host-nav{ position:sticky; top:0; z-index:5; background:#fff; }
-.fy-right .bmd-host-hero{ padding:16px 22px 0; }
-.fy-right .bmd-host-hero p{ display:block; max-width:540px; line-height:1.45; }
-.fy-right .bmd-widget{ flex:0 0 auto; min-height:0; margin:12px 16px 16px;
-  padding:16px 14px 14px; overflow:visible; }
-/* After "Find a trial", drop the page intro so the widget sits under the
-   sticky nav and two result cards actually fit. */
-.bmd-site-scroll.is-finder .bmd-host-utility,
-.bmd-site-scroll.is-finder .bmd-host-hero{ display:none; }
-.bmd-site-scroll.is-finder .bmd-widget{ margin:8px 16px 12px; }
-/* One compact row on the wide mock, so the result cards start higher. Inputs
-   flex inside the field instead of width:100%, which is what used to overlay
-   the location box. */
-.fy-right .bmd-finder-search{ flex-direction:row; flex-wrap:nowrap; gap:8px;
-  align-items:stretch; margin-bottom:10px; }
-.fy-right .bmd-finder-search .fld{ flex:1 1 0; width:auto; }
-.fy-right .bmd-finder-search .fbtn{ width:auto; flex:0 0 auto; padding:10px 18px; }
-.fy-right .bmd-finder-meta{ margin-bottom:8px; }
+.fy-right .bmd-widget{ flex:0 0 auto; min-height:0; overflow:hidden; }
+/* One compact row on the wide mock. Labels sit above values so the fields
+   stay readable without icon+label+value crowding a single line. */
+.fy-right .bmd-finder-search{ flex-direction:row; flex-wrap:nowrap; gap:10px;
+  align-items:stretch; margin-bottom:14px; }
+.fy-right .bmd-finder-search .fld{ flex:1 1 0; width:auto;
+  flex-direction:column; align-items:flex-start; gap:3px; padding:8px 12px; }
+.fy-right .bmd-finder-search .fld svg{ display:none; }
+.fy-right .bmd-finder-search .fld > span{ font-size:10.5px; font-weight:600;
+  letter-spacing:.04em; text-transform:uppercase; color:#94a3b8; }
+.fy-right .bmd-finder-search .fld input{ font-weight:600; width:100%; }
+.fy-right .bmd-finder-search .fbtn{ width:auto; flex:0 0 auto; align-self:stretch;
+  padding:10px 18px; box-shadow:none; }
+.fy-right .bmd-finder-meta{ margin-bottom:10px; font-weight:500; }
 .fy-right .bmd-tc-why{ display:none; }
 .fy-right .bmd-tcard:nth-child(n+3){ display:none; }
+
+/* 50/50: the left hero has padding:76px 24px 52px (body.home-screen .hero).
+   Mirror that on the right so "For research sites" starts on the same
+   baseline, then let the mock fill the leftover navy without changing
+   the widget's internal sizes. */
+@media (min-width:981px){
+  body.home-screen .fy-right.bmd-embed-sec{ padding:76px 24px 52px; }
+  body.home-screen .fy-right-in{ justify-content:flex-start; padding:88px 40px 0; }
+  body.home-screen.is-fy-right .fy-right.bmd-embed-sec{ padding:0; }
+  body.home-screen.is-fy-right .fy-right-in{ padding:88px 40px 36px; }
+}
+
+/* Split (and the collapsed left-focus peek): a quiet product preview.
+   Extra hospital chrome stays in the DOM and fades in when the research
+   side locks open, so the panel grow does not pop a second website in. */
+@media (min-width:981px){
+  /* Preview is the default first-paint state. Extra hospital chrome only
+     appears after is-fy-right, so reload never flashes a full site then
+     collapses it. */
+  .bmd-site-extra{ overflow:hidden; max-height:0; opacity:0;
+    pointer-events:none;
+    transition:opacity .4s ease, max-height .65s var(--fy-ez); }
+  body.home-screen .bmd-nav-more,
+  body.home-screen .bmd-tcard:nth-child(n+2),
+  body.home-screen .bmd-host-kicker,
+  body.home-screen .bmd-host-hero p,
+  body.home-screen .bmd-site-scroll.is-finder .bmd-host-hero{ display:none; }
+  body.home-screen.is-fy-right .bmd-nav-more{ display:inline; }
+  body.home-screen.is-fy-right .bmd-tcard:nth-child(n+2){ display:flex; }
+  body.home-screen.is-fy-right .bmd-host-kicker,
+  body.home-screen.is-fy-right .bmd-host-hero p{ display:block; }
+
+  body.home-screen.is-fy-split .bmd-host-nav,
+  body.home-screen.is-fy-left .bmd-host-nav{ padding:12px 20px; }
+  body.home-screen.is-fy-split .bmd-host-links,
+  body.home-screen.is-fy-left .bmd-host-links{ gap:16px; font-size:13px; }
+  body.home-screen.is-fy-split .bmd-host-hero,
+  body.home-screen.is-fy-left .bmd-host-hero{ padding:22px 20px 0; }
+  body.home-screen.is-fy-split .bmd-host-hero h4,
+  body.home-screen.is-fy-left .bmd-host-hero h4{ font-size:18px; margin-bottom:0; }
+  body.home-screen.is-fy-split .bmd-widget,
+  body.home-screen.is-fy-left .bmd-widget{ margin:18px 20px 28px;
+    padding:16px 16px 12px; border-color:#e6edf5; background:#fff; }
+  body.home-screen.is-fy-split .bmd-tcard,
+  body.home-screen.is-fy-left .bmd-tcard{ padding:14px; border-color:#eef2f6; }
+  body.home-screen.is-fy-split .bmd-badge,
+  body.home-screen.is-fy-left .bmd-badge{ background:transparent; padding:0;
+    font-size:10.5px; letter-spacing:.03em; text-transform:uppercase; }
+  body.home-screen.is-fy-split .bmd-badge.ok,
+  body.home-screen.is-fy-left .bmd-badge.ok{ color:#15803d; }
+  body.home-screen.is-fy-split .bmd-badge.info,
+  body.home-screen.is-fy-left .bmd-badge.info{ color:#1257b0; }
+
+  /* Expanded research side: a full hospital page, finder as a native module. */
+  body.home-screen.is-fy-right .bmd-host-utility{ max-height:40px; }
+  body.home-screen.is-fy-right .bmd-site-extra{
+    max-height:none; opacity:1; overflow:visible; pointer-events:auto; }
+  body.home-screen.is-fy-right .bmd-host-nav{ padding:15px 36px; }
+  body.home-screen.is-fy-right .bmd-host-links{ gap:22px; font-size:14px; }
+  body.home-screen.is-fy-right .bmd-host-hero{ padding:32px 36px 4px; }
+  body.home-screen.is-fy-right .bmd-host-hero h4{ font-size:26px; margin-bottom:10px; }
+  body.home-screen.is-fy-right .bmd-host-hero p{ display:block; max-width:560px;
+    line-height:1.55; font-size:14.5px; }
+  body.home-screen.is-fy-right .bmd-widget{ margin:24px 36px 32px;
+    padding:20px 20px 16px; border:1px solid rgba(18,87,176,.14);
+    background:linear-gradient(180deg,#f7faff,#fff); border-radius:16px; }
+  body.home-screen.is-fy-right .bmd-tcard{ padding:16px 18px; margin-bottom:12px; }
+  body.home-screen.is-fy-right .bmd-host-section{ padding:36px; }
+  body.home-screen.is-fy-right .bmd-host-cta,
+  body.home-screen.is-fy-right .bmd-host-footer{ padding-left:36px; padding-right:36px; }
+}
 .bmd-host-section{ padding:30px 28px; border-top:1px solid #e8eef4; }
 .bmd-host-section.is-tint{ background:#f4f8fb; }
 .bmd-host-eyebrow{ margin:0 0 7px; color:#1257b0; font-size:10px;
@@ -922,7 +1000,7 @@ body.home-screen.is-fy-split .fy-brand{ left:28px; color:#153554; }
   .hero-card .btn, .hero-card input{ min-height:48px; }
 }
 @media (prefers-reduced-motion:reduce){
-  .fy-panel, .fy-body, .fy-rail{ transition:none; }
+  .fy-panel, .fy-body, .fy-rail, .bmd-site-extra{ transition:none; }
 }
 </style>
 {% endblock %}
@@ -931,7 +1009,7 @@ body.home-screen.is-fy-split .fy-brand{ left:28px; color:#153554; }
    pages use. Only the links + CTA are finder-specific. #}
 {% block site_header %}{{ nav.pill(
      [('How it works', url_for('how_it_works')), ('For sites', sites_home_url)],
-     'Request a demo', cal_link, cta_blank=true) }}{% endblock %}
+     'Add this to your website', cal_link, cta_blank=true) }}{% endblock %}
 
 {% block pub_nav_extra %}
 {% if patient_user and records_ui %}
@@ -1122,7 +1200,7 @@ body.home-screen.is-fy-split .fy-brand{ left:28px; color:#153554; }
             <span class="bmd-bw-url">{{ ic.icon('lock') }}<b id="bxUrl">{{ demo.domain }}</b></span>
         </div>
         <div class="bmd-site-scroll" aria-label="Example research center website">
-        <div class="bmd-host-utility">
+        <div class="bmd-host-utility bmd-site-extra">
           <button type="button" data-bmd-host-link>Patient portal</button>
           <button type="button" data-bmd-host-link>Locations</button>
           <button type="button" data-bmd-host-link>Contact us</button>
@@ -1130,8 +1208,8 @@ body.home-screen.is-fy-split .fy-brand{ left:28px; color:#153554; }
         <div class="bmd-host-nav">
           <button type="button" class="bmd-host-brand" data-bmd-host-link><span class="bmd-host-mark"></span><span id="bxName">{{ demo.org }}</span></button>
           <span class="bmd-host-links">
-            <button type="button" data-bmd-host-link>Doctors</button>
-            <button type="button" data-bmd-host-link>Services</button>
+            <button type="button" class="bmd-nav-more" data-bmd-host-link>Doctors</button>
+            <button type="button" class="bmd-nav-more" data-bmd-host-link>Services</button>
             <button type="button" data-bmd-host-link>Research</button>
             <button type="button" class="on" data-bmd-find-trial>Find a trial</button>
           </span>
@@ -1143,10 +1221,9 @@ body.home-screen.is-fy-split .fy-brand{ left:28px; color:#153554; }
             questions to see which opportunities may fit.</p>
         </div>
         <div class="bmd-widget">
-          <span class="bmd-widget-tag">{{ ic.icon('mark') }} Powered by BridgeMD</span>
           <form class="bmd-finder-search" id="bmdFinderForm">
             <label class="fld">{{ ic.icon('search') }}<span>Condition</span>
-              <input id="bxCondition" value="{{ demo.cond }}" aria-label="Trial condition">
+              <input id="bxCondition" value="{{ demo.cond }}" aria-label="Trial condition" readonly>
             </label>
             <label class="fld">{{ ic.icon('pin') }}<span>Near</span>
               <input id="bxLocation" value="{{ demo.loc }}" aria-label="Trial location">
@@ -1171,8 +1248,11 @@ body.home-screen.is-fy-split .fy-brand{ left:28px; color:#153554; }
             </div>
             {% endfor %}
           </div>
+          <div class="bmd-widget-foot">
+            <span class="bmd-widget-tag">{{ ic.icon('mark') }} Powered by BridgeMD</span>
+          </div>
         </div>
-        <section class="bmd-host-section is-tint">
+        <section class="bmd-host-section is-tint bmd-site-extra">
           <p class="bmd-host-eyebrow">Research at Your Hospital</p>
           <h5>Advancing care through discovery</h5>
           <p>Our patients have access to studies across every stage of care, supported
@@ -1183,7 +1263,7 @@ body.home-screen.is-fy-split .fy-brand{ left:28px; color:#153554; }
             <div class="bmd-host-stat"><strong>9</strong><span>research locations</span></div>
           </div>
         </section>
-        <section class="bmd-host-section">
+        <section class="bmd-host-section bmd-site-extra">
           <p class="bmd-host-eyebrow">Featured programs</p>
           <h5>Research built around patients</h5>
           <div class="bmd-programs">
@@ -1192,11 +1272,11 @@ body.home-screen.is-fy-split .fy-brand{ left:28px; color:#153554; }
             <div class="bmd-program"><b>Diabetes &amp; metabolism</b><span>Treatment and technology studies for better daily care.</span></div>
           </div>
         </section>
-        <div class="bmd-host-cta">
+        <div class="bmd-host-cta bmd-site-extra">
           <div><strong>Not sure which study is right?</strong><span>Our research team can help you understand your options.</span></div>
           <button type="button" data-bmd-host-link>Contact research</button>
         </div>
-        <footer class="bmd-host-footer">
+        <footer class="bmd-host-footer bmd-site-extra">
           <span>© Your Hospital Research Center</span>
           <span>Privacy &nbsp; Accessibility &nbsp; Patient rights</span>
         </footer>
@@ -2008,19 +2088,19 @@ body.home-screen.is-fy-split .fy-brand{ left:28px; color:#153554; }
   }
 
   function apply(n) {
-    slide = Math.max(0, Math.min(2, n));
-    root.classList.remove(
-      'is-left', 'is-split', 'is-right', 'is-hover-left', 'is-hover-right');
-    body.classList.remove('is-fy-left', 'is-fy-split', 'is-fy-right');
-    if (slide === 0) {
-      root.classList.add('is-left');
-      body.classList.add('is-fy-left');
-    } else if (slide === 2) {
-      root.classList.add('is-right');
-      body.classList.add('is-fy-right');
-    } else {
-      root.classList.add('is-split');
-      body.classList.add('is-fy-split');
+    var next = Math.max(0, Math.min(2, n));
+    var bodyState = next === 0 ? 'is-fy-left' : next === 2 ? 'is-fy-right' : 'is-fy-split';
+    var rootState = next === 0 ? 'is-left' : next === 2 ? 'is-right' : 'is-split';
+    var already = slide === next
+      && body.classList.contains(bodyState)
+      && root.classList.contains(rootState);
+    slide = next;
+    if (!already) {
+      root.classList.remove(
+        'is-left', 'is-split', 'is-right', 'is-hover-left', 'is-hover-right');
+      body.classList.remove('is-fy-left', 'is-fy-split', 'is-fy-right');
+      root.classList.add(rootState);
+      body.classList.add(bodyState);
     }
     root.setAttribute('data-slide', String(slide));
     if (numEl) numEl.textContent = slide === 2 ? '02' : '01';
@@ -2066,7 +2146,19 @@ body.home-screen.is-fy-split .fy-brand{ left:28px; color:#153554; }
     });
   });
 
+  document.addEventListener('keydown', function (e) {
+    if (!desktopSplit()) return;
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+    if (e.target && e.target.closest('input, textarea, select, [contenteditable="true"]')) return;
+    e.preventDefault();
+    hasChosenSide = true;
+    apply(e.key === 'ArrowLeft' ? 0 : 2);
+  });
+
   apply(1);
+  requestAnimationFrame(function () {
+    requestAnimationFrame(function () { body.classList.add('is-fy-ready'); });
+  });
 })();
 </script>
 <script>
@@ -2141,9 +2233,9 @@ body.home-screen.is-fy-split .fy-brand{ left:28px; color:#153554; }
   // registry id, phase, recruiting status, distance and the reason it matched.
   function renderResults() {
     if (!el.bxResults) return;
-    var condition = el.bxCondition ? el.bxCondition.value.trim() : DEFAULT_CONDITION;
+    var condition = DEFAULT_CONDITION;
+    if (el.bxCondition) el.bxCondition.value = DEFAULT_CONDITION;
     var location = el.bxLocation ? el.bxLocation.value.trim() : DEFAULT_LOCATION;
-    condition = condition || DEFAULT_CONDITION;
     location = location || DEFAULT_LOCATION;
     var isDefault = condition.toLowerCase() === DEFAULT_CONDITION.toLowerCase();
     var studies = (STUDIES || []).map(function (study, index) {
@@ -2284,7 +2376,7 @@ body.home-screen.is-fy-split .fy-brand{ left:28px; color:#153554; }
           scroller.scrollTo({ top:Math.max(0, next), behavior:'smooth' });
         });
       }
-      if (el.bxCondition) el.bxCondition.focus({ preventScroll:true });
+      if (el.bxLocation) el.bxLocation.focus({ preventScroll:true });
     });
   });
   root.querySelectorAll('[data-bmd-host-link]').forEach(function (btn) {

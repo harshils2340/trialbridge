@@ -354,8 +354,7 @@ textarea { resize: vertical; min-height: 150px; line-height: 1.6; }
 .mh-intake-user { min-height:54px; padding:var(--space-3); display:flex; align-items:center;
   gap:var(--space-2); border-top:1px solid var(--border); }
 .mh-intake-user b { overflow:hidden; text-overflow:ellipsis; color:var(--ink); font-size:10.5px; }
-.mh-thread-column { min-width:0; background:var(--surface);
-  grid-template-rows:auto auto auto minmax(0,1fr); }
+.mh-thread-column { min-width:0; background:var(--surface); }
 .mh-thread-stack { min-height:0; }
 .mh-thread-row { padding:var(--space-3); border-left:3px solid transparent; }
 .mh-thread-row.is-active { border-left-color:var(--accent); background:var(--accent-soft); }
@@ -363,7 +362,8 @@ textarea { resize: vertical; min-height: 150px; line-height: 1.6; }
 .mh-thread-row p { font-size:11.5px; line-height:1.45; margin-left:38px; }
 .mh-thread-row-foot { margin-left:38px; flex-wrap:wrap; }
 
-.mh-stage-tabs { display:flex; gap:var(--space-1); padding:var(--space-2) var(--space-3);
+.mh-stage-tabs { display:flex; align-items:center; flex:0 0 auto;
+  gap:var(--space-1); padding:var(--space-2) var(--space-3);
   border-bottom:1px solid var(--border); overflow-x:auto; scrollbar-width:none; }
 .mh-stage-tabs::-webkit-scrollbar { display:none; }
 .mh-stage-tabs a { display:inline-flex; align-items:center; gap:var(--space-1);
@@ -8454,24 +8454,31 @@ body.fs-page { background:
   background: var(--surface-2);
 }
 .mh-channel-ic {
-  width: 31px;
-  height: 31px;
+  width: 28px;
+  height: 28px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   flex: 0 0 auto;
-  border: 1px solid transparent;
-  border-radius: 9px;
-  font-size: 9px;
-  font-weight: 900;
-  letter-spacing: -.02em;
+  overflow: hidden;
+  border: 1px solid rgba(16,16,40,.08);
+  border-radius: 7px;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(16,16,40,.06);
 }
 .mh-channel-ic .ico,
-.mh-channel-ic .brand-ico { width: 15px; height: 15px; }
-.mh-channel-ic.is-all,.mh-channel-ic.is-email,.mh-channel-ic.is-instagram {
-  background:var(--accent-soft); color:var(--accent); }
-.mh-channel-ic.is-google { background:var(--accent-soft); color:var(--accent);
-  border-color:var(--brand-border); }
+.mh-channel-ic .brand-ico { width: 18px; height: 18px; }
+/* Gmail + Instagram SVGs already include the official app tile — fill the chip. */
+.mh-channel-ic.is-email .brand-ico,
+.mh-channel-ic.is-instagram .brand-ico { width: 100%; height: 100%; }
+.mh-channel-ic.is-all,
+.mh-channel-ic.is-email,
+.mh-channel-ic.is-instagram,
+.mh-channel-ic.is-google {
+  background: #fff;
+  color: inherit;
+  border-color: rgba(16,16,40,.08);
+}
 
 .mh-count {
   min-width: 19px;
@@ -8498,8 +8505,9 @@ body.fs-page { background:
 @keyframes mh-spin { to { transform: rotate(360deg); } }
 
 .mh-thread-column {
-  display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
   border-right: 1px solid var(--border);
   background: var(--surface);
 }
@@ -8548,7 +8556,7 @@ body.fs-page { background:
 .mh-thread-tabs a span { min-width:16px; padding:1px 5px;
   border-radius:var(--radius-pill); background:var(--neutral-bg);
   text-align:center; font-size:var(--text-xs); }
-.mh-thread-stack { overflow: auto; }
+.mh-thread-stack { flex: 1 1 auto; min-height: 0; overflow: auto; }
 .mh-thread-row {
   position: relative;
   display: block;
@@ -8564,6 +8572,40 @@ body.fs-page { background:
 .mh-thread-row.is-unread { background:var(--surface); }
 .mh-thread-row.is-unread.is-active { background:var(--accent-soft); }
 .mh-thread-row-top { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.mh-contact-avatar-wrap {
+  position: relative;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 auto;
+}
+.mh-contact-avatar-wrap.is-large { width: 42px; height: 42px; }
+.mh-contact-avatar-wrap .mh-channel-ic {
+  position: absolute;
+  right: -6px;
+  bottom: -6px;
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--surface);
+  border-radius: 5px;
+  box-shadow: 0 0 0 1px rgba(16,16,40,.1);
+}
+.mh-contact-avatar-wrap.is-large .mh-channel-ic {
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+}
+.mh-contact-avatar-wrap .mh-channel-ic .brand-ico {
+  width: 100%;
+  height: 100%;
+}
+.mh-contact-avatar-wrap .mh-channel-ic.is-google .brand-ico {
+  width: 12px;
+  height: 12px;
+}
+.mh-contact-avatar-wrap.is-large .mh-channel-ic.is-google .brand-ico {
+  width: 14px;
+  height: 14px;
+}
 .mh-contact-avatar {
   width: 31px;
   height: 31px;
@@ -8738,13 +8780,13 @@ body.fs-page { background:
   background: linear-gradient(135deg, #fff9f4 0%, #fff1f5 55%, #f5f0ff 100%);
 }
 .mh-instagram-mark {
-  border: 0;
-  background: radial-gradient(circle at 68% 72%, #ffd36a 0 13%, #f15b47 34%, #c43f8d 60%, #6154c7 100%);
-  color: #fff;
-  font-size: 13px;
-  font-weight: 900;
-  letter-spacing: -.03em;
+  overflow: hidden;
+  padding: 0;
+  border: 1px solid rgba(16,16,40,.08);
+  background: #fff;
+  color: inherit;
 }
+.mh-instagram-mark .brand-ico { width: 100%; height: 100%; }
 .mh-gmail-copy { min-width: 0; }
 .mh-gmail-copy h3 { margin: 4px 0 2px; color: var(--ink); font-size: 13px; }
 .mh-gmail-copy p { margin: 0; color: var(--muted); font-size: 9.5px; line-height: 1.45; }
@@ -9323,8 +9365,7 @@ html.fs-motion .fsx-proof-stat:nth-child(4) { transition-delay:.18s; }
 .mh-page .mh-workspace { height:100vh; max-height:100vh;
   grid-template-columns:330px minmax(0,1fr); }
 .mh-sources { background:var(--surface-2); }
-.mh-thread-column { min-width:0; background:var(--surface);
-  grid-template-rows:auto auto auto minmax(0,1fr); }
+.mh-thread-column { min-width:0; background:var(--surface); }
 .mh-thread-row { padding:var(--space-3); border-left:3px solid transparent; }
 .mh-thread-row.is-active,.mh-thread-row.is-unread.is-active {
   border-left-color:var(--accent); background:var(--accent-soft); box-shadow:none; }
@@ -9474,8 +9515,10 @@ html.ui-motion [data-ui-reveal].is-visible { opacity:1; transform:none;
 .mh-account-actions form { margin:0; }
 .mh-gmail-connect,.mh-instagram-connect { background:var(--surface-2);
   border-color:var(--border); }
-.mh-gmail-mark,.mh-instagram-mark { color:var(--accent); background:var(--accent-soft);
-  border-color:var(--brand-border); }
+.mh-gmail-mark,.mh-instagram-mark { color:inherit; background:#fff;
+  border-color:rgba(16,16,40,.08); }
+.mh-gmail-mark .brand-ico { width:22px; height:22px; }
+.mh-instagram-mark .brand-ico { width:100%; height:100%; }
 @media (max-width:640px) {
   .mh-account-row { align-items:flex-start; flex-wrap:wrap; }
   .mh-account-actions { width:100%; padding-left:44px; }

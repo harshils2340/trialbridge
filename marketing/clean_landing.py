@@ -796,7 +796,7 @@ FOOTER_HTML = (
     '<nav class="bmd-footer-links">'
     + ''.join(
         f'<a href="{href}"'
-        + (' target="_blank" rel="noopener"' if href.startswith('http') else '')
+        + (' target="_blank" rel="noopener"' if href.startswith('http') or href == FINDER_URL else '')
         + f'>{label}</a>'
         for href, label in FOOTER_LINKS)
     + '</nav></div>'
@@ -1022,6 +1022,16 @@ def _localize_brand_logos(h, adir, asset_prefix):
         shutil.copyfile(cache_fp, os.path.join(adir, out_name))
         h = h.replace(LOGO_API + dom, asset_prefix + out_name)
         fetched += 1
+    # The Framer refresh rmtree's landing/assets. If the page was already rewritten
+    # to local paths, the API-URL loop above finds nothing and the copies never
+    # land — Chrome then paints a broken-image placeholder over the SVG fallback.
+    for name in sorted(set(re.findall(r'bmd-logo-([a-z0-9\-]+)\.webp', h))):
+        cache_fp = os.path.join(LOGO_CACHE, f"{name}.webp")
+        dest = os.path.join(adir, f"bmd-logo-{name}.webp")
+        if os.path.exists(cache_fp) and not os.path.exists(dest):
+            shutil.copyfile(cache_fp, dest)
+            fetched += 1
+            print(f"  [logo] restored {name} from cache")
     print(f"  [logo] localized {fetched}/{len(domains)} brand logos")
     return h
 
@@ -1074,7 +1084,10 @@ def _inject_pill_nav(h):
         return h
     links = [("How it works", "#features"),
              ("Trial finder", FINDER_URL), ("FAQ", "#bmd-faq")]
-    center = ''.join('<a href="%s">%s</a>' % (href, lbl) for lbl, href in links)
+    def _link(lbl, href):
+        extra = ' target="_blank" rel="noopener"' if href == FINDER_URL else ''
+        return '<a href="%s"%s>%s</a>' % (href, extra, lbl)
+    center = ''.join(_link(lbl, href) for lbl, href in links)
     header = (
         '<header class="pill-nav" id="pillNav">'
         '<a class="brand" href="/">' + _PILL_MARK + 'BridgeMD</a>'
@@ -1361,7 +1374,7 @@ def build(dst, colormap, asset_prefix, raster_hue=None, accent="#1257b0"):
     # - one fewer item and no cloned slot means a smoother header on hydrate.
     h = _wire_nav(h, "Why us", "#features")
     h = _wire_nav(h, "Product", APP_HOME)
-    h = _wire_nav(h, "Trial finder", FINDER_URL)
+    h = _wire_nav(h, "Trial finder", FINDER_URL, newtab=True)
     h = _wire_nav(h, "Embed", "#bmd-embed")
 
     # The footer "Product" link ships as a bare <a>Product</a> (no inner <p>), so it
