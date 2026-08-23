@@ -2001,6 +2001,11 @@ body.home-screen.is-fy-split .fy-brand{ left:28px; color:#153554; }
   var splitBtn = document.getElementById('fySplit');
   var numEl = document.getElementById('fyNum');
   var slide = 1;
+  var hasChosenSide = false;
+
+  function desktopSplit() {
+    return window.matchMedia('(min-width: 981px) and (hover: hover)').matches;
+  }
 
   function apply(n) {
     slide = Math.max(0, Math.min(2, n));
@@ -2040,21 +2045,17 @@ body.home-screen.is-fy-split .fy-brand{ left:28px; color:#153554; }
     });
   });
 
-  // Using the search (or switching By condition / Describe it / Near me) must
-  // NOT collapse the other half. The hospital preview is the point of the
-  // split, and hovering/focusing an input used to send the carousel to
-  // left-only, which hid the mock and crushed its fields on top of each other.
+  // Search, mode tabs, and embed controls must not count as a side switch.
   var SEARCH_KEEP = 'input, textarea, select, button, a, label, .hero-card, .bmd-widget, .bmd-finder-search, .search-modes';
-  function keepPreview() {
-    if (slide !== 1) apply(1);
-  }
 
   root.querySelectorAll('.fy-panel').forEach(function (panel) {
+    panel.addEventListener('mouseenter', function () {
+      if (!desktopSplit() || hasChosenSide || slide !== 1) return;
+      hasChosenSide = true;
+      apply(panel.classList.contains('fy-left') ? 0 : 2);
+    });
     panel.addEventListener('click', function (e) {
-      if (e.target.closest(SEARCH_KEEP)) {
-        keepPreview();
-        return;
-      }
+      if (e.target.closest(SEARCH_KEEP)) return;
       if (panel.classList.contains('fy-left') && slide === 2) {
         e.preventDefault();
         apply(0);
@@ -2063,17 +2064,6 @@ body.home-screen.is-fy-split .fy-brand{ left:28px; color:#153554; }
         apply(2);
       }
     });
-  });
-  ['conditionInput', 'describeInput', 'location', 'bxCondition', 'bxLocation']
-    .forEach(function (id) {
-      var node = document.getElementById(id);
-      if (node) {
-        node.addEventListener('focus', keepPreview);
-        node.addEventListener('input', keepPreview);
-      }
-    });
-  document.querySelectorAll('.search-mode').forEach(function (btn) {
-    btn.addEventListener('click', keepPreview);
   });
 
   apply(1);
