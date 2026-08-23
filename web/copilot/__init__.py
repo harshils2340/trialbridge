@@ -19,11 +19,14 @@ Public surface:
   * ``register(app)`` - attach the ``/app/copilot/ask`` endpoint to the Flask app.
   * ``answer(user_id, query, context)`` - the orchestrator entry point.
   * ``actions`` - proposal builders + confirm-time validation for write actions.
+  * ``drafts`` - the single drafting service every "Bridget writes this"
+    surface calls (inbox replies, applicant nudges, blast bodies, notes).
 """
 
 from . import actions  # noqa: F401
 from . import digest  # noqa: F401
+from . import drafts  # noqa: F401
 from .agent import answer  # noqa: F401
 from .web import register  # noqa: F401
 
-__all__ = ["answer", "register", "actions", "digest"]
+__all__ = ["answer", "register", "actions", "digest", "drafts"]

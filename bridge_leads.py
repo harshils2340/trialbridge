@@ -38,6 +38,12 @@ thePeopleSearchQueries = [
     'site:linkedin.com/in "clinical trial coordinator" Toronto',
     'site:linkedin.com/in "patient recruitment coordinator" Toronto',
     'site:linkedin.com/in "senior clinical research coordinator" Toronto'
+    'site:linkedin.com/in "clinical research coordinator" New York City',
+    'site:linkedin.com/in "clinical research coordinator" New York City',
+    'site:linkedin.com/in "clinical research coordinator" New York City',
+    'site:linkedin.com/in "clinical trial coordinator" New York City',
+    'site:linkedin.com/in "patient recruitment coordinator" New York City',
+    'site:linkedin.com/in "senior clinical research coordinator" New York City'
 ]
 
 

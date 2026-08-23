@@ -77,6 +77,9 @@
          are surfaced right on the inbox so nothing gets missed. Route still lives
          at /app/calendar (linked from the inbox "Upcoming" panel). #}
       <a href="{{ url_for('leads') }}" class="{{ 'active' if request.endpoint == 'leads' }}">{{ ic.icon('user-plus') }}Applicants</a>
+      {# Mentions sit next to the inbox on purpose: being pulled into a thread is
+         inbox work, not team admin. #}
+      <a href="{{ url_for('mentions_page') }}" class="{{ 'active' if request.endpoint == 'mentions_page' }}">{{ ic.icon('chat') }}Mentions{% if mentions_new %}<span class="appnav-count">{{ mentions_new }}</span>{% endif %}</a>
       <a href="{{ url_for('team_page') }}" class="{{ 'active' if request.endpoint in ['team_page','team_invite','team_set_role','team_remove'] }}">{{ ic.icon('users') }}Team</a>
       <a href="{{ url_for('site_setup') }}" class="{{ 'active' if request.endpoint in ['site_setup','add_study_claim','remove_study_claim','intake_page','intake_import'] }}">{{ ic.icon('gear') }}Settings</a>
       {% if is_owner and not site_demo %}
@@ -146,7 +149,7 @@
       </div>
       <span class="apptop-spacer"></span>
 
-      {% set notif_total = (site_unread or 0) + (matches_new or 0) %}
+      {% set notif_total = (site_unread or 0) + (matches_new or 0) + (mentions_new or 0) %}
       <details class="appmenu" id="notifMenu">
         <summary class="appbell" aria-label="Notifications" title="Notifications">
           {{ ic.icon('bell') }}{% if notif_total %}<span class="dot">{{ notif_total }}</span>{% endif %}
@@ -157,6 +160,12 @@
           <a class="appmenu-item" href="{{ url_for('marketing_hub') }}" role="menuitem">
             <span class="appmenu-ico t-danger">{{ ic.icon('chat') }}</span>
             <span><b>{{ site_unread }} repl{{ 'y' if site_unread == 1 else 'ies' }} waiting</b><small>Patients waiting on your reply</small></span>
+          </a>
+          {% endif %}
+          {% if mentions_new %}
+          <a class="appmenu-item" href="{{ url_for('mentions_page') }}" role="menuitem">
+            <span class="appmenu-ico t-brand">{{ ic.icon('users') }}</span>
+            <span><b>{{ mentions_new }} mention{{ '' if mentions_new == 1 else 's' }}</b><small>A teammate pulled you into a thread</small></span>
           </a>
           {% endif %}
           {% if matches_new %}

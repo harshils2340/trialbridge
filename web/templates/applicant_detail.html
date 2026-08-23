@@ -30,6 +30,9 @@
     </div>
   </div>
   <div class="pt-actions">
+    {# The page a coordinator opens right before a call - so "brief me" belongs
+       here, seeded into the dock rather than duplicating the summary inline. #}
+    {{ ui.bridget('Brief me', ask='Summarize this applicant') }}
     {% if c_email %}{{ ui.btn('Email', 'ghost', 'sm', icon='mail', href='mailto:' ~ c_email) }}{% endif %}
     {% if c_phone %}
       {{ ui.btn('Call', 'ghost', 'sm', icon='phone', href='tel:' ~ c_phone) }}
@@ -295,10 +298,12 @@
     {# ── Notes: internal team scratchpad ── #}
     <div class="app-card pad pt-side-card">
       <div class="app-card-title">{{ ic.icon('file') }} Notes <span class="pt-hint">team-only</span></div>
+      <p class="note-tip">Type <b>@</b> to pull a teammate into this thread
+        instead of CC-ing them on an email.</p>
       <div class="note-list">
         {% for n in notes %}
         <div class="note-item">
-          <div class="note-body">{{ n['body'] }}</div>
+          <div class="note-body">{{ n['body']|mentions }}</div>
           <div class="note-meta">{{ n['author'] or 'Team' }} · {{ n['created_at'][:16] }}</div>
         </div>
         {% else %}
@@ -307,8 +312,11 @@
       </div>
       <form method="post" action="{{ url_for('add_lead_note', lead_id=l['id']) }}" class="note-form" data-ajax data-ajax-quiet data-ajax-refresh=".note-list" data-optimistic=".note-list">
         <template data-optimistic-tpl><div class="note-item"><div class="note-body">{{'{{body}}'}}</div><div class="note-meta">You · just now</div></div></template>
-        <textarea name="body" placeholder="Add a private note…" required data-ajax-clear></textarea>
-        {{ ui.btn('Add note', 'ghost', 'sm', type='submit', icon='plus') }}
+        <textarea name="body" id="noteBody" placeholder="Add a private note, or @mention a teammate…" required data-ajax-clear data-mentions></textarea>
+        <div class="note-form-actions bridget-slot">
+          {{ ui.bridget('Summarize thread', endpoint=url_for('lead_note_draft', lead_id=l['id']), target='#noteBody') }}
+          {{ ui.btn('Add note', 'ghost', 'sm', type='submit', icon='plus') }}
+        </div>
       </form>
     </div>
 

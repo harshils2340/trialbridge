@@ -47,7 +47,7 @@
         <option value="stage">Stage</option>
       </select>
     </label>
-    {{ ui.btn('Message everyone', 'ghost', 'sm', icon='send', extra='data-ui-open="broadcastModal"') }}
+    {{ ui.btn('Send a blast', 'ghost', 'sm', icon='send', extra='data-ui-open="broadcastModal"') }}
     {{ ui.btn('Export CSV', 'ghost', 'sm', icon='download', href=url_for('leads_export', nct=active_nct or 'all', q=q)) }}
   </div>
 </div>
@@ -69,6 +69,7 @@
   <table class="app-table sortable" id="queueTable">
     <thead>
       <tr>
+        <th class="sel-col"><input type="checkbox" id="blastSelAll" aria-label="Select all applicants"></th>
         <th class="sort" data-sort="text">Applicant<span class="sort-ar"></span></th>
         <th class="sort" data-sort="text">Verdict<span class="sort-ar"></span></th>
         <th class="sort" data-sort="num">Score<span class="sort-ar"></span></th>
@@ -87,6 +88,9 @@
           data-score="{{ q.verdict.score }}"
           data-activity="{{ q.last_activity_at }}"
           data-search="{{ (q.name ~ ' ' ~ (q.email or '') ~ ' ' ~ (q.title or '') ~ ' ' ~ q.source ~ ' ' ~ q.stage.label ~ ' ' ~ q.verdict.label)|lower }}">
+        <td class="sel-col">
+          {% if q.revealed %}<input type="checkbox" class="blast-pick" value="{{ q.id }}" data-nct="{{ q.nct }}" aria-label="Select {{ q.name }}">{% endif %}
+        </td>
         <td>
           <div class="who">
             <span class="app-av{{ ' neutral' if not q.revealed }}">{{ q.initials }}</span>
@@ -115,37 +119,256 @@
   {% endif %}
 </div>
 
-{% call ui.modal('broadcastModal', 'Message everyone in a study') %}
-<form method="post" action="{{ url_for('broadcast_leads') }}" enctype="multipart/form-data">
+{% call ui.modal('broadcastModal', 'Send a blast', icon='send') %}
+<form method="post" action="{{ url_for('broadcast_leads') }}" enctype="multipart/form-data" id="blastForm">
   <input type="hidden" name="next" value="{{ request.full_path }}">
-  <div class="field">
-    <label>Study</label>
-    <select name="nct" required>
+  <input type="hidden" name="mode" id="blastMode" value="everyone">
+  <input type="hidden" name="value" id="blastValue" value="">
+  <input type="hidden" name="ids" id="blastIds" value="">
+
+  {% call ui.field('Study') %}
+    <select name="nct" id="blastNct" required>
       <option value="" {{ 'selected' if not active_nct }} disabled>Choose a study&hellip;</option>
       {% for c in claims %}
       <option value="{{ c.nct }}" {{ 'selected' if c.nct == active_nct }}>{{ (c.title or c.nct)[:60] }} ({{ c.nct }})</option>
       {% endfor %}
     </select>
+  {% endcall %}
+
+  {# The audience builder. Every option narrows WITHIN the study above - there
+     is deliberately no control that widens a send across studies. #}
+  {% call ui.field('Who') %}
+    <div class="blast-modes" id="blastModes" role="group" aria-label="Audience">
+      <button type="button" class="ui-chip is-active" data-mode="everyone">Everyone accepted</button>
+      <button type="button" class="ui-chip" data-mode="stage">By stage</button>
+      <button type="button" class="ui-chip" data-mode="tag">By tag</button>
+      <button type="button" class="ui-chip" data-mode="idle">Gone quiet</button>
+      <button type="button" class="ui-chip" data-mode="selected" id="blastSelChip" hidden>Selected</button>
+    </div>
+
+    <div class="blast-sub" data-sub="stage" hidden>
+      <select id="blastStage" aria-label="Pipeline stage">
+        {% for st in pipeline %}<option value="{{ st }}">{{ labels.get(st, st)|default(st|title, true) }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="blast-sub" data-sub="tag" hidden>
+      <select id="blastTag" aria-label="Conversation tag">
+        {% for t in conv_tags %}<option value="{{ t.key }}">{{ t.label }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="blast-sub" data-sub="idle" hidden>
+      <label class="blast-idle">No activity in
+        <input type="number" id="blastIdle" value="7" min="1" max="365" aria-label="Days without activity"> days
+      </label>
+    </div>
+  {% endcall %}
+
+  <div class="blast-count" id="blastCount" aria-live="polite">
+    <span class="blast-count-n">–</span>
+    <button type="button" class="link-btn" id="blastSeeWho" hidden>See who</button>
   </div>
-  <div class="field">
-    <label>Message</label>
-    <textarea name="body" rows="4" placeholder="e.g. Reminder: your screening window closes Friday - reply here to book a time."></textarea>
-  </div>
-  <div class="field">
-    <label>Add a to-do for them (optional)</label>
+  <div class="blast-warn" id="blastWarn" hidden></div>
+  <div class="blast-who" id="blastWho" hidden></div>
+
+  {% call ui.field('Message') %}
+    <textarea name="body" id="blastBody" rows="4" placeholder="e.g. Reminder: your screening window closes Friday - reply here to book a time."></textarea>
+    <div class="blast-actions bridget-slot">
+      {{ ui.bridget('Draft with Bridget', endpoint=url_for('blast_draft'), target='#blastBody', fields='#blastForm') }}
+      <small data-bridget-note hidden>Bridget drafted this - edit before sending.</small>
+    </div>
+  {% endcall %}
+
+  {% call ui.field('Add a to-do for them', hint='Optional') %}
     <input type="text" name="task" maxlength="120" placeholder="e.g. Upload your signed consent form">
-  </div>
-  <div class="field">
-    <label>Attach a document (optional)</label>
+  {% endcall %}
+
+  {% call ui.field('Attach a document', hint='Optional - each person gets their own copy') %}
     <input type="file" name="file">
-  </div>
-  <p class="app-sub" style="color:var(--faint);font-size:12.5px;">Goes out to every accepted applicant in that study - each by email and/or text, whichever they gave you, delivered to their own private thread. Nobody sees who else got it.</p>
-  <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px;">
+  {% endcall %}
+
+  <p class="blast-note">Delivered to each person's own private thread, so nobody
+    sees who else got it. People who opted out are never included.</p>
+
+  <div class="blast-foot">
     {{ ui.btn('Cancel', 'ghost', extra='data-ui-close') }}
-    {{ ui.btn('Send to everyone', 'primary', type='submit', icon='send') }}
+    {{ ui.btn('Send blast', 'primary', type='submit', icon='send', extra='id="blastSend"') }}
   </div>
 </form>
 {% endcall %}
+
+{# Sticky bar that appears the moment you tick someone, so a hand-picked group
+   is one gesture away from a send. #}
+<div class="blast-selbar" id="blastSelbar" hidden>
+  <span><b id="blastSelN">0</b> selected</span>
+  <div>
+    <button type="button" class="link-btn" id="blastSelClear">Clear</button>
+    {{ ui.btn('Message them', 'primary', 'sm', icon='send', extra='id="blastSelGo"') }}
+  </div>
+</div>
+
+<script>
+/* The blast composer. Its only real job is to keep the number on the button
+   honest: every audience change re-asks the SERVER who would be reached, using
+   the same resolver the send itself uses, so the preview and the send can never
+   disagree. Nothing about the single-study rule is enforced here - that lives in
+   db.blast_audience; this just reflects what the server says. */
+(function () {
+  var form = document.getElementById('blastForm');
+  if (!form) return;
+
+  var modeInput = document.getElementById('blastMode');
+  var valueInput = document.getElementById('blastValue');
+  var idsInput = document.getElementById('blastIds');
+  var nct = document.getElementById('blastNct');
+  var chips = document.getElementById('blastModes');
+  var selChip = document.getElementById('blastSelChip');
+  var countEl = document.getElementById('blastCount');
+  var countN = countEl.querySelector('.blast-count-n');
+  var seeWho = document.getElementById('blastSeeWho');
+  var whoEl = document.getElementById('blastWho');
+  var warnEl = document.getElementById('blastWarn');
+  var sendBtn = document.getElementById('blastSend');
+  var subs = form.querySelectorAll('.blast-sub');
+
+  var selbar = document.getElementById('blastSelbar');
+  var selN = document.getElementById('blastSelN');
+  var picks = Array.prototype.slice.call(document.querySelectorAll('.blast-pick'));
+  var selAll = document.getElementById('blastSelAll');
+
+  var timer = null, lastCount = 0;
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  function currentValue(mode) {
+    if (mode === 'stage') return document.getElementById('blastStage').value;
+    if (mode === 'tag') return document.getElementById('blastTag').value;
+    if (mode === 'idle') return document.getElementById('blastIdle').value;
+    return '';
+  }
+
+  function selectedIds() {
+    return picks.filter(function (c) { return c.checked; })
+                .map(function (c) { return c.value; });
+  }
+
+  function setMode(mode) {
+    modeInput.value = mode;
+    chips.querySelectorAll('.ui-chip').forEach(function (c) {
+      c.classList.toggle('is-active', c.getAttribute('data-mode') === mode);
+    });
+    subs.forEach(function (s) { s.hidden = s.getAttribute('data-sub') !== mode; });
+    refresh();
+  }
+
+  function refresh() {
+    var mode = modeInput.value;
+    valueInput.value = currentValue(mode);
+    idsInput.value = mode === 'selected' ? selectedIds().join(',') : '';
+    whoEl.hidden = true;
+
+    if (!nct.value) {
+      countN.textContent = 'Pick a study first';
+      countEl.classList.remove('is-ready');
+      seeWho.hidden = true;
+      warnEl.hidden = true;
+      sendBtn.disabled = true;
+      return;
+    }
+    var qs = new URLSearchParams({
+      nct: nct.value, mode: mode, value: valueInput.value, ids: idsInput.value
+    });
+    countN.textContent = 'Checking…';
+    fetch('/app/leads/blast/preview.json?' + qs.toString(), { credentials: 'same-origin' })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d.ok) {
+          countN.textContent = d.error || 'Nobody matches';
+          countEl.classList.remove('is-ready');
+          seeWho.hidden = true;
+          warnEl.hidden = true;
+          sendBtn.disabled = true;
+          return;
+        }
+        lastCount = d.count;
+        countN.textContent = d.count + ' ' + (d.count === 1 ? 'person' : 'people')
+          + ' · ' + d.label;
+        countEl.classList.toggle('is-ready', d.count > 0);
+        seeWho.hidden = d.count === 0;
+        sendBtn.disabled = d.count === 0;
+        sendBtn.lastChild.textContent = d.count ? ('Send to ' + d.count) : 'Send blast';
+        warnEl.hidden = !d.warning;
+        warnEl.textContent = d.warning || '';
+        whoEl.innerHTML = (d.sample || []).map(function (p) {
+          return '<span class="blast-who-row"><b>' + esc(p.name) + '</b>' +
+            (p.stage ? '<small>' + esc(p.stage) + '</small>' : '') + '</span>';
+        }).join('') + (d.more ? '<span class="blast-who-more">+' + d.more + ' more</span>' : '');
+      })
+      .catch(function () {
+        countN.textContent = 'Could not check the audience';
+        sendBtn.disabled = false;
+      });
+  }
+
+  function debounced() { clearTimeout(timer); timer = setTimeout(refresh, 220); }
+
+  chips.addEventListener('click', function (e) {
+    var c = e.target.closest('.ui-chip');
+    if (c) setMode(c.getAttribute('data-mode'));
+  });
+  nct.addEventListener('change', refresh);
+  form.addEventListener('change', function (e) {
+    if (e.target.closest('.blast-sub')) refresh();
+  });
+  form.addEventListener('input', function (e) {
+    if (e.target.id === 'blastIdle') debounced();
+  });
+  seeWho.addEventListener('click', function () { whoEl.hidden = !whoEl.hidden; });
+
+  /* ---- row selection ---------------------------------------------------- */
+  function syncSelbar() {
+    var ids = selectedIds();
+    selN.textContent = ids.length;
+    selbar.hidden = ids.length === 0;
+    selChip.hidden = ids.length === 0;
+    selChip.textContent = 'Selected (' + ids.length + ')';
+    if (!ids.length && modeInput.value === 'selected') setMode('everyone');
+  }
+  picks.forEach(function (c) { c.addEventListener('change', syncSelbar); });
+  if (selAll) selAll.addEventListener('change', function () {
+    // Only rows currently visible after filtering/search, so "select all" means
+    // what is on screen rather than a hidden superset.
+    picks.forEach(function (c) {
+      var row = c.closest('tr');
+      if (row && row.style.display !== 'none') c.checked = selAll.checked;
+    });
+    syncSelbar();
+  });
+  document.getElementById('blastSelClear').addEventListener('click', function () {
+    picks.forEach(function (c) { c.checked = false; });
+    if (selAll) selAll.checked = false;
+    syncSelbar();
+  });
+  document.getElementById('blastSelGo').addEventListener('click', function () {
+    // Seed the study from the picked rows so the composer opens ready to send.
+    var first = picks.filter(function (c) { return c.checked; })[0];
+    if (first && first.getAttribute('data-nct')) nct.value = first.getAttribute('data-nct');
+    var modal = document.getElementById('broadcastModal');
+    if (modal) modal.hidden = false;
+    setMode('selected');
+  });
+
+  // Prevent a click-through send when the audience is still empty.
+  form.addEventListener('submit', function (e) {
+    if (lastCount === 0) { e.preventDefault(); refresh(); }
+  });
+
+  refresh();
+})();
+</script>
 {% endif %}
 
 <script>

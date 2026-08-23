@@ -19,6 +19,8 @@ import json
 import db
 import analytics
 
+from . import drafts
+
 
 def user_ncts(user_id):
     return sorted(db.user_claimed_ncts(user_id) or [])
@@ -338,51 +340,12 @@ def _reltime(raw):
     return "yesterday" if days == 1 else f"{days}d ago"
 
 
-# Ordered most-specific -> least. Reschedule beats availability so "can we move
-# it, mornings are better" reads as a reschedule, not a confirmation.
-_RESCHED_HINTS = ("reschedul", "can't make", "cant make", "cannot make",
-                  "won't make", "wont make", "move it", "another time",
-                  "postpone", "push it", "different day", "can we change",
-                  "not going to make", "need to change")
-_AVAIL_HINTS = ("morning", "afternoon", "evening", "tomorrow", "monday",
-                "tuesday", "wednesday", "thursday", "friday", "saturday",
-                "sunday", "next week", "this week", "works for me",
-                "work for me", "works best", "i'm free", "im free",
-                "i'm available", "im available", "i am available", "available on",
-                "i can do", "how about", "sounds good", "that works")
-_QUESTION_HINTS = ("?", "how long", "how much", "do i need", "should i",
-                   "can i", "is there", "are there", "will i", "need to bring",
-                   "what time", "where is", "where do", "cost", "paid",
-                   "compensat", "insurance", "eligible")
-_THANKS_HINTS = ("thank you", "thanks", "appreciate", "perfect", "great, ",
-                 "awesome", "will do", "see you", "confirmed", "got it")
-
-
 def _suggest_reply(text, first):
     """A grounded, context-aware reply to an applicant's last message.
 
-    Deterministic so it works with the LLM off (demo), and it reads the actual
-    message so it never sounds canned. The coordinator always reviews and sends."""
-    t = (text or "").lower()
-    who = first or "there"
-    if any(h in t for h in _RESCHED_HINTS):
-        return (f"No problem at all, {who} - we can reschedule. What days or times "
-                "work best for you over the next week or two? I'll get you booked "
-                "back in.")
-    if any(h in t for h in _AVAIL_HINTS):
-        return (f"That works, {who} - thanks for letting me know. I'll hold that "
-                "time and send you a calendar invite with the visit details. Talk "
-                "soon.")
-    if any(h in t for h in _QUESTION_HINTS):
-        return (f"Good question, {who}. Happy to walk you through it - I'll lay out "
-                "exactly what to expect, and let me know if anything is still "
-                "unclear.")
-    if any(h in t for h in _THANKS_HINTS):
-        return (f"You're very welcome, {who}! I'm here if anything else comes up - "
-                "just reply here anytime.")
-    return (f"Thanks for getting back to me, {who}. I'll take a look and follow up "
-            "with next steps shortly - reach out here if any questions come up in "
-            "the meantime.")
+    The keyword ladder moved to ``drafts.py`` so this and the marketing-inbox
+    draft share one voice; this stays as the name the rest of tools.py calls."""
+    return drafts.draft("applicant_reply", {"inbound": text, "first": first})
 
 
 def _needs_reply_leads(user_id):
@@ -827,3 +790,84 @@ def message_draft(user_id, lead_id, intent="check_in"):
     return {"text": _DRAFT_TEMPLATES[key].format(name=name),
             "label": label(lead), "url": _url(lead), "revealed": revealed,
             "opted_out": bool(int(_row_get(lead, "contact_opt_out", 0) or 0))}
+
+
+def thread_summary(user_id, lead_id):
+    """Turn one applicant's whole conversation into a team note.
+
+    Grounded in counts plus their last message - it never characterises the
+    person or guesses at eligibility, because the output is meant to be pasted
+    into the record."""
+    lead = own_lead(user_id, lead_id)
+    if not lead:
+        return {"summary": "I can't find that applicant in your studies.",
+                "items": [], "citations": []}
+    msgs = db.get_messages(lead["id"]) or []
+    last_in = ""
+    for m in msgs:
+        if _row_get(m, "sender") == "patient":
+            last_in = _row_get(m, "body") or ""
+    text = drafts.draft("note_summary", {
+        "first": label(lead),
+        "stage": (_row_get(lead, "status") or "").replace("_", " "),
+        "inbound": last_in,
+        "messages": [{"inbound": _row_get(m, "sender") == "patient"}
+                     for m in msgs],
+        "waiting": bool(db.lead_unread_for_site(lead["id"])),
+    })
+    return {
+        "summary": text,
+        "items": [{"code": label(lead), "draft": text, "url": _url(lead)}],
+        "citations": [{"label": label(lead), "url": _url(lead)}],
+    }
+
+
+def away_recap(user_id, lead_id=None, params=None):
+    """What changed on the threads a teammate covered while this user was away."""
+    recap = db.away_recap(user_id)
+    if not recap:
+        return {"summary": "You haven't been away recently, so there's nothing "
+                           "to catch up on.", "items": [], "citations": []}
+    total = recap["leads"] + recap["threads"]
+    bits = [f"{recap['cover_name']} held {total} conversation"
+            f"{'' if total == 1 else 's'} while you were out."]
+    if recap["waiting"]:
+        bits.append(f"{recap['waiting']} still waiting on a reply.")
+    if recap["enrolled"]:
+        bits.append(f"{recap['enrolled']} reached enrolled.")
+    return {
+        "summary": " ".join(bits),
+        "items": [{
+            "title": "While you were away",
+            "detail": f"{total} covered by {recap['cover_name']}",
+            "url": "/app/inbox",
+        }],
+        "citations": [{"label": "Inbox", "url": "/app/inbox"}],
+    }
+
+
+def blast_targets(user_id, nct="", stage="", tag="", idle_days=None):
+    """Resolve a natural-language audience to real recipients.
+
+    Everything goes through db.blast_audience, so Bridget is held to exactly the
+    same rails as the manual composer - one claimed study, accepted only, never
+    anyone who opted out. Returns (nct, mode, value, leads, error)."""
+    ncts = user_ncts(user_id)
+    nct = (nct or "").strip().upper()
+    if nct not in ncts:
+        # No usable study named. If the team only has one, that's unambiguous;
+        # otherwise ask rather than picking for them.
+        if len(ncts) == 1:
+            nct = ncts[0]
+        else:
+            return "", "", "", [], ("Which study? I can only send to one study "
+                                    "at a time.")
+    mode, value = "everyone", ""
+    if stage:
+        mode, value = "stage", stage
+    elif tag:
+        mode, value = "tag", tag
+    elif idle_days:
+        mode, value = "idle", str(idle_days)
+    leads, err = db.blast_audience(user_id, nct, mode, value)
+    return nct, mode, value, leads, err

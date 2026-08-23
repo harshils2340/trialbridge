@@ -53,6 +53,7 @@ from dotenv import load_dotenv
 from flask import (Flask, Response, abort, flash, g, get_flashed_messages, jsonify,
                    make_response, redirect, render_template, request, send_file,
                    send_from_directory, session, url_for)
+from markupsafe import Markup, escape
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 
@@ -213,7 +214,7 @@ _STUDY_TEAM_DEMO_PREFIXES = (
     "/app/balance", "/app/campaign", "/app/intake", "/app/home",
     "/app/applicant", "/app/matching", "/app/documents", "/app/copilot",
     "/app/team", "/app/calendar", "/app/soe", "/app/payments", "/app/updates",
-    "/app/irb", "/app/scope", "/marketing-hub",
+    "/app/irb", "/app/scope", "/app/mentions", "/app/away", "/marketing-hub",
     "/files/lead", "/files/team")
 
 # Health-records / EHR sync (SMART Health IT) is hidden for now — the connector
@@ -1593,6 +1594,7 @@ def inject_globals():
             or path.startswith("/app/payments") or path.startswith("/app/updates")
             or path.startswith("/app/campaign") or path.startswith("/app/intake")
             or path.startswith("/app/soe") or path.startswith("/app/irb")
+            or path.startswith("/app/mentions") or path.startswith("/app/away")
             or path.startswith("/marketing-hub")):
         pov = "study"
     elif path.startswith("/app") or path.startswith("/referral"):
@@ -1607,6 +1609,9 @@ def inject_globals():
     my_role_label = ""
     can_manage_team = False
     matches_new = 0
+    mentions_new = 0
+    my_away = None
+    am_covering = []
     cal_due = 0
     pay_due = 0
     upd_due = 0
@@ -1660,7 +1665,20 @@ def inject_globals():
             can_manage_team = db.can_manage_team(g.user["id"])
         except Exception:
             pass
+        # Collaboration state every screen needs: how many teammates pulled you
+        # into something, whether you're away, and whose queue you're holding.
+        try:
+            mentions_new = db.unread_mention_count(g.user["id"])
+        except Exception:
+            mentions_new = 0
+        try:
+            my_away = db.active_away_for(g.user["id"])
+            am_covering = db.covering_for(g.user["id"])
+        except Exception:
+            my_away, am_covering = None, []
     return {"user": g.user, "llm_on": bool(mt.LLM_API_KEY),
+            "mentions_new": mentions_new, "my_away": my_away,
+            "am_covering": am_covering,
             "member_role": my_role, "member_role_label": my_role_label,
             "can_manage_team": can_manage_team,
             "applications_count": apps_n, "pov_demo": _demo_mode_enabled(),
@@ -5372,64 +5390,15 @@ _MARKETING_QUICK_REPLIES = [
 
 
 def _bridget_reply_draft(first, study, inbound):
-    """First-pass reply draft that actually addresses what the patient asked
-    (scheduling, visit costs, eligibility, safety), falling back to a generic
-    next-step. Deterministic keyword routing -- no model -- and ALWAYS
-    human-reviewed before it can be sent (Bridget drafts, a person edits + sends;
-    see COMPLIANCE.md). Deliberately phrased to NOT assert study-specific facts
-    (reimbursement amounts, placebo odds) a coordinator must confirm, so a rushed
-    'send as-is' can never state an unapproved claim."""
-    text = (inbound or "").lower()
-    opener = f"Hi {first}, thanks for reaching out about {study}. "
+    """First-pass reply draft for the marketing inbox.
 
-    def _has(*words):
-        return any(w in text for w in words)
-
-    if _has("evening", "weekend", "after work", "what time", "times", "schedule",
-            "appointment", "availability", "available", "when can"):
-        body = ("Happy to work around your schedule for a brief screening call. "
-                "What days and times generally work best for you?")
-    elif _has("travel", "mileage", "parking", "reimburse", "compensat", " paid",
-              "payment", "stipend", "cost", "expense", "gas"):
-        body = ("Good question on visit costs. Let me confirm exactly what this "
-                "study covers and I'll follow up with the specifics.")
-    elif _has("qualify", "eligible", "eligibility", "criteria", "requirement",
-              "do i fit", "am i able", "right fit"):
-        body = ("To see whether this study is a fit, we do a short pre-screening. "
-                "Could we set up a quick call to walk through a few questions?")
-    elif _has("safe", "placebo", "side effect", "risk", "danger", "guinea pig"):
-        body = ("Those are important questions. The study team can walk you "
-                "through safety, what to expect, and how the study is designed "
-                "on a short call. Would that be helpful?")
-    elif _has("how long", "how many visit", "duration", "time commitment",
-              "how often", "last for", "how many weeks", "how many months"):
-        body = ("Good question on the time commitment. Let me confirm the visit "
-                "schedule and overall length for this study and I'll lay it out "
-                "for you.")
-    elif _has("where is", "where are", "location", "how far", "address",
-              "near me", "drive", "remote", "virtual", "online", "from home",
-              "telehealth", "in person"):
-        body = ("Good question on location and visits. Let me confirm where this "
-                "study runs and whether any parts can be done remotely, and I'll "
-                "follow up with the details.")
-    elif _has("privacy", "private", "confidential", "who sees", "who will see",
-              "spam", "share my", "sell my", "my data", "my information",
-              "my info", "personal information"):
-        body = ("Your privacy matters here. Your information is only used to see "
-                "if this study could be a fit and to connect you with the study "
-                "team, and it's never sold. Happy to answer any specific concern.")
-    elif _has("withdraw", "drop out", "opt out", "change my mind",
-              "leave the study", "back out", "pull out"):
-        # Voluntariness + the right to withdraw are universal informed-consent
-        # principles (Common Rule / GCP), not a study-specific claim, so this is
-        # safe to state directly.
-        body = ("Taking part is completely voluntary and you can stop at any "
-                "time, for any reason. I'm happy to walk through what that "
-                "involves whenever you'd like.")
-    else:
-        body = ("I can help with the next step. Could you confirm the best time "
-                "for a brief screening call this week?")
-    return opener + body
+    The keyword ladder that used to live here now lives in ``copilot/drafts.py``
+    alongside the applicant-thread ladder and the blast/note drafts, so every
+    "Bridget writes this" surface shares one voice and one compliance rule (never
+    assert a study-specific fact a coordinator must confirm). Still always
+    human-reviewed before it can be sent - see COMPLIANCE.md."""
+    return copilot.drafts.draft("reply", {
+        "first": first, "study": study, "inbound": inbound})
 
 
 @app.route("/app/inbox")
@@ -5577,8 +5546,15 @@ def marketing_hub():
     unassigned_count = db.marketing_thread_counts(
         g.user["id"], nct=active_nct, assignee="unassigned")["open"]
 
+    # Coverage state the inbox renders: who is covering, how much would move if
+    # you left right now, and the one-time "what happened while you were out".
+    my_open_count = db.open_queue_count(g.user["id"])
+    _away = db.active_away_for(g.user["id"])
     return render_template(
         "marketing_hub.html", sources=sources, threads=threads,
+        my_open_count=my_open_count,
+        cover_name=(db.display_name(_away["cover_user_id"]) if _away else ""),
+        away_recap=(None if _away else db.away_recap(g.user["id"])),
         active=dict(active) if active else None, messages=messages,
         members=members, member_by_id=member_by_id, settings=dict(settings),
         active_owner=active_owner, primary=primary, cover=cover, counts=counts,
@@ -6165,9 +6141,19 @@ def marketing_thread_reply(thread_id):
 @app.route("/marketing-hub/threads/<int:thread_id>/note", methods=["POST"])
 @login_required
 def marketing_thread_note(thread_id):
-    if not db.add_marketing_message(
-            g.user["id"], thread_id, request.form.get("body"), kind="note"):
+    body = request.form.get("body")
+    msg_id = db.add_marketing_message(g.user["id"], thread_id, body, kind="note")
+    if not msg_id:
         flash("Write a note before adding it.", "error")
+        return redirect(_marketing_thread_url(thread_id, "composer"))
+    author = db.display_name(g.user["id"]) or "A teammate"
+    people = db.record_mentions(g.user["id"], "marketing_thread", thread_id,
+                                "marketing_message", _int_or(msg_id, 0), body)
+    if people:
+        _mention_notify(people, author, "a conversation",
+                        url_for("marketing_hub", thread=thread_id,
+                                _external=True))
+        flash("Internal note added. " + _mention_flash(people), "ok")
     else:
         flash("Internal note added for the team.", "ok")
     return redirect(_marketing_thread_url(thread_id, "composer"))
@@ -7391,7 +7377,12 @@ def reminders_run():
     elif not NO_LOGIN:
         abort(403)
     try:
-        return jsonify(reminders_mod.run_all())
+        out = reminders_mod.run_all()
+        # Hand a returning teammate their queue back on the day they said they'd
+        # be back. active_away_for() also expires lazily on read, so this only
+        # makes it punctual - correctness never depends on cron running.
+        out["aways_ended"] = db.sweep_expired_aways()
+        return jsonify(out)
     except Exception:
         app.logger.exception("reminders sweep failed")
         return jsonify({"checked": False, "error": "sweep_failed"}), 200
@@ -8328,7 +8319,12 @@ def leads():
     enrolled_n = sum(1 for q in queue if q["status"] == "enrolled")
     return render_template("leads.html", queue=queue, review=review, active=active,
                            done=done, counts=counts, enrolled_n=enrolled_n,
-                           claims=claims, q=q, active_nct=active_nct)
+                           claims=claims, q=q, active_nct=active_nct,
+                           # The blast composer's audience options come from the
+                           # same constants the resolver validates against, so
+                           # the UI can never offer a filter the server rejects.
+                           pipeline=db.LEAD_PIPELINE, conv_tags=db.CONV_TAGS,
+                           labels=db.LEAD_LABELS)
 
 
 @app.route("/app/applicants/export.csv")
@@ -12795,11 +12791,321 @@ def copilot_act():
                 msg += f" Skipped {skipped} who opted out."
             return jsonify({"ok": True, "answer": msg})
 
+        if kind == "blast":
+            # The recipients were frozen into the proposal, so confirming sends
+            # to exactly the people the coordinator was shown - not to whatever
+            # the filter would match now. Re-checked against the team's scope
+            # and the opt-out rail on the way out, same as the manual composer.
+            ids = payload.get("lead_ids") or []
+            text = ((edited if edited is not None else payload.get("text")) or "").strip()[:4000]
+            if not text:
+                return jsonify({"ok": False, "error": "The message is empty."}), 400
+            sent = skipped = 0
+            for lid in ids:
+                if not db.lead_belongs_to_user(lid, g.user["id"]):
+                    continue
+                lead = db.get_lead(lid)
+                if not lead or not lead["revealed"]:
+                    continue
+                if not db.lead_contactable(lid):
+                    skipped += 1
+                    continue
+                db.add_message(lid, "site", text)
+                _notify_applicant_message(lead, text)
+                sent += 1
+            db.create_blast(g.user["id"], payload.get("nct", ""),
+                            payload.get("mode", "everyone"),
+                            payload.get("value", ""),
+                            payload.get("label", ""), text, "", ids)
+            db.mark_copilot_action(token, "confirmed")
+            msg = f"Sent to {sent} applicant(s)."
+            if skipped:
+                msg += f" Skipped {skipped} who opted out."
+            return jsonify({"ok": True, "answer": msg})
+
+        if kind == "handoff_coverage":
+            cover_id = payload.get("cover_user_id")
+            away, err = db.start_away(g.user["id"], g.user["id"], cover_id)
+            if err:
+                return jsonify({"ok": False, "error": err}), 400
+            db.mark_copilot_action(token, "confirmed")
+            moved = away["moved_leads"] + away["moved_threads"]
+            who = payload.get("cover_name") or "your teammate"
+            return jsonify({
+                "ok": True,
+                "answer": (f"{who} is covering for you. {moved} open "
+                           f"conversation{'' if moved == 1 else 's'} moved over, "
+                           "and new ones will route to them until you're back."),
+                "citations": [{"label": "Inbox", "url": url_for("marketing_hub")}],
+            })
+
         return jsonify({"ok": False, "error": "Unknown action."}), 400
     except Exception:
         app.logger.exception("copilot_act failed")
         return jsonify({"ok": False,
                         "error": "That action couldn't be completed."}), 500
+
+
+# --------------------------------------------------------------------------- #
+# @mentions - pulling a teammate into a thread instead of CC-ing them
+# --------------------------------------------------------------------------- #
+def _mention_flash(people):
+    """"Priya was notified." / "Priya and Dan were notified." - so the author
+    sees who actually got pulled in, and notices when a handle didn't resolve."""
+    names = [p["name"] for p in people]
+    if len(names) == 1:
+        who, verb = names[0], "was"
+    else:
+        who = ", ".join(names[:-1]) + " and " + names[-1]
+        verb = "were"
+    extra = ""
+    covers = []
+    for p in people:
+        away = db.active_away_for(p["user_id"])
+        if away:
+            covers.append(db.display_name(away["cover_user_id"]))
+    if covers:
+        extra = f" {covers[0]} was notified too, as cover."
+    return f"{who} {verb} notified.{extra}"
+
+
+def _mention_notify(people, author_name, where, url):
+    """Tell each mentioned teammate (and, if they're away, their cover) that they
+    were pulled into a thread. Uses the same async notifier as every other
+    outbound mail, so it is inert unless NOTIFY_LIVE is on."""
+    for p in people:
+        targets = [p["user_id"]]
+        cover = db.active_away_for(p["user_id"])
+        if cover:
+            targets.append(cover["cover_user_id"])
+        for uid in targets:
+            row = db.get_user(uid)
+            if not row or not row["email"]:
+                continue
+            subject = f"{author_name} mentioned you on {where}"
+            body = (f"{author_name} pulled you into {where} in BridgeMD.\n\n"
+                    f"Open it here: {url}\n")
+            _notify_async(row["email"], subject, body)
+
+
+def _render_mentions(text):
+    """Show @handles as chips in a rendered note.
+
+    Server-side so the highlight survives with JS off, and escaped here because
+    the filter has to be marked safe to emit the span. Only handles that a
+    teammate actually answers to are chipped, so an unresolved "@someone" reads
+    as the plain text it is - which is the visible signal that nobody was
+    notified."""
+    raw = str(text or "")
+    known = set()
+    try:
+        if g.user:
+            for m in db.mentionable_members(g.user["id"]):
+                known.update(m["handles"])
+    except Exception:
+        pass
+
+    def _sub(match):
+        handle = match.group(1)
+        if handle.lower() not in known:
+            return escape(match.group(0))
+        return Markup('<span class="mention-chip">@%s</span>') % handle
+
+    parts, last = [], 0
+    for m in db.MENTION_RE.finditer(raw):
+        parts.append(escape(raw[last:m.start()]))
+        parts.append(_sub(m))
+        last = m.end()
+    parts.append(escape(raw[last:]))
+    return Markup("").join(parts)
+
+
+app.jinja_env.filters["mentions"] = _render_mentions
+
+
+@app.route("/app/leads/<int:lead_id>/note-draft.json", methods=["POST"])
+@login_required
+def lead_note_draft(lead_id):
+    """Bridget turns a thread into a team note, so a coordinator stops retyping
+    "called, left voicemail, they asked about travel" from scratch."""
+    _ensure_site_access_for_lead(lead_id)
+    lead = db.get_lead(lead_id)
+    if not lead:
+        return jsonify({"ok": False, "error": "not_found"}), 404
+    msgs = db.get_messages(lead_id) or []
+    last_in = ""
+    for m in msgs:
+        if m["sender"] == "patient":
+            last_in = m["body"] or ""
+    return jsonify({
+        "ok": True, "human_review_required": True,
+        "draft": copilot.drafts.draft("note_summary", {
+            "first": (lead["name"] or "This applicant").split()[0],
+            "stage": (lead["status"] or "").replace("_", " "),
+            "inbound": last_in,
+            "messages": [{"inbound": m["sender"] == "patient"} for m in msgs],
+            "waiting": bool(db.lead_unread_for_site(lead_id)),
+        }),
+    })
+
+
+@app.route("/app/team/mentionable.json")
+@login_required
+def mentionable_members_json():
+    """Roster for the @-picker. Names + the handle that actually resolves, so
+    the picker can never insert something the parser will drop."""
+    return jsonify({"ok": True, "members": db.mentionable_members(g.user["id"])})
+
+
+@app.route("/app/mentions")
+@login_required
+def mentions_page():
+    """Everywhere a teammate pulled you in. Opening this page is what clears the
+    badge - the mention has been surfaced, so it has been delivered."""
+    rows = db.list_mentions(g.user["id"])
+    items = []
+    for m in rows:
+        if m["object_type"] == "lead":
+            lead = db.get_lead(m["object_id"])
+            if not lead or not db.lead_belongs_to_user(m["object_id"],
+                                                       g.user["id"]):
+                continue
+            title = lead["name"] or lead["title"] or "Applicant"
+            sub = lead["title"] or lead["nct"] or ""
+            url = url_for("applicant_detail", lead_id=lead["id"])
+        else:
+            thread = db.get_marketing_thread(g.user["id"], m["object_id"])
+            if not thread:
+                continue
+            title = (thread["contact_name"] or thread["contact_handle"]
+                     or "Conversation")
+            sub = thread["subject"] or ""
+            url = _marketing_thread_url(thread["id"])
+        items.append({
+            "id": m["id"], "title": title, "sub": sub, "url": url,
+            "excerpt": m["excerpt"], "unread": not m["read_at"],
+            "author": (m["author_name"] or m["author_email"] or "A teammate"),
+            "when": (m["created_at"] or "")[:16],
+        })
+    db.mark_mentions_read(g.user["id"])
+    return render_template("mentions.html", items=items)
+
+
+# --------------------------------------------------------------------------- #
+# Away coverage
+# --------------------------------------------------------------------------- #
+@app.route("/app/away", methods=["POST"])
+@login_required
+def away_start():
+    """Hand this user's whole open queue to a teammate until they're back."""
+    cover_id = request.form.get("cover_user_id", type=int)
+    until = (request.form.get("until") or "").strip()
+    note = (request.form.get("note") or "").strip()
+    back = _safe_next(request.form.get("next", "")) or url_for("marketing_hub")
+    if not cover_id:
+        flash("Pick a teammate to cover for you.", "error")
+        return redirect(back)
+    away, err = db.start_away(g.user["id"], g.user["id"], cover_id,
+                              until=until, note=note)
+    if err:
+        flash(err, "error")
+        return redirect(back)
+    who = db.display_name(cover_id)
+    moved = away["moved_leads"] + away["moved_threads"]
+    flash(f"{who} is covering for you. {moved} open conversation"
+          f"{'' if moved == 1 else 's'} moved over.", "ok")
+    return redirect(back)
+
+
+@app.route("/app/away/end", methods=["POST"])
+@login_required
+def away_end():
+    """Come back early. Everything the cover still holds returns to you."""
+    back = _safe_next(request.form.get("next", "")) or url_for("marketing_hub")
+    away = db.active_away_for(g.user["id"])
+    if not away:
+        flash("You don't have coverage turned on.", "error")
+        return redirect(back)
+    n = db.end_away(away["id"])
+    flash(f"Welcome back. {n} conversation{'' if n == 1 else 's'} returned "
+          "to you.", "ok")
+    return redirect(back)
+
+
+@app.route("/app/away/seen", methods=["POST"])
+@login_required
+def away_seen():
+    """Dismiss the "what happened while you were out" card."""
+    away_id = request.form.get("away_id", type=int)
+    if away_id:
+        db.mark_away_seen(g.user["id"], away_id)
+    return redirect(_safe_next(request.form.get("next", ""))
+                    or url_for("marketing_hub"))
+
+
+# --------------------------------------------------------------------------- #
+# Blasts - message a filtered audience inside one study
+# --------------------------------------------------------------------------- #
+def _blast_args(form):
+    """Pull the audience filter off a form or query string, unchanged in shape
+    between the preview and the send so the two can never disagree."""
+    mode = (form.get("mode") or "everyone").strip()
+    if mode not in db.BLAST_MODES:
+        mode = "everyone"
+    raw = (form.get("ids") or "").strip()
+    ids = [int(x) for x in raw.split(",") if x.strip().isdigit()]
+    return (form.get("nct") or "").strip(), mode, (form.get("value") or "").strip(), ids
+
+
+@app.route("/app/leads/blast/preview.json")
+@login_required
+def blast_preview():
+    """Who a send would actually reach, before it happens. The count here comes
+    from the SAME resolver the send uses, so the number on the button is the
+    number of people messaged."""
+    nct, mode, value, ids = _blast_args(request.args)
+    leads, err = db.blast_audience(g.user["id"], nct, mode, value, ids)
+    if err:
+        return jsonify({"ok": False, "error": err, "count": 0, "sample": []})
+    sample = [{
+        "name": (l["name"] or "Applicant"),
+        "stage": (l["status"] or "").replace("_", " ").title(),
+    } for l in leads[:12]]
+    warn = ""
+    recent = db.leads_blasted_since(g.user["id"], [l["id"] for l in leads])
+    if recent:
+        warn = (f"{recent} of these were already messaged in the last 24 hours.")
+    return jsonify({
+        "ok": True, "count": len(leads), "sample": sample,
+        "more": max(0, len(leads) - len(sample)),
+        "label": db.blast_audience_label(mode, value, len(leads),
+                                         db.display_name(_int_or(value))),
+        "warning": warn,
+    })
+
+
+def _int_or(value, default=None):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+@app.route("/app/leads/blast/draft.json", methods=["POST"])
+@login_required
+def blast_draft():
+    """Bridget drafts the blast body. Human reviews and sends, as always."""
+    nct = (request.form.get("nct") or "").strip()
+    study = next((c["title"] for c in db.list_study_claims(g.user["id"])
+                  if c["nct"] == nct and c["title"]), "") or nct or "the study"
+    return jsonify({
+        "ok": True, "human_review_required": True,
+        "draft": copilot.drafts.draft("blast", {
+            "study": study,
+            "audience_summary": (request.form.get("label") or "").strip(),
+            "count": _int_or(request.form.get("count"), 0),
+        }),
+    })
 
 
 @app.route("/app/leads/<int:lead_id>/attach", methods=["POST"])
@@ -12882,9 +13188,20 @@ def add_lead_note(lead_id):
     if not body:
         flash("Write a note first.", "error")
         return redirect(back)
-    author = (g.user.get("name") or g.user.get("email") or "Team") if g.user else "Team"
-    db.add_note(lead_id, body, author=author)
-    flash("Note added.", "success")
+    author = (db.display_name(g.user["id"]) or "Team") if g.user else "Team"
+    note_id = db.add_note(lead_id, body, author=author,
+                          author_user_id=(g.user["id"] if g.user else None))
+    # @mentions replace CC-ing a teammate: they get pulled into THIS thread
+    # instead of onto an email chain, and ownership doesn't change hands.
+    people = db.record_mentions(g.user["id"], "lead", lead_id, "lead_note",
+                                note_id, body)
+    if people:
+        _mention_notify(people, author, f"{lead['name'] or 'an applicant'}",
+                        url_for("applicant_detail", lead_id=lead_id,
+                                _external=True))
+        flash("Note added. " + _mention_flash(people), "success")
+    else:
+        flash("Note added.", "success")
     return redirect(back)
 
 
@@ -12972,28 +13289,30 @@ def review_lead_doc(lead_id, req_id):
 @app.route("/app/leads/broadcast", methods=["POST"])
 @login_required
 def broadcast_leads():
-    """Fan a message (and optional task/document) out to accepted candidates -
-    all of them, or scoped to one trial (nct) - delivered to each private thread,
-    never a shared room (who else is enrolled is PHI). Scoping by trial is what
-    lets a coordinator send a form to 'everyone in this study' without hunting."""
+    """Fan a message (and optional task/document) out to an audience inside ONE
+    trial, delivered to each recipient's private thread - never a shared room
+    (who else is enrolled is PHI).
+
+    The audience used to be "every accepted applicant in the study" and nothing
+    else. It is now resolved by db.blast_audience, which can narrow to a stage, a
+    tag, an owner, quiet applicants, or a hand-picked selection - while applying
+    the same non-negotiable rails it always did (verified claim, accepted, not
+    closed, not opted out). Every path into this loop goes through that resolver,
+    so the single-study rule cannot be routed around."""
     body = request.form.get("body", "").strip()
     task_title = request.form.get("task", "").strip()
-    scope_nct = request.form.get("nct", "").strip()
     back = _safe_next(request.form.get("next", "")) or url_for("leads")
-    # Broadcasts are strictly single-trial: protocol materials are IRB/REB-approved
-    # per study, so cross-trial sends are disallowed (avoids wrong-cohort mistakes).
-    if not scope_nct or scope_nct not in db.user_claimed_ncts(g.user["id"]):
-        flash("Pick a trial to message.", "error")
-        return redirect(back)
+    scope_nct, mode, value, picked = _blast_args(request.form)
     saved = _save_upload(request.files.get("file"))
     if not (body or task_title or saved):
         flash("Add a message, a to-do, or a document to send.", "error")
         return redirect(back)
-    leads = [ld for ld in db.list_leads_for_user(g.user["id"])
-             if ld["revealed"] and ld["status"] not in db.LEAD_CLOSED
-             and ld["nct"] == scope_nct]
+    leads, err = db.blast_audience(g.user["id"], scope_nct, mode, value, picked)
+    if err:
+        flash(err, "error")
+        return redirect(back)
     if not leads:
-        flash("No accepted candidates in that trial yet.", "error")
+        flash("Nobody matches that audience right now.", "error")
         return redirect(back)
     for ld in leads:
         if body:
@@ -13018,8 +13337,14 @@ def broadcast_leads():
             (UPLOAD_DIR / os.path.basename(saved[1])).unlink(missing_ok=True)
         except OSError:
             pass
-    flash(f"Sent to {len(leads)} accepted candidate"
-          f"{'s' if len(leads) != 1 else ''}.", "success")
+    label = db.blast_audience_label(mode, value, len(leads),
+                                    db.display_name(_int_or(value)))
+    # Recorded so the send is auditable and so the composer can warn about
+    # double-messaging the same people tomorrow.
+    db.create_blast(g.user["id"], scope_nct, mode, value, label, body,
+                    task_title, [ld["id"] for ld in leads])
+    flash(f"Blast sent to {len(leads)} applicant"
+          f"{'s' if len(leads) != 1 else ''} ({label}).", "success")
     return redirect(back)
 
 

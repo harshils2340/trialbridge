@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Mentions · BridgeMD for sites{% endblock %}
+{% import "_icons.html" as ic %}
+{% import "_ui.html" as ui %}
+
+{# Everywhere a teammate pulled you in with @you. This is the replacement for
+   being CC'd on an email chain: the context stays on the thread instead of
+   forking into a mail thread, and landing here is what marks the mentions read. #}
+{% block body %}
+<div class="app-head">
+  <div>
+    <h1>Mentions</h1>
+    <p>{{ items|length }} thread{{ '' if items|length == 1 else 's' }} a teammate
+      pulled you into. Nothing here is visible to applicants.</p>
+  </div>
+</div>
+
+<div class="app-card pad">
+  {% if items %}
+  <div class="mention-feed">
+    {% for m in items %}
+    <a class="mention-row{{ ' is-unread' if m.unread else '' }}" href="{{ m.url }}">
+      <span class="mention-row-ico">{{ ic.icon('chat') }}</span>
+      <span class="mention-row-main">
+        <span class="mention-row-top">
+          <b>{{ m.title }}</b>
+          {% if m.sub %}<span class="mention-row-sub">{{ m.sub }}</span>{% endif %}
+          <time>{{ m.when }}</time>
+        </span>
+        <span class="mention-row-excerpt">{{ m.excerpt|mentions }}</span>
+        <span class="mention-row-by">{{ m.author }} mentioned you</span>
+      </span>
+    </a>
+    {% endfor %}
+  </div>
+  {% else %}
+  {% set _tip = 'Type @ and a teammate name in any internal note to pull them into a thread instead of CC-ing them.' %}
+  {{ ui.empty('No mentions yet', _tip, 'users') }}
+  {% endif %}
+</div>
+{% endblock %}

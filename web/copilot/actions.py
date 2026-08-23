@@ -13,7 +13,8 @@ This module owns two responsibilities:
 """
 
 import db
-from . import tools
+
+from . import drafts, tools
 
 # A generic, neutral reminder used for the "nudge everyone stuck in screening"
 # bulk action. Kept truthful and non-coercive (compliance).
@@ -110,3 +111,66 @@ def load_valid(user_id, token):
         db.mark_copilot_action(token, "canceled")
         return None, "That action expired - just ask me again."
     return row, None
+
+
+def build_blast_proposal(user_id, nct="", stage="", tag="", idle_days=None,
+                         text=""):
+    """Propose messaging a filtered group inside one study.
+
+    The audience is resolved by db.blast_audience - the same function the manual
+    composer uses - so the assistant cannot reach anyone the UI would refuse to
+    reach. The resolved lead ids are frozen into the proposal, so confirming
+    later sends to exactly the people the coordinator was shown."""
+    nct, mode, value, leads, err = tools.blast_targets(
+        user_id, nct=nct, stage=stage, tag=tag, idle_days=idle_days)
+    if err:
+        return {"blocked": err}
+    if not leads:
+        return {"blocked": "Nobody in that study matches that description right "
+                           "now."}
+    label = db.blast_audience_label(mode, value, len(leads))
+    body = (text or "").strip() or drafts.draft("blast", {
+        "study": (leads[0]["title"] or nct), "audience_summary": label,
+        "count": len(leads)})
+    token = db.create_copilot_action(
+        user_id, "blast", None,
+        {"lead_ids": [l["id"] for l in leads], "text": body, "nct": nct,
+         "mode": mode, "value": value, "label": label, "count": len(leads)})
+    return {"kind": "blast", "token": token,
+            "target": f"{len(leads)} applicant(s) - {label}",
+            "text": body, "count": len(leads), "editable": True,
+            "confirm_label": f"Send to {len(leads)}"}
+
+
+def build_handoff_proposal(user_id, cover=""):
+    """Propose handing this user's whole open queue to a teammate.
+
+    Reassigning someone's entire workload is exactly the kind of thing that must
+    not happen on a misheard sentence, so it goes through the same confirm step
+    as a send - with the real count shown before anything moves."""
+    want = (cover or "").strip().lower()
+    members = [m for m in db.mentionable_members(user_id)
+               if m["user_id"] != user_id]
+    if not members:
+        return {"blocked": "Add a teammate to your workspace first, then I can "
+                           "hand your queue over."}
+    match = None
+    if want:
+        hits = [m for m in members
+                if want in m["handles"] or want in m["name"].lower()]
+        if len(hits) == 1:
+            match = hits[0]
+    if match is None:
+        names = ", ".join(m["name"] for m in members[:5])
+        return {"blocked": f"Who should cover for you? Your teammates are: "
+                           f"{names}."}
+    n = db.open_queue_count(user_id)
+    token = db.create_copilot_action(
+        user_id, "handoff_coverage", None,
+        {"cover_user_id": match["user_id"], "cover_name": match["name"],
+         "count": n})
+    return {"kind": "handoff_coverage", "token": token,
+            "target": f"{match['name']} ({n} open conversation"
+                      f"{'' if n == 1 else 's'})",
+            "editable": False,
+            "confirm_label": f"Hand off to {match['name'].split()[0]}"}

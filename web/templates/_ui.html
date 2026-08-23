@@ -89,6 +89,41 @@
   {%- endif -%}
 {%- endmacro %}
 
+{# --- Field ----------------------------------------------------------------
+   A labelled form row. Composers stack five or six of these, so the label /
+   hint / control structure lives here instead of being re-typed per screen.
+     {% call ui.field("Message", hint="Goes to each private thread") %}
+       <textarea name="body"></textarea>
+     {% endcall %} #}
+{% macro field(label, hint="", for_id="") -%}
+  <div class="field">
+    <label{% if for_id %} for="{{ for_id }}"{% endif %}>{{ label }}</label>
+    {{ caller() }}
+    {% if hint %}<small class="ui-hint">{{ hint }}</small>{% endif %}
+  </div>
+{%- endmacro %}
+
+{# --- Bridget inline action -------------------------------------------------
+   The small "let Bridget write this" affordance any page can drop in, so the
+   assistant lives where the work happens instead of only in the right dock.
+
+     endpoint : POSTed to; expects {ok, draft} back. The draft is written into
+                `target` (a CSS selector for an input/textarea).
+     ask      : instead of an endpoint, open the dock seeded with this question.
+     fields   : CSS selector for a container whose inputs are sent along, so the
+                endpoint can see the audience/study the user picked.
+
+   Drafting is always advisory - the human edits and sends. #}
+{% macro bridget(label="Draft with Bridget", endpoint="", ask="", target="",
+                 fields="", variant="ghost", size="sm") -%}
+  {%- set attrs = 'type="button" data-bridget' -%}
+  {%- if endpoint %}{% set attrs = attrs ~ ' data-bridget-endpoint="' ~ endpoint ~ '"' %}{% endif -%}
+  {%- if ask %}{% set attrs = attrs ~ ' data-bridget-ask="' ~ ask ~ '"' %}{% endif -%}
+  {%- if target %}{% set attrs = attrs ~ ' data-bridget-target="' ~ target ~ '"' %}{% endif -%}
+  {%- if fields %}{% set attrs = attrs ~ ' data-bridget-fields="' ~ fields ~ '"' %}{% endif -%}
+  {{ btn(label, variant, size, icon='sparkle', extra=attrs) }}
+{%- endmacro %}
+
 {# --- Modal ----------------------------------------------------------------
    Usage:
      {% call ui.modal("myId", "Title", icon="send") %}

@@ -151,6 +151,50 @@ def _classify(query, has_lead=False):
                             "catch up on")):
         return "needs_reply", {}
 
+    # --- Coverage: handing your queue over. Checked early because "cover for me"
+    # contains none of the send verbs below but is unmistakably an action. ------
+    if any(w in q for w in ("cover for me", "covering for me", "hand off",
+                            "handoff", "hand over", "i'm away", "im away",
+                            "i am away", "going away", "on vacation",
+                            "on leave", "out of office", "take my queue",
+                            "take over my")):
+        m_cov = re.search(r"(?:to|with|for)\s+([a-z][a-z.'-]{1,30})\s*$", q)
+        return "handoff_coverage", {"cover": (m_cov.group(1) if m_cov else "")}
+    if any(w in q for w in ("while i was out", "while i was away",
+                            "what did i miss", "what changed while",
+                            "catch me up on what")):
+        return "away_recap", {}
+
+    # --- Blast: messaging a described GROUP inside one study -------------------
+    m_nct = re.search(r"(nct\d{6,10})", q)
+    if (any(w in q for w in ("blast", "message everyone", "message all",
+                             "send to everyone", "email everyone",
+                             "notify everyone", "message everybody"))
+            or (m_nct and any(w in q for w in ("message", "send", "notify",
+                                               "remind", "tell")))):
+        p_blast = {}
+        if m_nct:
+            p_blast["nct"] = m_nct.group(1).upper()
+        for st in ("prescreen", "eligible", "screening", "enrolled"):
+            if st in q:
+                p_blast["stage"] = st
+                break
+        m_idle = re.search(r"(\d{1,3})\s*(?:\+\s*)?days?", q)
+        if m_idle and any(w in q for w in ("quiet", "idle", "no activity",
+                                           "haven't heard", "havent heard",
+                                           "gone quiet", "silent")):
+            p_blast["idle_days"] = m_idle.group(1)
+        return "blast", p_blast
+
+    # --- Summarize one thread into a note --------------------------------------
+    if has_lead and any(w in q for w in ("summarize this thread",
+                                         "summarise this thread",
+                                         "thread summary", "note for the team",
+                                         "turn this into a note",
+                                         "summarize the thread",
+                                         "write a note")):
+        return "thread_summary", {}
+
     # --- Action intents (require an explicit send/booking/message verb) --------
     booking_word = any(w in q for w in ("book", "booking", "self-schedule",
                                         "calendly", "schedule link", "screening link"))
@@ -242,6 +286,8 @@ _PROPOSAL_INTRO = {
     "send_booking": "I'll send the booking link to {target}. Confirm to send:",
     "bulk_booking": "This will message {target}. Review and confirm:",
     "reconsent_reminder": "This will send a re-consent reminder to {target}. Review and confirm:",
+    "blast": "This will message {target}. Review the wording and confirm:",
+    "handoff_coverage": "This hands your open conversations to {target}. They'll also get new ones until you're back. Confirm:",
 }
 
 
@@ -354,6 +400,12 @@ def _propose(intent, user_id, lead_id, params):
         prop = actions.build_booking_proposal(user_id, lead_id)
     elif intent == "reconsent_reminder":
         prop = actions.build_reconsent_reminder_proposal(user_id)
+    elif intent == "blast":
+        prop = actions.build_blast_proposal(
+            user_id, nct=params.get("nct", ""), stage=params.get("stage", ""),
+            tag=params.get("tag", ""), idle_days=params.get("idle_days"))
+    elif intent == "handoff_coverage":
+        prop = actions.build_handoff_proposal(user_id, params.get("cover", ""))
     else:  # bulk_booking
         prop = actions.build_bulk_reminder_proposal(user_id)
 

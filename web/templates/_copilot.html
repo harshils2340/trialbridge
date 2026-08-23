@@ -480,3 +480,221 @@
   window.bridgetAsk = function (q) { setOpen(true); if (q) { setTimeout(function () { ask(q); }, 60); } };
 })();
 </script>
+
+<script>
+/* Two small shared behaviours that ride along with Bridget, so every study page
+   gets them without repeating a fetch block per template:
+
+     1. @mention autocomplete on any [data-mentions] textarea. Typing "@" opens
+        a teammate picker; choosing one inserts the handle the SERVER will
+        actually resolve, so the picker can never suggest something the parser
+        silently drops.
+     2. [data-bridget] buttons - the inline "let Bridget write this" affordance.
+        Either POST to an endpoint and drop the draft into a target field, or
+        open the dock seeded with a question. */
+(function () {
+  var ROSTER_URL = '/app/team/mentionable.json';
+  var roster = null, rosterPending = null;
+
+  function loadRoster() {
+    if (roster) return Promise.resolve(roster);
+    if (rosterPending) return rosterPending;
+    rosterPending = fetch(ROSTER_URL, { credentials: 'same-origin' })
+      .then(function (r) { return r.ok ? r.json() : { members: [] }; })
+      .then(function (d) { roster = (d && d.members) || []; return roster; })
+      .catch(function () { roster = []; return roster; });
+    return rosterPending;
+  }
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  /* ---- @mention picker -------------------------------------------------- */
+  var pop = null, popFor = null, popItems = [], popIndex = 0, popStart = -1;
+
+  function closePop() {
+    if (pop) { pop.remove(); pop = null; }
+    popFor = null; popItems = []; popIndex = 0; popStart = -1;
+  }
+
+  function renderPop(ta, items) {
+    if (!pop) {
+      pop = document.createElement('div');
+      pop.className = 'mention-pop';
+      pop.setAttribute('role', 'listbox');
+      document.body.appendChild(pop);
+    }
+    pop.innerHTML = items.map(function (m, i) {
+      return '<button type="button" class="mention-opt' + (i === popIndex ? ' is-active' : '') +
+        '" role="option" data-i="' + i + '">' +
+        '<span class="mention-av">' + esc((m.name || '?').slice(0, 1).toUpperCase()) + '</span>' +
+        '<span class="mention-opt-main"><b>' + esc(m.name) + '</b>' +
+        '<small>@' + esc(m.handle) + (m.role ? ' · ' + esc(m.role) : '') + '</small></span>' +
+        '</button>';
+    }).join('');
+    // Anchor to the field. Fixed positioning keeps it correct inside the inbox's
+    // scrolling panes and inside a modal. Composers usually sit at the BOTTOM of
+    // the screen, so flip above whenever the list would be clipped - otherwise
+    // the picker is unusable exactly where it is used most.
+    var r = ta.getBoundingClientRect();
+    pop.style.left = Math.round(r.left) + 'px';
+    pop.style.width = Math.round(Math.max(220, Math.min(r.width, 340))) + 'px';
+    pop.style.maxHeight = '244px';
+    pop.style.top = '0px';
+    var h = pop.offsetHeight;
+    var below = window.innerHeight - r.bottom - 8;
+    if (below < h && r.top > below) {
+      pop.style.top = Math.round(Math.max(8, r.top - h - 4)) + 'px';
+    } else {
+      pop.style.top = Math.round(r.bottom + 4) + 'px';
+      pop.style.maxHeight = Math.max(96, Math.min(244, below)) + 'px';
+    }
+  }
+
+  function currentQuery(ta) {
+    // Only treat "@" as a mention at a word boundary, so an email address typed
+    // into a note never opens the picker.
+    var upto = ta.value.slice(0, ta.selectionStart);
+    var m = /(^|\s)@([A-Za-z0-9._-]*)$/.exec(upto);
+    if (!m) return null;
+    return { term: m[2].toLowerCase(), start: upto.length - m[2].length - 1 };
+  }
+
+  function refreshPop(ta) {
+    var q = currentQuery(ta);
+    if (!q) { closePop(); return; }
+    loadRoster().then(function (all) {
+      if (document.activeElement !== ta) return;
+      var q2 = currentQuery(ta);
+      if (!q2) { closePop(); return; }
+      popItems = all.filter(function (m) {
+        if (!q2.term) return true;
+        return (m.handles || []).some(function (h) { return h.indexOf(q2.term) === 0; })
+          || (m.name || '').toLowerCase().indexOf(q2.term) === 0;
+      }).slice(0, 6);
+      if (!popItems.length) { closePop(); return; }
+      popFor = ta; popStart = q2.start;
+      if (popIndex >= popItems.length) popIndex = 0;
+      renderPop(ta, popItems);
+    });
+  }
+
+  function choose(i) {
+    var ta = popFor, m = popItems[i];
+    if (!ta || !m) return;
+    var before = ta.value.slice(0, popStart);
+    var after = ta.value.slice(ta.selectionStart);
+    var insert = '@' + m.handle + ' ';
+    ta.value = before + insert + after;
+    var caret = before.length + insert.length;
+    closePop();
+    ta.focus();
+    ta.setSelectionRange(caret, caret);
+  }
+
+  document.addEventListener('input', function (e) {
+    var ta = e.target;
+    if (ta && ta.matches && ta.matches('[data-mentions]')) refreshPop(ta);
+  });
+
+  document.addEventListener('keydown', function (e) {
+    if (!pop || e.target !== popFor) return;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      popIndex = (popIndex + (e.key === 'ArrowDown' ? 1 : popItems.length - 1)) % popItems.length;
+      renderPop(popFor, popItems);
+    } else if (e.key === 'Enter' || e.key === 'Tab') {
+      e.preventDefault();
+      choose(popIndex);
+    } else if (e.key === 'Escape') {
+      closePop();
+    }
+  });
+
+  document.addEventListener('mousedown', function (e) {
+    if (!pop) return;
+    var opt = e.target.closest && e.target.closest('.mention-opt');
+    if (opt) { e.preventDefault(); choose(parseInt(opt.getAttribute('data-i'), 10)); return; }
+    if (!e.target.closest || !e.target.closest('.mention-pop')) closePop();
+  });
+
+  document.addEventListener('focusout', function (e) {
+    if (e.target === popFor) setTimeout(function () {
+      if (!pop || !pop.contains(document.activeElement)) closePop();
+    }, 120);
+  });
+
+  /* ---- Inline Bridget --------------------------------------------------- */
+  document.addEventListener('click', function (e) {
+    var btn = e.target.closest && e.target.closest('[data-bridget]');
+    if (!btn) return;
+    e.preventDefault();
+
+    var ask = btn.getAttribute('data-bridget-ask');
+    if (ask && !btn.getAttribute('data-bridget-endpoint')) {
+      if (window.bridgetAsk) window.bridgetAsk(ask);
+      return;
+    }
+
+    var endpoint = btn.getAttribute('data-bridget-endpoint');
+    if (!endpoint) return;
+    var targetSel = btn.getAttribute('data-bridget-target');
+    var target = targetSel ? document.querySelector(targetSel) : null;
+
+    var body = new FormData();
+    var fieldsSel = btn.getAttribute('data-bridget-fields');
+    if (fieldsSel) {
+      var scope = document.querySelector(fieldsSel);
+      if (scope) {
+        scope.querySelectorAll('input[name], select[name], textarea[name]').forEach(function (i) {
+          if (i.type === 'file') return;
+          if ((i.type === 'checkbox' || i.type === 'radio') && !i.checked) return;
+          body.append(i.name, i.value);
+        });
+      }
+    }
+
+    // Same CSRF contract as the [data-ajax] submitter in base.html - a POST
+    // without the token is bounced by _csrf_guard before it reaches the view.
+    var meta = document.querySelector('meta[name="csrf-token"]');
+    var label = btn.textContent;
+    btn.disabled = true;
+    btn.classList.add('is-thinking');
+    fetch(endpoint, {
+      method: 'POST',
+      body: body,
+      credentials: 'same-origin',
+      headers: {
+        'X-CSRF-Token': meta ? meta.getAttribute('content') : '',
+        'X-Requested-With': 'XMLHttpRequest'
+      }
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d || !d.ok) throw new Error('no draft');
+        var text = d.draft || d.answer || '';
+        if (target) {
+          target.value = text;
+          target.dispatchEvent(new Event('input', { bubbles: true }));
+          target.focus();
+        }
+        var note = btn.closest('.bridget-slot');
+        if (note) {
+          var hint = note.querySelector('[data-bridget-note]');
+          if (hint) hint.hidden = false;
+        }
+      })
+      .catch(function () {
+        if (target) target.focus();
+      })
+      .finally(function () {
+        btn.disabled = false;
+        btn.classList.remove('is-thinking');
+        btn.textContent = label;
+      });
+  });
+})();
+</script>

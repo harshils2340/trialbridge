@@ -49,17 +49,57 @@
         </form>
         {{ ui.icon_btn('Manage connected accounts', 'cloud-sync', extra='data-ui-open="sourceModal"') }}
         {{ ui.icon_btn('Create a test conversation', 'plus', extra='data-ui-open="testThreadModal"', disabled=not counts.sources) }}
+        {{ ui.icon_btn('Going away - hand off your queue', 'users', extra='data-ui-open="coverageModal"' ~ (' class="is-away"' if my_away else '')) }}
       </div>
       {% if counts.sources %}
       {# Private inbox by default: two buckets only - your own conversations, and
          the shared unclaimed queue so new inquiries can be picked up. There is no
          "everyone's inbox" view on purpose; a teammate's conversation reaches you
          only when it is assigned to you (directly or via away/coverage routing). #}
+      {# One wrapper on purpose: .mh-thread-column is a 4-row grid (toolbar,
+         this, stage tabs, list) and the last row is the flexible one. Adding
+         banners as extra grid children would push the 1fr row onto the wrong
+         element and stretch it. #}
+      <div class="mh-queue-head">
+      {% if my_away %}
+      <div class="away-bar" role="status">
+        {{ ic.icon('users') }}
+        <span>{{ cover_name }} is covering{% if my_away.until %} until {{ my_away.until }}{% endif %}.</span>
+        <form method="post" action="{{ url_for('away_end') }}">
+          <input type="hidden" name="next" value="{{ request.full_path }}">
+          <button type="submit" class="link-btn">I'm back</button>
+        </form>
+      </div>
+      {% elif am_covering %}
+      <div class="away-bar is-cover" role="status">
+        {{ ic.icon('users') }}
+        <span>Covering for
+          {% for a in am_covering %}{{ member_by_id.get(a.user_id).display_name if member_by_id.get(a.user_id) else 'a teammate' }}{% if a.until %} until {{ a.until }}{% endif %}{{ ', ' if not loop.last }}{% endfor %}.
+        </span>
+      </div>
+      {% endif %}
+      {% if away_recap %}
+      {# Shown once, after a handoff ends, so coming back is not "scroll and hope". #}
+      <div class="away-recap">
+        <div>
+          <b>Welcome back.</b>
+          <span>{{ away_recap.cover_name }} held
+            {{ away_recap.leads + away_recap.threads }} conversation{{ '' if (away_recap.leads + away_recap.threads) == 1 else 's' }}
+            while you were out{% if away_recap.waiting %} · {{ away_recap.waiting }} still waiting on a reply{% endif %}{% if away_recap.enrolled %} · {{ away_recap.enrolled }} enrolled{% endif %}.</span>
+        </div>
+        <form method="post" action="{{ url_for('away_seen') }}">
+          <input type="hidden" name="next" value="{{ request.full_path }}">
+          <input type="hidden" name="away_id" value="{{ away_recap.away.id }}">
+          {{ ui.btn('Got it', 'ghost', 'sm', type='submit') }}
+        </form>
+      </div>
+      {% endif %}
       <div class="mh-owner-toggle" role="group" aria-label="Inbox scope">
         <a class="{{ 'is-active' if owner_filter != 'unassigned' }}"
            href="{{ url_for('marketing_hub', owner='mine', status=status_filter) }}">{{ ic.icon('inbox') }} My inbox</a>
         <a class="{{ 'is-active' if owner_filter == 'unassigned' }}"
            href="{{ url_for('marketing_hub', owner='unassigned', status=status_filter) }}">Unassigned{% if unassigned_count %} <span>{{ unassigned_count }}</span>{% endif %}</a>
+      </div>
       </div>
       {% endif %}
       {% set stage_labels = {
@@ -253,7 +293,7 @@
             <span class="mh-note-icon">{{ ic.icon('users') }}</span>
             <div>
               <header><b>Internal note from {{ message.display_author }}</b><time>{{ message.time_label }}</time></header>
-              <p>{{ message.body }}</p>
+              <p>{{ message.body|mentions }}</p>
             </div>
           </article>
           {% else %}
@@ -317,9 +357,9 @@
         </form>
 
         <form method="post" action="{{ url_for('marketing_thread_note', thread_id=active.id) }}" class="mh-compose-panel" data-compose-panel="note" hidden>
-          <textarea name="body" rows="4" required placeholder="Leave context for your teammates..."></textarea>
+          <textarea name="body" rows="4" required data-mentions placeholder="Leave context for your teammates, or @mention someone to pull them in..."></textarea>
           <div class="mh-compose-foot">
-            <span>{{ ic.icon('lock') }} Only your workspace team can see this note.</span>
+            <span>{{ ic.icon('lock') }} Only your workspace team can see this note. Type @ to pull a teammate in.</span>
             {{ ui.btn('Add note', 'primary', icon='plus', type='submit') }}
           </div>
         </form>
@@ -589,58 +629,66 @@
 {% endif %}
 {% endcall %}
 
-{% call ui.modal('coverageModal', 'Inbox coverage', icon='users') %}
-<form method="post" action="{{ url_for('marketing_coverage') }}" class="mh-modal-form">
+{% call ui.modal('coverageModal', 'Going away', icon='users') %}
+{% if my_away %}
+{# Already away: the only useful action is coming back, and seeing what moved. #}
+<form method="post" action="{{ url_for('away_end') }}" class="mh-modal-form">
+  <input type="hidden" name="next" value="{{ request.full_path }}">
+  <div class="mh-coverage-explainer">
+    {{ member_avatar(member_by_id.get(my_away.cover_user_id)) }}
+    <span>
+      <b>{{ cover_name }} is covering for you</b>
+      <small>
+        {{ my_away.moved_leads + my_away.moved_threads }} conversation{{ '' if (my_away.moved_leads + my_away.moved_threads) == 1 else 's' }} moved over{% if my_away.until %}, back to you on {{ my_away.until }}{% endif %}.
+        New inquiries route to them too.
+      </small>
+    </span>
+  </div>
+  {% if my_away.note %}<p class="away-note">&ldquo;{{ my_away.note }}&rdquo;</p>{% endif %}
+  <p class="away-fine">Coming back early returns everything {{ cover_name }} still
+    holds. Anything they deliberately passed to someone else stays put.</p>
+  <div class="mh-modal-actions">
+    {{ ui.btn('Stay away', 'ghost', extra='data-ui-close') }}
+    {{ ui.btn("I'm back", 'primary', icon='check', type='submit') }}
+  </div>
+</form>
+{% else %}
+<form method="post" action="{{ url_for('away_start') }}" class="mh-modal-form">
+  <input type="hidden" name="next" value="{{ request.full_path }}">
   <div class="mh-coverage-explainer">
     {{ member_avatar(active_owner) }}
     <span>
-      <b>{{ active_owner.display_name }} is handling new conversations</b>
-      <small>Everyone on the team can still read, reply, and reassign any thread.</small>
+      <b>Hand your queue to a teammate</b>
+      <small>Your {{ my_open_count }} open conversation{{ '' if my_open_count == 1 else 's' }}
+        move to them now, new ones route to them too, and everything comes back
+        automatically on your return date.</small>
     </span>
   </div>
-  <div class="field">
-    <label for="primaryOwner">Primary owner</label>
-    <select id="primaryOwner" name="primary_user_id" required>
+  {% call ui.field('Who is covering', for_id='coverOwner') %}
+    <select id="coverOwner" name="cover_user_id" required>
+      <option value="">Choose a teammate</option>
       {% for member in members %}
-      <option value="{{ member.user_id }}" {{ 'selected' if settings.primary_user_id == member.user_id }}>{{ member.display_name }}{{ ' (you)' if member.user_id == user.id }}</option>
+      {% if member.user_id != user.id %}
+      <option value="{{ member.user_id }}">{{ member.display_name }}</option>
+      {% endif %}
       {% endfor %}
     </select>
-  </div>
-  <label class="mh-vacation-switch">
-    <span>
-      <b>Vacation mode</b>
-      <small>Route new conversations to a cover teammate.</small>
-    </span>
-    <input type="checkbox" name="vacation_mode" value="1" {{ 'checked' if settings.vacation_mode }}>
-    <i aria-hidden="true"></i>
-  </label>
-  <div class="mh-two-fields">
-    <div class="field">
-      <label for="coverOwner">Cover teammate</label>
-      <select id="coverOwner" name="cover_user_id">
-        <option value="">Choose a teammate</option>
-        {% for member in members %}
-        <option value="{{ member.user_id }}" {{ 'selected' if settings.cover_user_id == member.user_id }}>{{ member.display_name }}{{ ' (you)' if member.user_id == user.id }}</option>
-        {% endfor %}
-      </select>
-    </div>
-    <div class="field">
-      <label for="awayUntil">Back on</label>
-      <input id="awayUntil" name="away_until" type="date" min="{{ today }}" value="{{ settings.away_until }}">
-    </div>
-  </div>
-  <div class="field">
-    <label for="handoffNote">Handoff note <span>(optional)</span></label>
-    <textarea id="handoffNote" name="note" rows="3" maxlength="500" placeholder="What should your cover know?">{{ settings.note }}</textarea>
-  </div>
+  {% endcall %}
+  {% call ui.field('Back on', hint='Leave blank if you are not sure yet', for_id='awayUntil') %}
+    <input id="awayUntil" name="until" type="date" min="{{ today }}">
+  {% endcall %}
+  {% call ui.field('Anything they should know', hint='Optional', for_id='handoffNote') %}
+    <textarea id="handoffNote" name="note" rows="3" maxlength="500" placeholder="e.g. The Ramirez screening is booked for Thursday - just needs the consent countersigned."></textarea>
+  {% endcall %}
   {% if members|length < 2 %}
   <div class="mh-invite-nudge">{{ ic.icon('user-plus') }} <span>Add a teammate before turning on coverage.</span> <a href="{{ url_for('team_page') }}">Manage team</a></div>
   {% endif %}
   <div class="mh-modal-actions">
     {{ ui.btn('Cancel', 'ghost', extra='data-ui-close') }}
-    {{ ui.btn('Save coverage', 'primary', icon='check', type='submit') }}
+    {{ ui.btn('Hand off ' ~ my_open_count ~ ' conversation' ~ ('' if my_open_count == 1 else 's'), 'primary', icon='send', type='submit', disabled=members|length < 2) }}
   </div>
 </form>
+{% endif %}
 {% endcall %}
 
 <script>

@@ -5,7 +5,12 @@
         "site:linkedin.com/in \"clinical research coordinator\" Brampton",
         "site:linkedin.com/in \"clinical trial coordinator\" Toronto",
         "site:linkedin.com/in \"patient recruitment coordinator\" Toronto",
-        "site:linkedin.com/in \"senior clinical research coordinator\" Toronto"
+        "site:linkedin.com/in \"senior clinical research coordinator\" Torontosite:linkedin.com/in \"clinical research coordinator\" New York City",
+        "site:linkedin.com/in \"clinical research coordinator\" New York City",
+        "site:linkedin.com/in \"clinical research coordinator\" New York City",
+        "site:linkedin.com/in \"clinical trial coordinator\" New York City",
+        "site:linkedin.com/in \"patient recruitment coordinator\" New York City",
+        "site:linkedin.com/in \"senior clinical research coordinator\" New York City"
     ],
     "organic": [
         {
@@ -44,10 +49,10 @@
             "position": 5
         },
         {
-            "title": "Alyssa Schleifer - CCRP, MSc | Clinical Research ...",
-            "subtitle": "Greater Toronto Area, Canada · Clinical Research Coordinator · University Health Network",
-            "link": "https://ca.linkedin.com/in/alyssa-schleifer-2457881a3",
-            "snippet": "CCRP, MSc | Clinical Research Coordinator · Experience: University Health Network · Education: Northeastern University · Location: Greater Toronto Area, ...",
+            "title": "Eisha A. - Clinical Research Coordinator",
+            "subtitle": "Greater Toronto Area, Canada · Clinical Research Coordinator, Research Operations · The Hospital for Sick Children",
+            "link": "https://ca.linkedin.com/in/eisha-a-0b1b33194",
+            "snippet": "Clinical Research Coordinator · I am a SOCRA-certified clinical research professional with experience coordinating Health Canada–regulated clinical trials ...",
             "position": 6
         },
         {
@@ -58,10 +63,10 @@
             "position": 7
         },
         {
-            "title": "Eisha A. - Clinical Research Coordinator",
-            "subtitle": "Greater Toronto Area, Canada · Clinical Research Coordinator, Research Operations · The Hospital for Sick Children",
-            "link": "https://ca.linkedin.com/in/eisha-a-0b1b33194",
-            "snippet": "Clinical Research Coordinator · I am a SOCRA-certified clinical research professional with experience coordinating Health Canada–regulated clinical trials ...",
+            "title": "Alyssa Schleifer - CCRP, MSc | Clinical Research ...",
+            "subtitle": "Greater Toronto Area, Canada · Clinical Research Coordinator · University Health Network",
+            "link": "https://ca.linkedin.com/in/alyssa-schleifer-2457881a3",
+            "snippet": "CCRP, MSc | Clinical Research Coordinator · Experience: University Health Network · Education: Northeastern University · Location: Greater Toronto Area, ...",
             "position": 8
         },
         {
@@ -83,18 +88,19 @@
             "subtitle": "Mississauga, Ontario, Canada · Clinical Research Coordinator · North York Diagnostics and Cardiac Research Centre",
             "link": "https://ca.linkedin.com/in/kulpreet-kaur-999b7721a",
             "snippet": "Clinical Research Coordinator. Cliantha Research Limited. Sep 2021 - Nov 2024 3 years 3 months. Mississauga, Ontario, Canada. Co-leading early and late phase ...",
-            "position": 2
+            "position": 1
         },
         {
             "title": "Saima Matloob - M.D. Clinical Research Coordinator",
             "link": "https://ca.linkedin.com/in/saima-matloob-4289a818",
             "snippet": "Experience ; Clinical Research Coordinator. Cliantha Research Limited. Apr 2018 - Present 8 years 5 months. Mississauga, Ontario, Canada ; Research Volunteer.",
-            "position": 3
+            "position": 2
         },
         {
-            "title": "Ambrocio Tuason - Clinical Research Coordinator",
-            "link": "https://ca.linkedin.com/in/ambrocio-tuason-a3a666205",
-            "snippet": "... Clinical Research Coordinator | Certified Clinical Research Professional (SOCRA®). Cliantha Research Limited Oxford College (Mississauga). Brampton, Ontario ...",
+            "title": "Prabhu Loganathan , ACRP - Cliantha Research Limited",
+            "subtitle": "Mississauga, Ontario, Canada · Lead Clinical Research Coordinator · Cliantha Research Limited",
+            "link": "https://ca.linkedin.com/in/prabhu-loganathan-acrp-9930a7207",
+            "snippet": "Lead Clinical Research Coordinator at Cliantha Research Limited · Experience: Cliantha Research Limited · Location: Mississauga · 233 connections on LinkedIn ...",
             "position": 4
         },
         {
@@ -104,37 +110,36 @@
             "position": 5
         },
         {
-            "title": "Prabhu Loganathan , ACRP - Cliantha Research Limited",
-            "subtitle": "Mississauga, Ontario, Canada · Lead Clinical Research Coordinator · Cliantha Research Limited",
-            "link": "https://ca.linkedin.com/in/prabhu-loganathan-acrp-9930a7207",
-            "snippet": "Lead Clinical Research Coordinator at Cliantha Research Limited · Experience: Cliantha Research Limited · Location: Mississauga · 233 connections on LinkedIn ...",
-            "position": 6
-        },
-        {
             "title": "Alina Arshad - Clinical Research Coordinator",
             "subtitle": "Mississauga, Ontario, Canada · Clinical Research Coordinator · DermEdge",
             "link": "https://ca.linkedin.com/in/alina-arshad",
             "snippet": "Clinical Research Coordinator · Experience: DermEdge · Education: University of Toronto Mississauga · Location: Mississauga · 500+ connections on LinkedIn.",
-            "position": 7
+            "position": 6
         },
         {
-            "title": "Victor Parise - Clinical Research Coordinator",
-            "link": "https://ca.linkedin.com/in/victor-parise-6b051a90",
-            "snippet": "Clinical Research Coordinator · Experience: Cliantha Research Limited · Education: McMaster University · Location: Mississauga · 49 connections on LinkedIn.",
-            "position": 8
+            "title": "Ambrocio Tuason - Clinical Research Coordinator",
+            "link": "https://ca.linkedin.com/in/ambrocio-tuason-a3a666205",
+            "snippet": "... Clinical Research Coordinator | Certified Clinical Research Professional (SOCRA®). Cliantha Research Limited Oxford College (Mississauga). Brampton, Ontario ...",
+            "position": 7
         },
         {
             "title": "Khrystyna Gomenyuk - Clinical Research Coordinator",
             "subtitle": "Mississauga, Ontario, Canada · Clinical Research Coordinator · ClinSurge Research",
             "link": "https://ca.linkedin.com/in/khrystynagomenyuk",
             "snippet": "Clinical Research Coordinator focused on delivering high-quality clinical trials while ensuring participant safety and regulatory compliance.",
+            "position": 8
+        },
+        {
+            "title": "Ola Alsatli - Clinical Research Coordinator",
+            "subtitle": "Mississauga, Ontario, Canada · Clinical Research Coordinator · G. Kenneth Jansz Medicine Professional Corporation",
+            "link": "https://ca.linkedin.com/in/ola-alsatli-314858201",
+            "snippet": "Clinical Research Coordinator. Cliantha Research Limited. Oct 2023 - Feb 2025 1 year 5 months. Mississauga, Ontario, Canada. Oxford College of Arts, Business ...",
             "position": 9
         },
         {
-            "title": "Nicole D'Souza - Country Study Manager at Roche",
-            "subtitle": "Mississauga, Ontario, Canada · Country Study Manager · Roche",
-            "link": "https://ca.linkedin.com/in/nicole-d-souza-6a61b246",
-            "snippet": "Clinical Research Coordinator. Cetero Research. Apr 2011 - Feb 2012 11 months. -Plan, coordinate, conduct and oversee clinical study activities including data ...",
+            "title": "Sara Jabeen - Clinical Research Coordinator at Sunnybrook",
+            "link": "https://ca.linkedin.com/in/sara-jabeen-42248724a",
+            "snippet": "Clinical Research Coordinator at Sunnybrook · Education: Dow University of Health and Sciences · Location: Mississauga · 84 connections on LinkedIn.",
             "position": 10
         },
         {
@@ -194,70 +199,68 @@
             "position": 10
         },
         {
-            "title": "Sheila Porter - Clinical Trial Coordinator (RN) at University ...",
-            "link": "https://ca.linkedin.com/in/sheila-porter-b1502520",
-            "snippet": "Clinical Trial Coordinator (RN) at University of Western Ontario - RETIRED · Experience: University of Western Ontario · Location: London · 32 connections ...",
-            "position": 1
-        },
-        {
-            "title": "Kaylee Spaeth - Clinical Trial Coordinator",
-            "subtitle": "Whitby, Ontario, Canada · Clinical Research Coordinator · Dermatology on Bloor",
-            "link": "https://ca.linkedin.com/in/kaylee-spaeth",
-            "snippet": "Clinical Trial Coordinator · Experience: Dermatology on Bloor · Education: Sheridan College · Location: Whitby · 123 connections on LinkedIn.",
-            "position": 2
-        },
-        {
             "title": "Maria Christeena Fernando - Clinical Trial Coordinator",
             "subtitle": "Bristol, England, United Kingdom · Clinical Trial Coordinator · Bristol NHS Foundation Trust",
             "link": "https://uk.linkedin.com/in/maria-christeena-fernando-7343221b7",
             "snippet": "Experience · Clinical Trial Coordinator · Scientific Researcher · Coordinator to Director & Trainee MLT · Scientific Researcher · Scientific Researcher · Intern.",
-            "position": 3
-        },
-        {
-            "title": "Sierra Birchard - Clinical Trial Coordinator, Cancer ...",
-            "link": "https://ca.linkedin.com/in/sierra-birchard-0931b91a3",
-            "snippet": "Clinical Trial Coordinator, Cancer Clinical Research. Kingston Health Sciences Centre Humber College. Kingston, Ontario, Canada. 174 followers 173 connections.",
-            "position": 4
-        },
-        {
-            "title": "Anna Lysina - Clinical Trial Coordinator at Merck",
-            "subtitle": "Montreal, Quebec, Canada · Clinical Trial Coordinator - Regulatory · Merck Canada",
-            "link": "https://ca.linkedin.com/in/anna-lysina-298ab3178",
-            "snippet": "Clinical Trial Coordinator at Merck · Experience: Merck Canada · Education: Concordia University · Location: Montreal · 473 connections on LinkedIn.",
-            "position": 5
+            "position": 1
         },
         {
             "title": "Lindsey Tashlin - Clinical Trial Coordinator",
             "subtitle": "United Kingdom · Clinical Trial Coordinator/Project Coordinator · University of East Anglia/University Health Network",
             "link": "https://uk.linkedin.com/in/lindsey-tashlin-98186615",
             "snippet": "Clinical Trial Coordinator · Experience: University of East Anglia ... May 2017 - Mar 2025 7 years 11 months. Toronto, Ontario, Canada. Surgical ...",
-            "position": 6
-        },
-        {
-            "title": "Amanda Scanga - Clinical Trial Coordinator @ Merck ...",
-            "subtitle": "Greater Montreal Metropolitan Area · Clinical Trial Coordinator - Regulatory · Merck Canada",
-            "link": "https://ca.linkedin.com/in/amanda-scanga-51b61817a",
-            "snippet": "Clinical Trial Coordinator @ Merck Canada | M.Sc. in Experimental Medicine · I'm a dedicated clinical research professional with a strong interest in ...",
-            "position": 7
-        },
-        {
-            "title": "Stephanie Boyadjian - Clinical Trial Coordinator at York ...",
-            "subtitle": "Vaughan, Ontario, Canada · Clinical Trials Coordinator · York Dermatology Clinic & Research Centre",
-            "link": "https://ca.linkedin.com/in/stephanie-boyadjian-43a246238",
-            "snippet": "Clinical Trial Coordinator at York Dermatology Clinic and Research Centre. York Dermatology Clinic & Research Centre University of Toronto. Vaughan, Ontario ...",
-            "position": 8
-        },
-        {
-            "title": "Alexandra Rutherford - Coordinating clinical trials with a ...",
-            "subtitle": "London, England, United Kingdom · Clinical Trial Coordinator · MSD in the UK",
-            "link": "https://uk.linkedin.com/in/alexandra-rutherford-a26295217",
-            "snippet": "... Toronto, I currently contribute as a Clinical Trial Coordinator at MSD in the UK. My responsibilities include leading safety processes across multiple ...",
-            "position": 9
+            "position": 2
         },
         {
             "title": "Kathy Henry - Clinical Trial Coordinator",
             "link": "https://ca.linkedin.com/in/kathy-henry-102015a",
             "snippet": "Kathy Henry. Clinical Trial Coordinator. PHMPC Memorial University, Newfoundland and Labrador. Ottawa, Ontario, Canada.",
+            "position": 3
+        },
+        {
+            "title": "Sheila Porter - Clinical Trial Coordinator (RN) at University ...",
+            "link": "https://ca.linkedin.com/in/sheila-porter-b1502520",
+            "snippet": "Clinical Trial Coordinator (RN) at University of Western Ontario - RETIRED · Experience: University of Western Ontario · Location: London · 32 connections ...",
+            "position": 4
+        },
+        {
+            "title": "Kaylee Spaeth - Clinical Trial Coordinator",
+            "subtitle": "Whitby, Ontario, Canada · Clinical Research Coordinator · Dermatology on Bloor",
+            "link": "https://ca.linkedin.com/in/kaylee-spaeth",
+            "snippet": "Clinical Trial Coordinator · Experience: Dermatology on Bloor · Education: Sheridan College · Location: Whitby · 123 connections on LinkedIn.",
+            "position": 5
+        },
+        {
+            "title": "Sheila Kelly - Clinical Trial Coordinator/Project Manager ...",
+            "link": "https://ca.linkedin.com/in/sheila-kelly-7148b240",
+            "snippet": "Clinical Trial Coordinator/Project Manager at SK Research Ltd. · Experience: SK Research Ltd. · Location: Regina · 27 connections on LinkedIn.",
+            "position": 6
+        },
+        {
+            "title": "Oana Isac - Senior Clinical Trial Coordinator at ...",
+            "subtitle": "Montreal, Quebec, Canada · Senior Clinical Trial Coordinator Finances · Parexel",
+            "link": "https://ca.linkedin.com/in/oana-isac-6b2251a0",
+            "snippet": "Senior Clinical Trial Coordinator at ExecuPharm, assigned to a Pharma Partner · Experience: Parexel · Location: Montreal · 191 connections on LinkedIn.",
+            "position": 7
+        },
+        {
+            "title": "Yue Ying Chen - Clinical Trial Coordinator at Merck",
+            "subtitle": "Canada · Clinical Trial Coordinator · Merck",
+            "link": "https://ca.linkedin.com/in/yue-ying-chen-0279b6176",
+            "snippet": "Clinical Trial Coordinator at Merck | M.Sc. Pharmaceutical Sciences · Experience: Merck · Education: Université de Montréal · Location: Canada · 254 ...",
+            "position": 8
+        },
+        {
+            "title": "Nafisa Sayeed - Clinical Trial Coordinator at Jodha Tishon ...",
+            "link": "https://ca.linkedin.com/in/nafisa-sayeed-506a4b233",
+            "snippet": "Clinical Trial Coordinator at Jodha Tishon Inc. Jodha Tishon Inc. University of Windsor. Toronto, Ontario, Canada. 80 followers 74 connections. See your mutual ...",
+            "position": 9
+        },
+        {
+            "title": "Sierra Birchard - Clinical Trial Coordinator, Cancer ...",
+            "link": "https://ca.linkedin.com/in/sierra-birchard-0931b91a3",
+            "snippet": "Clinical Trial Coordinator, Cancer Clinical Research. Kingston Health Sciences Centre Humber College. Kingston, Ontario, Canada. 174 followers 173 connections.",
             "position": 10
         },
         {
@@ -307,92 +310,326 @@
             "position": 7
         },
         {
+            "title": "Karrie Shann Montilla - Human Biology Student",
+            "subtitle": "Canada · Clinical Assistant · Nguyen Sports Medicine",
+            "link": "https://ca.linkedin.com/in/karrie-shann-montilla-a44b84298",
+            "snippet": "Support daily clinic operations through patient coordination, scheduling, medical documentation, and electronic medical record management.",
+            "position": 8
+        },
+        {
             "title": "Dr. Jaspreet S. - Clinical Informatics | Digital Health ...",
             "link": "https://ca.linkedin.com/in/dr-soor",
             "snippet": "Patient Recruitment Coordinator. Topstone Research. Oct 2013 - Mar 2014 6 months. Etobicoke, Ontario. Role Overview Conducted patient recruitment, screening ...",
-            "position": 8
+            "position": 9
         },
         {
             "title": "Annie St-Pere - Project Manager at Centre de recherche du ...",
             "subtitle": "Greater Montreal Metropolitan Area · Project Manager · Centre de recherche du CHUM (CRCHUM)",
             "link": "https://ca.linkedin.com/in/anniestpere",
             "snippet": "Patient Recruitment Coordinator. Innovaderm Research Inc. Apr 2017 - Jun 2018 1 year 3 months. Région de Montréal, Canada. Ensure the management of day-to-day ...",
-            "position": 9
-        },
-        {
-            "title": "Sarah Mhowwala - Clinical Research | Medical Affairs",
-            "subtitle": "Karāchi, Sindh, Pakistan · Senior Patient Recruitment Specialist · Revival Research Institute, LLC",
-            "link": "https://pk.linkedin.com/in/sarah-mhowwala-004290144",
-            "snippet": "Patient Recruitment Coordinator. Revival Research Institute, LLC. May 2024 - Apr 2026 2 years. Karāchi, Sindh, Pakistan. • Develop and implement outreach ...",
             "position": 10
         },
         {
-            "title": "Tracy Reed - Senior Clinical Research Coordinator",
-            "subtitle": "Hamilton, Ontario, Canada · Senior Clinical Research Coordinator · Hamilton Health Sciences",
-            "link": "https://ca.linkedin.com/in/tracy-reed-42575040",
-            "snippet": "Senior Clinical Research Coordinator · Experience: Hamilton Health Sciences · Education: Hamilton Health Sciences · Location: Hamilton · 16 connections on ...",
+            "title": "Lori H. - Clinical Research Coordinator for Cardio ...",
+            "subtitle": "New York, New York, United States · Clinical Research Coordinator I · Icahn School of Medicine at Mount Sinai",
+            "link": "https://www.linkedin.com/in/lorinh09",
+            "snippet": "Clinical Research Coordinator I. Icahn School of Medicine at Mount Sinai. Feb 2025 - Present 1 year 7 months. New York City Metropolitan Area. Lead Coordinator ...",
             "position": 1
         },
         {
-            "title": "Nusrat Jahan - Senior Clinical Research coordinator",
-            "subtitle": "Toronto, Ontario, Canada · Senior Clinical Research Coordinator · Dynamic drug advancement",
-            "link": "https://ca.linkedin.com/in/nusrat-jahan-9b249817b",
-            "snippet": "Nusrat Jahan. Senior Clinical Research coordinator. Dynamic drug advancement Oxford college of arts, business and technology. Toronto, Ontario, Canada. 609 ...",
+            "title": "Richard Share - Clinical Research Coordinator at NYU ...",
+            "subtitle": "New York, New York, United States · Clinical Research Coordinator · NYU Langone Health",
+            "link": "https://www.linkedin.com/in/richard-share-8534431ab",
+            "snippet": "Clinical Research Coordinator at NYU Langone Health · Research coordinator in New York City with experience in patient recruitment, enrollment, ...",
             "position": 2
         },
         {
-            "title": "Himal Ghimire - Senior clinical research coordinator at ...",
-            "subtitle": "Greater Toronto Area, Canada · Clinical Research Coordinator · The Hospital for Sick Children",
-            "link": "https://ca.linkedin.com/in/himal-ghimire-b9b918186",
-            "snippet": "Senior clinical research coordinator at SickKids. The Hospital for Sick Children Kathmandu University (KU). Greater Toronto Area, Canada. 5 followers 4 ...",
+            "title": "Julia Kirschenbaum - Clinical Research Coordinator",
+            "subtitle": "New York City Metropolitan Area · Clinical Research Coordinator · Brain Injury Research Center of Mount Sinai",
+            "link": "https://www.linkedin.com/in/julia-kirschenbaum",
+            "snippet": "Clinical Research Coordinator · Brown University graduate with experience in dyadic communication facilitation, community engagement, and research.",
             "position": 3
         },
         {
-            "title": "Catherine Forrester - Senior Clinical Research Coordinator",
-            "link": "https://ca.linkedin.com/in/catherine-forrester-a35490397",
-            "snippet": "Senior Clinical Research Coordinator at Toronto General Hospital · Experience: Toronto General Hospital · Location: M9B 0A1. View Catherine Forrester's ...",
+            "title": "Caroline Fernandez - Clinical Research Coordinator at NYU",
+            "subtitle": "New York City Metropolitan Area · Clinical Research Coordinator · NYU Langone Health",
+            "link": "https://www.linkedin.com/in/caroline-fernandez-42551719a",
+            "snippet": "Clinical Research Coordinator at NYU - Perlmutter Cancer Center · Experience: NYU Langone Health · Education: New York Institute of Technology · Location: ...",
             "position": 4
         },
         {
-            "title": "Mary Jane Bacolor - Senior Clinical Research Coordinator ...",
-            "subtitle": "Markham, Ontario, Canada · Clinical Research Coordinator II · Toronto Memory Program",
-            "link": "https://ca.linkedin.com/in/mary-jane-bacolor-0b627870",
-            "snippet": "Senior Clinical Research Coordinator (Phase I-III Clinical Trials) / Project Lead · Experience: Toronto Memory Program · Education: CJ Healthcare College ...",
+            "title": "Victoria W. - Clinical Research Coordinator, CCRC",
+            "subtitle": "New York, New York, United States · Clinical Research Coordinator · Northwell Health",
+            "link": "https://www.linkedin.com/in/victoria-w-75256393",
+            "snippet": "Clinical Research Coordinator, CCRC · Experience: Northwell Health · Education: The City College of New York · Location: New York · 138 connections on LinkedIn ...",
             "position": 5
         },
         {
-            "title": "Yanni D. - Senior Clinical Research Coordinator at ...",
-            "subtitle": "Shanghai, China · Research Coordinator, IRB · New York University Shanghai",
-            "link": "https://ca.linkedin.com/in/yanni-d-237132105",
-            "snippet": "Yanni D. Senior Clinical Research Coordinator at Shanghai Sunrise Medical Technology Co., Ltd. New York University Shanghai University of Toronto School ...",
+            "title": "Sherene Lambert - Clinical Research Coordinator",
+            "link": "https://www.linkedin.com/in/sherene-lambert",
+            "snippet": "Sherene Lambert. Clinical Research Coordinator. Northwell Health Hofstra University. Brooklyn, New York, United States.",
             "position": 6
         },
         {
-            "title": "Melissa Cervantes - Research Coordinator",
-            "subtitle": "Canada · Senior Clinical Research Coordinator · Baycrest Health Sciences",
-            "link": "https://ca.linkedin.com/in/melissa-cervantes-83541b69",
-            "snippet": "Senior Clinical Research Coordinator. Baycrest Health Sciences. Mar 2022 - Present 4 years 6 months. Canadá. Southlake Regional Health Centre Graphic. Volunteer.",
+            "title": "Kara Walsh, MPH - Clinical Research Coordinator at Fieve ...",
+            "link": "https://www.linkedin.com/in/karaswalsh",
+            "snippet": "I currently work as a Clinical Research Coordinator at Fieve Clinical Research, where I support clinical trials in mental health and psychiatric conditions. My ...",
             "position": 7
         },
         {
-            "title": "Paula M. - Senior Clinical Research Coordinator",
-            "subtitle": "Vancouver, British Columbia, Canada · Clinical Research Coordinator · Providence Health Care",
-            "link": "https://ca.linkedin.com/in/paula-m-6aaa5a104",
-            "snippet": "Senior Clinical Research Coordinator | Master of Science in Neuroscience and Psychology of Mental Health · Experienced Clinical Research Coordinator with ...",
+            "title": "Tiffany Soto, BSN, RN - Clinical Research Coordinator II",
+            "subtitle": "New York City Metropolitan Area · Clinical Research Coordinator at Mount Sinai Fuster Heart Hospital · Mount Sinai Health System",
+            "link": "https://www.linkedin.com/in/tiff-soto033",
+            "snippet": "I am a Clinical Research Coordinator at the Icahn School of Medicine at Mount Sinai, with over four years of experience in clinical research across both ...",
             "position": 8
         },
         {
-            "title": "Reva Persaud MD - Clinical Research Coordinator II ...",
-            "subtitle": "Hyattsville, Maryland, United States · Senior Clinical Research Associate · MedStar Washington Hospital Center",
-            "link": "https://www.linkedin.com/in/reva-persaud-md-11a1bb200",
-            "snippet": "Senior clinical research coordinator with ACRP and CITI training; working in the Prenatal Pediatric Institute of Children's National Hospital. In charge of ...",
+            "title": "Joel Lamboy - Clinical Research Coordinator",
+            "subtitle": "United States · Clinical Research Coordinator · Memorial Sloan Kettering Cancer Center",
+            "link": "https://www.linkedin.com/in/joel-lamboy-65602639",
+            "snippet": "Joel Lamboy. Clinical Research Coordinator. Memorial Sloan Kettering Cancer Center City University of New York-Herbert H. Lehman College ...",
             "position": 9
         },
         {
-            "title": "Monica Vo - Senior Clinical Research Manager",
-            "subtitle": "Burnaby, British Columbia, Canada · Senior Clinical Research Manager, Strategy & Study Start Up · Centre for Neurology Studies Biotechnology",
-            "link": "https://ca.linkedin.com/in/monica-vo-28a059167",
-            "snippet": "Senior Clinical Research Coordinator. Centre for Neurology Studies Biotechnology. Feb 2024 - Jul 2025 1 year 6 months. Clinical Research Coordinator. H&B ...",
+            "title": "Lorie S. - Clinical research coordinator",
+            "subtitle": "Port Jefferson Station, New York, United States · Clinical Research Coordinator · Rafal Center for Dermatology and Cosmetic Surgery",
+            "link": "https://www.linkedin.com/in/lorie-swain-ncma-68a2083b",
+            "snippet": "Clinical research coordinator · Dedicated healthcare professional with extensive experience in medical administration and clinical research, ...",
+            "position": 10
+        },
+        {
+            "title": "Diana More - Clinical Research Coordinator",
+            "subtitle": "New York City Metropolitan Area · Clinical Research Coordinator · Columbia University Irving Medical Center",
+            "link": "https://www.linkedin.com/in/diana-more-2711a3171",
+            "snippet": "Clinical Research Coordinator · I recently graduated from New York University's College of Arts and Sciences with a Bachelor of Arts in Psychology.",
+            "position": 2
+        },
+        {
+            "title": "Katherine Dokholyan - Clinical Research Coordinator at ...",
+            "subtitle": "New York, New York, United States · Clinical Research Coordinator · Icahn School of Medicine at Mount Sinai",
+            "link": "https://www.linkedin.com/in/katherine-dokholyan-65626217a",
+            "snippet": "Clinical Research Coordinator at Mount Sinai · Experience: Icahn School of Medicine at Mount Sinai · Education: Brown University · Location: New York · 500+ ...",
+            "position": 3
+        },
+        {
+            "title": "Amy C. - Clinical Research Project Coordinator @ NYU ...",
+            "subtitle": "New York City Metropolitan Area · Project Coordinator · NYU Langone Health",
+            "link": "https://www.linkedin.com/in/amyciriaco",
+            "snippet": "Experience ; Project Coordinator · Mar 2024 - Present ; Senior Clinical Research Coordinator · Jul 2023 - Mar 2024 ; Clinical Research Coordinator · Oct 2021 - Jul ...",
+            "position": 4
+        },
+        {
+            "title": "Emily Mitchell - Clinical Research Coordinator II @ Icahn ...",
+            "subtitle": "New York, New York, United States · Clinical Research Coordinator II - Clinical Research Support Unit · Icahn School of Medicine at Mount Sinai",
+            "link": "https://www.linkedin.com/in/emily-mitchell-496817159",
+            "snippet": "Clinical Research Coordinator II with 4+ years of experience managing Phase I–III oncology clinical trials within a high-volume academic medical center.",
+            "position": 6
+        },
+        {
+            "title": "Kathleen Dugan - Clinical Research Coordinator at NYCBS",
+            "subtitle": "New York City Metropolitan Area · Clinical Research Coordinator · New York Cancer & Blood Specialists",
+            "link": "https://www.linkedin.com/in/kathleen-dugan-022900150",
+            "snippet": "Clinical Research Coordinator at NYCBS · Experience: New York Cancer & Blood Specialists · Education: Binghamton University · Location: New York City ...",
+            "position": 8
+        },
+        {
+            "title": "Foysal Uddin - Clinical Research Coordinator ...",
+            "link": "https://www.linkedin.com/in/foysal-uddin-3b494316a",
+            "snippet": "Foysal Uddin. Clinical Research Coordinator/Research Assistant. Columbia University Irving Medical Center Columbia University in the City of New York ...",
+            "position": 10
+        },
+        {
+            "title": "Sage S. - Clinical Trial Coordinator | Good Clinical Practice, FDA",
+            "link": "https://www.linkedin.com/in/sage-stoney-ms-787520153",
+            "snippet": "Clinical Trial Coordinator | Good Clinical Practice, FDA · With a Master's degree in Clinical Trial Management from York College, I supported clinical ...",
+            "position": 1
+        },
+        {
+            "title": "Wilishia Lyons, B.S - Clinical Trial Coordinator (3+ yrs)",
+            "subtitle": "Concord, North Carolina, United States · Clinical Trial Coordinator · Parexel",
+            "link": "https://www.linkedin.com/in/wilishia-lyons",
+            "snippet": "I am a results-driven Clinical Trial Coordinator with 3+ years of hands-on experience supporting global clinical programs and advancing operational ...",
+            "position": 2
+        },
+        {
+            "title": "Sibel Weber - NYU Langone Medical Center",
+            "link": "https://www.linkedin.com/in/sibel-weber-4a4a2320",
+            "snippet": "Clinical Trial Coordinator/ NYU Langone Medical Center · Just relocated to Orange County, CA.. I have more experience in Management and marketing, ...",
+            "position": 3
+        },
+        {
+            "title": "Lisa Kovatch - Clinical Trial Coordinator Manager",
+            "subtitle": "New York City Metropolitan Area · Associate Director Clinical Operations · Merck",
+            "link": "https://www.linkedin.com/in/lisa-kovatch-11276512",
+            "snippet": "Associate Director, Global Clinical Trial Operations -Clinical Trial Coordinator Manager · Experience: Merck · Location: New York City Metropolitan Area ...",
+            "position": 4
+        },
+        {
+            "title": "Ann Roscillo - Clinical Trial Coordinator III",
+            "link": "https://www.linkedin.com/in/ann-roscillo-9a63795",
+            "snippet": "Clinical Trial Coordinator III · Experience: Boston Scientific · Education: Northern Essex Community College · Location: United States · 160 connections on ...",
+            "position": 5
+        },
+        {
+            "title": "Erica Polley, MPH - Senior Clinical Trial Coordinator at Merck",
+            "subtitle": "United States · Senior Clinical Trial Coordinator for Merck · ICON Strategic Solutions",
+            "link": "https://www.linkedin.com/in/ericapolley",
+            "snippet": "Senior Clinical Trial Coordinator at Merck · Results-driven and detail-oriented professional with Fortune 300 experience in clinical research and ...",
+            "position": 6
+        },
+        {
+            "title": "Katie Hooper - Clinical Trial Coordinator",
+            "subtitle": "Greater Asheville · Home Trial Coordinator · Firma Clinical Research",
+            "link": "https://www.linkedin.com/in/katie-hooper-30232111a",
+            "snippet": "Clinical Trial Coordinator · Experience: Firma Clinical Research · Education: Lenoir-Rhyne University · Location: Greater Asheville · 90 connections on ...",
+            "position": 7
+        },
+        {
+            "title": "Aimee Gray - Clinical Trial Coordinator at Merck",
+            "subtitle": "New York, New York, United States · Clinical Trial Coordinator · Merck",
+            "link": "https://www.linkedin.com/in/aimee-howard",
+            "snippet": "Clinical Trial Coordinator at Merck · Experience: Merck · Education: University of Maryland · Location: New York · 500+ connections on LinkedIn.",
+            "position": 8
+        },
+        {
+            "title": "Shelbey Lauck - Clinical Trial Coordinator II at Abiomed",
+            "subtitle": "Frenchtown, New Jersey, United States · Clinical Trial Coordinator II · Abiomed",
+            "link": "https://www.linkedin.com/in/shelbey-lauck-a9a344182",
+            "snippet": "Clinical Trial Coordinator II at Abiomed · Experience: Abiomed · Education: The College of New Jersey · Location: Frenchtown · 356 connections on LinkedIn.",
+            "position": 9
+        },
+        {
+            "title": "MaryLou Salemi - Clinical Trial Coordinator/ Study Manager",
+            "subtitle": "Rochester, New York, United States · Clinical Trial Coordinator / Study Manager · Kura Oncology, Inc.",
+            "link": "https://www.linkedin.com/in/marylou-salemi247",
+            "snippet": "Clinical Trial Coordinator/ Study Manager · Experience: Kura Oncology, Inc. · Education: Penn State University · Location: Rochester · 203 connections on ...",
+            "position": 10
+        },
+        {
+            "title": "Ameenah Gaston - Sr. Director, Patient Recruitment & ...",
+            "link": "https://www.linkedin.com/in/ameenah-gaston-54495574",
+            "snippet": "New York, United States. Regional Recruitment Manager, Sr.Clinical Research Subject Recruiter, Clinical Trial Patient Recruitment Coordinator for early and ...",
+            "position": 1
+        },
+        {
+            "title": "Karran Kundra - Patient Recruitment Coordinator",
+            "link": "https://www.linkedin.com/in/karran-kundra-1a238a203",
+            "snippet": "Karran Kundra. Patient Recruitment Coordinator. Brooklyn Clinical Research University at Buffalo. Queens, New York, United States.",
+            "position": 2
+        },
+        {
+            "title": "Elise Duvall, MPH - Patient Recruitment Coordinator and ...",
+            "link": "https://www.linkedin.com/in/elise-duvall-mph-88b216143",
+            "snippet": "Patient Recruitment Coordinator and Digital Specialist at Medpace · As a dedicated public health professional I am passionate about promoting health ...",
+            "position": 3
+        },
+        {
+            "title": "Nerissa Gopaul - Patient Recruitment Coordinator ...",
+            "subtitle": "New York, New York, United States · Patient Recruitment Coordinator · Brooklyn Clinical Research",
+            "link": "https://www.linkedin.com/in/nerissa-gopaul-6bb35521b",
+            "snippet": "Brooklyn Clinical Research benefits from a focused and detail-oriented Patient Recruitment Coordinator who supports patient enrollment initiatives with ...",
+            "position": 4
+        },
+        {
+            "title": "Purva Santpur - Patient Recruitment Coordinator",
+            "subtitle": "London, England, United Kingdom · Patient Recruitment Coordinator · Innovative Trials",
+            "link": "https://uk.linkedin.com/in/purva-santpur-655924248",
+            "snippet": "Purva Santpur. Patient Recruitment Coordinator | ResearchGeek.org Founder | MSc Drug Development Science| Pharmacist. Innovative Trials King's College London ...",
+            "position": 5
+        },
+        {
+            "title": "Thaddeus Brennan - Patient Recruitment Coordinator at ...",
+            "subtitle": "Cincinnati, Ohio, United States · Patient Recruitment Coordinator III · Medpace",
+            "link": "https://www.linkedin.com/in/thaddeusbrennan",
+            "snippet": "Patient Recruitment Coordinator at Medpace · Experience: Medpace · Education: University of Cincinnati · Location: Cincinnati · 301 connections on LinkedIn.",
+            "position": 7
+        },
+        {
+            "title": "Roger R Abiague - Patient Recruitment Coordinator at ...",
+            "link": "https://www.linkedin.com/in/roger-r-abiague-965241133",
+            "snippet": "The Patient Recruitment Coordinator is responsible for interviewing, pre-screening, and setting appointments for patients' clinical study participation.",
+            "position": 8
+        },
+        {
+            "title": "Ashton Neal - Patient Recruitment Coordinator I",
+            "subtitle": "Cincinnati, Ohio, United States · Patient Recruitment Coordinator · Medpace",
+            "link": "https://www.linkedin.com/in/ashton-neal25",
+            "snippet": "Patient Recruitment Coordinator I | Medpace Inc. · I am an enthusiastic and driven Marketing Major at the Lindner College of Business, University of ...",
+            "position": 9
+        },
+        {
+            "title": "Cecilia Garza - Patient Recruitment Coordinator at Alliance ...",
+            "subtitle": "Dallas, Texas, United States · Study Coordinator · Alliance Clinical Network",
+            "link": "https://www.linkedin.com/in/cecilia-garza-7666039a",
+            "snippet": "Patient Recruitment Coordinator at Alliance Clinical Network · Experience: Alliance Clinical Network · Education: Agnes Scott College · Location: Dallas ...",
+            "position": 10
+        },
+        {
+            "title": "Kritika Sharma - Senior Clinical Research Coordinator",
+            "subtitle": "New York, New York, United States · Senior Clinical Research Coordinator · Atria Health and Research Institute",
+            "link": "https://www.linkedin.com/in/kritika-sharma8",
+            "snippet": "Senior Clinical Research Coordinator · Experience: Atria Health and Research Institute · Education: University of California, Davis · Location: New York ...",
+            "position": 1
+        },
+        {
+            "title": "Teresa Escobar, RN - Manhattan Behavioral Medicine",
+            "subtitle": "New York City Metropolitan Area · Site Director & Senior CRC · Manhattan Behavioral Medicine",
+            "link": "https://www.linkedin.com/in/teresa-escobar-rn-050626198",
+            "snippet": "Site Director and Senior Clinical Research Coordinator at Manhattan Behavioral Medicine · Experience: Manhattan Behavioral Medicine · Education: The City ...",
+            "position": 2
+        },
+        {
+            "title": "Sadia Morium, MS, CCRC - Senior Clinical Research ...",
+            "subtitle": "New York City Metropolitan Area · Senior Clinical Research Coordinator · The START Center for Cancer Research",
+            "link": "https://www.linkedin.com/in/sadia-morium-ms-ccrc-436150181",
+            "snippet": "Senior Clinical Research Coordinator · Experience: The START Center for Cancer Research · Education: Geisinger Commonwealth School of Medicine · Location: ...",
+            "position": 3
+        },
+        {
+            "title": "Madison S. - Senior Clinical Research Coordinator at ...",
+            "link": "https://www.linkedin.com/in/madisons7",
+            "snippet": "Senior Clinical Research Coordinator at Northwell Health · Experience: Northwell Health · Education: The George Washington University · Location: New York ...",
+            "position": 4
+        },
+        {
+            "title": "Kyle Treacy - Senior Clinical Research Coordinator at IMA ...",
+            "subtitle": "New York City Metropolitan Area · Clinical Research Coordinator II · IMA Clinical Research",
+            "link": "https://www.linkedin.com/in/kyle-treacy",
+            "snippet": "Senior Clinical Research Coordinator at IMA Clinical Research · Experience: IMA Clinical Research · Education: Providence College · Location: New York City ...",
+            "position": 5
+        },
+        {
+            "title": "Jackson Taylor - Senior Clinical Research Coordinator",
+            "subtitle": "Greater Sacramento · Senior Clinical Research Coordinator · UC Davis Health",
+            "link": "https://www.linkedin.com/in/jackson-taylor-2b826a1b2",
+            "snippet": "Senior Clinical Research Coordinator · Experience: UC Davis Health · Education: University of California, Berkeley · Location: Greater Sacramento · 64 ...",
+            "position": 6
+        },
+        {
+            "title": "Catherine Cook, MPH - Senior Clinical Research ...",
+            "subtitle": "Incline Village, Nevada, United States · Senior Clinical Research Coordinator · University of California, San Francisco",
+            "link": "https://www.linkedin.com/in/catherine-cook-mph",
+            "snippet": "Experience ; Senior Clinical Research Coordinator · Jan 2021 - Present ; Research Projects Manager · Mar 2019 - Dec 2020 ; Study Coordinator · Mar 2016 - Feb 2019 ...",
+            "position": 7
+        },
+        {
+            "title": "Lila Perrone - Senior Clinical Research Coordinator at ...",
+            "subtitle": "San Francisco Bay Area · Senior Clinical Research Coordinator · Stanford University School of Medicine",
+            "link": "https://www.linkedin.com/in/lilaperrone",
+            "snippet": "Senior Clinical Research Coordinator at Stanford University School of Medicine · Clinical research coordination with a broad range of skills ranging from ...",
+            "position": 8
+        },
+        {
+            "title": "Christiana Harry, MPH - Senior Clinical Research ...",
+            "link": "https://www.linkedin.com/in/christianacharry",
+            "snippet": "Christiana Harry, MPH. Senior Clinical Research Coordinator and Lead Media Outreach Coordinator at 4YouandMe. 4YouandMe CUNY Graduate School of Public Health ...",
+            "position": 9
+        },
+        {
+            "title": "Andrew Morales - Senior Clinical Research Coordinator at ...",
+            "subtitle": "New York City Metropolitan Area · Senior Clinical Research Coordinator · Icahn School of Medicine at Mount Sinai",
+            "link": "https://www.linkedin.com/in/andrew-morales-569345118",
+            "snippet": "Senior Clinical Research Coordinator at Icahn School of Medicine · Special interest in public policy. Experienced in qualitative and quantitative research ...",
             "position": 10
         }
     ]

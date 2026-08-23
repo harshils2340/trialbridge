@@ -7,6 +7,7 @@ import datetime as dt
 import json
 import os
 import pathlib
+import re
 import secrets
 import sqlite3
 import time
@@ -1283,6 +1284,105 @@ CREATE TABLE IF NOT EXISTS soe_visits (
     FOREIGN KEY (user_id) REFERENCES users(id)
 );
 CREATE INDEX IF NOT EXISTS idx_soe_user ON soe_visits(user_id, nct, seq);
+
+-- @mentions: pulling a teammate into a thread without CC-ing them on an email
+-- and without transferring ownership of the thread. Polymorphic on purpose - a
+-- mention means the same thing on an applicant note and on an inbox internal
+-- note, and one table keeps the "Mentioned me" view a single query. Mentions
+-- live ONLY on internal, team-only notes; nothing recorded here is ever
+-- patient-visible, which is why the note_type is constrained to the two
+-- staff-only surfaces rather than to `messages` (that table IS patient-visible).
+CREATE TABLE IF NOT EXISTS mentions (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    org_id        INTEGER NOT NULL,
+    object_type   TEXT NOT NULL,          -- lead | marketing_thread
+    object_id     INTEGER NOT NULL,
+    note_type     TEXT NOT NULL,          -- lead_note | marketing_message
+    note_id       INTEGER NOT NULL,
+    mentioned_id  INTEGER NOT NULL,       -- teammate pulled in
+    author_id     INTEGER NOT NULL,
+    excerpt       TEXT DEFAULT '',        -- the note text, for the mentions list
+    read_at       TEXT DEFAULT '',
+    created_at    TEXT NOT NULL,
+    FOREIGN KEY (org_id) REFERENCES organizations(id),
+    FOREIGN KEY (mentioned_id) REFERENCES users(id),
+    FOREIGN KEY (author_id) REFERENCES users(id)
+);
+CREATE INDEX IF NOT EXISTS idx_mentions_inbox
+    ON mentions(mentioned_id, read_at, created_at);
+CREATE INDEX IF NOT EXISTS idx_mentions_object
+    ON mentions(object_type, object_id);
+
+-- Per-user away coverage. When a recruiter goes out, her OPEN work moves to a
+-- cover teammate and NEW work routes there too; on `until` it all comes back
+-- automatically. One row per (user, period) so several people can be away at
+-- once - the older org-keyed marketing_handoffs table has org_id as its PRIMARY
+-- KEY and could therefore only ever hold one handoff for a whole team, which is
+-- the bug this table exists to fix. marketing_handoffs stays as a read-only
+-- legacy fallback; every new handoff is written here.
+CREATE TABLE IF NOT EXISTS away_periods (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    org_id         INTEGER NOT NULL,
+    user_id        INTEGER NOT NULL,           -- who is away
+    cover_user_id  INTEGER NOT NULL,           -- who is covering for them
+    starts_at      TEXT NOT NULL,
+    until          TEXT NOT NULL DEFAULT '',   -- 'YYYY-MM-DD'; '' = open-ended
+    note           TEXT DEFAULT '',            -- what the cover should know
+    status         TEXT NOT NULL DEFAULT 'active',  -- active | ended
+    moved_leads    INTEGER NOT NULL DEFAULT 0,
+    moved_threads  INTEGER NOT NULL DEFAULT 0,
+    created_by     INTEGER,
+    created_at     TEXT NOT NULL,
+    ended_at       TEXT DEFAULT '',
+    seen_at        TEXT DEFAULT '',            -- returning user dismissed the recap
+    FOREIGN KEY (org_id) REFERENCES organizations(id),
+    FOREIGN KEY (user_id) REFERENCES users(id),
+    FOREIGN KEY (cover_user_id) REFERENCES users(id)
+);
+CREATE INDEX IF NOT EXISTS idx_away_active
+    ON away_periods(org_id, status, user_id);
+
+-- What a handoff actually moved, so it can be handed back EXACTLY and so the
+-- returning recruiter sees a real list rather than a number. Hand-back reads
+-- this ledger and only reverses items the cover person still owns - if they
+-- deliberately passed something to a third teammate, that stands.
+CREATE TABLE IF NOT EXISTS handoff_moves (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    away_id    INTEGER NOT NULL,
+    kind       TEXT NOT NULL,                  -- lead | marketing_thread
+    object_id  INTEGER NOT NULL,
+    from_user  INTEGER,
+    to_user    INTEGER,
+    direction  TEXT NOT NULL DEFAULT 'out',    -- out (handoff) | back (return)
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (away_id) REFERENCES away_periods(id)
+);
+CREATE INDEX IF NOT EXISTS idx_handoff_moves_away
+    ON handoff_moves(away_id, kind, direction);
+
+-- A sent blast: one message fanned out to a filtered audience inside ONE study.
+-- Persisted so a send is auditable (who sent what, to how many, on which filter)
+-- and so a coordinator can see "I already nudged these 12 on Tuesday" instead of
+-- double-messaging. The recipient list is stored as the resolved lead ids, not
+-- as a live query, so the record can never silently change meaning later.
+-- Single-study by design: protocol materials are IRB-approved per study, so a
+-- cross-trial send is refused rather than supported (see db.blast_audience).
+CREATE TABLE IF NOT EXISTS blasts (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    org_id       INTEGER NOT NULL,
+    sent_by      INTEGER NOT NULL,
+    nct          TEXT NOT NULL,
+    audience     TEXT NOT NULL DEFAULT '{}',   -- JSON of the filter that built it
+    label        TEXT DEFAULT '',              -- human summary, e.g. "Screening"
+    body         TEXT DEFAULT '',
+    task_title   TEXT DEFAULT '',
+    lead_ids     TEXT NOT NULL DEFAULT '',     -- CSV of leads actually messaged
+    recipients   INTEGER NOT NULL DEFAULT 0,
+    created_at   TEXT NOT NULL,
+    FOREIGN KEY (org_id) REFERENCES organizations(id),
+    FOREIGN KEY (sent_by) REFERENCES users(id)
+);
+CREATE INDEX IF NOT EXISTS idx_blasts_org ON blasts(org_id, created_at);
 """
 
 # Recognized team roles + display labels. 'coordinator' is the admin role.
@@ -1366,6 +1466,9 @@ def site_token_active(lead):
 # New columns added after the first release - applied idempotently so existing
 # databases upgrade without a manual migration step.
 _MIGRATIONS = {
+    # `author` is a display name; a mention needs a real user id to
+    # attribute the note and to scope who may see it.
+    "lead_notes": {"author_user_id": "INTEGER"},
     "marketing_threads": {
         "nct": "TEXT DEFAULT ''",
         "study_label": "TEXT DEFAULT ''",
@@ -2487,11 +2590,21 @@ def get_marketing_handoff(user_id):
 
 
 def marketing_active_owner_id(settings):
+    """Who new inbox conversations should land on.
+
+    Two mechanisms coexist. `away_periods` (per user, several at once) is the
+    current one and wins; `marketing_handoffs` is the older org-keyed row - its
+    PRIMARY KEY is org_id, so a whole team could only ever have one handoff - and
+    is now read-only legacy kept so existing rows keep working."""
     if not settings:
         return None
+    primary = settings["primary_user_id"]
+    covered = effective_assignee(primary)
+    if covered != primary:
+        return covered
     if settings["vacation_mode"] and settings["cover_user_id"]:
         return settings["cover_user_id"]
-    return settings["primary_user_id"]
+    return primary
 
 
 def set_marketing_handoff(user_id, primary_user_id, cover_user_id=None,
@@ -3430,11 +3543,19 @@ def seed_demo_marketing_hub(user_id):
         "NCT05711940", "NCT07645924", "NCT06559306", "NCT07076407",
         "NCT06922110", "NCT07573176", "NCT07674654", "NCT06417775",
     )
+    # "Mine" has to include whoever is covering for this user. Handing your queue
+    # to a teammate legitimately empties your own inbox, and without this the
+    # health check below would read that as a broken seed and refresh the demo -
+    # silently pulling every thread back and undoing the handoff on next load.
+    owners = [user_id]
+    _away = active_away_for(user_id)
+    if _away:
+        owners.append(_away["cover_user_id"])
     mine_covered = conn.execute(
         "SELECT COUNT(DISTINCT nct) FROM marketing_threads "
-        "WHERE org_id = ? AND assigned_to = ? AND nct IN ({})".format(
-            ",".join("?" * len(_DEMO_NCTS))),
-        (oid, user_id, *_DEMO_NCTS)).fetchone()[0]
+        "WHERE org_id = ? AND assigned_to IN ({}) AND nct IN ({})".format(
+            ",".join("?" * len(owners)), ",".join("?" * len(_DEMO_NCTS))),
+        (oid, *owners, *_DEMO_NCTS)).fetchone()[0]
     if (seeded and tagged and linked and ad_lead
             and mine_covered >= len(_DEMO_NCTS)):
         _top_up_demo_marketing_workflows(conn, user_id, oid)
@@ -6283,6 +6404,11 @@ def apply_routing_rules(lead_id, channel="", nct=""):
             nct or lead["nct"])
         if not assignee:
             return None
+        # Coverage applies to NEW work too: if the teammate a rule points at is
+        # away, the lead lands with whoever is covering. Doing the swap here is
+        # what makes every intake path (email, Instagram, Meta, referral,
+        # CT.gov) respect an away period without knowing it exists.
+        assignee = effective_assignee(assignee)
         set_lead_assignee(lead_id, assignee)
         return assignee
     except Exception:
@@ -6314,6 +6440,584 @@ def reassign_open_leads(actor_user_id, from_user_id, to_user_id):
     cur = db.execute(q, [to_user_id, now(), from_user_id, *args, *closed])
     db.commit()
     return cur.rowcount
+
+
+
+
+# --------------------------------------------------------------------------- #
+# @mentions - looping a teammate in without CC-ing them
+# --------------------------------------------------------------------------- #
+# A handle is what someone types after "@". We accept letters, digits and the
+# separators that show up in real names and emails, so "@ana", "@ana.diaz" and
+# "@ana-diaz" all resolve. Sentence punctuation is excluded, so "@ana, can you
+# look?" still matches "ana".
+MENTION_RE = re.compile(r"(?<![\w@])@([A-Za-z][A-Za-z0-9._-]{0,40})")
+
+# Where a mention may be recorded. Both are staff-only surfaces. The `messages`
+# table is deliberately absent: it is patient-visible.
+MENTION_NOTE_TYPES = ("lead_note", "marketing_message")
+MENTION_OBJECT_TYPES = ("lead", "marketing_thread")
+
+
+def _mention_handles(user_row):
+    """Every handle a member can be addressed by, lowercased: first name, the
+    full name with and without dots, and the email local-part."""
+    out = set()
+    name = (_row_val(user_row, "name", "") or "").strip()
+    email = (_row_val(user_row, "email", "") or "").strip()
+    if name:
+        parts = [x for x in re.split(r"\s+", name) if x]
+        if parts:
+            out.add(parts[0].lower())
+            out.add("".join(parts).lower())
+            out.add(".".join(parts).lower())
+    if "@" in email:
+        out.add(email.split("@", 1)[0].strip().lower())
+    return {h for h in out if h}
+
+
+def mentionable_members(user_id):
+    """The roster the @-picker offers: every teammate with a display name and
+    the handle that will actually resolve back to them."""
+    out = []
+    for m in list_org_members(user_id):
+        name = (m["name"] or "").strip() or (m["email"] or "").split("@")[0]
+        handles = sorted(_mention_handles(m))
+        out.append({
+            "user_id": m["user_id"],
+            "name": name,
+            "email": m["email"] or "",
+            "role": ORG_ROLE_LABELS.get(m["role"], m["role"] or "Team"),
+            "handle": (handles[0] if handles else str(m["user_id"])),
+            "handles": handles,
+        })
+    return out
+
+
+def parse_mentions(actor_user_id, body):
+    """Map @handles in a note body to teammate user ids.
+
+    Ambiguity is resolved by NOT guessing: if two teammates answer to the same
+    handle the text stays plain rather than notifying the wrong person (the
+    picker inserts an unambiguous handle, which is the happy path). Returns a
+    list of {user_id, name, handle}."""
+    body = body or ""
+    found = [m.group(1).lower() for m in MENTION_RE.finditer(body)]
+    if not found:
+        return []
+    index = {}
+    for m in mentionable_members(actor_user_id):
+        for h in m["handles"]:
+            index.setdefault(h, []).append(m)
+    out, seen = [], set()
+    for h in found:
+        cands = index.get(h) or []
+        if len(cands) != 1:
+            continue
+        m = cands[0]
+        if m["user_id"] in seen:
+            continue
+        seen.add(m["user_id"])
+        out.append({"user_id": m["user_id"], "name": m["name"], "handle": h})
+    return out
+
+
+def record_mentions(author_id, object_type, object_id, note_type, note_id, body):
+    """Persist every resolvable @mention in `body`. Self-mentions are skipped -
+    you don't need to be notified about your own note. Returns the mentioned
+    members so the caller can tell the author who was pulled in."""
+    if object_type not in MENTION_OBJECT_TYPES:
+        return []
+    if note_type not in MENTION_NOTE_TYPES:
+        return []
+    people = [m for m in parse_mentions(author_id, body)
+              if m["user_id"] != author_id]
+    if not people:
+        return []
+    oid = user_org_id(author_id)
+    excerpt = (body or "").strip()
+    if len(excerpt) > 280:
+        excerpt = excerpt[:277].rstrip() + "..."
+    db = get_db()
+    ts = now()
+    for m in people:
+        db.execute(
+            "INSERT INTO mentions (org_id, object_type, object_id, note_type, "
+            "note_id, mentioned_id, author_id, excerpt, created_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?)",
+            (oid, object_type, object_id, note_type, note_id, m["user_id"],
+             author_id, excerpt, ts))
+    db.commit()
+    return people
+
+
+def unread_mention_count(user_id):
+    r = get_db().execute(
+        "SELECT COUNT(*) n FROM mentions WHERE mentioned_id = ? AND read_at = ''",
+        (user_id,)).fetchone()
+    return r["n"] if r else 0
+
+
+def list_mentions(user_id, unread_only=False, limit=50):
+    """Threads this user was pulled into, newest first, with enough context to
+    render a row without a second query per item."""
+    q = ("SELECT m.*, u.name AS author_name, u.email AS author_email "
+         "FROM mentions m LEFT JOIN users u ON u.id = m.author_id "
+         "WHERE m.mentioned_id = ?")
+    args = [user_id]
+    if unread_only:
+        q += " AND m.read_at = ''"
+    q += " ORDER BY m.id DESC LIMIT ?"
+    args.append(int(limit))
+    return get_db().execute(q, args).fetchall()
+
+
+def mark_mentions_read(user_id, object_type=None, object_id=None):
+    """Clear the badge - for one thread when given, otherwise for everything."""
+    q = "UPDATE mentions SET read_at = ? WHERE mentioned_id = ? AND read_at = ''"
+    args = [now(), user_id]
+    if object_type and object_id:
+        q += " AND object_type = ? AND object_id = ?"
+        args.extend([object_type, int(object_id)])
+    db = get_db()
+    cur = db.execute(q, args)
+    db.commit()
+    return cur.rowcount
+
+
+# --------------------------------------------------------------------------- #
+# Away coverage - handing a whole queue to a teammate, and getting it back
+# --------------------------------------------------------------------------- #
+def _today():
+    return dt.date.today().isoformat()
+
+
+def display_name(user_id):
+    """What to call a teammate in the UI: their name, else their email handle."""
+    if not user_id:
+        return ""
+    r = get_db().execute("SELECT name, email FROM users WHERE id = ?",
+                         (user_id,)).fetchone()
+    if not r:
+        return ""
+    return (r["name"] or "").strip() or (r["email"] or "").split("@")[0]
+
+
+def reassign_open_marketing_threads(actor_user_id, from_user_id, to_user_id):
+    """Mirror of reassign_open_leads for the omnichannel inbox: move every
+    unresolved thread still assigned to `from_user_id`. Org-scoped both ways, so
+    no one can move another team's conversations. Returns the ids moved (not a
+    count) so the handoff ledger can record each one individually."""
+    members = set(org_member_ids(actor_user_id))
+    if from_user_id not in members or to_user_id not in members:
+        return []
+    db = get_db()
+    ids = _open_thread_ids_for(actor_user_id, from_user_id)
+    if ids:
+        db.execute(
+            "UPDATE marketing_threads SET assigned_to = ?, updated_at = ? "
+            "WHERE id IN (%s)" % ",".join("?" * len(ids)),
+            [to_user_id, now(), *ids])
+        db.commit()
+    return ids
+
+
+def _open_lead_ids_for(actor_user_id, assignee_id):
+    """Open leads currently assigned to `assignee_id`, within the actor's scope.
+    Mirrors the scoping in reassign_open_leads exactly, so the ledger and the
+    update can never disagree about which rows were in play."""
+    members = set(org_member_ids(actor_user_id))
+    if assignee_id not in members:
+        return []
+    claims = sorted(user_claimed_ncts(actor_user_id))
+    scope = ["owner_user_id IN (%s)" % ",".join("?" * len(members))]
+    args = list(members)
+    if claims:
+        scope.append("nct IN (%s)" % ",".join("?" * len(claims)))
+        args.extend(claims)
+    closed = tuple(LEAD_CLOSED)
+    rows = get_db().execute(
+        "SELECT id FROM leads WHERE assigned_user_id = ? AND (%s) "
+        "AND status NOT IN (%s)" % (" OR ".join(scope),
+                                    ",".join("?" * len(closed))),
+        [assignee_id, *args, *closed]).fetchall()
+    return [r["id"] for r in rows]
+
+
+def _open_thread_ids_for(actor_user_id, assignee_id):
+    """Unresolved inbox threads assigned to `assignee_id`. Same scoping as
+    reassign_open_marketing_threads, so a preview count and the actual move can
+    never disagree."""
+    if assignee_id not in set(org_member_ids(actor_user_id)):
+        return []
+    rows = get_db().execute(
+        "SELECT id FROM marketing_threads WHERE org_id = ? AND assigned_to = ? "
+        "AND status != 'resolved'",
+        (user_org_id(actor_user_id), assignee_id)).fetchall()
+    return [r["id"] for r in rows]
+
+
+def open_queue_count(user_id):
+    """How much work would move if this person went away right now. Uses the
+    exact same two queries the handoff uses, so the number on the button is the
+    number of conversations that actually move."""
+    return (len(_open_lead_ids_for(user_id, user_id))
+            + len(_open_thread_ids_for(user_id, user_id)))
+
+
+def _log_moves(away_id, kind, ids, from_user, to_user, direction="out"):
+    if not ids:
+        return
+    db = get_db()
+    ts = now()
+    db.executemany(
+        "INSERT INTO handoff_moves (away_id, kind, object_id, from_user, "
+        "to_user, direction, created_at) VALUES (?,?,?,?,?,?,?)",
+        [(away_id, kind, i, from_user, to_user, direction, ts) for i in ids])
+    db.commit()
+
+
+def start_away(actor_id, user_id, cover_user_id, until="", note=""):
+    """Open an away period and move the person's whole open queue to their cover.
+
+    Returns (away_row, error). Everything moved is written to handoff_moves so
+    end_away can reverse exactly this set and nothing else."""
+    members = set(org_member_ids(actor_id))
+    if user_id not in members or cover_user_id not in members:
+        return None, "Pick a teammate on your team."
+    if user_id == cover_user_id:
+        return None, "Choose someone other than yourself to cover."
+    if active_away_for(user_id):
+        return None, "That person already has coverage turned on."
+    if until:
+        try:
+            if dt.date.fromisoformat(until) < dt.date.today():
+                return None, "The return date can't be in the past."
+        except ValueError:
+            return None, "Choose a valid return date."
+
+    oid = user_org_id(user_id)
+    db = get_db()
+    cur = db.execute(
+        "INSERT INTO away_periods (org_id, user_id, cover_user_id, starts_at, "
+        "until, note, status, created_by, created_at) "
+        "VALUES (?,?,?,?,?,?,'active',?,?)",
+        (oid, user_id, cover_user_id, now(), (until or "").strip(),
+         (note or "").strip(), actor_id, now()))
+    away_id = cur.lastrowid
+    db.commit()
+
+    lead_ids = _open_lead_ids_for(actor_id, user_id)
+    reassign_open_leads(actor_id, user_id, cover_user_id)
+    _log_moves(away_id, "lead", lead_ids, user_id, cover_user_id, "out")
+
+    thread_ids = reassign_open_marketing_threads(actor_id, user_id,
+                                                 cover_user_id)
+    _log_moves(away_id, "marketing_thread", thread_ids, user_id, cover_user_id,
+               "out")
+
+    db.execute("UPDATE away_periods SET moved_leads = ?, moved_threads = ? "
+               "WHERE id = ?", (len(lead_ids), len(thread_ids), away_id))
+    db.commit()
+    return get_away(away_id), None
+
+
+def end_away(away_id, actor_id=None):
+    """Close a period and hand back exactly what was moved out.
+
+    Only items the cover person STILL owns come back: if they deliberately
+    passed something to a third teammate, that decision stands. Idempotent."""
+    row = get_away(away_id)
+    if not row or row["status"] != "active":
+        return 0
+    db = get_db()
+    back_leads, back_threads = [], []
+    moves = db.execute(
+        "SELECT kind, object_id FROM handoff_moves WHERE away_id = ? AND "
+        "direction = 'out'", (away_id,)).fetchall()
+    for m in moves:
+        if m["kind"] == "lead":
+            cur = db.execute(
+                "UPDATE leads SET assigned_user_id = ?, updated_at = ? "
+                "WHERE id = ? AND assigned_user_id = ?",
+                (row["user_id"], now(), m["object_id"], row["cover_user_id"]))
+            if cur.rowcount:
+                back_leads.append(m["object_id"])
+        else:
+            cur = db.execute(
+                "UPDATE marketing_threads SET assigned_to = ?, updated_at = ? "
+                "WHERE id = ? AND assigned_to = ?",
+                (row["user_id"], now(), m["object_id"], row["cover_user_id"]))
+            if cur.rowcount:
+                back_threads.append(m["object_id"])
+    db.execute("UPDATE away_periods SET status = 'ended', ended_at = ? "
+               "WHERE id = ?", (now(), away_id))
+    db.commit()
+    _log_moves(away_id, "lead", back_leads, row["cover_user_id"],
+               row["user_id"], "back")
+    _log_moves(away_id, "marketing_thread", back_threads, row["cover_user_id"],
+               row["user_id"], "back")
+    return len(back_leads) + len(back_threads)
+
+
+def get_away(away_id):
+    return get_db().execute("SELECT * FROM away_periods WHERE id = ?",
+                            (away_id,)).fetchone()
+
+
+def active_away_for(user_id):
+    """The open away period for this user, or None.
+
+    Expiry is LAZY: a period past its return date is ended here, on read, so
+    hand-back stays correct even if the cron sweep never runs. The sweep only
+    makes it happen on time instead of at next login."""
+    if not user_id:
+        return None
+    row = get_db().execute(
+        "SELECT * FROM away_periods WHERE user_id = ? AND status = 'active' "
+        "ORDER BY id DESC LIMIT 1", (user_id,)).fetchone()
+    if not row:
+        return None
+    if row["until"] and row["until"] < _today():
+        end_away(row["id"])
+        return None
+    return row
+
+
+def covering_for(user_id):
+    """Everyone this user is currently covering, with the counts they inherited."""
+    rows = get_db().execute(
+        "SELECT a.*, u.name AS away_name, u.email AS away_email "
+        "FROM away_periods a LEFT JOIN users u ON u.id = a.user_id "
+        "WHERE a.cover_user_id = ? AND a.status = 'active' ORDER BY a.id DESC",
+        (user_id,)).fetchall()
+    return [r for r in rows if not (r["until"] and r["until"] < _today())]
+
+
+def sweep_expired_aways():
+    """End every period past its return date. Safe to call from cron repeatedly."""
+    rows = get_db().execute(
+        "SELECT id FROM away_periods WHERE status = 'active' AND until != '' "
+        "AND until < ?", (_today(),)).fetchall()
+    for r in rows:
+        end_away(r["id"])
+    return len(rows)
+
+
+def unseen_away_recap(user_id):
+    """The most recent finished away period this user hasn't acknowledged, so
+    the inbox can show a "what happened while you were out" card exactly once."""
+    return get_db().execute(
+        "SELECT a.*, u.name AS cover_name FROM away_periods a "
+        "LEFT JOIN users u ON u.id = a.cover_user_id "
+        "WHERE a.user_id = ? AND a.status = 'ended' AND a.seen_at = '' "
+        "ORDER BY a.id DESC LIMIT 1", (user_id,)).fetchone()
+
+
+def mark_away_seen(user_id, away_id):
+    db = get_db()
+    cur = db.execute(
+        "UPDATE away_periods SET seen_at = ? WHERE id = ? AND user_id = ?",
+        (now(), away_id, user_id))
+    db.commit()
+    return cur.rowcount > 0
+
+
+def away_recap(user_id, away_id=None):
+    """What actually changed on the threads that were covered.
+
+    Grounded entirely in the ledger plus current row state: it counts what came
+    back, what is still waiting on a reply, and what reached enrolled. It never
+    speculates about why."""
+    row = get_away(away_id) if away_id else unseen_away_recap(user_id)
+    if not row or row["user_id"] != user_id:
+        return None
+    db = get_db()
+    moved = db.execute(
+        "SELECT kind, object_id FROM handoff_moves WHERE away_id = ? AND "
+        "direction = 'out'", (row["id"],)).fetchall()
+    lead_ids = [m["object_id"] for m in moved if m["kind"] == "lead"]
+    thread_ids = [m["object_id"] for m in moved
+                  if m["kind"] == "marketing_thread"]
+    waiting = 0
+    if thread_ids:
+        r = db.execute(
+            "SELECT COUNT(*) n FROM marketing_threads WHERE id IN (%s) "
+            "AND status != 'resolved' AND unread > 0"
+            % ",".join("?" * len(thread_ids)), thread_ids).fetchone()
+        waiting = r["n"] if r else 0
+    enrolled = 0
+    if lead_ids:
+        r = db.execute(
+            "SELECT COUNT(*) n FROM leads WHERE id IN (%s) AND status = "
+            "'enrolled'" % ",".join("?" * len(lead_ids)), lead_ids).fetchone()
+        enrolled = r["n"] if r else 0
+    return {
+        "away": row,
+        "cover_name": display_name(row["cover_user_id"]) or "your cover",
+        "leads": len(lead_ids),
+        "threads": len(thread_ids),
+        "waiting": waiting,
+        "enrolled": enrolled,
+    }
+
+
+def effective_assignee(user_id):
+    """Swap in the cover when the intended assignee is away.
+
+    Every intake path (email, Instagram, Meta, referral, CT.gov) routes through
+    this, so coverage applies to new work without each caller knowing about it.
+    Follows one hop only - if the cover is also away, the work still lands with
+    them rather than bouncing around the team."""
+    if not user_id:
+        return user_id
+    away = active_away_for(user_id)
+    return away["cover_user_id"] if away else user_id
+
+
+# --------------------------------------------------------------------------- #
+# Blasts - messaging a filtered audience inside ONE study
+# --------------------------------------------------------------------------- #
+# The audience filters a coordinator can combine. Every mode narrows within a
+# single study; nothing here can widen a send across studies.
+BLAST_MODES = ("everyone", "stage", "tag", "owner", "idle", "selected")
+
+
+def _lead_idle_days(lead):
+    ts = _parse_ts(_row_val(lead, "updated_at", "")
+                   or _row_val(lead, "created_at", ""))
+    if not ts:
+        return 0
+    return (dt.datetime.now() - ts).days
+
+
+def blast_audience(user_id, nct, mode="everyone", value="", lead_ids=None):
+    """Resolve a blast audience to lead rows. Returns (leads, error).
+
+    The non-negotiable rails live here and nowhere else, so no code path can
+    send around them:
+      * `nct` must be a study this team has VERIFIED-claimed - protocol
+        materials are IRB-approved per study, so a cross-study send is refused;
+      * a recipient must be revealed (accepted), not closed, and not opted out.
+    `mode` narrows further. A hand-picked selection INTERSECTS the rails rather
+    than replacing them, and is rejected outright if it reaches outside `nct`."""
+    nct = (nct or "").strip()
+    if not nct:
+        return [], "Pick a study to message."
+    if nct not in user_claimed_ncts(user_id):
+        return [], "You can only message a study your team has claimed."
+
+    pool = [l for l in list_leads_for_user(user_id)
+            if l["nct"] == nct and l["revealed"]
+            and l["status"] not in LEAD_CLOSED
+            and not int(_row_val(l, "contact_opt_out", 0) or 0)]
+
+    if mode == "selected":
+        picked = {int(x) for x in (lead_ids or [])}
+        if not picked:
+            return [], "Select at least one applicant."
+        # A selection spanning studies is exactly the wrong-cohort mistake this
+        # rule exists to prevent, so it fails loudly rather than silently
+        # dropping the strays.
+        in_study = {l["id"] for l in pool}
+        if picked - in_study:
+            return [], ("Some of those applicants aren't accepted members of "
+                        "this study. A blast stays inside one study.")
+        return [l for l in pool if l["id"] in picked], None
+
+    if mode == "stage":
+        want = (value or "").strip()
+        if want not in LEAD_PIPELINE:
+            return [], "Pick a pipeline stage."
+        return [l for l in pool if l["status"] == want], None
+
+    if mode == "tag":
+        want = (value or "").strip()
+        if want not in _CONV_TAG_KEYS:
+            return [], "Pick a tag."
+        return [l for l in pool if want in lead_tags(l)], None
+
+    if mode == "owner":
+        try:
+            owner = int(value)
+        except (TypeError, ValueError):
+            return [], "Pick a teammate."
+        if owner not in set(org_member_ids(user_id)):
+            return [], "Pick a teammate on your team."
+        return [l for l in pool
+                if _row_val(l, "assigned_user_id", None) == owner], None
+
+    if mode == "idle":
+        try:
+            days = max(1, int(value))
+        except (TypeError, ValueError):
+            days = 7
+        return [l for l in pool if _lead_idle_days(l) >= days], None
+
+    return pool, None
+
+
+def blast_audience_label(mode, value="", count=0, member_name=""):
+    """A short human summary of the filter, stored with the blast and shown in
+    the composer so a coordinator can always see who a send went to."""
+    if mode == "stage":
+        return "Stage: %s" % (value or "").title()
+    if mode == "tag":
+        return "Tag: " + next((t["label"] for t in CONV_TAGS
+                               if t["key"] == value), value or "")
+    if mode == "owner":
+        return "Owner: %s" % (member_name or "teammate")
+    if mode == "idle":
+        return "Quiet %s+ days" % (value or 7)
+    if mode == "selected":
+        return "%d hand-picked" % count
+    return "Everyone accepted"
+
+
+def create_blast(user_id, nct, mode, value, label, body, task_title, lead_ids):
+    db = get_db()
+    cur = db.execute(
+        "INSERT INTO blasts (org_id, sent_by, nct, audience, label, body, "
+        "task_title, lead_ids, recipients, created_at) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?)",
+        (user_org_id(user_id), user_id, nct,
+         json.dumps({"mode": mode, "value": value}), label, body or "",
+         task_title or "", ",".join(str(i) for i in lead_ids), len(lead_ids),
+         now()))
+    db.commit()
+    return cur.lastrowid
+
+
+def list_blasts(user_id, nct="", limit=10):
+    q = ("SELECT b.*, u.name AS sender_name FROM blasts b "
+         "LEFT JOIN users u ON u.id = b.sent_by WHERE b.org_id = ?")
+    args = [user_org_id(user_id)]
+    if nct:
+        q += " AND b.nct = ?"
+        args.append(nct)
+    q += " ORDER BY b.id DESC LIMIT ?"
+    args.append(int(limit))
+    return get_db().execute(q, args).fetchall()
+
+
+def leads_blasted_since(user_id, lead_ids, hours=24):
+    """How many of these people were already in a blast recently. Powers the
+    double-send nudge in the composer - a warning, never a block."""
+    ids = {int(i) for i in (lead_ids or [])}
+    if not ids:
+        return 0
+    cutoff = (dt.datetime.now() - dt.timedelta(hours=hours)).strftime(
+        "%Y-%m-%d %H:%M")
+    rows = get_db().execute(
+        "SELECT lead_ids FROM blasts WHERE org_id = ? AND created_at >= ?",
+        (user_org_id(user_id), cutoff)).fetchall()
+    recent = set()
+    for r in rows:
+        for chunk in (r["lead_ids"] or "").split(","):
+            chunk = chunk.strip()
+            if chunk.isdigit():
+                recent.add(int(chunk))
+    return len(ids & recent)
 
 
 # --------------------------------------------------------------------------- #
@@ -6381,15 +7085,19 @@ def set_task_status(task_id, status):
     db.commit()
 
 
-def add_note(lead_id, body, author=""):
-    """Internal team-only note on a candidate (not visible to the patient)."""
+def add_note(lead_id, body, author="", author_user_id=None):
+    """Internal team-only note on a candidate (not visible to the patient).
+
+    `author` is the display name shown on the note; `author_user_id` is who
+    actually wrote it, which is what a mention is attributed to and scoped by."""
     body = (body or "").strip()
     if not body:
         return None
     db = get_db()
     cur = db.execute(
-        "INSERT INTO lead_notes (lead_id, body, author, created_at) VALUES (?,?,?,?)",
-        (lead_id, body, (author or "").strip(), now()))
+        "INSERT INTO lead_notes (lead_id, body, author, author_user_id, "
+        "created_at) VALUES (?,?,?,?,?)",
+        (lead_id, body, (author or "").strip(), author_user_id, now()))
     db.execute("UPDATE leads SET updated_at = ? WHERE id = ?", (now(), lead_id))
     db.commit()
     return cur.lastrowid
