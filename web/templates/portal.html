@@ -26,7 +26,7 @@
     <div class="portal-status-top">
       <span class="portal-status-badge{{ ' is-closed' if closed }}">{{ status_label }}</span>
       {% if next_visit %}
-      <span class="portal-next">{{ ic.icon('calendar') }} Next visit {{ next_visit['visit_at'] }}</span>
+      <span class="portal-next">{{ ic.icon('calendar') }} Next appointment {{ next_visit.day }} {{ next_visit.month }}{% if next_visit.time %} at {{ next_visit.time }}{% endif %}</span>
       {% endif %}
     </div>
     {% if blurb %}<p class="portal-blurb">{{ blurb }}</p>{% endif %}
@@ -115,21 +115,75 @@
 
       {# ── Visits ── #}
       <div class="portal-card">
-        <h2>{{ ic.icon('calendar') }} Visits</h2>
-        {% if visits %}
+        <h2>{{ ic.icon('calendar') }} Appointments</h2>
+
+        {% if upcoming %}
+        <p class="portal-visit-head">Coming up</p>
         <ul class="portal-visits">
-          {% for v in visits %}
-          <li>
-            <b>{{ (v['kind'] or 'study')|capitalize }} visit</b>
-            <span>{{ v['visit_at'] }}</span>
-            {% if v['location'] %}<small>{{ v['location'] }}</small>{% endif %}
-            {% if v['note'] %}<small>{{ v['note'] }}</small>{% endif %}
-            <a class="portal-ics" href="{{ url_for('visit_ics', token=lead['token'], visit_id=v['id']) }}">Add to calendar</a>
+          {% for v in upcoming %}
+          <li class="portal-visit is-next">
+            <div class="portal-visit-when">
+              <b>{{ v.day }}</b>
+              <span>{{ v.month }}{% if v.year %} {{ v.year }}{% endif %}</span>
+              {% if v.time %}<span class="portal-visit-time">{{ v.time }}</span>{% endif %}
+            </div>
+            <div class="portal-visit-main">
+              <b>{{ v.title }}</b>
+              <small>
+                {% if v.duration %}{{ v.duration }} min{% endif %}
+                {%- if v.duration and v.location %} · {% endif -%}
+                {{ v.location }}
+              </small>
+              {% if v.note %}<small class="portal-visit-note">{{ v.note }}</small>{% endif %}
+              {% if v.prep %}
+              {# The team writes `prep` specifically for the patient, so this is
+                 the one place it belongs - not buried in a reminder email. #}
+              <div class="portal-prep">
+                <b>Before you come</b>
+                <ul>{% for item in v.prep %}<li>{{ item }}</li>{% endfor %}</ul>
+              </div>
+              {% endif %}
+              <a class="portal-ics" href="{{ url_for('visit_ics', token=lead['token'], visit_id=v.id) }}">
+                {{ ic.icon('calendar') }} Add to calendar
+              </a>
+            </div>
           </li>
           {% endfor %}
         </ul>
         {% else %}
-        <p class="portal-empty">No visits booked yet.</p>
+        <p class="portal-empty">No appointment booked right now. Your study team
+          will be in touch when it's time to book the next one.</p>
+        {% endif %}
+
+        {% if past_visits %}
+        {# Appointment history. Anything the team never marked up stays neutral -
+           the app doesn't know whether it happened, so it doesn't claim it did. #}
+        <details class="portal-history"{% if not upcoming %} open{% endif %}>
+          <summary>
+            <span>Past appointments</span>
+            {{ ui.count(past_visits|length, 'neutral') }}
+          </summary>
+          <ul class="portal-visits">
+            {% for v in past_visits %}
+            <li class="portal-visit is-past">
+              <div class="portal-visit-when">
+                <b>{{ v.day }}</b>
+                <span>{{ v.month }}{% if v.year %} {{ v.year }}{% endif %}</span>
+              </div>
+              <div class="portal-visit-main">
+                <b>{{ v.title }}</b>
+                {% if v.location %}<small>{{ v.location }}</small>{% endif %}
+                {% if v.note %}<small class="portal-visit-note">{{ v.note }}</small>{% endif %}
+              </div>
+              {% if v.state_label %}
+              {{ ui.badge(v.state_label, v.state_tone) }}
+              {% endif %}
+            </li>
+            {% endfor %}
+          </ul>
+          <p class="portal-fine">If something here looks wrong, message your
+            study team above and they'll correct it.</p>
+        </details>
         {% endif %}
       </div>
 

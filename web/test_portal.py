@@ -209,6 +209,56 @@ def test_documents_open_for_the_right_applicant_only(uid, lead_a, lead_b):
     print("PASS: portal documents open for that applicant and nobody else")
 
 
+def test_appointments_split_upcoming_from_history(uid, lead_id):
+    """Upcoming means "still going ahead", not just "in the future".
+
+    A cancelled visit next week is not the next appointment, and a visit whose
+    date has passed belongs in history even if the team never marked it up - in
+    which case the page must stay silent about whether it happened rather than
+    implying it did."""
+    import datetime as _dt
+    now = _dt.datetime.now()
+    with webapp.app.app_context():
+        conn = db.get_db()
+        conn.execute("DELETE FROM lead_visits WHERE lead_id = ?", (lead_id,))
+        conn.commit()
+        made = {}
+        for key, when, status in [
+                ("done", now - _dt.timedelta(days=10), "completed"),
+                ("missed", now - _dt.timedelta(days=5), "missed"),
+                ("stale", now - _dt.timedelta(days=2), "scheduled"),
+                ("cancelled_future", now + _dt.timedelta(days=3), "cancelled"),
+                ("next", now + _dt.timedelta(days=7), "scheduled")]:
+            vid = db.add_visit(lead_id, when.strftime("%Y-%m-%d %H:%M"))
+            conn.execute("UPDATE lead_visits SET status = ? WHERE id = ?",
+                         (status, vid))
+            made[key] = vid
+        conn.commit()
+
+        with webapp.app.test_request_context():
+            view = webapp._portal_view(db.get_lead(lead_id))
+
+    up = [v["id"] for v in view["upcoming"]]
+    past = [v["id"] for v in view["past_visits"]]
+
+    assert up == [made["next"]], f"upcoming should be only the live future visit: {up}"
+    assert made["cancelled_future"] not in up, \
+        "a cancelled future visit was offered as the next appointment"
+    assert view["next_visit"]["id"] == made["next"]
+    assert set(past) == {made["done"], made["missed"], made["stale"],
+                         made["cancelled_future"]}, past
+    # Newest first, the way you look back through a record.
+    assert past[0] == made["cancelled_future"]
+
+    # A past visit the team never marked up must not claim an outcome.
+    stale = next(v for v in view["past_visits"] if v["id"] == made["stale"])
+    assert stale["state_label"] == "", \
+        "an un-marked past visit implied an outcome it doesn't know"
+    done = next(v for v in view["past_visits"] if v["id"] == made["done"])
+    assert done["state_label"] == "Attended"
+    print("PASS: appointments split into live upcoming vs honest history")
+
+
 def test_reply_reaches_the_team_thread(uid, lead_id):
     token, pw = _issue(uid, lead_id)
     c = _patient_client()
@@ -271,6 +321,7 @@ def main():
     test_short_password_refused(uid, lead_a)
     test_one_portal_cannot_reach_another(uid, lead_a, lead_b)
     test_documents_open_for_the_right_applicant_only(uid, lead_a, lead_b)
+    test_appointments_split_upcoming_from_history(uid, lead_a)
     test_reply_reaches_the_team_thread(uid, lead_a)
     test_lockout_after_repeated_failures(uid, lead_a)
     test_revoke_kills_the_link(uid, lead_a)

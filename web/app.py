@@ -13164,6 +13164,78 @@ def _portal_lead(row):
     return db.get_lead(row["lead_id"]) if row else None
 
 
+# What a past visit is called on the patient's own page. Deliberately plain:
+# "Attended" rather than "Completed", because the patient is the one who
+# attended. A visit whose date has passed but which the team never marked up
+# stays neutral - the app does not know whether it happened, so it must not say.
+_PORTAL_VISIT_STATE = {
+    "completed": ("Attended", "ok"),
+    "missed": ("Missed", "warn"),
+    "cancelled": ("Cancelled", "neutral"),
+}
+
+
+def _portal_visit_when(raw):
+    """Split a stored timestamp into (day, month, time, year) for the date tile.
+
+    Kept out of the template because an ISO string wraps mid-value in a narrow
+    tile ("2026-08-" / "16"), which reads as broken. The year is returned only
+    when it isn't the current one: nobody needs it for next week's appointment,
+    but someone scrolling back through last year's visits does."""
+    raw = (raw or "").strip()
+    ts = None
+    for fmt in ("%Y-%m-%d %H:%M", "%Y-%m-%d"):
+        try:
+            ts = dt.datetime.strptime(raw, fmt)
+            break
+        except ValueError:
+            continue
+    if ts is None:
+        return raw[:10], "", raw[11:16], ""
+    has_time = " " in raw
+    year = "" if ts.year == dt.date.today().year else str(ts.year)
+    return str(ts.day), ts.strftime("%b"), (ts.strftime("%H:%M") if has_time else ""), year
+
+
+def _portal_visit(v):
+    """One appointment, shaped for the patient's page."""
+    kind = (v["kind"] or "screening")
+    status = (_row(v, "status") or "scheduled").strip() or "scheduled"
+    label, tone = _PORTAL_VISIT_STATE.get(status, ("", "neutral"))
+    prep = [line.strip() for line in (_row(v, "prep") or "").splitlines()
+            if line.strip()]
+    at = v["visit_at"] or ""
+    day, month, time_of_day, year = _portal_visit_when(at)
+    return {
+        "id": v["id"],
+        "at": at,
+        # Split for the date tile so it never wraps mid-value the way an ISO
+        # string does, and reads the way someone says a date out loud.
+        "day": day,
+        "month": month,
+        "year": year,
+        "time": time_of_day,
+        "title": (_row(v, "title") or "").strip()
+                 or _VISIT_KIND_LABELS.get(kind, kind.title()),
+        "location": v["location"] or "",
+        "note": v["note"] or "",
+        "status": status,
+        "state_label": label,
+        "state_tone": tone,
+        "duration": _row(v, "duration_min", 0) or 0,
+        "prep": prep,
+    }
+
+
+def _row(row, key, default=""):
+    """Read a column that may predate a migration on an old row."""
+    try:
+        value = row[key]
+    except (IndexError, KeyError):
+        return default
+    return default if value is None else value
+
+
 def _portal_view(lead):
     """Everything the portal shows, assembled from the same helpers the study
     team's own screens use - so the patient is never shown a second, drifting
@@ -13182,11 +13254,16 @@ def _portal_view(lead):
         if is_now:
             reached = False
     closed = status in db.LEAD_CLOSED
-    visits = db.get_visits(lead["id"]) or []
-    # lead_visits has no status column - "upcoming" is simply anything still in
-    # the future, matching how the patient's own /applications page reads it.
+    visits = [_portal_visit(v) for v in (db.get_visits(lead["id"]) or [])]
+    # Upcoming means still going ahead: a cancelled visit next week is not the
+    # next appointment, and a visit whose date has passed is history even if the
+    # team hasn't marked it up yet.
     _now = db.now()
-    upcoming = [v for v in visits if (v["visit_at"] or "") >= _now]
+    upcoming = [v for v in visits
+                if v["status"] == "scheduled" and v["at"] >= _now]
+    past = [v for v in visits
+            if v["status"] != "scheduled" or v["at"] < _now]
+    past.reverse()   # most recent first, the way you'd look back through them
     tasks = db.list_tasks(lead["id"]) or []
     return {
         "lead": lead,
@@ -13198,6 +13275,8 @@ def _portal_view(lead):
         "events": db.get_lead_events(lead["id"]),
         "messages": db.get_messages(lead["id"]),
         "visits": visits,
+        "upcoming": upcoming,
+        "past_visits": past,
         "next_visit": (upcoming[0] if upcoming else None),
         "tasks": [t for t in tasks if t["assigned_to"] == "patient"],
         "doc_requests": db.list_doc_requests(lead["id"]) or [],
