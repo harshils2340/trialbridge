@@ -352,10 +352,19 @@
     })();
   }
 
-  // Stream the answer in so it reads like a live response.
+  // Stream the answer in so it reads like a live response. Delegates to the
+  // shared Bridget streamer (base.html) so the chat and the draft surfaces
+  // animate identically - the same agent should not write two different ways.
+  // Keeps a local fallback for the rare page that renders the dock without it.
   function revealText(p, text, done) {
     text = String(text == null ? '' : text);
     if (!text) { if (done) done(); return; }
+    if (window.Bridget) {
+      window.Bridget.stream(p, text, { onTick: scroll }).then(function () {
+        if (done) done();
+      });
+      return;
+    }
     var tokens = text.split(/(\s+)/);
     var i = 0;
     (function step() {
@@ -679,15 +688,22 @@
       .then(function (d) {
         if (!d || !d.ok) throw new Error('no draft');
         var text = d.draft || d.answer || '';
-        if (target) {
-          target.value = text;
-          target.dispatchEvent(new Event('input', { bubbles: true }));
-          target.focus();
-        }
         var note = btn.closest('.bridget-slot');
-        if (note) {
-          var hint = note.querySelector('[data-bridget-note]');
-          if (hint) hint.hidden = false;
+        var hint = note ? note.querySelector('[data-bridget-note]') : null;
+        if (target) {
+          // Focus first so the caret is already in the field as the draft
+          // writes itself in - it should look like the field is being filled,
+          // not like text was pasted and then clicked into.
+          target.focus();
+          var written = window.Bridget
+            ? window.Bridget.fill(target, text)
+            : Promise.resolve(target.value = text);
+          // The "Bridget drafted this - edit before sending" note belongs at
+          // the end: it's a prompt to review, and there is nothing to review
+          // until the draft has finished landing.
+          written.then(function () { if (hint) hint.hidden = false; });
+        } else if (hint) {
+          hint.hidden = false;
         }
       })
       .catch(function () {

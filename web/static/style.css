@@ -10952,3 +10952,97 @@ body.has-bridget-fab[data-page="marketing_hub"] .copilot-fab {
 .portal-history[open] > summary::after { content: "Hide"; }
 .portal-history > summary:hover { color: var(--ink); }
 .portal-history .portal-visits { margin-top: var(--space-2); }
+
+/* ---------- Bridget: generative draft animation --------------------------
+   A draft that appears fully-formed reads as a canned string; the same text
+   written out reads as something that was just thought up. Three beats, in
+   order: a shimmer while the model is working, tokens landing one at a time,
+   then a settle. Purely presentational - the text is already in hand before
+   any of this starts, so nothing here can change what gets sent.
+
+   Every beat is disabled under prefers-reduced-motion, where the finished
+   draft is simply shown at once. */
+
+@keyframes bridgetTokIn {
+  from { opacity: 0; transform: translateY(.24em); filter: blur(2px); }
+  to   { opacity: 1; transform: none; filter: none; }
+}
+@keyframes bridgetCaret {
+  0%, 45%  { opacity: 1; }
+  55%, 100%{ opacity: 0; }
+}
+@keyframes bridgetSkeleton {
+  from { background-position: 180% 0; }
+  to   { background-position: -80% 0; }
+}
+
+/* Beat 1 - working. Skeleton lines that sweep, so the wait has a shape
+   instead of a spinner sitting on nothing. */
+.bridget-thinking { display: grid; gap: 7px; padding: 2px 0; }
+/* The panel these sit on is already --accent-soft, so the bars are mixed
+   against --accent (not against the panel) or they disappear into it. */
+.bridget-thinking i {
+  display: block; height: 9px; border-radius: 999px;
+  --sk-base: color-mix(in srgb, var(--accent) 18%, transparent);
+  --sk-lift: color-mix(in srgb, var(--accent) 42%, transparent);
+  background: linear-gradient(90deg,
+    var(--sk-base) 0%, var(--sk-base) 28%,
+    var(--sk-lift) 48%,
+    var(--sk-base) 68%, var(--sk-base) 100%);
+  background-size: 220% 100%;
+  animation: bridgetSkeleton 1.15s linear infinite;
+}
+.bridget-thinking i:nth-child(1) { width: 92%; }
+.bridget-thinking i:nth-child(2) { width: 78%; animation-delay: .12s; }
+.bridget-thinking i:nth-child(3) { width: 54%; animation-delay: .24s; }
+
+/* Beat 2 - writing. Each token lands with a short rise + de-blur, and a soft
+   sheen rides across the text that has landed so far. */
+.bridget-stream { position: relative; }
+.bridget-stream .bg-tok {
+  animation: bridgetTokIn .26s cubic-bezier(.22, .61, .36, 1) both;
+  will-change: opacity, transform;
+}
+/* No gradient-sheen on the text itself, deliberately: `background-clip: text`
+   is painted by the element that owns the background, so with one <span> per
+   token the children render with an inherited transparent fill and no
+   background of their own - i.e. invisible text mid-write. The per-token
+   landing below IS the effect; the sheen is reserved for the skeleton, which
+   is a single element and can carry it safely. */
+.bridget-stream.is-writing { color: inherit; }
+/* The caret only exists mid-write; it is removed on settle. */
+.bridget-stream .bg-caret {
+  display: inline-block; width: .5em; height: 1em; margin-left: 1px;
+  vertical-align: -.14em; border-radius: 1px;
+  background: var(--accent); animation: bridgetCaret .9s steps(1) infinite;
+}
+
+/* Beat 3 - settle. One brief lift as the draft becomes editable text. */
+@keyframes bridgetSettle {
+  from { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 26%, transparent); }
+  to   { box-shadow: 0 0 0 0 transparent; }
+}
+.bridget-settled { animation: bridgetSettle .5s ease-out both; }
+
+/* A textarea can't carry per-token spans, so the field itself signals that it
+   is being written into: an accent ring that breathes while text streams in. */
+@keyframes bridgetFieldGlow {
+  0%, 100% { box-shadow: 0 0 0 1px var(--accent),
+                         0 0 0 4px color-mix(in srgb, var(--accent) 14%, transparent); }
+  50%      { box-shadow: 0 0 0 1px var(--accent),
+                         0 0 0 7px color-mix(in srgb, var(--accent) 6%, transparent); }
+}
+textarea.is-bridget-writing, input.is-bridget-writing {
+  border-color: var(--accent) !important;
+  animation: bridgetFieldGlow 1.3s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bridget-thinking i,
+  .bridget-stream .bg-tok,
+  .bridget-stream .bg-caret,
+  .bridget-settled,
+  textarea.is-bridget-writing,
+  input.is-bridget-writing { animation: none; }
+  .bridget-stream .bg-caret { display: none; }
+}

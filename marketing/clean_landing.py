@@ -946,16 +946,25 @@ BLUE = (
 )
 
 
+# Framer hero wash + glow blobs. CSS color maps can't retint these rasters.
+_OMBRE_STEMS = (
+    '0NagJ3HOued2RM0OQJ7Wd2fKY',
+    'higjO1S5q0qIdmf2BDcgIWOMAtM',
+    'UdS8zgu4nCtOVUF0Iai8PCB734',
+)
+
+
 def _recolor_rasters(adir, hue_deg):
-    # Framer bakes the hero ombre + dashboard mockup as raster (JPG/PNG); CSS color
-    # maps can't touch them. Hue-shift the cyan..violet band to the brand hue so the
-    # baked purple ombre matches the blue (or teal) theme.
+    # Hue-shift the indigo/violet wash toward sky blue. Brand solid #1257b0 is
+    # ~213deg, but tints of 213deg read as periwinkle; ~200deg stays blue in the
+    # pale hero band without eating skin tones or product-shot oranges.
     from PIL import Image
     tgt = int(round(hue_deg / 360 * 255))
-    lut = [(tgt if 138 <= i <= 214 else i) for i in range(256)]
+    # Pillow H is 0-255. 140..200 ≈ 197deg..282deg covers azure through violet.
+    lut = [(tgt if 140 <= i <= 200 else i) for i in range(256)]
     n = 0
     for f in os.listdir(adir):
-        if not f.lower().endswith(('.jpg', '.jpeg', '.png')):
+        if not any(stem in f for stem in _OMBRE_STEMS):
             continue
         fp = os.path.join(adir, f)
         try:
@@ -1245,20 +1254,22 @@ def build(dst, colormap, asset_prefix, raster_hue=None, accent="#1257b0"):
             'var(--token-2d28e01c-cef5-4fed-8a3e-b39db8015610, rgb(18, 18, 43))"')
     # Per-letter reveal: wrap each visible character in its own <span class="bmd-ch">
     # with an incrementing animation-delay so the headline "types" itself in instead of
-    # fading as one block. Spaces stay plain text (kept out of the stagger) so natural
-    # word spacing/wrapping is preserved. Delays continue across both lines.
+    # fading as one block. Each WORD is wrapped in .bmd-word (white-space:nowrap) so
+    # inline-block letters cannot wrap mid-word ("Inquir" / "y") at any viewport.
+    # Spaces between word spans keep natural wrapping. Delays continue across both lines.
     _L_BASE, _L_STEP = 0.5, 0.008
 
     def _letters(text, idx):
-        out = []
-        for ch in text:
-            if ch == ' ':
-                out.append(' ')
-                continue
-            out.append('<span class="bmd-ch" style="animation-delay:%.3fs">%s</span>'
-                       % (_L_BASE + idx * _L_STEP, ch))
-            idx += 1
-        return ''.join(out), idx
+        words = []
+        for word in text.split(' '):
+            chars = []
+            for ch in word:
+                chars.append(
+                    '<span class="bmd-ch" style="animation-delay:%.3fs">%s</span>'
+                    % (_L_BASE + idx * _L_STEP, ch))
+                idx += 1
+            words.append('<span class="bmd-word">%s</span>' % ''.join(chars))
+        return ' '.join(words), idx
 
     _l1, _i = _letters(H1_L1, 0)
     _l2, _i = _letters(H1_L2, _i)
@@ -1427,14 +1438,20 @@ def build(dst, colormap, asset_prefix, raster_hue=None, accent="#1257b0"):
         # Headline: the container only needs to be visible (override Framer's inline
         # opacity:0); the reveal is driven per character by .bmd-ch below.
         f'[data-framer-name="{_hero_h1}"]{{opacity:1}}'
+        f'[data-framer-name="{_hero_h1}"] h1{{overflow-wrap:normal;word-break:normal;'
+        'hyphens:none;white-space:normal}}'
+        '.bmd-word{display:inline-block;white-space:nowrap}'
         '.bmd-ch{display:inline-block;opacity:0;will-change:opacity,transform;'
         'animation:bmdLetterIn .3s cubic-bezier(.22,.61,.36,1) both}'
         '@keyframes bmdLetterIn{from{opacity:0;transform:translateY(.5em)}'
         'to{opacity:1;transform:none}}'
-        # Subhead: block fade/rise, timed after the last letter.
+        # Subhead: block fade/rise, timed after the last letter. Keep wrapping at
+        # word boundaries only — Framer's preset uses word-break:break-word.
         f'[data-framer-name="{SUBHEAD}"]'
         '{opacity:0;animation:bmdHeroIn .7s cubic-bezier(.22,.61,.36,1) both;'
         f'animation-delay:{_sub_delay}s}}'
+        f'[data-framer-name="{SUBHEAD}"] p{{overflow-wrap:normal;word-break:normal;'
+        'hyphens:none}}'
         '@keyframes bmdHeroIn{from{opacity:0;transform:translateY(14px)}'
         'to{opacity:1;transform:none}}'
         '@media(prefers-reduced-motion:reduce){'
@@ -1870,4 +1887,4 @@ def build(dst, colormap, asset_prefix, raster_hue=None, accent="#1257b0"):
           f"imgcopies: {img_copies} | swap: {'bmd-theme-swap' in h}")
 
 
-build("../web/landing", BLUE, "/landing/assets/", raster_hue=214, accent="#1257b0")
+build("../web/landing", BLUE, "/landing/assets/", raster_hue=200, accent="#1257b0")

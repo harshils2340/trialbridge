@@ -714,5 +714,162 @@ document.addEventListener('click', function (e) {
   nodes.forEach(function (node) { observer.observe(node); });
 })();
 </script>
+<script>
+/* Bridget's generative draft animation - shared by every "Bridget writes
+   something" surface (inbox reply, blast body, internal note).
+
+   Why this exists: the draft text is already in hand when the response lands,
+   so painting it in one assignment is the cheapest thing to do - and it reads
+   as a canned string. Writing it out is what makes it read as generated. This
+   is presentation only: the text never changes, nothing is sent, and a human
+   still edits and sends exactly as before.
+
+   Three beats: thinking (skeleton shimmer) -> writing (tokens land, sheen
+   rides the written text) -> settle. Under prefers-reduced-motion every beat
+   collapses to "show the finished draft", which is why each entry point checks
+   `reduced` before animating rather than relying on CSS alone. */
+(function () {
+  function reduced() {
+    return !!(window.matchMedia &&
+              window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  }
+
+  /* Beat 1. Returns a handle so the caller can clear it whether the request
+     succeeded or failed - a skeleton left spinning after an error is worse
+     than no animation at all.
+
+     clear() returns a Promise because of MIN_THINK: locally the draft comes
+     back in well under 100ms, and a skeleton that appears and vanishes inside
+     one or two frames reads as a glitch rather than as work. Holding it for a
+     beat makes the moment legible (and keeps the timing steady on a fast
+     connection, where it would otherwise be invisible). It only ever delays
+     the animation - the response is already in hand either way. */
+  var MIN_THINK = 480;
+
+  function thinking(host, lines) {
+    if (!host) return { clear: function () { return Promise.resolve(); } };
+    var prev = host.innerHTML;
+    var started = Date.now();
+    var box = document.createElement('div');
+    box.className = 'bridget-thinking';
+    box.setAttribute('aria-label', 'Bridget is writing a draft');
+    for (var i = 0; i < (lines || 3); i++) box.appendChild(document.createElement('i'));
+    host.innerHTML = '';
+    host.appendChild(box);
+
+    function remove() { if (box.parentNode === host) host.removeChild(box); }
+    return {
+      clear: function () {
+        var left = reduced() ? 0 : Math.max(0, MIN_THINK - (Date.now() - started));
+        if (!left) { remove(); return Promise.resolve(); }
+        return new Promise(function (done) {
+          setTimeout(function () { remove(); done(); }, left);
+        });
+      },
+      restore: function () { host.innerHTML = prev; }
+    };
+  }
+
+  /* Beat 2 + 3 for a normal element. Resolves once the text has fully landed,
+     so callers can chain (focus a field, reveal a button) without a guessed
+     setTimeout. */
+  function stream(el, text, opts) {
+    text = String(text == null ? '' : text);
+    opts = opts || {};
+    return new Promise(function (resolve) {
+      if (!el) { resolve(); return; }
+      if (reduced() || !text) {
+        el.textContent = text;
+        resolve();
+        return;
+      }
+      // Screen readers should get the finished sentence, not a token storm.
+      el.setAttribute('aria-busy', 'true');
+      el.textContent = '';
+      el.classList.add('bridget-stream', 'is-writing');
+
+      var caret = document.createElement('span');
+      caret.className = 'bg-caret';
+      caret.setAttribute('aria-hidden', 'true');
+      el.appendChild(caret);
+
+      // Keep the whole reveal inside a readable window regardless of length:
+      // a two-line draft shouldn't finish instantly, and a long one shouldn't
+      // outlast the viewer's patience.
+      var tokens = text.split(/(\s+)/);
+      var total = Math.min(opts.maxMs || 1600, Math.max(opts.minMs || 650,
+                                                        text.length * 7));
+      var perTick = Math.max(12, total / Math.max(1, Math.ceil(tokens.length / 2)));
+      var i = 0;
+
+      (function step() {
+        for (var n = 0; n < 2 && i < tokens.length; n++) {
+          var tok = tokens[i++];
+          if (/^\s+$/.test(tok)) {
+            el.insertBefore(document.createTextNode(tok), caret);
+          } else {
+            var s = document.createElement('span');
+            s.className = 'bg-tok';
+            s.textContent = tok;
+            el.insertBefore(s, caret);
+          }
+        }
+        if (opts.onTick) opts.onTick();
+        if (i < tokens.length) { setTimeout(step, perTick); return; }
+
+        if (caret.parentNode === el) el.removeChild(caret);
+        el.classList.remove('is-writing');
+        el.classList.add('bridget-settled');
+        el.removeAttribute('aria-busy');
+        setTimeout(function () { el.classList.remove('bridget-settled'); }, 520);
+        resolve();
+      })();
+    });
+  }
+
+  /* A textarea holds a plain string, so it can't carry per-token spans. The
+     field itself does the signalling instead (an accent ring while writing)
+     and the value grows in the same cadence. `input` is dispatched on every
+     tick so anything watching the field - autosize, character counters, the
+     send button's enabled state - stays correct mid-stream, not just at the
+     end. */
+  function fill(field, text, opts) {
+    text = String(text == null ? '' : text);
+    opts = opts || {};
+    return new Promise(function (resolve) {
+      if (!field) { resolve(); return; }
+      function finish() {
+        field.value = text;
+        field.classList.remove('is-bridget-writing');
+        field.dispatchEvent(new Event('input', { bubbles: true }));
+        resolve();
+      }
+      if (reduced() || !text) { finish(); return; }
+
+      field.classList.add('is-bridget-writing');
+      field.value = '';
+      var tokens = text.split(/(\s+)/);
+      var total = Math.min(opts.maxMs || 1500, Math.max(opts.minMs || 600,
+                                                        text.length * 6));
+      var perTick = Math.max(12, total / Math.max(1, Math.ceil(tokens.length / 2)));
+      var i = 0;
+
+      (function step() {
+        var chunk = '';
+        for (var n = 0; n < 2 && i < tokens.length; n++) chunk += tokens[i++];
+        field.value += chunk;
+        // Keep the newest text in view on a draft taller than the field.
+        field.scrollTop = field.scrollHeight;
+        field.dispatchEvent(new Event('input', { bubbles: true }));
+        if (i < tokens.length) { setTimeout(step, perTick); return; }
+        finish();
+      })();
+    });
+  }
+
+  window.Bridget = { thinking: thinking, stream: stream, fill: fill,
+                     reduced: reduced };
+})();
+</script>
 </body>
 </html>

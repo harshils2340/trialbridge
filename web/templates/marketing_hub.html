@@ -861,6 +861,13 @@
     bridgetButton.addEventListener('click', function () {
       bridgetButton.disabled = true;
       bridgetButton.textContent = 'Drafting...';
+      // Show the panel and its shimmer immediately: the wait is part of the
+      // beat, and revealing an empty box only once the response lands makes a
+      // fast request look like nothing happened.
+      bridgetPanel.hidden = false;
+      var wait = window.Bridget
+        ? window.Bridget.thinking(bridgetCopy)
+        : { clear: function () {} };
       fetch(bridgetButton.getAttribute('data-bridget-draft'), {
         credentials: 'same-origin',
         headers: {'Accept': 'application/json'}
@@ -870,11 +877,16 @@
           return data;
         });
       }).then(function (data) {
-        bridgetCopy.textContent = data.draft;
-        bridgetPanel.hidden = false;
+        // clear() resolves only once the skeleton has had its minimum beat, so
+        // the hand-off from thinking to writing is never a flicker.
+        wait.clear().then(function () {
+          if (window.Bridget) window.Bridget.stream(bridgetCopy, data.draft);
+          else bridgetCopy.textContent = data.draft;
+        });
       }).catch(function () {
-        bridgetCopy.textContent = 'Bridget could not prepare a draft right now.';
-        bridgetPanel.hidden = false;
+        wait.clear().then(function () {
+          bridgetCopy.textContent = 'Bridget could not prepare a draft right now.';
+        });
       }).finally(function () {
         bridgetButton.disabled = false;
         bridgetButton.textContent = 'Draft with Bridget';
