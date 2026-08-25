@@ -1757,6 +1757,15 @@ def _migrate(con):
         "UPDATE leads SET site_token_expires_at = ? "
         "WHERE site_token_expires_at IS NULL OR site_token_expires_at = ''",
         (_site_token_expiry(),))
+    # Applicants created from a shared-inbox conversation were being stored
+    # blinded (revealed = 0), which left them in the queue as "Candidate #0117"
+    # with no contact details and made them invisible to blast_audience - so the
+    # site could not message the person it was mid-conversation with. Contact
+    # permission was already attested at creation (consent = 1), so drop the
+    # blinding. Scoped to inbox-created rows only and safe to re-run.
+    con.execute("UPDATE leads SET revealed = 1 WHERE revealed = 0 "
+                "AND consent = 1 AND (applicant_token LIKE 'inbox-%' "
+                "OR applicant_token LIKE 'demo-inbox-%')")
     # Index depends on a migrated column, so create it after the ALTERs above.
     con.execute("CREATE INDEX IF NOT EXISTS idx_leads_applicant "
                 "ON leads(applicant_token)")
@@ -3361,9 +3370,14 @@ def _top_up_demo_marketing_workflows(conn, user_id, oid):
                 lead = get_lead_by_token(token)
             if lead:
                 ts = now()
+                # revealed: an applicant created from a conversation the
+                # site is already having is never blinded (see
+                # reveal_lead_from_inbox) - seeding them as candidate codes made
+                # the demo queue look broken and un-messageable.
                 conn.execute(
                     "UPDATE leads SET status = ?, records_authorized_at = ?, "
-                    "updated_at = ? WHERE id = ?", (stage, ts, ts, lead["id"]))
+                    "revealed = 1, updated_at = ? WHERE id = ?",
+                    (stage, ts, ts, lead["id"]))
                 conn.execute(
                     "UPDATE marketing_threads SET linked_lead_id = ?, "
                     "pipeline_stage = ? WHERE id = ? AND org_id = ?",
@@ -4274,7 +4288,7 @@ def seed_demo_marketing_hub(user_id):
             return
         conn.execute(
             "UPDATE leads SET status = ?, records_authorized_at = ?, "
-            "updated_at = ? WHERE id = ?",
+            "revealed = 1, updated_at = ? WHERE id = ?",
             (stage, ts, ts, lead["id"]))
         conn.execute(
             "UPDATE marketing_threads SET linked_lead_id = ?, "
@@ -5931,6 +5945,39 @@ def accept_candidate(lead_id, note=""):
     db.execute(
         "INSERT INTO lead_events (lead_id, status, note, actor, created_at) "
         "VALUES (?,?,?,?,?)", (lead_id, "eligible", msg, "you", ts))
+    db.commit()
+    return True
+
+
+def reveal_lead_from_inbox(lead_id, note=""):
+    """Un-blind an applicant the site created from a conversation it is already
+    having.
+
+    `revealed` gates whether the study team may see contact details and message
+    someone. That gate exists for the CTMS path, where a patient applies through
+    BridgeMD and stays a candidate code until the site accepts them. It makes no
+    sense on the inbox path: the person emailed or DM'd the site, so the site
+    already holds their name, their handle and the whole thread. Leaving those
+    records blinded hid nothing and broke every downstream surface (no name in
+    the queue, no contact column, no blast selection, no messaging).
+
+    Deliberately narrower than accept_candidate: no `decision` is recorded and
+    the status is left alone, so the coordinator still reviews the person. Only
+    the blinding comes off, and the permission basis is written to the event log
+    so the reveal stays auditable.
+    """
+    lead = get_lead(lead_id)
+    if not lead:
+        return False
+    db = get_db()
+    ts = now()
+    db.execute("UPDATE leads SET revealed = 1, consent = 1, updated_at = ? "
+               "WHERE id = ?", (ts, lead_id))
+    db.execute(
+        "INSERT INTO lead_events (lead_id, status, note, actor, created_at) "
+        "VALUES (?,?,?,?,?)",
+        (lead_id, lead["status"] or "prescreen",
+         note or "added as an applicant from a conversation", "site", ts))
     db.commit()
     return True
 

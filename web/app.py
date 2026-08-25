@@ -5398,8 +5398,13 @@ _MARKETING_QUICK_REPLIES = [
 ]
 
 
-def _bridget_reply_draft(first, study, inbound):
+def _bridget_reply_draft(first, study, inbound, ask=""):
     """First-pass reply draft for the marketing inbox.
+
+    ``ask`` is the coordinator's own instruction from the composer ("offer a
+    screening call next week"). When present it decides what the draft says and
+    the inbound message is context; when empty the draft answers the inbound
+    message, which is the behaviour every caller had before.
 
     The keyword ladder that used to live here now lives in ``copilot/drafts.py``
     alongside the applicant-thread ladder and the blast/note drafts, so every
@@ -5407,7 +5412,7 @@ def _bridget_reply_draft(first, study, inbound):
     assert a study-specific fact a coordinator must confirm). Still always
     human-reviewed before it can be sent - see COMPLIANCE.md."""
     return copilot.drafts.draft("reply", {
-        "first": first, "study": study, "inbound": inbound})
+        "first": first, "study": study, "inbound": inbound, "ask": ask})
 
 
 @app.route("/app/inbox")
@@ -5465,9 +5470,18 @@ def marketing_hub():
     source_filter = request.args.get("source", type=int)
     if source_filter not in {source["id"] for source in sources}:
         source_filter = None
+    # Searching means "find this person", and a coordinator rarely knows - or
+    # should have to know - which study, stage, or queue they are currently
+    # scoped to. Applying the scope on top of a query made the common case
+    # silently return nothing: search a real name while scoped to another study
+    # and you get zero rows, with no hint the person exists one scope over. So a
+    # query searches EVERYTHING and the template says so, with one click back.
+    searching = bool(query)
     thread_rows = db.list_marketing_threads(
-        g.user["id"], status=status, channel=channel, query=query,
-        source_id=source_filter, nct=active_nct, assignee=owner_filter)
+        g.user["id"], status=("" if searching else status), channel=channel,
+        query=query, source_id=(None if searching else source_filter),
+        nct=("" if searching else active_nct),
+        assignee=("" if searching else owner_filter))
     threads = []
     for row in thread_rows:
         item = dict(row)
@@ -5479,7 +5493,7 @@ def marketing_hub():
     for item in threads:
         key = item.get("pipeline_stage") or "new"
         stage_counts[key] = stage_counts.get(key, 0) + 1
-    if stage_filter != "all":
+    if stage_filter != "all" and not searching:
         threads = [
             item for item in threads
             if (item.get("pipeline_stage") or "new") == stage_filter
@@ -5508,7 +5522,6 @@ def marketing_hub():
     records_profile = None
     records_data = {}
     checklist = []
-    bridget_draft = ""
     if active:
         for row in db.list_marketing_messages(g.user["id"], active["id"]):
             item = dict(row)
@@ -5531,13 +5544,10 @@ def marketing_hub():
                     if records_profile:
                         records_data = records_profile
                 checklist = [dict(task) for task in db.list_tasks(applicant["id"])]
-        inbound = next(
-            (item["body"] for item in reversed(messages)
-             if item.get("kind") == "inbound"), "")
-        if inbound:
-            first = (active["contact_name"] or "there").split()[0]
-            study = active["study_label"] or "the study"
-            bridget_draft = _bridget_reply_draft(first, study, inbound)
+        # The reply draft is NOT built here any more. The composer asks for
+        # one when the coordinator asks for one (draft.json), so a page load no
+        # longer pays for a draft nobody requested - with LLM_API_KEY set that
+        # was a synchronous model call on every open of every conversation.
 
     settings = db.get_marketing_handoff(g.user["id"])
     active_owner_id = db.marketing_active_owner_id(settings)
@@ -5559,6 +5569,17 @@ def marketing_hub():
     # you left right now, and the one-time "what happened while you were out".
     my_open_count = db.open_queue_count(g.user["id"])
     _away = db.active_away_for(g.user["id"])
+    portal_reveal = None
+    applicant_portal = None
+    portal_url = ""
+    if applicant:
+        applicant_portal = db.get_portal_by_lead(applicant["id"])
+        reveal = session.get("portal_reveal")
+        if (reveal and reveal.get("lead_id") == applicant["id"]):
+            portal_reveal = session.pop("portal_reveal", None)
+        if applicant_portal and applicant_portal["status"] == "active":
+            portal_url = url_for(
+                "portal", token=applicant_portal["token"], _external=True)
     return render_template(
         "marketing_hub.html", sources=sources, threads=threads,
         my_open_count=my_open_count,
@@ -5568,15 +5589,16 @@ def marketing_hub():
         members=members, member_by_id=member_by_id, settings=dict(settings),
         active_owner=active_owner, primary=primary, cover=cover, counts=counts,
         status_filter=status, channel_filter=channel, search_query=query,
+        searching=searching,
         source_filter=source_filter, active_nct=active_nct,
         stage_filter=stage_filter, stage_counts=stage_counts,
         owner_filter=owner_filter, unassigned_count=unassigned_count,
         applicant=applicant, eligibility=eligibility,
-        applicant_portal=(db.get_portal_by_lead(applicant["id"])
-                          if applicant else None),
+        applicant_portal=applicant_portal,
+        portal_reveal=portal_reveal, portal_url=portal_url,
         records_profile=records_profile, records_data=records_data,
         checklist=checklist,
-        bridget_draft=bridget_draft, is_demo=_is_demo_account(g.user),
+        is_demo=_is_demo_account(g.user),
         quick_replies=_MARKETING_QUICK_REPLIES,
         channel_labels=db.MARKETING_CHANNEL_LABELS,
         gmail_oauth_ready=_google_ready(),
@@ -6195,6 +6217,17 @@ def marketing_thread_status(thread_id):
     return redirect(_marketing_thread_url(thread_id))
 
 
+# One conversation stage <-> one applicant status. The inbox and the Applicants
+# queue are two views of the same person, so this mapping is defined once and
+# used by both the stage control and by applicant creation - otherwise a thread
+# marked "Screening" could produce an applicant sitting in "Pre-screen".
+_INBOX_STAGE_TO_LEAD_STATUS = {
+    "new": "submitted", "outreach": "prescreen", "prescreen": "prescreen",
+    "screening": "screening", "enrolled": "enrolled",
+    "disqualified": "closed", "archived": "closed",
+}
+
+
 @app.route("/marketing-hub/threads/<int:thread_id>/stage", methods=["POST"])
 @login_required
 def marketing_thread_stage(thread_id):
@@ -6204,12 +6237,7 @@ def marketing_thread_stage(thread_id):
             g.user["id"], thread_id, stage):
         abort(404)
     if thread["linked_lead_id"]:
-        lead_stage = {
-            "new": "submitted", "outreach": "prescreen",
-            "prescreen": "prescreen", "screening": "screening",
-            "enrolled": "enrolled", "disqualified": "closed",
-            "archived": "closed",
-        }.get(stage, "prescreen")
+        lead_stage = _INBOX_STAGE_TO_LEAD_STATUS.get(stage, "prescreen")
         db.update_lead_status(
             thread["linked_lead_id"], lead_stage,
             note="stage updated from shared inbox", actor="site")
@@ -6251,7 +6279,6 @@ def marketing_thread_create_applicant(thread_id):
         "title": thread["study_label"] or nct,
         "name": thread["contact_name"] or "Prospective participant",
         "email": handle if "@" in handle and not handle.startswith("@") else "",
-        "age": (request.form.get("age") or "").strip()[:3],
         "consent": 1,
         "source": thread["channel"] or "inbox",
         "owner_user_id": g.user["id"],
@@ -6267,9 +6294,38 @@ def marketing_thread_create_applicant(thread_id):
             g.user["id"], thread_id, lead["id"]):
         flash("The applicant could not be linked.", "error")
         return redirect(_marketing_thread_url(thread_id))
+    # Un-blind immediately. Candidate codes exist to protect someone who applied
+    # THROUGH BridgeMD until the site accepts them; this person wrote to the site
+    # directly, so the site already holds their name and contact details. Leaving
+    # the record blinded hid nothing and broke the rest of the flow: they showed
+    # in Applicants as "Candidate #0117" with no email, weren't selectable, and
+    # db.blast_audience skipped them - so a coordinator could never message the
+    # person they were already mid-conversation with. Review is untouched: the
+    # lead still lands in "Awaiting review" with no decision recorded.
+    db.reveal_lead_from_inbox(
+        lead["id"],
+        f"permission to contact confirmed by {db.display_name(g.user['id']) or 'a coordinator'} "
+        f"from the {thread['channel'] or 'inbox'} conversation")
+    # The conversation's stage and the applicant's pipeline status are the same
+    # fact shown in two places, so seed the lead from the thread instead of
+    # letting them start out disagreeing.
+    stage = (thread["pipeline_stage"] or "new").strip().lower()
+    lead_status = _INBOX_STAGE_TO_LEAD_STATUS.get(stage, "prescreen")
+    # Only ever carry the stage FORWARD. A new lead already starts at
+    # "prescreen"; mapping an early thread back to "submitted" would drop it out
+    # of the Awaiting-review bucket, and a closed stage would create an applicant
+    # that is dead on arrival.
+    if (lead_status in db.LEAD_PIPELINE
+            and db.LEAD_PIPELINE.index(lead_status)
+            > db.LEAD_PIPELINE.index("prescreen")):
+        db.update_lead_status(lead["id"], lead_status,
+                              note="stage carried over from the inbox",
+                              actor="site")
     _log_event("marketing_applicant_linked", {
         "thread_id": thread_id, "lead_id": lead["id"], "nct": nct})
-    flash("Applicant created. Screening tools are now available.", "ok")
+    flash(f"{lead['name']} is now an applicant on "
+          f"{thread['study_label'] or nct}. Permission to contact was recorded "
+          f"from this conversation.", "ok")
     return redirect(_marketing_thread_url(thread_id))
 
 
@@ -6280,12 +6336,11 @@ def marketing_thread_records(thread_id):
     if not thread or not thread["linked_lead_id"]:
         abort(404)
     if not _is_demo_account(g.user):
-        flash("Patient-authorized record retrieval is currently available in "
-              "the demo workspace only.", "error")
+        flash("Records aren't connected for this workspace yet.", "error")
         return redirect(_marketing_thread_url(thread_id, "records"))
     lead = db.get_lead(thread["linked_lead_id"])
     if not lead or request.form.get("authorization_confirmed") != "1":
-        flash("Confirm the patient's record authorization before retrieving.",
+        flash("Confirm they agreed to share records before continuing.",
               "error")
         return redirect(_marketing_thread_url(thread_id, "records"))
     db.authorize_lead_records(lead["id"])
@@ -6304,10 +6359,10 @@ def marketing_thread_records(thread_id):
         _log_event("demo_records_retrieved", {
             "thread_id": thread_id, "lead_id": lead["id"],
             "provider": records_mod.provider()})
-        flash("Patient-authorized sandbox records retrieved.", "ok")
+        flash("Records updated.", "ok")
     except Exception:
         app.logger.exception("demo record retrieval failed")
-        flash("The sandbox record provider could not be reached.", "error")
+        flash("Couldn't get records. Try again.", "error")
     return redirect(_marketing_thread_url(thread_id, "records"))
 
 
@@ -6326,21 +6381,32 @@ def marketing_thread_checklist(thread_id, task_id):
     return redirect(_marketing_thread_url(thread_id, "checklist"))
 
 
-@app.route("/marketing-hub/threads/<int:thread_id>/draft.json")
+@app.route("/marketing-hub/threads/<int:thread_id>/draft.json",
+           methods=["GET", "POST"])
 @login_required
 def marketing_thread_draft(thread_id):
+    """Bridget writes the reply the coordinator asked for.
+
+    POST an ``instruction`` ("offer a screening call next week") and the draft
+    follows it; with no instruction it answers the last inbound message, which
+    is what the GET form does. An instruction is enough on its own, so an
+    outreach thread with nothing inbound can still be drafted. Nothing here
+    sends: the draft lands in the composer for a human to edit."""
     thread = db.get_marketing_thread(g.user["id"], thread_id)
     if not thread:
         abort(404)
+    data = request.get_json(silent=True) or {}
+    instruction = (data.get("instruction")
+                   or request.form.get("instruction") or "").strip()[:400]
     messages = db.list_marketing_messages(g.user["id"], thread_id)
     latest = next(
         (row["body"] for row in reversed(messages) if row["kind"] == "inbound"),
         "")
-    if not latest:
+    if not latest and not instruction:
         return jsonify({"ok": False, "message": "No inbound message to draft from."}), 400
     first = (thread["contact_name"] or "there").split()[0]
     study = thread["study_label"] or "the study"
-    draft = _bridget_reply_draft(first, study, latest)
+    draft = _bridget_reply_draft(first, study, latest, instruction)
     return jsonify({"ok": True, "draft": draft, "human_review_required": True})
 
 
@@ -12064,22 +12130,10 @@ def applicant_detail(lead_id):
 @app.route("/app/dashboard")
 @login_required
 def recruitment_dashboard():
-    """The recruitment plan + proof: live funnel, conversion, time-in-stage, and
-    where candidates drop off - built from the data the pipeline already logs."""
-    claims = _site_claims()
-    stats = analytics.funnel_stats(claims)
-    spend = db.spend_summary_for_user(g.user["id"], ncts=claims)
-    enrolled = int((stats.get("totals") or {}).get("enrolled") or 0)
-    screened = 0
-    for row in stats.get("source_breakdown", []):
-        screened += int(row.get("screening") or 0)
-    spend["cost_per_enrolled"] = round(spend["total_usd"] / enrolled, 2) \
-        if enrolled else None
-    spend["cost_per_screened"] = round(spend["total_usd"] / screened, 2) \
-        if screened else None
-    return render_template(
-        "recruitment.html", stats=stats, spend=spend,
-        labels=db.LEAD_LABELS, claims=db.list_study_claims(g.user["id"]))
+    """Legacy CTMS funnel page. Hidden from the nav on purpose - the product is
+    the shared inbox, not a recruitment analytics dashboard. Old bookmarks and
+    Bridget citations still hit this URL, so send them to the inbox."""
+    return redirect(url_for("marketing_hub"))
 
 
 @app.route("/app/analytics")
@@ -13424,10 +13478,11 @@ def issue_portal(lead_id):
     shown to the coordinator once so they can repeat it on a call if asked. Only
     the hash is stored, so it can never be shown again - only reissued."""
     _ensure_site_access_for_lead(lead_id)
-    # Always land back on the applicant record: that is the only place the
-    # one-time password renders, so honouring a "next" from the leads board
-    # would silently throw the credential away.
-    back = url_for("applicant_detail", lead_id=lead_id) + "#portal"
+    # Land back where the coordinator issued from (inbox panel or applicant
+    # page). The one-time password only renders on that next view, so the
+    # redirect target must be the page that shows portal_reveal.
+    back = (_safe_next(request.form.get("next", ""))
+            or (url_for("applicant_detail", lead_id=lead_id) + "#portal"))
     lead = db.get_lead(lead_id)
     if not lead:
         flash("Couldn't find that applicant.", "error")
@@ -13455,7 +13510,8 @@ def issue_portal(lead_id):
 @login_required
 def revoke_portal(lead_id):
     _ensure_site_access_for_lead(lead_id)
-    back = url_for("applicant_detail", lead_id=lead_id) + "#portal"
+    back = (_safe_next(request.form.get("next", ""))
+            or (url_for("applicant_detail", lead_id=lead_id) + "#portal"))
     if db.revoke_portal_access(lead_id):
         flash("Portal access revoked. That link no longer works.", "success")
     else:

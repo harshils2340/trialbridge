@@ -280,7 +280,7 @@ def funnel_overview(user_id):
     return {
         "summary": " ".join(parts),
         "items": items,
-        "citations": [{"label": "Recruitment dashboard", "url": "/app/dashboard"}],
+        "citations": [{"label": "Inbox", "url": "/app/inbox"}],
     }
 
 

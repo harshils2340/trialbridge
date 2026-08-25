@@ -1,31 +1,28 @@
 {% import "_icons.html" as ic %}
-<aside class="appdock" id="copilot" data-open="0" aria-label="Bridget assistant">
+<aside class="appdock" id="copilot" data-open="1" data-empty="1" aria-label="Bridget"
+  data-lottie="{{ static_url('vendor/lottie_light.min.js') }}"
+  data-think="{{ static_url('lottie/thinking.json') }}">
   <div class="dock-resize" id="dockResize" role="separator" aria-orientation="vertical" aria-label="Resize Bridget" title="Drag to resize · double-click to reset"></div>
-  <header class="dock-head">
+  <header class="dock-head" id="copilotHead">
     <div class="dock-title">
-      <span class="dock-brand">
-        {{ ic.icon('mark', 'brand-glyph') }}
-        <span class="dock-dot" title="Online"></span>
-      </span>
-      <div><b>Bridget</b><span>Enrollment agent</span></div>
+      <span class="dock-brand">{{ ic.icon('mark', 'brand-glyph') }}</span>
+      <b>Bridget</b>
     </div>
     <div class="dock-head-actions">
       <button type="button" class="dock-icon-btn" id="copilotReset" aria-label="New chat" title="New chat">{{ ic.icon('plus') }}</button>
-      <button type="button" class="dock-icon-btn" id="copilotCollapse" aria-label="Hide Bridget" title="Hide">{{ ic.icon('chevron-right') }}</button>
+      <button type="button" class="dock-icon-btn" id="copilotCollapse" aria-label="Collapse Bridget" title="Collapse">{{ ic.icon('chevron-right') }}</button>
     </div>
   </header>
   <div class="dock-log" id="copilotLog"></div>
   <form class="dock-form" id="copilotForm">
-    <div class="dock-inputwrap">
-      <input type="text" id="copilotInput" placeholder="Ask about your studies, or tell me what to do&hellip;" autocomplete="off" aria-label="Message Bridget">
-      <button type="submit" aria-label="Send">{{ ic.icon('send') }}</button>
+    <div class="dock-composer">
+      <textarea id="copilotInput" rows="1" placeholder="Draft a reply, or ask a question" autocomplete="off" aria-label="Message Bridget"></textarea>
+      <div class="dock-composer-bar">
+        <button type="submit" aria-label="Send" disabled>{{ ic.icon('send') }}</button>
+      </div>
     </div>
   </form>
 </aside>
-<button type="button" class="copilot-fab" id="copilotReopen" aria-label="Open Bridget, your AI assistant" title="Ask Bridget">
-  <span class="copilot-fab-ic">{{ ic.icon('mark', 'brand-glyph brand-glyph-lg') }}<span class="fab-dot"></span></span>
-  <span class="copilot-fab-label">Ask Bridget</span>
-</button>
 {# Reusable icon library so JS-built cards use the same real icons (not inline one-offs). #}
 <div id="bridgetIcons" hidden aria-hidden="true">
   <i data-ic="inbox">{{ ic.icon('inbox') }}</i><i data-ic="clock">{{ ic.icon('clock') }}</i><i data-ic="calendar">{{ ic.icon('calendar') }}</i><i data-ic="file">{{ ic.icon('file') }}</i><i data-ic="shield">{{ ic.icon('shield') }}</i><i data-ic="users">{{ ic.icon('users') }}</i><i data-ic="sparkle">{{ ic.icon('sparkle') }}</i><i data-ic="mark">{{ ic.icon('mark') }}</i><i data-ic="check">{{ ic.icon('check') }}</i><i data-ic="chevron-right">{{ ic.icon('chevron-right') }}</i>
@@ -36,29 +33,38 @@
   if (!dock) return;
   var collapse = document.getElementById('copilotCollapse');
   var resetBtn = document.getElementById('copilotReset');
-  var reopen = document.getElementById('copilotReopen');
+  var head = document.getElementById('copilotHead');
   var log = document.getElementById('copilotLog');
   var form = document.getElementById('copilotForm');
   var input = document.getElementById('copilotInput');
   var sendBtn = form.querySelector('button[type="submit"]');
-  var busy = false, briefLoaded = false;
+  var busy = false;
+  var lottieWaiters = [];
 
-  // Map a live digest section to the icon + the question that runs its tool, so a
-  // card in the brief actually *does* something when clicked (not decoration).
-  var SECTION_MAP = [
-    { re: /decision|waiting/i,        icon: 'inbox',    q: "Who's waiting on my decision?" },
-    { re: /stuck|screening/i,         icon: 'clock',    q: "Who's stuck in screening?" },
-    { re: /visit|window|attention/i,  icon: 'calendar', q: "Which visits are out of window?" },
-    { re: /document|due/i,            icon: 'file',     q: "What documents need action?" },
-    { re: /consent/i,                 icon: 'shield',   q: "Who's due for re-consent?" },
-    { re: /match|record/i,            icon: 'users',    q: "Show me new record matches" },
-  ];
-  function sectionMeta(title) {
-    for (var i = 0; i < SECTION_MAP.length; i++) {
-      if (SECTION_MAP[i].re.test(title || '')) return SECTION_MAP[i];
-    }
-    return { icon: 'mark', q: title };
+  function withLottie(fn) {
+    if (window.lottie) { fn(window.lottie); return; }
+    lottieWaiters.push(fn);
+    if (withLottie.loading) return;
+    withLottie.loading = true;
+    var s = document.createElement('script');
+    s.src = dock.getAttribute('data-lottie');
+    s.onload = function () {
+      var L = window.lottie;
+      lottieWaiters.splice(0).forEach(function (w) { if (L) w(L); });
+    };
+    document.head.appendChild(s);
   }
+
+  function destroyThink(root) {
+    if (!root) return;
+    (root.querySelectorAll ? root.querySelectorAll('.copilot-lottie') : []).forEach(function (host) {
+      if (host._lottie) {
+        try { host._lottie.destroy(); } catch (e) {}
+        host._lottie = null;
+      }
+    });
+  }
+
   function iconHtml(name) {
     var el = document.querySelector('#bridgetIcons [data-ic="' + name + '"]');
     return el ? el.innerHTML : '';
@@ -72,22 +78,20 @@
     var m = (window.location.pathname || '').match(/\/app\/applicant\/(\d+)/);
     return m ? parseInt(m[1], 10) : null;
   }
-  // applyOpen only paints the state - used for the computed per-page default,
-  // which must NOT get written to localStorage (or the very first page's
-  // guess would "stick" and silently override every later page's own
-  // context-aware default). setOpen is for an actual user action (FAB, close
-  // button, Bridget-open links) and remembers the choice across navigation.
-  function applyOpen(open) {
+  // Bridget is a pane of the workspace, not a widget. applyOpen paints that
+  // pane; it does not steal the keyboard. Focus only happens when the person
+  // opens it themselves (setOpen).
+  function applyOpen(open, opts) {
+    opts = opts || {};
     dock.setAttribute('data-open', open ? '1' : '0');
-    reopen.style.display = open ? 'none' : '';
-    // The FAB is fixed to the bottom-right, which is exactly where the inbox
-    // keeps its Send button. Flag it so CSS can lift the FAB clear.
-    document.body.classList.toggle('has-bridget-fab', !open);
-    if (open) { input.focus(); if (!briefLoaded) renderIntro(); }
+    if (open) {
+      if (!log.children.length) renderIntro();
+      if (opts.focus) input.focus();
+    }
   }
   function setOpen(open) {
-    applyOpen(open);
-    try { localStorage.setItem('bm_copilot_open', open ? '1' : '0'); } catch (e) {}
+    applyOpen(open, { focus: !!open });
+    try { localStorage.setItem('bm_bridget_pane', open ? '1' : '0'); } catch (e) {}
   }
   function scroll() { log.scrollTop = log.scrollHeight; }
   function escapeHtml(s) {
@@ -96,72 +100,28 @@
     });
   }
 
-  // ---- Intro / live brief -------------------------------------------------- //
-  // The empty state is not a static blurb: it pulls the same real data the rest
-  // of the app shows and turns each thing that needs the coordinator today into a
-  // one-click action. Feels wired-in, because it is.
-  function renderIntro() {
-    briefLoaded = true;
-    log.innerHTML = '';
-    var hello = document.createElement('div');
-    hello.className = 'copilot-msg bot';
-    hello.innerHTML = '<div class="copilot-avatar">' + iconHtml('mark') + '</div>'
-      + '<div class="copilot-hello"><b>Hi, I\u2019m Bridget.</b> Here\u2019s where to start '
-      + '\u2014 or just ask.</div>';
-    log.appendChild(hello);
-
-    var brief = document.createElement('div');
-    brief.className = 'bridget-brief';
-    brief.innerHTML = '<div class="brief-load">'
-      + '<span class="cw-spin" aria-hidden="true"></span> Checking your studies\u2026</div>';
-    log.appendChild(brief);
-    scroll();
-
-    fetch('/app/copilot/digest', { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
-      .then(function (r) { return r.ok ? r.json() : null; })
-      .then(function (d) { renderBrief(brief, d); })
-      .catch(function () { renderBrief(brief, null); });
+  function setEmpty(empty) {
+    dock.setAttribute('data-empty', empty ? '1' : '0');
   }
 
-  function renderBrief(brief, d) {
-    brief.innerHTML = '';
-    var sections = (d && d.sections) || [];
-    if (sections.length) {
-      // Show only the top few priorities so it reads calm, not like a wall.
-      sections.slice(0, 3).forEach(function (s) {
-        var meta = sectionMeta(s.title);
-        var card = document.createElement('button');
-        card.type = 'button';
-        card.className = 'brief-card';
-        card.innerHTML =
-          '<span class="brief-ic">' + iconHtml(meta.icon) + '</span>'
-          + '<span class="brief-body"><span class="brief-title">' + escapeHtml(s.title) + '</span></span>'
-          + '<span class="brief-count">' + s.count + '</span>'
-          + '<span class="brief-arrow">' + iconHtml('chevron-right') + '</span>';
-        card.addEventListener('click', function () { ask(meta.q); });
-        brief.appendChild(card);
-      });
-    } else {
-      var ok = document.createElement('div');
-      ok.className = 'brief-clear';
-      ok.innerHTML = '<span class="brief-clear-ic">' + iconHtml('check') + '</span>'
-        + '<div><b>You\u2019re all caught up.</b><span>Nothing needs you right now.</span></div>';
-      brief.appendChild(ok);
-    }
-
-    scroll();
+  // Empty chat: Cursor-style blank panel. No dashboard, no counts — just a
+  // quiet prompt so a recruiter types the way they would in Gmail.
+  function renderIntro() {
+    log.innerHTML = '';
+    setEmpty(true);
+    var empty = document.createElement('div');
+    empty.className = 'copilot-empty';
+    empty.innerHTML =
+      '<div class="copilot-empty-mark">' + iconHtml('mark') + '</div>'
+      + '<h2>Ask Bridget</h2>'
+      + '<p>Draft a reply, or ask a question about your studies.</p>';
+    log.appendChild(empty);
   }
 
   // ---- Messages ------------------------------------------------------------ //
   function addMsg(role, text) {
     var wrap = document.createElement('div');
     wrap.className = 'copilot-msg ' + role;
-    if (role === 'bot') {
-      var av = document.createElement('div');
-      av.className = 'copilot-avatar';
-      av.innerHTML = iconHtml('mark');
-      wrap.appendChild(av);
-    }
     var body = document.createElement('div');
     body.className = 'copilot-body';
     var p = document.createElement('p');
@@ -181,7 +141,7 @@
     var host = bodyOf(wrap);
     var ul = document.createElement('ul');
     ul.className = 'copilot-list';
-    var CAP = 5;
+    var CAP = 3;
     var shown = items.slice(0, CAP);
     shown.forEach(function (it) {
       var li = document.createElement('li');
@@ -317,18 +277,39 @@
     });
   }
 
-  // A "working" row (spinner + status), like an agent narrating that it's on it.
+  // Cursor-style thinking: the four-square Lottie in the same turn that will
+  // hold the answer. No bubble, no bouncing dots.
   function addWorking() {
     var wrap = document.createElement('div');
-    wrap.className = 'copilot-msg bot';
-    wrap.innerHTML = '<div class="copilot-avatar">' + iconHtml('mark') + '</div>';
-    var body = document.createElement('div'); body.className = 'copilot-body';
+    wrap.className = 'copilot-msg bot is-thinking';
+    var body = document.createElement('div');
+    body.className = 'copilot-body';
     var w = document.createElement('div');
-    w.className = 'copilot-working';
-    w.setAttribute('aria-label', 'Bridget is working');
-    w.innerHTML = '<span class="cw-dots"><i></i><i></i><i></i></span>';
-    body.appendChild(w); wrap.appendChild(body);
+    w.className = 'copilot-thinking';
+    w.setAttribute('aria-label', 'Bridget is thinking');
+    var host = document.createElement('span');
+    host.className = 'copilot-lottie';
+    host.setAttribute('aria-hidden', 'true');
+    w.appendChild(host);
+    body.appendChild(w);
+    wrap.appendChild(body);
     log.appendChild(wrap);
+    withLottie(function (lottie) {
+      if (!host.isConnected) return;
+      var reduce = false;
+      try { reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) {}
+      var anim = lottie.loadAnimation({
+        container: host,
+        renderer: 'svg',
+        loop: !reduce,
+        autoplay: !reduce,
+        path: dock.getAttribute('data-think')
+      });
+      host._lottie = anim;
+      if (reduce) {
+        anim.addEventListener('DOMLoaded', function () { anim.goToAndStop(0, true); });
+      }
+    });
     scroll();
     return wrap;
   }
@@ -380,25 +361,22 @@
   function setBusy(b) {
     busy = b;
     input.disabled = b;
-    if (sendBtn) sendBtn.disabled = b;
+    syncSend();
     form.classList.toggle('is-busy', b);
     if (!b) { input.focus(); }
   }
 
-  function clearBrief() {
-    var b = log.querySelector('.bridget-brief');
-    if (b) b.remove();
-    var h = log.querySelector('.copilot-hello');
-    // keep the hello line; only the brief cards disappear once a conversation starts
-  }
-
   function ask(q) {
     if (busy || !q) return;
-    clearBrief();
+    setEmpty(false);
+    var empty = log.querySelector('.copilot-empty');
+    if (empty) empty.remove();
     setBusy(true);
-    addMsg('me', q);
+    var mine = addMsg('me', q);
     input.value = '';
+    autosize();
     var working = addWorking();
+    if (mine.scrollIntoView) mine.scrollIntoView({ block: 'start' });
     fetch('/app/copilot/ask', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf(),
@@ -411,16 +389,20 @@
         return { status: r.status, data: d };
       });
     }).then(function (res) {
-      working.remove();
       var d = res.data;
+      function fail(msg) {
+        destroyThink(working);
+        working.remove();
+        addMsg('bot', msg);
+      }
       if (!d) {
-        addMsg('bot', (res.status === 401 || res.status === 403)
+        fail((res.status === 401 || res.status === 403)
           ? 'Your session looks signed out. Refresh the page and try again.'
           : 'I couldn\u2019t reach the assistant. Refresh the page and try again.');
         return;
       }
       if (!d.ok) {
-        addMsg('bot', d.error === 'csrf_failed'
+        fail(d.error === 'csrf_failed'
           ? 'Your session expired \u2014 refresh the page and try again.'
           : (d.error === 'auth_required'
               ? 'Please sign in again to use Bridget.'
@@ -428,31 +410,36 @@
         return;
       }
       function deliver() {
-        var w = addMsg('bot', '');
-        revealText(w.querySelector('p'), d.answer || '', function () {
-          renderItems(w, d.items);
-          // Drop citation chips that just repeat the list rows; keep section links.
+        working.classList.remove('is-thinking');
+        var think = working.querySelector('.copilot-thinking');
+        if (think) { destroyThink(think); think.remove(); }
+        var p = working.querySelector('p');
+        if (!p) {
+          p = document.createElement('p');
+          bodyOf(working).appendChild(p);
+        }
+        p.textContent = '';
+        revealText(p, d.answer || '', function () {
+          renderItems(working, d.items);
           var cites = d.citations || [];
           if (d.items && d.items.length > 1) {
             var titles = d.items.map(function (i) { return i.title; });
             cites = cites.filter(function (c) { return titles.indexOf(c.label) === -1; });
           }
-          addCitations(w, cites);
-          renderProposal(w, d.proposal);
-          renderFollowups(w, d.suggestions);
+          addCitations(working, cites);
+          renderProposal(working, d.proposal);
+          renderFollowups(working, d.suggestions);
         });
       }
       if (d.trace && d.trace.length) {
-        var sw = document.createElement('div');
-        sw.className = 'copilot-msg bot';
-        sw.innerHTML = '<div class="copilot-avatar">' + iconHtml('mark') + '</div>'
-          + '<div class="copilot-body"></div>';
-        log.appendChild(sw);
-        renderSteps(sw, d.trace, deliver);
+        var think = working.querySelector('.copilot-thinking');
+        if (think) { destroyThink(think); think.remove(); }
+        renderSteps(working, d.trace, deliver);
       } else {
         deliver();
       }
     }).catch(function () {
+      destroyThink(working);
       working.remove();
       addMsg('bot', 'I couldn\u2019t reach the assistant. Check your connection and try again.');
     }).finally(function () { setBusy(false); });
@@ -472,22 +459,53 @@
     scroll();
   }
 
-  collapse.addEventListener('click', function () { setOpen(false); });
-  reopen.addEventListener('click', function () { setOpen(true); });
-  resetBtn.addEventListener('click', function () { if (!busy) { briefLoaded = false; renderIntro(); } });
+  collapse.addEventListener('click', function (e) {
+    e.stopPropagation();
+    setOpen(false);
+  });
+  if (head) {
+    head.addEventListener('click', function () {
+      if (dock.getAttribute('data-open') === '0') setOpen(true);
+    });
+  }
+  resetBtn.addEventListener('click', function (e) {
+    e.stopPropagation();
+    if (!busy) renderIntro();
+  });
   form.addEventListener('submit', function (e) { e.preventDefault(); ask(input.value.trim()); });
 
-  var saved = null;
-  try { saved = localStorage.getItem('bm_copilot_open'); } catch (e) {}
-  // On-click only: Bridget never auto-opens, so it never steals width from the
-  // page or greets you with canned prompts. It opens from the FAB (or
-  // window.bridgetOpen / bridgetAsk) and remembers an explicit open across
-  // navigation so it doesn't slam shut mid-task.
-  var startOpen = saved === '1';
-  applyOpen(startOpen);
-  if (startOpen) renderIntro();
+  function syncSend() {
+    if (!sendBtn) return;
+    sendBtn.disabled = busy || !input.value.trim();
+  }
+  function autosize() {
+    input.style.height = 'auto';
+    input.style.height = Math.min(input.scrollHeight, 160) + 'px';
+  }
+  input.addEventListener('input', function () { autosize(); syncSend(); });
+  input.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      if (!busy && input.value.trim()) form.requestSubmit();
+    }
+  });
 
-  // Let any page open Bridget or ask it something (e.g. the Calendar's "Ask AI").
+  var saved = null;
+  try { saved = localStorage.getItem('bm_bridget_pane'); } catch (e) {}
+  // Bridget is a column of the workspace. It starts open on a desk; on a
+  // phone it starts as the slim rail so it doesn't cover the inbox.
+  var narrow = window.matchMedia && window.matchMedia('(max-width: 1023px)').matches;
+  // On the inbox Bridget starts closed. It held ~400px of a four-column
+  // workspace showing an empty prompt, which is the most expensive placeholder
+  // in the product; the reading pane gets that width back and the top bar's
+  // Bridget button (base.html) is the way in. An explicit user choice still
+  // wins - only the *default* is per-page.
+  var onInbox = document.body.getAttribute('data-page') === 'marketing_hub';
+  var startOpen = saved === '0' ? false
+                : saved === '1' ? true
+                : (!narrow && !onInbox);
+  applyOpen(startOpen);
+
   window.bridgetOpen = function () { setOpen(true); };
   window.bridgetAsk = function (q) { setOpen(true); if (q) { setTimeout(function () { ask(q); }, 60); } };
 })();

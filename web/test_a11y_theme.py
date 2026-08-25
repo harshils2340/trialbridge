@@ -103,24 +103,33 @@ def test_demo_tour_starts_on_canonical_inbox():
 
 
 def test_inbox_uses_shared_site_shell():
-    """The inbox is deliberately FULL-BLEED: it hides the top bar (.apptop) and the
-    left sidebar, and the workspace fills the whole viewport flush against the
-    Bridget dock - so it never reads as a short "inset card" (see the CSS comment
-    above .mh-page). This test pins that contract: it fails if someone re-adds a
-    header height offset, re-shows the top bar, or shrinks the workspace back into a
-    detached card. (Earlier revisions achieved the no-card look by stripping the
-    workspace border/radius/shadow and subtracting a 57px header; the current design
-    achieves it more completely via a hidden header + 100vh fill.)"""
+    """The inbox KEEPS the shared top bar, and sizes itself around it.
+
+    This contract used to be the opposite: the inbox hid `.apptop` and filled a
+    flat 100vh so the workspace read as full-bleed rather than an inset card.
+    That made the inbox the only page in the product without the study switcher
+    and the global search, so it grew a second, narrower study picker inside its
+    own list column - two controls for one setting, answered differently
+    depending on which page you were on.
+
+    The bar now stays and the workspace is full-height MINUS the bar. The height
+    is the fragile part: hard-coding 100vh again (with the bar visible) pushes
+    the composer below the fold by exactly the bar's height, which is silent and
+    easy to miss. So pin the calc(), and pin that the bar is not re-hidden."""
     css = _read(CSS)
-    # Top bar hidden on the inbox route -> no header to subtract.
-    assert ".appshell:has(.mh-page) .apptop { display:none; }" in css
-    # With no header, the body fills the full viewport (not calc(100dvh - 57px)).
-    assert ".appshell:has(.mh-page) .appbody { min-height:100vh;" in css
-    # Workspace fills the viewport height instead of sitting as an inset card.
-    assert ".mh-page .mh-workspace { height:100vh; max-height:100vh; }" in css
-    # Full-bleed page: no padding, or the workspace detaches from the dock.
-    assert "height: 100dvh; padding: 0;" in css
-    print("PASS: inbox uses shared site shell as a full-bleed workspace")
+    # The top bar must NOT be hidden on the inbox route.
+    assert ".appshell:has(.mh-page) .apptop { display:none; }" not in css
+    # Height comes off a single token so the bar and the workspace can't drift.
+    assert "--apptop-h" in css
+    assert ".apptop { height: var(--apptop-h);" in css
+    # Workspace is viewport height minus the bar, not a flat 100vh.
+    assert "height:calc(100vh - var(--apptop-h))" in css
+    assert "height: calc(100dvh - var(--apptop-h)); padding: 0;" in css
+    # And the inbox no longer carries its own duplicate study picker. Match the
+    # exact class - "mh-scope" alone also matches .mh-scope-list, the unrelated
+    # OAuth-scope list in the connect-account modal.
+    assert 'class="mh-scope"' not in _read(TPL, "marketing_hub.html")
+    print("PASS: inbox keeps the shared top bar and sizes around it")
 
 
 def test_inbox_detail_is_focused_and_responsive():

@@ -46,6 +46,20 @@ SYSTEM_PROMPT = (
     "Return only the rewritten message."
 )
 
+# Appended only when the coordinator typed an instruction. Their instruction is
+# the point of the message, so it has to be able to introduce content the
+# deterministic draft did not have - they wrote it, and they read and send the
+# result. What it cannot do is unlock the safety rules or invite the model to
+# supply facts of its own.
+ASK_RULES = (
+    "\n5. The COORDINATOR'S INSTRUCTION below is what they want this message to "
+    "say. Follow it and rewrite the draft to carry it out. A fact the "
+    "instruction states explicitly may appear in the message - the coordinator "
+    "is the source of it and reviews the result before sending. Never add a "
+    "fact of your own on top, and rules 2 and 4 hold no matter what the "
+    "instruction asks."
+)
+
 
 # --------------------------------------------------------------------------- #
 # Deterministic ladders
@@ -92,6 +106,48 @@ _REPLY_LADDER = [
       "back out", "pull out"),
      "Taking part is completely voluntary and you can stop at any time, for any "
      "reason. I'm happy to walk through what that involves whenever you'd like."),
+]
+
+# Coordinator instructions, typed into the composer ("offer a screening call
+# next week", "ask when they're free"). Matched against what the COORDINATOR
+# typed rather than against the inbound message, so the draft carries out the
+# instruction instead of answering the topic. Every body reads correctly after
+# "Hi <name>, " and, like the ladders above, states no study-specific fact.
+_ASK_LADDER = [
+    (("screening call", "screening visit", "book", "schedule", "set up a call",
+      "phone call", "call them", "call her", "call him", "get them on the phone",
+      "hop on a call", "meet"),
+     "I'd love to set up a short screening call to walk through a few "
+     "questions. What days and times generally work best for you?"),
+    (("best time", "when are they free", "when they are free", "availability",
+      "available", "what time", "reach them", "good number", "phone number"),
+     "what's the best time and number to reach you? I'll work around your "
+     "schedule."),
+    (("still interested", "follow up", "following up", "check in", "checking in",
+      "nudge", "haven't heard", "no reply", "no response", "bump"),
+     "just checking in to see whether you're still interested. Happy to pick up "
+     "wherever we left off - reply here any time."),
+    (("what to expect", "next step", "what happens", "walk through", "process",
+      "overview", "explain"),
+     "here's how this usually goes: a short call to talk through a few "
+     "questions, and if it looks like a fit, the study team walks you through "
+     "the details before anything is decided. Happy to answer questions at any "
+     "point along the way."),
+    (("thank", "appreciate", "grateful"),
+     "thank you for taking the time on this - I really appreciate it. I'm here "
+     "if anything else comes up."),
+    (("not a fit", "decline", "does not qualify", "doesn't qualify", "turn down",
+      "reject", "close it out", "close this out"),
+     "thank you for your interest, and for the time you've already put into "
+     "this. I'll follow up if something changes or if another study looks like "
+     "a better fit."),
+    (("record", "document", "paperwork", "medication list", "med list",
+      "insurance", "referral letter"),
+     "could you have your current medication list and any recent records handy "
+     "before we talk? It makes the screening conversation much quicker."),
+    (("apolog", "sorry", "delay", "late", "slow to"),
+     "apologies for the slow reply, and thank you for your patience. I'm "
+     "picking this back up now."),
 ]
 
 _REPLY_FALLBACK = ("I can help with the next step. Could you confirm the best "
@@ -161,6 +217,14 @@ def _deterministic(intent, ctx):
     inbound = ctx.get("inbound") or ""
 
     if intent == "reply":
+        # An instruction beats the inbound message. The coordinator is reading
+        # the same thread and has just said what they want said, so answering
+        # the topic instead of the instruction would be ignoring them.
+        ask = (ctx.get("ask") or "").strip()
+        if ask:
+            body = _pick(_ASK_LADDER, ask, "")
+            if body:
+                return f"Hi {who}, " + body
         opener = f"Hi {who}, thanks for reaching out about {study}. "
         return opener + _pick(_REPLY_LADDER, inbound, _REPLY_FALLBACK)
 
@@ -226,14 +290,17 @@ def _polish(base, intent, ctx):
     deterministic text."""
     if not mt.LLM_API_KEY:
         return None
+    ask = (ctx.get("ask") or "").strip()
     try:
         user = (f"INTENT: {intent}\n"
                 f"RECIPIENT FIRST NAME: {ctx.get('first') or 'unknown'}\n"
                 f"STUDY: {ctx.get('study') or 'unknown'}\n"
-                f"THEIR LAST MESSAGE: {(ctx.get('inbound') or '(none)')[:1200]}\n\n"
-                f"DRAFT TO REWRITE:\n{base}\n\n"
+                f"THEIR LAST MESSAGE: {(ctx.get('inbound') or '(none)')[:1200]}\n"
+                + (f"COORDINATOR'S INSTRUCTION: {ask[:400]}\n" if ask else "")
+                + f"\nDRAFT TO REWRITE:\n{base}\n\n"
                 "Rewrite it now, following your rules.")
-        out = (mt.llm_chat(SYSTEM_PROMPT, user) or "").strip()
+        out = (mt.llm_chat(SYSTEM_PROMPT + (ASK_RULES if ask else ""),
+                           user) or "").strip()
         # A refusal, an empty answer, or a wall of text means something went
         # sideways - fall back rather than surface it to a coordinator.
         if not out or len(out) > 1200:

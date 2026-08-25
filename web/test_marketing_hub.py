@@ -402,8 +402,29 @@ def test_quick_replies_and_context_drafts():
 
     page = client.get(f"/app/inbox?thread={ids['Nadia Brooks']}").get_data(
         as_text=True)
-    assert "mh-quick-chip" in page, "quick-reply chips did not render"
-    assert "Offer a screening call" in page
+    # Writing a reply starts with an instruction, not with a button off to the
+    # side: the composer's first line takes "offer a screening call next week"
+    # and the draft writes itself into the reply box. The canned quick-reply
+    # chips stay gone - what sits under the line now are prompts that run
+    # through the drafter, not generic text to paste.
+    assert "mh-quick-chip" not in page, "canned quick-reply chips came back"
+    assert "data-ask-input" in page, "no instruction line in the composer"
+    assert "data-bridget-draft" in page, "composer lost its drafting endpoint"
+    assert "Draft with Bridget" not in page, "the old draft button came back"
+
+    # An instruction decides what the draft says; the inbound message is context.
+    steered = _json.loads(_post(
+        client, f"/marketing-hub/threads/{ids['Priya Vault']}/draft.json",
+        {"instruction": "offer a screening call and ask which times work"},
+    ).get_data(as_text=True))
+    assert steered["ok"], steered
+    assert "screening call" in steered["draft"].lower(), steered["draft"]
+    # ... and without one, the draft still answers what they actually asked, so
+    # the fast path (press the arrow, type nothing) is unchanged.
+    unsteered = _json.loads(client.get(
+        f"/marketing-hub/threads/{ids['Priya Vault']}/draft.json").get_data(
+        as_text=True))
+    assert "privacy" in unsteered["draft"].lower(), unsteered["draft"]
 
     sched = _json.loads(client.get(
         f"/marketing-hub/threads/{ids['Nadia Brooks']}/draft.json").get_data(
@@ -538,13 +559,16 @@ def test_inbox_study_scoper():
                      (ids["GammaThread"],))
         conn.commit()
 
-    # 1. Multi-study team: scoper renders with an option per study, and each
-    #    option surfaces its unread count (the inbox's only per-trial attention
-    #    cue, since the top switcher is hidden here).
+    # 1. Multi-study team: the scope control renders an entry per study, each
+    #    surfacing its unread count. This now comes from the shared top-bar
+    #    switcher (.appswitch) rather than a second <select> inside the inbox -
+    #    the inbox used to hide the top bar and carry its own duplicate picker.
     html = client.get("/app/inbox").get_data(as_text=True)
-    assert 'class="mh-scope"' in html, "scoper missing for a multi-study team"
-    assert 'value="NCT20000001"' in html and 'value="NCT20000002"' in html
-    assert "Alpha Study (1)" in html, "scoper option missing unread count"
+    assert 'class="appswitch"' in html, "top-bar study switcher missing on the inbox"
+    assert 'class="mh-scope"' not in html, "duplicate in-inbox study picker came back"
+    assert "nct=NCT20000001" in html and "nct=NCT20000002" in html
+    assert "Alpha Study" in html, "switcher entry missing its study"
+    assert 'class="ss-count"' in html, "switcher entry missing unread count"
 
     # 3. Selecting study B re-scopes the list to B's threads only.
     assert client.get(
@@ -556,14 +580,17 @@ def test_inbox_study_scoper():
     # visible in every study scope so it can't get lost behind the scoper.
     assert "GammaThread" in scoped, "unassigned thread vanished under a study scope"
 
-    # 2. Single-study team: no scoper (would be a useless control).
+    # 2. Single-study team: the switcher still names the study it is scoped to.
+    #    It doubles as the workspace title, so unlike the old <select> there is
+    #    nothing useless about showing it with one study.
     with webapp.app.app_context():
         solo_id = db.create_user(
             "scoper-solo@example.com", "disabled", "Solo", verified=True)
         db.add_study_claim(solo_id, "NCT20000009", "Only Study", verified=True)
     solo_html = _client_for(solo_id).get("/app/inbox").get_data(as_text=True)
-    assert 'class="mh-scope"' not in solo_html, "scoper shown for single-study team"
-    print("PASS: in-inbox study scoper renders, gates, and re-scopes the list")
+    assert 'class="mh-scope"' not in solo_html, "duplicate in-inbox picker came back"
+    assert "Only Study" in solo_html, "switcher does not name the single study"
+    print("PASS: study scope renders in the top bar, gates, and re-scopes the list")
 
 
 def test_inbox_owner_filter():
@@ -604,7 +631,7 @@ def test_inbox_owner_filter():
 
     # Mine is the privacy-preserving default; the two-bucket control renders.
     default = client.get("/app/inbox?status=all").get_data(as_text=True)
-    assert 'aria-label="Inbox scope"' in default, \
+    assert 'aria-label="Inbox filters"' in default, \
         "owner filter control did not render"
     assert "MineThread" in default
     assert "MateThread" not in default and "NobodyThread" not in default
@@ -678,7 +705,7 @@ def test_claim_unassigned_thread_end_to_end():
     assert _post(client, f"/marketing-hub/threads/{tid}/assign",
                  {"assignee_id": str(owner_id)}).status_code == 302
 
-    # Once owned, the Claim button is gone (dropdown handles reassignment).
+    # Once owned, the Claim button is gone.
     reopened = client.get(f"/app/inbox?thread={tid}").get_data(as_text=True)
     assert ">Claim<" not in reopened, "Claim button lingered after claiming"
 
