@@ -410,12 +410,18 @@ textarea { resize: vertical; min-height: 150px; line-height: 1.6; }
 .mh-filterbar { min-width:0; padding:0; border-bottom:1px solid var(--border);
   overflow-x:auto; scrollbar-width:none; }
 .mh-filterbar::-webkit-scrollbar { display:none; }
-.mh-inbox-tabs { display:flex; align-items:stretch; min-width:100%; width:max-content; }
+/* Eight tabs at 72px never fit a 320-350px column; scrolling a tab strip
+   sideways was the least usable thing in the inbox. Tabs keep their minimum
+   width and wrap into two rows of four in a narrow column, one row of eight
+   when the column is wide (12.5% each). */
+.mh-filterbar { container-type:inline-size; }
+.mh-inbox-tabs { display:flex; flex-wrap:wrap; align-items:stretch; width:100%; min-width:0; }
 .mh-inbox-tab {
   --mh-tab-w:72px;
   box-sizing:border-box;
-  flex:0 0 var(--mh-tab-w);
-  width:var(--mh-tab-w);
+  flex:1 0 25%;
+  width:auto;
+  min-width:0;
   min-height:36px;
   display:inline-flex;
   align-items:center;
@@ -434,6 +440,7 @@ textarea { resize: vertical; min-height: 150px; line-height: 1.6; }
   text-decoration:none;
   white-space:nowrap;
 }
+@container (min-width:600px) { .mh-inbox-tab { flex-basis:12.5%; } }
 .mh-inbox-tab > span:first-child { overflow:hidden; text-overflow:ellipsis; }
 .mh-inbox-tab .ico { width:12px; height:12px; flex:0 0 auto; }
 .mh-inbox-tab .mh-tab-count {
@@ -8521,12 +8528,9 @@ body.fs-page { background:
 /* Landing hero iframe (?embed=1): hide chrome, keep inbox + Bridget open. */
 body[data-embed="1"] .skip-link,
 body[data-embed="1"] .toast-stack { display: none !important; }
-body[data-embed="1"] .appshell {
-  --appdock-w: 320px; --apptop-h: 0px; min-height: 100dvh;
-}
-body[data-embed="1"] .appside,
-body[data-embed="1"] .apptop { display: none !important; }
-body[data-embed="1"] .mh-page { height: 100dvh; max-height: 100dvh; }
+/* The frame shows the real product, sidebar and top bar included - hiding
+   them read as "where did the product go". Only the dock is narrowed. */
+body[data-embed="1"] .appshell { --appdock-w: 320px; min-height: 100dvh; }
 body[data-embed="1"] .mh-page .mh-workspace {
   height: 100dvh; max-height: 100dvh;
 }

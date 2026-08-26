@@ -1,6 +1,9 @@
 {% import "_icons.html" as ic %}
 <aside class="appdock" id="copilot" data-open="1" data-empty="1" aria-label="Bridget"
   data-uid="{{ user.id if user else '' }}"
+  {# The shared demo account (and the landing-page frame) must not remember
+     chats: a walk-up visitor should never find someone else's questions. #}
+  data-ephemeral="{{ '1' if (active_site_demo or request.args.get('embed')) else '0' }}"
   data-lottie="{{ static_url('vendor/lottie_light.min.js') }}"
   data-think="{{ static_url('lottie/thinking.json') }}">
   <div class="dock-resize" id="dockResize" role="separator" aria-orientation="vertical" aria-label="Resize Bridget" title="Drag to resize · double-click to reset"></div>
@@ -489,14 +492,23 @@
   // Nothing about them is sent to the server.
   var STORE = 'bm_bridget_chats_' + (dock.getAttribute('data-uid') || 'anon');
   var MAX_CHATS = 30;
+  // Demo / embedded sessions keep history in memory only: it lasts for this
+  // page and is gone on refresh, and anything an earlier build stored for the
+  // demo account is wiped on sight.
+  var EPHEMERAL = dock.getAttribute('data-ephemeral') === '1';
   var chats = [], current = null;
   function loadStore() {
+    if (EPHEMERAL) {
+      try { localStorage.removeItem(STORE); } catch (e) {}
+      return;
+    }
     try {
       var d = JSON.parse(localStorage.getItem(STORE) || 'null');
       if (d && d.chats) { chats = d.chats; current = d.current || null; }
     } catch (e) { chats = []; current = null; }
   }
   function saveStore() {
+    if (EPHEMERAL) return;
     try {
       localStorage.setItem(STORE, JSON.stringify({ chats: chats.slice(0, MAX_CHATS), current: current }));
     } catch (e) {}
