@@ -307,7 +307,7 @@
       <div class="portal-issue">
         <p class="portal-issue-lead">{{ ic.icon('check') }} Sent to
           {{ view.name }} in their message thread. Here it is again in case you
-          need to read it out &mdash; the password works once, then they pick
+          need to read it out , the password works once, then they pick
           their own.</p>
         <label>Link</label>
         <div class="portal-copy">
@@ -354,7 +354,7 @@
 
       {% elif l['revealed'] %}
       <p class="portal-pitch">Give {{ view.name }} a private page to follow their
-        own status, see what's outstanding, and message you back &mdash; no
+        own status, see what's outstanding, and message you back , no
         account signup. The link and a one-time password are sent straight to
         their message thread.</p>
       <form method="post" action="{{ url_for('issue_portal', lead_id=l['id']) }}">

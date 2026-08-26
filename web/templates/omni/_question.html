@@ -1,0 +1,67 @@
+{# One interview question as an agent bubble with its controls. #}
+{% import "_icons.html" as ic %}
+{% import "omni/_tiles.html" as tiles %}
+
+{% macro bubble(text, kind='say') -%}
+<article class="om-msg is-agent" data-turn-kind="{{ kind }}">
+  <span class="om-agent-mark" aria-hidden="true">{{ ic.icon('mark') }}</span>
+  <div class="om-bubble"><p data-stream>{{ text }}</p></div>
+</article>
+{%- endmacro %}
+
+{% macro you(text) -%}
+<article class="om-msg is-you"><div class="om-bubble"><p>{{ text }}</p></div></article>
+{%- endmacro %}
+
+{% macro question(q) -%}
+<article class="om-msg is-agent is-question" data-qid="{{ q.id }}" data-kind="{{ q.kind }}" data-multi="{{ '1' if q.multi else '0' }}">
+  <span class="om-agent-mark" aria-hidden="true">{{ ic.icon('mark') }}</span>
+  <div class="om-bubble">
+    <p data-stream>{{ q.prompt }}</p>
+    {% if q.why %}<small class="om-why">{{ q.why }}</small>{% endif %}
+    {% if q.kind == 'tiles' %}
+    <div class="om-tiles mh-channel-picker" data-options>
+      {% for o in q.options %}
+      <label class="om-tile">
+        <input type="{{ 'checkbox' if q.multi else 'radio' }}" name="q-{{ q.id }}" value="{{ o.value }}" {% if q.multi and o.value in (q.default or []) %}checked{% elif not q.multi and o.value == q.default %}checked{% endif %}>
+        <span>{{ tiles.chip(o.value, o.meta) }}<b>{{ o.label }}</b><small>{{ o.feeds or '' }}</small></span>
+      </label>
+      {% endfor %}
+    </div>
+    {% elif q.kind == 'chips' %}
+    <div class="om-chips" data-options>
+      {% for o in q.options %}
+      <button type="button" class="mh-quick-chip {{ 'is-active' if (q.multi and o.value in (q.default or [])) or (not q.multi and o.value == q.default) }}" data-value="{{ o.value }}" aria-pressed="{{ 'true' if (q.multi and o.value in (q.default or [])) or (not q.multi and o.value == q.default) else 'false' }}">{{ o.label }}</button>
+      {% endfor %}
+    </div>
+    {% elif q.kind == 'toggle' %}
+    <div class="om-chips" data-options>
+      <button type="button" class="mh-quick-chip {{ 'is-active' if q.default }}" data-value="1">Yes</button>
+      <button type="button" class="mh-quick-chip {{ 'is-active' if not q.default }}" data-value="0">No, I will name my own</button>
+    </div>
+    {% endif %}
+    {% if q.multi or q.kind == 'text' %}
+    <div class="om-q-actions">
+      {% if q.multi %}<button type="button" class="btn btn-primary btn-sm" data-continue>Continue</button>{% endif %}
+      {% if q.kind == 'text' %}<small class="om-hint">Type it below{% if q.default %}, or press Continue to use "{{ q.default }}"{% endif %}.</small>
+      <button type="button" class="btn btn-ghost btn-sm" data-continue data-default="{{ q.default or '' }}">Continue</button>{% endif %}
+      {% if q.multi and q.kind == 'chips' %}<small class="om-hint">Or type your own below, separated by commas.</small>{% endif %}
+    </div>
+    {% endif %}
+  </div>
+</article>
+{%- endmacro %}
+
+{% macro summary(lines, ws) -%}
+<article class="om-msg is-agent is-summary">
+  <span class="om-agent-mark" aria-hidden="true">{{ ic.icon('mark') }}</span>
+  <div class="om-bubble">
+    <p data-stream>That is everything. Here is what I will build.</p>
+    <ul class="om-summary">{% for l in lines %}<li>{{ l }}</li>{% endfor %}</ul>
+    <div class="om-q-actions">
+      <button type="button" class="btn btn-primary" data-build>Build my inbox</button>
+      <small class="om-hint">Or tell me what to change below.</small>
+    </div>
+  </div>
+</article>
+{%- endmacro %}

@@ -1,0 +1,37 @@
+{% import "_icons.html" as ic %}
+{% import "omni/_tiles.html" as tiles %}
+
+{% macro row(t, href, stage_labels, stage_tones, source_meta, active=False) -%}
+<a class="mh-thread-row {{ 'is-active' if active }} {{ 'is-unread' if t.unread }} {{ 'is-urgent' if t.priority == 'urgent' }}"
+   href="{{ href }}" data-thread-id="{{ t.id }}">
+  <div class="mh-thread-row-top">
+    <span class="mh-contact-avatar-wrap">
+      <span class="mh-contact-avatar">{{ (t.contact.name or t.contact.handle or '?')[:1]|upper }}</span>
+      {{ tiles.chip(t.source_kind, source_meta(t.source_kind), 'is-row-channel') }}
+    </span>
+    <span class="mh-thread-person"><b>{{ t.contact.name or t.contact.handle or 'Unknown contact' }}</b></span>
+    <time>{{ t.time_label }}</time>
+    {% if t.unread %}<span class="mh-unread-dot" aria-label="Unread"></span>{% endif %}
+  </div>
+  <h3>{{ t.subject or 'New conversation' }}</h3>
+  <p>{{ t.snippet }}</p>
+  {% if t.facts %}
+  <div class="om-facts">
+    {% for label, text, known in t.facts %}<span class="{{ 'is-unknown' if not known }}"><i>{{ label }}</i> {{ text }}</span>{% endfor %}
+  </div>
+  {% endif %}
+  <div class="mh-thread-row-foot">
+    <span class="mh-tag is-stage tone-{{ stage_tones.get(t.stage, 'neutral') }}">{{ stage_labels.get(t.stage, t.stage or 'New') }}</span>
+    {% for f in t.flags[:2] %}
+    <span class="mh-tag tone-{{ f.tone if f is mapping else 'warn' }}">{{ f.label if f is mapping else f }}</span>
+    {% endfor %}
+    {% if t.priority == 'urgent' %}<span class="mh-tag tone-danger">Urgent</span>
+    {% elif t.priority == 'high' %}<span class="mh-tag tone-warn">High</span>{% endif %}
+    {% if t.status == 'resolved' %}
+    <span class="mh-thread-state">Resolved</span>
+    {% elif t.awaiting_reply %}
+    <span class="mh-thread-state is-waiting">Needs reply</span>
+    {% endif %}
+  </div>
+</a>
+{%- endmacro %}

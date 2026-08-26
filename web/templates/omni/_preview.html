@@ -1,0 +1,63 @@
+{# The inbox assembling on the right of the builder: a real, scaled-down inbox
+   rendered from the current draft. Sources, views, fields and rows appear as
+   answers come in. No data is invented: rows are the template's seed
+   conversations for the ticked sources. #}
+{% import "_icons.html" as ic %}
+{% import "omni/_tiles.html" as tiles %}
+
+{% macro preview(p, source_meta) -%}
+{% set spec = p.spec %}
+<div class="om-preview-frame" data-preview-frame>
+  <div class="om-preview-top">
+    <span class="om-brand-mini">{{ ic.icon('mark') }} {{ spec.business.name }}</span>
+    <span class="om-preview-sources">
+      {% for c in spec.connectors if c.auto_connect %}{{ tiles.chip(c.kind, source_meta(c.kind), 'is-mini') }}{% endfor %}
+      {% if not spec.connectors|selectattr('auto_connect')|list %}<em>No sources yet</em>{% endif %}
+    </span>
+  </div>
+  <div class="om-preview-body">
+    <div class="om-preview-list">
+      <div class="mh-filterbar om-filterbar">
+        <nav class="mh-scope-seg om-views" aria-label="Views">
+          {% for v in spec.views if v.pinned %}<span class="mh-seg {{ 'is-active' if loop.first }}">{{ v.name }}</span>{% endfor %}
+        </nav>
+        <span class="mh-filter-btn">{{ ic.icon('list') }}<span>Filter</span></span>
+      </div>
+      <div class="om-preview-rows">
+        {% for r in p.rows %}
+        <div class="mh-thread-row {{ 'is-unread' if r.awaiting }}" data-preview-row>
+          <div class="mh-thread-row-top">
+            <span class="mh-contact-avatar-wrap"><span class="mh-contact-avatar">{{ r.name[:1]|upper }}</span>{{ tiles.chip(r.source_kind, source_meta(r.source_kind), 'is-row-channel') }}</span>
+            <span class="mh-thread-person"><b>{{ r.name }}</b></span>
+          </div>
+          <h3>{{ r.subject }}</h3>
+          <p>{{ r.snippet }}</p>
+          {% if r.facts %}<div class="om-facts">{% for label, text, known in r.facts %}<span><i>{{ label }}</i> {{ text }}</span>{% endfor %}</div>{% endif %}
+          <div class="mh-thread-row-foot">
+            <span class="mh-tag is-stage tone-{{ p.stage_tones.get(r.stage, 'neutral') }}">{{ p.stage_labels.get(r.stage, r.stage) }}</span>
+            {% if r.awaiting %}<span class="mh-thread-state is-waiting">Needs reply</span>{% endif %}
+          </div>
+        </div>
+        {% else %}
+        <div class="mh-thread-empty"><span>{{ ic.icon('inbox') }}</span><h3>Tick a source</h3><p>Conversations arrive here as you connect sources.</p></div>
+        {% endfor %}
+      </div>
+    </div>
+    <div class="om-preview-panel">
+      <div class="om-preview-panel-head"><b>Details</b><span>{{ spec.fields|length }} field{{ 's' if spec.fields|length != 1 }}</span></div>
+      <dl class="om-fields">
+        {% for f in spec.fields %}
+        <div class="om-field is-unknown" data-preview-field="{{ f.key }}"><dt>{{ f.label }}</dt><dd><span class="om-field-value">{{ {'bool': 'yes / no', 'enum': f.options|map('replace', '_', ' ')|map('capitalize')|join(' / '), 'date': 'a date', 'number': 'a number', 'list': 'a list', 'text': 'text'}[f.type] }}</span></dd></div>
+        {% else %}
+        <p class="om-hint">Fields you pick show up here for every conversation.</p>
+        {% endfor %}
+      </dl>
+      <div class="om-preview-panel-head"><b>Stages</b></div>
+      <p class="om-stages">{% for s in spec.stages %}<span class="mh-tag is-stage tone-{{ s.tone }}">{{ s.label }}</span>{% endfor %}</p>
+      {% set pol = spec.approval_policy %}
+      <div class="om-preview-panel-head"><b>{{ spec.agent.name }}</b></div>
+      <p class="om-hint">{% if pol.routine == 'auto_send' %}Sends routine replies on its own; everything else waits for you.{% else %}Drafts everything; you press Send.{% endif %}</p>
+    </div>
+  </div>
+</div>
+{%- endmacro %}

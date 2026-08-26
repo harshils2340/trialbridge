@@ -24,6 +24,7 @@ Public surface:
 """
 
 from . import actions  # noqa: F401
+from . import agent  # noqa: F401
 from . import digest  # noqa: F401
 from . import drafts  # noqa: F401
 from .agent import answer  # noqa: F401

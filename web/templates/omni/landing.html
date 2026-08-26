@@ -1,0 +1,127 @@
+{% extends "public_base.html" %}
+{% import "_icons.html" as ic %}
+{% import "_ui.html" as ui %}
+
+{% block title %}{{ OMNI_BRAND }}: one inbox for everything that comes in{% endblock %}
+{% block description %}Describe your business and where leads come from. {{ OMNI_BRAND }} builds a shared inbox that reads every message, pulls out what matters, sorts it your way and drafts the reply. You stay in charge of what goes out.{% endblock %}
+{% block head_extra %}<link rel="stylesheet" href="{{ static_url('omni.css') }}">{% endblock %}
+
+{% block site_header %}
+<header class="pill-nav" id="pillNav">
+  <a class="brand" href="{{ url_for('om_landing') }}">{{ ic.icon('mark', 'brand-glyph') }}{{ OMNI_BRAND }}</a>
+  <nav class="pill-nav-center" aria-label="Primary">
+    <a href="#how">How it works</a><a href="#examples">Examples</a><a href="#promise">Promise</a>
+  </nav>
+  <div class="pill-nav-auth">
+    <a class="pill-nav-cta" href="#start" data-focus-prompt>Start free{{ ic.icon('arrow-right') }}</a>
+    <button type="button" class="pill-nav-burger" id="pillBurger" aria-expanded="false" aria-controls="pillSheet" aria-label="Open menu">{{ ic.icon('menu') }}</button>
+  </div>
+  <div class="pill-sheet" id="pillSheet" hidden>
+    <a href="#how">How it works</a><a href="#examples">Examples</a><a href="#promise">Promise</a>
+    <a class="pill-sheet-cta" href="#start">Start free</a>
+  </div>
+</header>
+<script>
+(function () {
+  var nav = document.getElementById('pillNav'); if (!nav) return;
+  function onScroll() { nav.classList.toggle('is-condensed', window.scrollY > 80); }
+  onScroll(); window.addEventListener('scroll', onScroll, { passive: true });
+  var burger = document.getElementById('pillBurger'), sheet = document.getElementById('pillSheet');
+  if (burger && sheet) {
+    var setSheet = function (on) { sheet.hidden = !on; nav.classList.toggle('is-menu', on);
+      burger.setAttribute('aria-expanded', on ? 'true' : 'false'); };
+    burger.addEventListener('click', function () { setSheet(sheet.hidden); });
+    sheet.addEventListener('click', function (e) { if (e.target.closest('a')) setSheet(false); });
+    window.addEventListener('resize', function () { if (window.innerWidth > 820) setSheet(false); });
+  }
+})();
+</script>
+{% endblock %}
+
+{% block body %}
+<section class="om-hero" id="start">
+  <p class="om-kicker">{{ OMNI_BRAND }}</p>
+  <h1 class="om-h1">Cursor for your inbox.</h1>
+  <p class="om-sub">Describe your business and where leads come from. {{ OMNI_BRAND }} builds a shared inbox that reads every message, pulls out what matters, sorts it the way you would, and drafts the reply. You stay in charge of what goes out.</p>
+
+  <form method="post" action="{{ url_for('om_start') }}" class="om-hero-ask js-pending-submit" data-pending-text="Building your inbox..." id="omStartForm">
+    <input type="hidden" name="example" id="omExample" value="">
+    <div class="mh-ask-wrap om-ask-lg">
+      <div class="mh-ask">
+        <span class="mh-ask-mark" aria-hidden="true">{{ ic.icon('sparkle') }}</span>
+        <span class="mh-ask-name" aria-hidden="true">{{ OMNI_BRAND }}</span>
+        <textarea class="mh-ask-input" name="prompt" id="omPrompt" rows="2" required
+                  placeholder="Describe your business and where leads come from"
+                  aria-label="Describe your business and where leads come from"></textarea>
+        <button type="submit" class="mh-ask-go" aria-label="Build my inbox" title="Build my inbox (Enter)">{{ ic.icon('arrow-right') }}</button>
+      </div>
+    </div>
+    <div class="om-examples" id="examples" role="list" aria-label="Examples">
+      {% for t in templates %}
+      <button type="button" class="mh-quick-chip" role="listitem" data-example="{{ t.key }}" data-prompt="{{ t.example_prompt }}">{{ t.name }}</button>
+      {% endfor %}
+    </div>
+    <p class="om-hero-note">No account. Your workspace lives in this browser, with a link you can share.
+      {% if current and current.builder_state == 'built' %}<a href="{{ url_for('om_inbox', wid=current.wid) }}">Open your inbox</a>{% endif %}</p>
+  </form>
+</section>
+
+<section class="om-band" id="what">
+  <div class="om-facts-grid">
+    <div class="om-fact">
+      <span class="om-fact-ic">{{ ic.icon('inbox') }}</span>
+      <b>Reads every message</b>
+      <p>One queue for email, DMs, forms, voicemail and lead portals, with what each person said turned into fields you can sort by.</p>
+    </div>
+    <div class="om-fact">
+      <span class="om-fact-ic">{{ ic.icon('list') }}</span>
+      <b>Sorts it your way</b>
+      <p>Views like Needs reply, Serious, no lawyer, or Not a fit, defined in plain words and changed in plain words.</p>
+    </div>
+    <div class="om-fact">
+      <span class="om-fact-ic">{{ ic.icon('sparkle') }}</span>
+      <b>Drafts the reply</b>
+      <p>Say what you want written and it is written, in your tone, in the reply box, where you edit and send.</p>
+    </div>
+  </div>
+</section>
+
+<section class="om-band" id="how">
+  <h2>How it works</h2>
+  <ol class="om-steps">
+    <li class="om-step"><span class="om-step-n">1</span><b>Describe your business</b><p>One sentence about what you do and where leads come from.</p></li>
+    <li class="om-step"><span class="om-step-n">2</span><b>Answer a few questions</b><p>Which accounts, what to extract, how to sort, and what {{ OMNI_BRAND }} may send on its own. Watch the inbox assemble as you answer.</p></li>
+    <li class="om-step"><span class="om-step-n">3</span><b>Work the inbox</b><p>Reply from a prompt line, move people through stages, and change the setup by typing what you want.</p></li>
+  </ol>
+</section>
+
+<section class="om-band om-promise" id="promise">
+  <span class="om-fact-ic">{{ ic.icon('shield-check') }}</span>
+  <h2>Nothing goes out without you.</h2>
+  <p>By default {{ OMNI_BRAND }} drafts and proposes; a person reads and sends. If you allow it to answer routine questions or send booking links on its own, every one of those messages is labeled so you can see what it did. You can tighten this at any time in Setup.</p>
+  <ul>
+    <li>Every proposed message is editable before it sends.</li>
+    <li>Every extracted fact shows the message it came from.</li>
+    <li>Every automatic action is labeled in the thread.</li>
+  </ul>
+</section>
+
+<section class="om-band om-cta">
+  <a class="btn btn-primary" href="#start" data-focus-prompt>Start free</a>
+</section>
+{% endblock %}
+
+{% block site_footer %}
+<footer class="pub-foot om-foot">
+  <div class="pub-foot-in">
+    <div class="pub-foot-brand">
+      <span>{{ ic.icon('mark', 'brand-glyph brand-glyph-sm') }}{{ OMNI_BRAND }}</span>
+      <span class="pub-foot-note">Built by the BridgeMD team.</span>
+    </div>
+  </div>
+  <div class="pub-foot-legal">
+    <p class="pub-foot-links"><a href="{{ url_for('privacy') }}">Privacy</a> · <a href="{{ url_for('terms') }}">Terms</a></p>
+  </div>
+</footer>
+<script src="{{ static_url('omni.js') }}"></script>
+{% endblock %}

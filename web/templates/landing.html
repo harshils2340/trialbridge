@@ -1,7 +1,6 @@
 {% extends "public_base.html" %}
 {% import "_icons.html" as ic %}
 {% import "_ui.html" as ui %}
-{% import "_nav.html" as nav with context %}
 {% block title %}BridgeMD - find recruiting clinical trials{% endblock %}
 {# /find (GET) renders this same landing, so point both at one canonical URL
    instead of splitting the signal between two paths. #}
@@ -91,8 +90,8 @@ body.home-screen .hero-card .hero-go{ border-radius:11px; }
 body.home-screen .hero-card .hero-loc-actions{ margin-top:10px; }
 body.home-screen .hero-reassurance{ margin-top:16px; font-size:12.5px; }
 
-/* The floating pill header is the shared `.pill-nav` component now
-   (style.css + templates/_nav.html), so no finder-specific nav rules live here. */
+/* The floating pill header must match `/` exactly. Fixed overlay + top padding
+   for the hero live in _public_chrome.html for all pub-marketing pages. */
 
 /* Full-width scroll container so section bands can run edge to edge. Legacy
    children (.near-wrap, .trust-strip) and .fx-sec all self-center, so widening
@@ -170,7 +169,7 @@ body.home-screen .hero-reassurance{ justify-content:center; }
   background:var(--fx-band); border-top:1px solid #e8edf5;
   border-bottom:1px solid #e8edf5; padding:104px 24px 118px; }
 .bmd-embed-wrap{ max-width:1120px; margin:0 auto; }
-.bmd-embed-head{ text-align:center; max-width:680px; margin:0 auto 32px; }
+.bmd-embed-head{ text-align:center; max-width:720px; margin:0 auto 54px; }
 
 /* Brand controls. A field the visitor types their OWN name into makes the
    "branded as yours" point better than a row of invented hospital names did -
@@ -251,10 +250,10 @@ body.home-screen .hero-reassurance{ justify-content:center; }
    180px fields plus a button, and `width:100%` on the condition input made it
    as wide as its parent label - so it painted over the location field. That is
    the white box sitting on top of "Condition". */
-.bmd-finder-search{ display:flex; flex-direction:column; gap:8px;
+.bmd-finder-search{ display:flex; flex-direction:row; flex-wrap:wrap; gap:10px;
   margin-bottom:14px; }
 .bmd-finder-search .fld{ display:flex; align-items:center; gap:8px;
-  min-width:0; width:100%; box-sizing:border-box; overflow:hidden;
+  min-width:0; flex:1 1 180px; box-sizing:border-box; overflow:hidden;
   background:#fff; border:1px solid #dbe4f0; border-radius:10px;
   padding:10px 12px; font-size:13px; color:var(--fx-faint); }
 .bmd-finder-search .fld svg{ width:15px; height:15px; color:var(--bx);
@@ -267,7 +266,7 @@ body.home-screen .hero-reassurance{ justify-content:center; }
 .bmd-finder-search .fld:focus-within{ border-color:var(--bx);
   box-shadow:0 0 0 3px rgba(18,87,176,.1); }
 .bmd-finder-search .fbtn{ display:inline-flex; align-items:center;
-  justify-content:center; width:100%; border:0; font:inherit; color:#fff;
+  justify-content:center; width:auto; flex:0 0 auto; border:0; font:inherit; color:#fff;
   font-weight:700; font-size:13.5px; padding:10px 22px; border-radius:10px;
   cursor:pointer; background:var(--bx);
   box-shadow:0 12px 22px -12px var(--bxs2);
@@ -428,6 +427,15 @@ body.home-screen .hero-reassurance{ justify-content:center; }
 /* 3-up cards + CTA, same components as the marketing section. */
 .bmd-embed-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:24px;
   margin-top:96px; }
+.bmd-embed-card{ background:#fff; border:1px solid rgba(18,87,176,.10);
+  border-radius:20px; padding:32px 28px; box-shadow:0 2px 10px rgba(16,16,40,.04); }
+.bmd-embed-card .ic{ display:inline-flex; align-items:center; justify-content:center;
+  width:52px; height:52px; border-radius:50%; background:rgba(18,87,176,.08);
+  color:#1257b0; margin-bottom:20px; }
+.bmd-embed-card .ic svg{ width:24px; height:24px; }
+.bmd-embed-card h3{ margin:0 0 10px; font-size:20px; font-weight:700;
+  letter-spacing:-.01em; color:var(--fx-ink); }
+.bmd-embed-card p{ margin:0; color:var(--fx-mut); font-size:15.5px; line-height:1.6; }
 .bmd-embed-cta{ display:flex; justify-content:center; gap:14px; margin-top:44px;
   flex-wrap:wrap; }
 .bmd-btn-primary{ display:inline-flex; align-items:center; gap:8px; border:0;
@@ -940,6 +948,12 @@ body.home-screen.is-fy-right .fy-brand{
 body.home-screen.is-fy-left .fy-brand,
 body.home-screen.is-fy-split .fy-brand{ left:28px; color:#153554; }
 
+
+/* Stacked-layout extras (cards, inbox overlay, embed CTA) stay in the DOM
+   for the below-fold page, but they are not part of the split mock. */
+.fy .bmd-embed-grid, .fy .bmd-embed-cta, .fy .bmd-route-card,
+.fy .fy-embed-sub{ display:none; }
+
 @media (max-height:820px){
   .fy-left-in.hero-in, .fy-right-in{ padding-top:72px; padding-bottom:28px; }
   .fy-who{ font-size:clamp(30px,4vw,44px); }
@@ -1005,11 +1019,7 @@ body.home-screen.is-fy-split .fy-brand{ left:28px; color:#153554; }
 </style>
 {% endblock %}
 
-{# Shared floating pill header (templates/_nav.html), same component the site-side
-   pages use. Only the links + CTA are finder-specific. #}
-{% block site_header %}{{ nav.pill(
-     [('How it works', url_for('how_it_works')), ('For sites', sites_home_url)],
-     'Add this to your website', cal_link, cta_blank=true) }}{% endblock %}
+{# Same pill header as `/`; default lives in public_base via _public_chrome.html #}
 
 {% block pub_nav_extra %}
 {% if patient_user and records_ui %}
@@ -1069,13 +1079,9 @@ body.home-screen.is-fy-split .fy-brand{ left:28px; color:#153554; }
   </div>
   <div class="fy-body">
   <div class="fy-left-in hero-in">
-    <p class="fy-who">{{ 'For you' if patient_user else 'For patients' }}</p>
-    {% if patient_user %}
-    <h1>Find your next trial match.</h1>
-    {% else %}
+    <p class="fy-who">For patients</p>
     <h1>Find a trial that fits.</h1>
-    {% endif %}
-    <p class="hero-sub fy-sub">{{ 'Search again with your saved context and keep applications moving.' if patient_user else 'Tell us what you are dealing with. We will show recruiting studies near you that you could actually join.' }}</p>
+    <p class="hero-sub fy-sub">Tell us what you are dealing with. We will show recruiting studies near you that you could actually join.</p>
 
    <div class="hero-card">
     <form id="heroForm" method="post" action="{{ url_for('find') }}" autocomplete="off">
@@ -1166,13 +1172,11 @@ body.home-screen.is-fy-split .fy-brand{ left:28px; color:#153554; }
     </div>
     </div>{# .hero-card #}
 
-    {% if not patient_user %}
     <div class="hero-reassurance" aria-label="What to expect">
       <span>{{ ic.icon('check') }} No referral needed</span>
       <span>{{ ic.icon('check') }} Takes about 2 minutes</span>
       <span>{{ ic.icon('lock') }} No account required</span>
     </div>
-    {% endif %}
     <p class="fy-legal">Free. Trials from ClinicalTrials.gov. Not medical advice.
       <a href="{{ url_for('privacy') }}">Privacy</a> ·
       <a href="{{ url_for('terms') }}">Terms</a></p>
@@ -1223,7 +1227,7 @@ body.home-screen.is-fy-split .fy-brand{ left:28px; color:#153554; }
         <div class="bmd-widget">
           <form class="bmd-finder-search" id="bmdFinderForm">
             <label class="fld">{{ ic.icon('search') }}<span>Condition</span>
-              <input id="bxCondition" value="{{ demo.cond }}" aria-label="Trial condition" readonly>
+              <input id="bxCondition" value="{{ demo.cond }}" aria-label="Trial condition">
             </label>
             <label class="fld">{{ ic.icon('pin') }}<span>Near</span>
               <input id="bxLocation" value="{{ demo.loc }}" aria-label="Trial location">
@@ -1312,7 +1316,7 @@ body.home-screen.is-fy-split .fy-brand{ left:28px; color:#153554; }
                 <span>I agree to share these sample details with the study team so they can contact me about eligibility.</span>
               </label>
               <button class="bmd-flow-submit" type="submit">Send interest to the research team →</button>
-              <p class="bmd-flow-note">Demo only — no information is actually submitted.</p>
+              <p class="bmd-flow-note">Demo only, no information is actually submitted.</p>
             </form>
             <div class="bmd-flow-success" id="bmdApplySuccess" hidden>
               <span class="bmd-success-check">{{ ic.icon('check') }}</span>
@@ -1332,7 +1336,46 @@ body.home-screen.is-fy-split .fy-brand{ left:28px; color:#153554; }
         </div>
         <div class="bmd-site-toast" id="bmdSiteToast" role="status" aria-live="polite"></div>
       </div>
-
+      <div class="bmd-route-card" aria-hidden="true">
+        <div class="bmd-rc-head">
+          <span class="bmd-rc-mark">{{ ic.icon('mark') }}</span>
+          <span class="bmd-rc-title">Shared inbox</span>
+          <span class="bmd-rc-count">1 new</span>
+        </div>
+        <div class="bmd-rc-row">
+          <span class="bmd-rc-dot"></span>
+          <div class="bmd-rc-main">
+            <div class="bmd-rc-name">New inquiry &middot; Type 2 diabetes</div>
+            <div class="bmd-rc-sub">via Your Hospital finder &middot; just now</div>
+          </div>
+        </div>
+        <div class="bmd-rc-route">
+          {{ ic.icon('arrow-right') }}
+          <span>Auto-routed to <b>the diabetes study coordinator</b></span>
+        </div>
+        <div class="bmd-rc-note">On the right person&rsquo;s desk in seconds. No email, no forwarding.</div>
+      </div>
+    </div>
+    <div class="bmd-embed-grid">
+      <div class="bmd-embed-card">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 8l-4 4 4 4"/><path d="M16 8l4 4-4 4"/></svg></span>
+        <h3>One snippet to embed</h3>
+        <p>Drop it into your site. No developer project, no new login.</p>
+      </div>
+      <div class="bmd-embed-card">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="4.5" width="17" height="4" rx="1.2"/><rect x="3.5" y="10.5" width="17" height="4" rx="1.2"/><rect x="3.5" y="16.5" width="11" height="3" rx="1.2"/></svg></span>
+        <h3>Your studies first</h3>
+        <p>Shows your active studies first, then relevant recruiting trials nearby.</p>
+      </div>
+      <div class="bmd-embed-card">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 12.5V6a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2v6.5"/><path d="M3.5 12.5H8l1.5 2.5h5L16 12.5h4.5V18a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/></svg></span>
+        <h3>Every search is a lead</h3>
+        <p>Each search becomes an inquiry in your shared inbox, sorted and routed.</p>
+      </div>
+    </div>
+    <div class="bmd-embed-cta">
+      <a class="bmd-btn-primary" href="#main">Open the trial finder</a>
+      <a class="bmd-btn-ghost" href="{{ cal_link }}" target="_blank" rel="noopener">Add this finder to your website</a>
     </div>
 
     <span class="fy-snip" id="bxSnipSite">your-hospital</span>
@@ -1435,6 +1478,10 @@ body.home-screen.is-fy-split .fy-brand{ left:28px; color:#153554; }
       <details>
         <summary>Is my information private? Will I get spammed?</summary>
         <div class="fx-a">You control what you share. We don't sell your data. We only pass what you submit to the specific study team you choose to apply to.</div>
+      </details>
+      <details>
+        <summary>Do you list focus groups or interview studies?</summary>
+        <div class="fx-a">The finder lists recruiting clinical trials, including observational studies on ClinicalTrials.gov. Focus groups and qualitative interviews are not listed yet.</div>
       </details>
     </div>
     <div class="fx-cta">
@@ -2125,7 +2172,6 @@ body.home-screen.is-fy-split .fy-brand{ left:28px; color:#153554; }
     });
   });
 
-  // Search, mode tabs, and embed controls must not count as a side switch.
   var SEARCH_KEEP = 'input, textarea, select, button, a, label, .hero-card, .bmd-widget, .bmd-finder-search, .search-modes';
 
   root.querySelectorAll('.fy-panel').forEach(function (panel) {
@@ -2233,8 +2279,8 @@ body.home-screen.is-fy-split .fy-brand{ left:28px; color:#153554; }
   // registry id, phase, recruiting status, distance and the reason it matched.
   function renderResults() {
     if (!el.bxResults) return;
-    var condition = DEFAULT_CONDITION;
-    if (el.bxCondition) el.bxCondition.value = DEFAULT_CONDITION;
+    var condition = el.bxCondition ? el.bxCondition.value.trim() : DEFAULT_CONDITION;
+    condition = condition || DEFAULT_CONDITION;
     var location = el.bxLocation ? el.bxLocation.value.trim() : DEFAULT_LOCATION;
     location = location || DEFAULT_LOCATION;
     var isDefault = condition.toLowerCase() === DEFAULT_CONDITION.toLowerCase();

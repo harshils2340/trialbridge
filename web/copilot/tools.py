@@ -280,7 +280,7 @@ def funnel_overview(user_id):
     return {
         "summary": " ".join(parts),
         "items": items,
-        "citations": [{"label": "Recruitment dashboard", "url": "/app/dashboard"}],
+        "citations": [{"label": "Inbox", "url": "/app/inbox"}],
     }
 
 
@@ -846,7 +846,113 @@ def away_recap(user_id, lead_id=None, params=None):
     }
 
 
-def blast_targets(user_id, nct="", stage="", tag="", idle_days=None):
+_DEICTIC = ("this trial", "this study", "current study", "current trial",
+            "selected study", "selected trial", "in this trial", "in this study",
+            "for this trial", "for this study")
+
+
+def _study_picker_hint(studies, active_nct=""):
+    if not studies:
+        return "Claim a study in Settings first, then I can message that cohort."
+    if not active_nct:
+        lines = [f"• {(s['title'] or s['nct'])[:50]} ({s['nct']})" for s in studies[:6]]
+        extra = f"\n…and {len(studies) - 6} more" if len(studies) > 6 else ""
+        return ("You're on All studies. Pick one in the top switcher, or name it:\n"
+                + "\n".join(lines) + extra)
+    return ("Which study? Say its name or pick one in the top switcher, "
+            "I can only blast one study at a time.")
+
+
+def resolve_study_nct(user_id, nct="", query="", active_nct=""):
+    """Pick the study NCT for an action. Returns (nct, error_message)."""
+    ncts = user_ncts(user_id)
+    nct = (nct or "").strip().upper()
+    if nct in ncts:
+        return nct, None
+
+    q = (query or "").lower()
+    scope = (active_nct or "").strip().upper()
+
+    if any(p in q for p in _DEICTIC):
+        if scope in ncts:
+            return scope, None
+        if not scope:
+            return "", ("Pick a study in the top switcher first. You're on "
+                        "All studies right now.")
+        return "", "That study isn't in your workspace."
+
+    if scope in ncts and not nct:
+        # Scoped workspace: "all applicants" without naming a study still means
+        # the trial selected in the switcher.
+        if any(w in q for w in ("all applicant", "every applicant", "everyone",
+                                "everybody", "all accepted", "whole trial",
+                                "whole study", "this cohort")):
+            return scope, None
+
+    studies = db.list_team_studies(user_id)
+    for s in studies:
+        title = (s["title"] or "").lower()
+        if title and len(title) >= 6 and title in q:
+            return s["nct"], None
+        # Short title token match (e.g. "comp360" in query)
+        token = title.split()[0] if title else ""
+        if len(token) >= 5 and token in q:
+            return s["nct"], None
+
+    if len(ncts) == 1:
+        return next(iter(ncts)), None
+
+    return "", None
+
+
+def list_studies(user_id, active_nct="", params=None):
+    """Studies the team has claimed, with applicant counts."""
+    studies = db.list_team_studies(user_id)
+    if not studies:
+        return {
+            "summary": "No studies claimed yet. Add one in Settings and applicants "
+                       "will show up here.",
+            "items": [],
+            "citations": [{"label": "Settings", "url": "/app/settings"}],
+        }
+    scope = (active_nct or "").strip().upper()
+    items = []
+    for s in studies:
+        nct = s["nct"]
+        row = db.get_db().execute(
+            "SELECT COUNT(*) n, SUM(CASE WHEN status = 'enrolled' THEN 1 ELSE 0 END) en "
+            "FROM leads WHERE nct = ?", (nct,)).fetchone()
+        total = int(row["n"] or 0)
+        enrolled = int(row["en"] or 0)
+        is_active = scope and nct == scope
+        detail = f"{nct} · {total} applicant{'s' if total != 1 else ''}"
+        if enrolled:
+            detail += f" · {enrolled} enrolled"
+        if is_active:
+            detail += " · current view"
+        items.append({
+            "title": (s["title"] or nct)[:56],
+            "detail": detail,
+            "study": nct,
+            "url": f"/app/scope?nct={nct}&next=/app/inbox",
+        })
+    if scope:
+        label = next((s["title"] or scope for s in studies if s["nct"] == scope),
+                     scope)
+        summary = (f"You have {len(studies)} stud{'y' if len(studies) == 1 else 'ies'}. "
+                   f"Currently viewing: {label}.")
+    else:
+        summary = (f"You have {len(studies)} stud{'y' if len(studies) == 1 else 'ies'}. "
+                   "The switcher at the top scopes the inbox and applicants list.")
+    return {
+        "summary": summary,
+        "items": items,
+        "citations": [{"label": "Applicants", "url": "/app/leads"}],
+    }
+
+
+def blast_targets(user_id, nct="", stage="", tag="", idle_days=None,
+                  active_nct="", query=""):
     """Resolve a natural-language audience to real recipients.
 
     Everything goes through db.blast_audience, so Bridget is held to exactly the
@@ -855,13 +961,17 @@ def blast_targets(user_id, nct="", stage="", tag="", idle_days=None):
     ncts = user_ncts(user_id)
     nct = (nct or "").strip().upper()
     if nct not in ncts:
-        # No usable study named. If the team only has one, that's unambiguous;
-        # otherwise ask rather than picking for them.
-        if len(ncts) == 1:
-            nct = ncts[0]
+        resolved, scope_err = resolve_study_nct(
+            user_id, nct=nct, query=query, active_nct=active_nct)
+        if resolved:
+            nct = resolved
+        elif scope_err:
+            return "", "", "", [], scope_err
+        elif len(ncts) == 1:
+            nct = next(iter(ncts))
         else:
-            return "", "", "", [], ("Which study? I can only send to one study "
-                                    "at a time.")
+            studies = db.list_team_studies(user_id)
+            return "", "", "", [], _study_picker_hint(studies, active_nct)
     mode, value = "everyone", ""
     if stage:
         mode, value = "stage", stage
@@ -871,3 +981,4 @@ def blast_targets(user_id, nct="", stage="", tag="", idle_days=None):
         mode, value = "idle", str(idle_days)
     leads, err = db.blast_audience(user_id, nct, mode, value)
     return nct, mode, value, leads, err
+

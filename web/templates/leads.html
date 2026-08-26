@@ -72,7 +72,6 @@
         <th class="sel-col"><input type="checkbox" id="blastSelAll" aria-label="Select all applicants"></th>
         <th class="sort" data-sort="text">Applicant<span class="sort-ar"></span></th>
         <th class="sort" data-sort="text">Verdict<span class="sort-ar"></span></th>
-        <th class="sort" data-sort="num">Score<span class="sort-ar"></span></th>
         <th class="sort" data-sort="text">Stage<span class="sort-ar"></span></th>
         <th class="sort" data-sort="text">Source<span class="sort-ar"></span></th>
         <th class="sort" data-sort="time">Last activity<span class="sort-ar"></span></th>
@@ -87,7 +86,7 @@
           data-awaiting="{{ '1' if q.status == 'prescreen' else '0' }}"
           data-score="{{ q.verdict.score }}"
           data-activity="{{ q.last_activity_at }}"
-          data-search="{{ (q.name ~ ' ' ~ (q.email or '') ~ ' ' ~ (q.title or '') ~ ' ' ~ q.source ~ ' ' ~ q.stage.label ~ ' ' ~ q.verdict.label)|lower }}">
+          data-search="{{ (q.name ~ ' ' ~ (q.email or '') ~ ' ' ~ (q.title or '') ~ ' ' ~ (q.nct or '') ~ ' ' ~ q.source ~ ' ' ~ q.stage.label ~ ' ' ~ q.verdict.label)|lower }}">
         <td class="sel-col">
           {% if q.revealed %}<input type="checkbox" class="blast-pick" value="{{ q.id }}" data-nct="{{ q.nct }}" aria-label="Select {{ q.name }}">{% endif %}
         </td>
@@ -96,18 +95,28 @@
             <span class="app-av{{ ' neutral' if not q.revealed }}">{{ q.initials }}</span>
             <div>
               <a class="rowlink" href="{{ url_for('applicant_detail', lead_id=q.id) }}"><b>{{ q.name }}</b></a>
-              <span>{{ q.email or q.title[:38] }}</span>
+              <span>{{ q.email or q.phone or q.code }}</span>
+              {# The trial, as a tag on the person. This row used to fall back to
+                 a chopped study title only when the applicant was blinded, so on
+                 "All studies" - the default - a named applicant showed no study
+                 at all and there was no way to tell which protocol they were
+                 for. Hidden when the switcher is already scoped to one study,
+                 where it would repeat on every row. #}
+              {% if not active_nct and (q.title or q.nct) %}
+              <span class="mh-tag is-study" title="{{ q.title }}{% if q.nct %} ({{ q.nct }}){% endif %}">{{ ic.icon('award') }}<span class="mh-tag-label">{{ q.title or q.nct }}</span></span>
+              {% endif %}
             </div>
-            {% if q.unread %}{{ ui.count(q.unread, 'brand') }}{% endif %}
+            {# No unread-count bubble here: on this row it read as a stray blue
+               circle, not as information. The Unread chip above still filters. #}
           </div>
         </td>
-        <td>{{ ui.badge(q.verdict.label, q.verdict.tone) }}</td>
-        <td>
-          <div class="score-bar">
-            <span class="track"><span class="fill {{ sf }}" style="width:{{ q.verdict.score }}%"></span></span>
-            <b>{{ q.verdict.score }}</b>
-          </div>
-        </td>
+        {# Verdict only. The Score column was a second rendering of exactly this
+           value: measured over 126 applicants, all 9 distinct scores mapped to
+           one verdict each, so the number never disambiguated anything - and
+           within a verdict the spread (57/58/59/61/64/66 all "Possible") is
+           noise nobody sorts on. The figure stays on the row as a tooltip and
+           still powers the "Score: high to low" sort. #}
+        <td>{{ ui.badge(q.verdict.label, q.verdict.tone, extra='title="Match score ' ~ q.verdict.score ~ '/100"') }}</td>
         <td>{{ ui.badge(q.stage.label, q.stage.tone) }}</td>
         <td>{{ q.source }}</td>
         <td style="white-space:nowrap;">{{ q.last_activity }}</td>

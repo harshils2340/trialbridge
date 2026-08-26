@@ -212,6 +212,31 @@ input:focus, textarea:focus, select:focus {
   outline: none; border-color: var(--accent);
   box-shadow: 0 0 0 3.5px var(--accent-soft);
 }
+/* Composite fields: a wrapper (icon + input + clear button) that draws the
+   border and the focus ring itself via :focus-within. The bare input inside is
+   already stripped of its border and background, but the rule above still gives
+   it the ring - so focusing one painted TWO rounded outlines, the inner one
+   reading as a pale pill floating inside the real field. The wrapper owns the
+   ring; the field inside must not draw its own. Keep this list in sync with the
+   `:focus-within` wrappers (search `:focus-within` in this file). */
+.hero-search input, .hero-search select,
+.chips-input input,
+.pr-topsearch-field input,
+.lead-search input,
+.chatbar input, .chatbar textarea,
+.dock-composer textarea,
+.mh-search input {
+  box-shadow: none; border-radius: 0;
+}
+.hero-search input:focus, .hero-search select:focus,
+.chips-input input:focus,
+.pr-topsearch-field input:focus,
+.lead-search input:focus,
+.chatbar input:focus, .chatbar textarea:focus,
+.dock-composer textarea:focus,
+.mh-search input:focus {
+  box-shadow: none;
+}
 textarea { resize: vertical; min-height: 150px; line-height: 1.6; }
 /* iOS Safari zooms the whole page when a field under 16px takes focus, which
    leaves the form half off-screen. Hold every field at 16px on phones. */
@@ -268,13 +293,26 @@ textarea { resize: vertical; min-height: 150px; line-height: 1.6; }
   font-size: 14px; border: 1px solid; }
 .flash.error { background: var(--red-bg); border-color: var(--danger-border); color: var(--red); }
 .flash.ok, .flash.success { background: var(--green-bg); border-color: var(--ok-border); color: var(--green); }
-.toast-stack { position: fixed; right: 18px; top: 74px; z-index: 1200;
-  width: min(420px, calc(100vw - 22px)); display: flex; flex-direction: column; gap: 10px; }
+/* Bottom-right, clear of the Bridget rail. It used to sit at top:74px, which put
+   it directly over the conversation header's Stage and Owner dropdowns for the
+   ~5s it was on screen - covering the controls you had just used. Bottom-right
+   was no better: it landed on the composer's own Send/Draft buttons, right after
+   the click that raised the toast. Bottom-LEFT sits over the conversation list,
+   which is the one region you are provably not interacting with at the moment a
+   toast fires. The left offset clears the app rail. */
+.toast-stack { position: fixed; left: calc(52px + 18px); right: auto; bottom: 18px;
+  top: auto; z-index: 1200; width: min(340px, calc(100vw - 22px));
+  display: flex; flex-direction: column-reverse; gap: 10px; }
 .flash-toast { margin: 0; display: flex; align-items: center; justify-content: flex-start;
-  gap: 10px; box-shadow: var(--shadow-lift); border-radius: var(--radius-sm);
-  background: var(--surface); color: var(--ink-soft); border-color: var(--border);
+  gap: 10px; padding: 11px 13px; font-size: 13px; line-height: 1.45;
+  box-shadow: var(--shadow-lift); border-radius: var(--radius-sm);
+  background: var(--surface); color: var(--ink-soft); border: 1px solid var(--border);
   animation: toastIn .26s cubic-bezier(.22,1,.36,1); }
-.flash-toast.info { background: #edf2ff; border-color: #cdd8ff; color: #3c4a8a; }
+/* Was three hardcoded hexes (#edf2ff / #cdd8ff / #3c4a8a) - a blue-violet that
+   belongs to no part of the palette. The info tokens already exist; use them so
+   toasts read as the same product as everything else. */
+.flash-toast.info { background: var(--info-bg); border-color: var(--info-border);
+  color: var(--info); }
 .flash-toast.warn { background: var(--amber-bg); border-color: var(--warn-border); color: var(--amber); }
 .toast-ic { flex: none; display: inline-flex; align-items: center; justify-content: center; }
 .toast-ic .ico { width: 17px; height: 17px; }
@@ -282,31 +320,37 @@ textarea { resize: vertical; min-height: 150px; line-height: 1.6; }
 .toast-close { border: 0; background: transparent; color: inherit; opacity: .55;
   font-size: 18px; line-height: 1; cursor: pointer; padding: 0 2px; align-self: flex-start; }
 .toast-close:hover { opacity: .9; }
-.flash-toast.toast-hide { opacity: 0; transform: translateX(12px); transition: opacity .22s, transform .22s; }
+/* Rises from the bottom edge now that the stack is anchored there; sliding in
+   sideways read as arriving from nowhere. */
+.flash-toast.toast-hide { opacity: 0; transform: translateY(8px) scale(.98);
+  transition: opacity .22s, transform .22s; }
 @keyframes toastIn {
-  from { opacity: 0; transform: translateX(16px); }
-  to   { opacity: 1; transform: translateX(0); }
+  from { opacity: 0; transform: translateY(14px) scale(.98); }
+  to   { opacity: 1; transform: none; }
 }
 @media (prefers-reduced-motion: reduce) { .flash-toast { animation: none; } }
 @media (max-width: 820px) {
-  .toast-stack { left: 12px; right: 12px; width: auto; top: 68px; }
+  .toast-stack { left: 12px; right: 12px; width: auto; bottom: 12px; top: auto; }
 }
 
-/* Inbox participant workspace — ported from the Figma intake prototype while
+/* Inbox participant workspace, ported from the Figma intake prototype while
    retaining the shared BridgeMD shell, tokens, controls, and provider flows. */
-.appshell:has(.mh-page) > .appside-backdrop,
-.appshell:has(.mh-page) .apptop { display:none; }
-/* Inbox is full-height but NOT full-bleed: keep a compact icon rail so the primary
-   nav (Inbox/Applicants/Team/Settings) is always one click away. It's forced into
-   the collapsed 64px rail via `is-collapsed` (template + applyMode) so it can't be
-   dragged/expanded here and eat the workspace. */
+.appshell:has(.mh-page) > .appside-backdrop { display:none; }
+/* The inbox KEEPS the shared top bar. It used to hide it, which made the inbox
+   the only page in the product without the study switcher and the global search
+   - so "which trial am I in" was answered one way here and another way
+   everywhere else, and the inbox grew its own duplicate picker to compensate.
+   The bar stays; the workspace below it is sized with calc() instead. */
 .appshell:has(.mh-page) > .appside { flex:0 0 auto; }
-.appshell:has(.mh-page) > .appside .appside-resize { display:none; }
 /* min-width:0 lets this flex child actually shrink; without it the body keeps its
    content's min-width and pushes the conversation pane off-screen (the clipped
    right edge). */
-.appshell:has(.mh-page) .appbody { min-height:100vh; min-width:0; }
-.mh-page .mh-workspace { height:100vh; max-height:100vh; }
+.appshell:has(.mh-page) .appbody { min-height:0; min-width:0; }
+/* Full-height minus the bar. Hard-coding 100vh here (as this did while the bar
+   was hidden) now overflows by exactly the bar's height and buries the
+   composer. */
+.mh-page .mh-workspace { height:calc(100vh - var(--apptop-h));
+  max-height:calc(100vh - var(--apptop-h)); }
 .mh-workspace { grid-template-columns:220px 330px minmax(480px, 1fr); }
 .mh-sources { background:var(--surface-2); }
 .mh-sources > :not(.mh-intake-nav) { display:none; }
@@ -362,6 +406,48 @@ textarea { resize: vertical; min-height: 150px; line-height: 1.6; }
 .mh-thread-row p { font-size:11.5px; line-height:1.45; margin-left:38px; }
 .mh-thread-row-foot { margin-left:38px; flex-wrap:wrap; }
 
+/* Outlook-style filter row: the owner scope as a two-way segmented control
+   (Mine / Unassigned, like Focused / Other), and everything else - stage and
+   open/resolved - behind one Filter menu. No overflow here: the menu is an
+   absolutely positioned popover and overflow-x:auto would have clipped it. */
+.mh-filterbar { display:flex; align-items:center; justify-content:space-between; gap:8px;
+  min-width:0; padding:6px 10px; border-bottom:1px solid var(--border); }
+.mh-scope-seg { display:inline-flex; align-items:center; gap:2px; padding:2px; min-width:0;
+  border-radius:8px; background:var(--surface-2); }
+.mh-seg { display:inline-flex; align-items:center; gap:6px; padding:5px 10px; border-radius:6px;
+  color:var(--muted); font:600 12px/1.2 var(--sans); text-decoration:none; white-space:nowrap; }
+.mh-seg:hover { color:var(--ink); text-decoration:none; }
+.mh-seg.is-active { background:var(--surface); color:var(--ink);
+  box-shadow:0 1px 2px rgba(15,23,42,.10); }
+.mh-tab-count {
+  /* Integer box, text centred by flex: a fractional line-height rounds
+     differently per pill once the inbox is scaled in the landing frame. */
+  display:inline-flex; align-items:center; justify-content:center;
+  box-sizing:border-box; min-width:16px; height:14px; padding:0 5px;
+  border-radius:999px; background:var(--accent-soft); color:var(--accent);
+  font-size:9px; font-weight:750; line-height:1;
+}
+.mh-seg.is-active .mh-tab-count { background:var(--accent); color:var(--accent-ink); }
+.mh-filter { flex:0 0 auto; }
+.mh-filter-btn { display:inline-flex; align-items:center; gap:5px; padding:5px 8px;
+  border-radius:6px; color:var(--muted); font:600 12px/1.2 var(--sans); white-space:nowrap; }
+.mh-filter-btn:hover, .mh-filter[open] > .mh-filter-btn { background:var(--surface-2); color:var(--ink); }
+.mh-filter-btn.is-on { color:var(--accent); background:var(--accent-soft); }
+.mh-filter-btn .ico { width:14px; height:14px; }
+.mh-filter .appmenu-panel { min-width:210px; }
+.mh-filter-opt { justify-content:space-between; }
+.mh-filter-opt em { font-style:normal; font-size:11.5px; font-weight:600; color:var(--faint); }
+.mh-filter-opt.is-on { color:var(--accent); }
+.mh-filter-opt.is-on em { color:var(--accent); }
+/* Search-as-you-type over the loaded list (Enter still runs the full search). */
+.mh-thread-row.is-filtered { display:none !important; }
+.mh-live-empty { padding:22px 16px; font-size:13px; line-height:1.5; color:var(--muted);
+  text-align:center; }
+.mh-live-empty b { color:var(--ink); font-weight:600; }
+.mh-filterbar .mh-owner-toggle { flex:0 0 auto; margin:0; border-bottom:0;
+  padding:0; }
+.mh-filterbar .mh-stage-tabs { flex:1 1 auto; min-width:0; border-bottom:0;
+  padding:0; }
 .mh-stage-tabs { display:flex; align-items:center; flex:0 0 auto;
   gap:var(--space-1); padding:var(--space-2) var(--space-3);
   border-bottom:1px solid var(--border); overflow-x:auto; scrollbar-width:none; }
@@ -395,9 +481,13 @@ textarea { resize: vertical; min-height: 150px; line-height: 1.6; }
 .mh-pipeline .is-active i,.mh-pipeline .is-done i {
   border-color:var(--accent); background:var(--accent); color:var(--accent-ink); }
 
-.mh-link-applicant { margin:var(--space-4) var(--space-5) 0; padding:var(--space-4);
-  display:flex; align-items:center; justify-content:space-between; gap:var(--space-4);
+/* A single command row now that the title/subtitle block is gone: consent gate,
+   optional age, and the action it unlocks - right-aligned, one line tall. */
+.mh-link-applicant { margin:var(--space-3) var(--space-5) 0;
+  padding:var(--space-2) var(--space-3);
+  display:flex; align-items:center; justify-content:flex-end; gap:var(--space-3);
   background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); }
+.mh-link-applicant input[type="checkbox"] { margin-right:6px; }
 .mh-link-applicant > div,.mh-clinical-card header > div { display:flex; align-items:center; gap:var(--space-3); }
 .mh-link-applicant span span,.mh-clinical-card header span span { display:flex; flex-direction:column; gap:2px; }
 .mh-link-applicant b,.mh-clinical-card header b { font-size:13px; color:var(--ink); }
@@ -466,9 +556,7 @@ textarea { resize: vertical; min-height: 150px; line-height: 1.6; }
 .mh-criteria > div:not(.mh-criteria-head) { display:flex; align-items:flex-start;
   gap:var(--space-3); padding:var(--space-3); border-top:1px solid var(--border); }
 .mh-criteria > div > svg { width:14px; height:14px; flex:0 0 14px; }
-.mh-criteria > div > span { display:flex; flex-direction:column; gap:2px; }
-.mh-criteria > div > span b { font-size:10.5px; }
-.mh-criteria > div > span small { color:var(--muted); font-size:10.5px; }
+.mh-criteria > div > span { font-size:12px; line-height:1.4; color:var(--ink); }
 .mh-criteria .is-met > svg { color:var(--ok); }
 .mh-criteria .is-pending > svg { color:var(--amber); }
 .mh-criteria .is-failed > svg { color:var(--red); }
@@ -1014,7 +1102,7 @@ body.pub:not(.fs-page) {
 
 .pub-nav { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center;
   gap: 16px; padding: 20px 40px; }
-/* Bigger, more confident brand lockup — matches the scale of the /for-sites header. */
+/* Bigger, more confident brand lockup, matches the scale of the /for-sites header. */
 .pub-nav .brand { font-size: 23px; gap: 12px; }
 .pub-nav .brand .brand-glyph { width: 36px; height: 36px; }
 .pub-nav .brand { justify-self: start; }
@@ -1100,6 +1188,10 @@ body.pub:not(.fs-page) {
   .pill-nav { grid-template-columns: auto 1fr; padding: 9px 10px 9px 18px; max-width: none;
     margin: max(10px, env(safe-area-inset-top)) 12px 0; }
   .pill-nav.is-condensed { max-width: none; }
+  /* Open sheet: the header becomes a tall panel, and a 999px pill radius on a tall
+     box gets scaled into an ellipse. Pin the corner to what the closed 64px pill
+     already renders (half its height) so the top corners don't move on open. */
+  .pill-nav.is-menu { border-radius: 32px; }
   .pill-nav-center { display: none; }
   .pill-nav-signin { display: none; }
   /* The desktop CTA is too wide to sit next to the burger on a phone; move it into
@@ -2913,7 +3005,7 @@ h1, h2, h3 {
   transition: background .2s ease, border-color .2s ease, backdrop-filter .2s ease;
 }
 /* Transparent at the top so it melts into the page tint; frosts once you scroll
-   past the hero so text stays legible over content. No hard divider line — the
+   past the hero so text stays legible over content. No hard divider line, the
    glass + a soft shadow keep it blended into the page instead of a boxed header. */
 body.pub.is-scrolled .pub-nav {
   background: color-mix(in srgb, var(--surface) 76%, transparent);
@@ -3531,7 +3623,7 @@ main:focus { outline: none; }
 .theme-toggle-float { position: fixed; top: 16px; right: 16px; z-index: 30; box-shadow: var(--shadow); }
 
 /* ==========================================================================
-   Colorblind-safe status cues — never rely on hue alone. The match-quality
+   Colorblind-safe status cues, never rely on hue alone. The match-quality
    dots get distinct SHAPES, and fit badges carry distinct ICONS (set in the
    templates: check / sparkle / x) plus a defining border.
    ========================================================================== */
@@ -3773,7 +3865,7 @@ main:focus { outline: none; }
 [data-theme="dark"] .ats-row-item:hover { background: rgba(164, 166, 251, .06); }
 
 /* ==========================================================================
-   Lane 4 — EHR background matching (demo). Token-driven so it themes with dark
+   Lane 4, EHR background matching (demo). Token-driven so it themes with dark
    mode automatically; stacks cleanly on mobile.
    ========================================================================== */
 /* Compact, functional connection line (not a marketing banner) */
@@ -4083,7 +4175,7 @@ main:focus { outline: none; }
   font-size: 13px; font-weight: 500; color: var(--muted); }
 .b2b-note .ico { width: 15px; height: 15px; color: var(--green); }
 
-/* "Works with your tools" — real brand marks for an at-a-glance trust signal. */
+/* "Works with your tools", real brand marks for an at-a-glance trust signal. */
 .integrations { max-width: 1000px; margin: 20px auto 4px; padding: 0 24px; }
 .integrations-in { text-align: center; }
 .integrations-eyebrow { font-size: 12px; font-weight: 700; letter-spacing: .07em;
@@ -4183,42 +4275,71 @@ main:focus { outline: none; }
 }
 
 /* ================================================================= *
- * STUDY-TEAM APP ("BridgeMD for sites") — shell + screens.          *
+ * STUDY-TEAM APP ("BridgeMD for sites"), shell + screens.          *
  * Consumes the :root tokens only. Badges/buttons/chips/empty/modal  *
  * still come from _ui.html macros; this adds the shell + layout      *
  * primitives those screens share.                                    *
  * ================================================================= */
-.appshell { display: flex; min-height: 100vh; background: var(--bg); }
+/* --apptop-h is the single source of truth for the top bar's height: the inbox
+   workspace is full-height *minus the bar*, so the two must never drift apart. */
+.appshell { --apptop-h: 56px;
+  display: flex; min-height: 100vh; background: var(--bg); }
 .appside { width: var(--appside-w, 240px); flex-shrink: 0; background: var(--surface);
   border-right: 1px solid var(--border); display: flex; flex-direction: column;
   position: sticky; top: 0; height: 100vh; }
-/* No width transition while actively dragging (feels laggy); only when snapping. */
-.appside { transition: width .15s ease; }
-body.is-resizing .appside, body.is-resizing .appdock { transition: none; }
+/* No width transition while actively dragging Bridget (feels laggy). */
+body.is-resizing .appdock { transition: none; }
 
-/* Collapsed icon rail: a real 64px-wide rail. The main workspace reflows to
-   reclaim the freed space (no reserved footprint / transparent gap - that left a
-   big blank strip between the rail and the content). */
-.appside.is-collapsed { width: 64px; }
+/* Persistent icon rail. Layout width stays 52px on every page; labels paint
+   as an overlay so hover never pushes the workspace. */
+.appside.is-collapsed { width: 52px; overflow: visible; z-index: 40; }
 .appside.is-collapsed > * { width: 100%; box-sizing: border-box; }
-.appside.is-collapsed .appside-brand { justify-content: center; }
-.appside.is-collapsed .appside-brand .bt { display: none; }
-.appside.is-collapsed .appnav a { justify-content: center; gap: 0; font-size: 0;
-  padding-left: 0; padding-right: 0; }
-.appside.is-collapsed .appnav a .ico { font-size: initial; }
-.appside.is-collapsed .appnav-count { display: none; }
+.appside.is-collapsed .appside-brand { justify-content: center; padding: 14px 0; position: relative; }
+.appside.is-collapsed .appnav { overflow: visible; padding: 8px 6px; }
+.appside.is-collapsed .appnav a { position: relative; justify-content: center; gap: 0;
+  width: 40px; height: 40px; margin: 0 auto; padding: 0; border-radius: 8px; }
+.appside.is-collapsed .appnav a.active { background: var(--accent-soft); }
+.appside.is-collapsed .appnav a.active::before {
+  content: ""; position: absolute; left: -6px; top: 8px; bottom: 8px; width: 3px;
+  border-radius: 0 2px 2px 0; background: var(--accent); }
+.appside.is-collapsed .appnav-count {
+  position: absolute; top: 4px; right: 2px; margin: 0; min-width: 14px; height: 14px;
+  padding: 0 4px; font-size: 9px; }
 .appside.is-collapsed .appnav-group { border-top: 1px solid var(--border);
   margin-top: 6px; padding-top: 6px; }
 .appside.is-collapsed .appnav-group-label { display: none; }
-.appside.is-collapsed .appside-user { justify-content: center; }
-.appside.is-collapsed .appside-user .u { display: none; }
+.appside.is-collapsed .appside-user { justify-content: center; position: relative; padding: 6px 0; }
 .appside.is-collapsed .app-demo-guide { display: none; }
-.appside.is-collapsed .appside-foot .mini { font-size: 0; justify-content: center; gap: 0; }
-.appside.is-collapsed .appside-foot .mini .ico { font-size: initial; }
-/* No hover-to-open: the rail stays a rail until you drag it out or hit the
-   toggle. (Hover-expand kept snapping it open by accident.) */
-/* One-shot smooth transition when the drag snaps into / out of the rail. */
-body.is-resizing .appside.is-snapping { transition: width .18s ease; }
+.appside.is-collapsed .appside-foot { padding: 8px 6px; }
+.appside.is-collapsed .appside-foot .mini { justify-content: center; gap: 0; padding: 8px 0;
+  position: relative; }
+.appside.is-collapsed .appside-foot .theme-toggle.mini { justify-content: center; }
+.appside.is-collapsed .rail-tip, .appside.is-collapsed .appnav-label {
+  position: absolute; left: calc(100% + 10px); top: 50%; transform: translateY(-50%);
+  z-index: 80; padding: 6px 10px; background: var(--ink); color: #fff;
+  font-size: 12px; font-weight: 600; line-height: 1.25; letter-spacing: 0;
+  text-transform: none; white-space: nowrap; border-radius: 6px;
+  box-shadow: var(--shadow); opacity: 0; pointer-events: none;
+  transition: opacity .12s ease; }
+/* Brand tip reuses the expanded-rail title markup (.bt > b/small). Those
+   elements keep ink-colored text for the wide sidebar, which made "BridgeMD"
+   vanish on the black tip and left a lone "for sites" chip over the search. */
+.appside.is-collapsed .appside-brand .rail-tip,
+.appside.is-collapsed .appside-brand .rail-tip b { color: #fff; }
+.appside.is-collapsed .appside-brand .rail-tip small { display: none; }
+.appside.is-collapsed .rail-tip small, .appside.is-collapsed .rail-tip span {
+  display: block; font-size: 10px; font-weight: 500; color: rgba(255,255,255,.7);
+  letter-spacing: 0; text-transform: none; }
+.appside.is-collapsed .appside-brand:hover .rail-tip,
+.appside.is-collapsed .appside-brand:focus-visible .rail-tip,
+.appside.is-collapsed .appnav a:hover .appnav-label,
+.appside.is-collapsed .appnav a:focus-visible .appnav-label,
+.appside.is-collapsed .appside-user:hover .rail-tip,
+.appside.is-collapsed .mini:hover .rail-tip,
+.appside.is-collapsed .mini:focus-visible .rail-tip { opacity: 1; }
+@media (prefers-reduced-motion: reduce) {
+  .appside.is-collapsed .rail-tip, .appside.is-collapsed .appnav-label { transition: none; }
+}
 .appside-brand { padding: 20px 20px 16px; border-bottom: 1px solid var(--border);
   display: flex; gap: 10px; align-items: center; }
 .appside-logo { width: 30px; height: 30px; background: var(--accent); color: var(--accent-ink);
@@ -4227,11 +4348,8 @@ body.is-resizing .appside.is-snapping { transition: width .18s ease; }
   --mark-a: #fff; --mark-b: rgba(255,255,255,.5); }
 .appside-logo img, .appside-logo svg { width: 18px; height: 18px; display: block; }
 .appside-logo .ico { width: 26px; height: 26px; }
-.appside-brand .bt { line-height: 1.1; }
-.appside-brand .bt b { font-weight: 800; font-size: 16px; letter-spacing: -.02em;
-  color: var(--ink); display: block; }
-.appside-brand .bt small { font-size: 10px; color: var(--faint); font-weight: 600;
-  letter-spacing: .07em; text-transform: uppercase; }
+.appside-brand .bt { display: block; line-height: 1.1; font-weight: 800;
+  font-size: 16px; letter-spacing: -.02em; color: var(--ink); }
 .appnav { flex: 1; padding: 12px; overflow-y: auto; display: flex;
   flex-direction: column; gap: 2px; }
 
@@ -4787,7 +4905,7 @@ a.detail-row:hover { color: var(--accent); text-decoration: none; }
    accent line on hover/drag. Double-click resets to the default width. */
 .appside-resize, .dock-resize { position: absolute; top: 0; height: 100%;
   width: 8px; z-index: 6; cursor: col-resize; touch-action: none; }
-.appside-resize { right: -4px; }
+.appside-resize { display: none; }
 .dock-resize { left: -4px; }
 .appside-resize::after, .dock-resize::after { content: ""; position: absolute; top: 0;
   bottom: 0; left: 50%; width: 2px; transform: translateX(-50%);
@@ -4805,12 +4923,13 @@ body.is-resizing { cursor: col-resize; user-select: none; }
 .dock-resize { display: none; }
 @media (min-width: 1440px) { .appdock[data-open="1"] .dock-resize { display: block; } }
 
-/* Panel toggle button in the top bar — collapses the rail on desktop, opens the
+/* Panel toggle button in the top bar, collapses the rail on desktop, opens the
    drawer on mobile. One discoverable control, like a workspace sidebar toggle. */
-.apptop-panel-toggle { flex: none; display: inline-flex; align-items: center;
-  justify-content: center; width: 34px; height: 34px; margin-left: -6px;
+.apptop-panel-toggle { flex: none; display: none; align-items: center;
+  justify-content: center; width: 34px; height: 34px; padding: 0; margin-left: -6px;
   border: 1px solid transparent; border-radius: 9px; background: none;
   color: var(--muted); cursor: pointer; transition: background .12s ease, color .12s ease; }
+.appshell.is-drawer .apptop-panel-toggle { display: inline-flex; }
 .apptop-panel-toggle:hover { background: var(--surface-2); color: var(--ink); }
 .apptop-panel-toggle .ico { width: 19px; height: 19px; }
 
@@ -4823,23 +4942,55 @@ body.is-resizing { cursor: col-resize; user-select: none; }
 .appshell.is-drawer.is-drawer-open .appside { transform: none; }
 .appshell.is-drawer.is-drawer-open .appside-backdrop { opacity: 1; pointer-events: auto; }
 /* In drawer mode there's no rail: always show full labels. */
-.appshell.is-drawer .appside.is-collapsed { width: var(--appside-w, 264px); }
+.appshell.is-drawer .appside.is-collapsed { width: var(--appside-w, 264px); overflow: hidden; }
+.appshell.is-drawer .appside.is-collapsed .appnav { overflow-y: auto; padding: 12px; }
 .appshell.is-drawer .appside.is-collapsed .appnav a { justify-content: flex-start;
-  gap: 10px; font-size: 14px; padding-left: 12px; padding-right: 12px; }
-.appshell.is-drawer .appside.is-collapsed .appside-brand .bt,
-.appshell.is-drawer .appside.is-collapsed .appnav-count,
-.appshell.is-drawer .appside.is-collapsed .appside-user .u { display: block; }
+  gap: 10px; width: auto; height: auto; margin: 0; font-size: 14px;
+  padding: 9px 12px; }
+.appshell.is-drawer .appside.is-collapsed .appnav a.active::before { display: none; }
+.appshell.is-drawer .appside.is-collapsed .appside-brand { padding: 20px 20px 16px;
+  justify-content: flex-start; }
+.appshell.is-drawer .appside.is-collapsed .appnav-count { position: static; margin-left: auto;
+  min-width: 18px; height: 18px; padding: 0 6px; font-size: 11px; }
+.appshell.is-drawer .appside.is-collapsed .appnav-label,
+.appshell.is-drawer .appside.is-collapsed .rail-tip {
+  position: static; transform: none; opacity: 1; background: none; color: inherit;
+  padding: 0; box-shadow: none; pointer-events: auto; font-size: inherit;
+  font-weight: inherit; }
+.appshell.is-drawer .appside.is-collapsed .rail-tip small,
+.appshell.is-drawer .appside.is-collapsed .rail-tip span {
+  color: var(--faint); font-size: 10px; }
+.appshell.is-drawer .appside.is-collapsed .appside-user { justify-content: flex-start;
+  padding: 6px 8px; }
+.appshell.is-drawer .appside.is-collapsed .appside-foot { padding: 12px; }
+.appshell.is-drawer .appside.is-collapsed .appside-foot .mini { justify-content: flex-start;
+  gap: 8px; padding: 7px 8px; }
 
 .appmain { flex: 1; display: flex; flex-direction: column; min-width: 0; }
-.apptop { height: 56px; background: var(--surface); border-bottom: 1px solid var(--border);
-  display: flex; align-items: center; gap: 16px; padding: 0 24px;
-  position: sticky; top: 0; z-index: 20; }
-/* Study switcher (dropdown) */
+/* Three zones, not a flex run with a spacer: the study switcher is the answer to
+   "which trial am I working in", so it sits dead centre and holds that position
+   no matter how wide the left/right zones get. Grid (not flex) because only a
+   fixed centre column keeps it optically centred when the two sides have
+   different widths. */
+.apptop { height: var(--apptop-h); background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  display: grid; grid-template-columns: 1fr auto 1fr; align-items: center;
+  gap: 16px; padding: 0 16px; position: sticky; top: 0; z-index: 20; }
+.apptop-left  { display: flex; align-items: center; gap: 10px; min-width: 0;
+  justify-self: start; }
+.apptop-left .appsearch-wrap { flex: 0 1 320px; min-width: 0; }
+.apptop-mid   { display: flex; align-items: center; gap: 10px; min-width: 0;
+  justify-self: center; }
+.apptop-right { display: flex; align-items: center; gap: 6px; min-width: 0;
+  justify-self: end; }
+/* Study switcher (dropdown) - the workspace scope, so it reads as a title
+   rather than as one more filter control. */
 .appswitch-wrap { position: relative; flex-shrink: 0; }
-.appswitch { display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px;
-  border: 1px solid var(--border); border-radius: 10px; background: var(--bg);
-  font-size: 13px; font-weight: 700; color: var(--ink); cursor: pointer;
-  list-style: none; max-width: 240px; }
+.appswitch { display: inline-flex; align-items: center; gap: 8px; padding: 7px 14px;
+  border: 1px solid var(--border); border-radius: var(--radius-pill);
+  background: var(--surface-2);
+  font-size: 13.5px; font-weight: 700; color: var(--ink); cursor: pointer;
+  list-style: none; max-width: 420px; }
 .appswitch::-webkit-details-marker { display: none; }
 .appswitch:hover { border-color: var(--accent); }
 .appswitch-lbl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -5115,12 +5266,25 @@ body.is-resizing { cursor: col-resize; user-select: none; }
 .rowlink::after { content: ""; position: absolute; inset: 0; z-index: 1; }
 tr.link:focus-within { background: var(--bg); }
 .rowlink:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
-/* Any genuine interactive element in the row must sit above the stretched link. */
-tr.link .count, tr.link a:not(.rowlink), tr.link button { position: relative; z-index: 2; }
+/* Any genuine interactive element in the row must sit above the stretched link.
+   `input` was missing, so the blast selection checkbox sat UNDER .rowlink::after:
+   clicking it opened the applicant instead of ticking it, and hand-picking a
+   blast audience was impossible. Select-all worked only because it lives in a
+   <th>, outside tr.link. */
+tr.link .count, tr.link a:not(.rowlink), tr.link button,
+tr.link input, tr.link label, tr.link select { position: relative; z-index: 2; }
 .app-table .who { display: flex; align-items: center; gap: 9px; }
 .app-table .who b { font-weight: 600; font-size: 13.5px; color: var(--ink); display: block;
   line-height: 1.25; }
 .app-table .who span { font-size: 12px; color: var(--muted); }
+/* The study tag lives inside the applicant cell and has to out-specify the
+   generic `.app-table .who span` above, which would otherwise repaint the pill
+   as plain muted body text. It also shrinks with the cell rather than taking
+   the fixed pill width, so it truncates instead of overflowing the column. */
+.app-table .who > div { min-width: 0; }
+.app-table .who .mh-tag { display: flex; margin-top: 4px; max-width: 230px;
+  width: max-content; font-size: 10.5px; font-weight: 650; color: var(--ink-soft); }
+.app-table .who .mh-tag .mh-tag-label { font-size: inherit; color: inherit; }
 /* Smaller avatar + tighter score bar inside the (dense) applicants table only. */
 .app-table .app-av { width: 28px; height: 28px; font-size: 11px; }
 .app-table .score-bar { min-width: 92px; gap: 7px; }
@@ -5531,111 +5695,88 @@ a.rail-attn:hover { text-decoration: underline; }
 [data-theme="dark"] .appnav a.active { background: var(--accent); color: #fff; }
 
 /* --------------------------------------------------------------------------
-   Copilot - a docked, always-on side panel on study-team pages (third column)
+   Bridget dock, Cursor-style agent chat on the right of study-team pages
    -------------------------------------------------------------------------- */
 .appdock {
-  width: var(--appdock-w, 360px); flex-shrink: 0; background: var(--surface);
+  width: var(--appdock-w, 400px); flex-shrink: 0; background: var(--surface);
   border-left: 1px solid var(--border); display: flex; flex-direction: column;
   position: sticky; top: 0; height: 100vh;
 }
-.appdock[data-open="0"] { display: none; }
-.dock-head {
-  display: flex; align-items: center; gap: var(--space-3);
-  padding: 16px 18px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+.appdock[data-open="0"] {
+  width: 48px; min-width: 48px;
 }
-.dock-title { display: flex; align-items: center; gap: 10px; }
-.dock-title > div { display: flex; flex-direction: column; line-height: 1.25; }
-.dock-title b { font-size: 15px; color: var(--ink); letter-spacing: -.01em; }
-.dock-title span { font-size: 11.5px; color: var(--faint); }
-.dock-brand { position: relative; width: 32px; height: 32px; flex-shrink: 0;
-  border-radius: var(--radius-pill); background: var(--accent-soft);
+.appdock[data-open="0"] .dock-log,
+.appdock[data-open="0"] .dock-form,
+.appdock[data-open="0"] .dock-head-actions { display: none; }
+.appdock[data-open="0"] .dock-head {
+  flex: 1; flex-direction: column; align-items: center; justify-content: flex-start;
+  gap: 12px; padding: 14px 0; border-bottom: 0; cursor: pointer;
+}
+.appdock[data-open="0"] .dock-title { flex-direction: column; gap: 12px; margin: 0; }
+.appdock[data-open="0"] .dock-title b {
+  writing-mode: vertical-rl; transform: rotate(180deg);
+  font-size: 12px; font-weight: 600; letter-spacing: .06em;
+}
+.dock-head {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px 10px 14px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+}
+.dock-title { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.dock-title b { font-size: 13.5px; font-weight: 600; color: var(--ink);
+  letter-spacing: -.01em; }
+.dock-brand { position: relative; width: 22px; height: 22px; flex-shrink: 0;
   display: inline-flex; align-items: center; justify-content: center; }
-.dock-brand img { width: 18px; height: 18px; display: block; }
-.dock-dot { position: absolute; right: -1px; bottom: -1px; width: 10px; height: 10px;
-  border-radius: var(--radius-pill); background: var(--green, #16a34a);
-  border: 2px solid var(--surface); }
-.dock-head-actions { margin-left: auto; display: inline-flex; align-items: center; gap: 2px; }
-.dock-icon-btn { background: none; border: none; cursor: pointer; color: var(--faint);
-  display: inline-flex; padding: 6px; border-radius: 8px;
+.dock-brand svg { width: 16px; height: 16px; }
+.dock-head-actions { margin-left: auto; display: inline-flex; align-items: center; gap: 0; }
+.dock-icon-btn { background: none; border: none; cursor: pointer; color: var(--muted);
+  display: inline-flex; padding: 5px; border-radius: 6px;
   transition: background .12s ease, color .12s ease; }
-.dock-icon-btn:hover { background: var(--bg); color: var(--ink); }
-.dock-icon-btn svg { width: 18px; height: 18px; }
-.dock-log { flex: 1; overflow-y: auto; padding: 16px; display: flex;
-  flex-direction: column; gap: 12px; }
-/* Bot messages read as an assistant turn: a small brand avatar + a stacked body
-   (bubble, citations, action card). "Me" stays a right-aligned bubble. */
-.copilot-msg { max-width: 92%; display: flex; gap: 9px; }
-.copilot-msg.bot { align-self: flex-start; }
-.copilot-msg.me { align-self: flex-end; max-width: 86%; }
-.copilot-avatar { flex: none; width: 26px; height: 26px; border-radius: 8px;
-  background: var(--accent-soft); color: var(--accent); display: grid;
-  place-items: center; margin-top: 1px; }
-.copilot-avatar svg { width: 15px; height: 15px; }
-/* Bridget's avatar carries the BridgeMD mark. Inside the tinted tile the mark's
-   own two-tone blue would muddy, so it runs on the accent with a softened
-   second square - the same treatment as a filled Bridget button. */
-.copilot-avatar { --mark-a: var(--accent); --mark-b: var(--accent-soft); }
-[data-theme="dark"] .copilot-avatar { --mark-b: var(--border-strong); }
-.copilot-body { min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.dock-icon-btn:hover { background: var(--surface-2); color: var(--ink); }
+.dock-icon-btn svg { width: 16px; height: 16px; }
+.dock-log { flex: 1; overflow-y: auto; padding: 16px 16px 8px; display: flex;
+  flex-direction: column; gap: 18px; }
+.appdock[data-empty="1"] .dock-log { justify-content: center; }
+
+/* Empty chat, quiet, centered, no dashboard. */
+.copilot-empty { display: flex; flex-direction: column; align-items: center;
+  text-align: center; gap: 8px; padding: 12px 20px 28px; }
+.copilot-empty-mark { width: 36px; height: 36px; border-radius: 10px;
+  background: var(--accent-soft); color: var(--accent);
+  display: grid; place-items: center; margin-bottom: 4px;
+  --mark-a: var(--accent); --mark-b: var(--accent-soft); }
+.copilot-empty-mark svg { width: 18px; height: 18px; }
+.copilot-empty h2 { margin: 0; font-size: 16px; font-weight: 600; color: var(--ink);
+  letter-spacing: -.02em; }
+.copilot-empty p { margin: 0; font-size: 13px; line-height: 1.45; color: var(--muted);
+  max-width: 240px; }
+/* With an inbox conversation open the empty pane offers the starting points
+   the composer used to carry (they write a reply into the box). */
+.copilot-empty .copilot-suggest { justify-content: center; margin-top: 8px; }
+
+/* Turns are full-width prose, not chat bubbles. User prompt sits in a card;
+   Bridget's answer is plain text underneath, the Cursor agent pattern. */
+.copilot-msg { width: 100%; max-width: 100%; display: flex; }
+.copilot-msg.bot, .copilot-msg.me { align-self: stretch; }
+.copilot-body { min-width: 0; width: 100%; display: flex; flex-direction: column; gap: 10px; }
 .copilot-body:empty { display: none; }
 .copilot-msg p {
-  margin: 0; padding: 10px 13px; border-radius: 13px;
-  font-size: 13px; line-height: 1.55; white-space: pre-wrap;
+  margin: 0; padding: 0; border: 0; border-radius: 0; background: none;
+  font-size: 13.5px; line-height: 1.6; white-space: pre-wrap; color: var(--ink);
+  box-shadow: none;
 }
 .copilot-msg p:empty { display: none; }
-.copilot-msg.bot p { background: var(--bg); color: var(--ink);
-  border: 1px solid var(--border); border-top-left-radius: 4px; }
-.copilot-msg.me p { background: var(--accent); color: var(--accent-ink);
-  border-top-right-radius: 4px; }
-/* Intro (not a bubble): a quietly framed welcome line beside the avatar. */
-.copilot-hello { font-size: 13px; line-height: 1.55; color: var(--ink);
-  background: var(--bg); border: 1px solid var(--border);
-  border-radius: 13px; border-top-left-radius: 4px; padding: 11px 13px; }
-.copilot-hello b { color: var(--ink); }
-/* Live brief: real, clickable tasks pulled from the same data as the app. */
-.bridget-brief { align-self: stretch; display: flex; flex-direction: column;
-  gap: 7px; animation: copilot-in .2s ease both; }
-.brief-load { display: inline-flex; align-items: center; gap: 8px;
-  font: 500 12.5px/1 var(--sans); color: var(--muted); padding: 4px 2px; }
-.brief-head { font: 700 12px/1.4 var(--sans); color: var(--ink); padding: 4px 2px 2px; }
-.brief-card { display: flex; align-items: center; gap: 10px; width: 100%;
-  text-align: left; border: 1px solid var(--border); background: var(--surface);
-  border-radius: 12px; padding: 10px 11px; cursor: pointer;
-  transition: border-color .12s ease, box-shadow .12s ease, transform .08s ease; }
-.brief-card:hover { border-color: var(--accent);
-  box-shadow: 0 4px 14px rgba(2,6,23,.07); transform: translateY(-1px); }
-.brief-ic { flex: none; width: 34px; height: 34px; border-radius: 9px;
-  background: var(--accent-soft); color: var(--accent); display: grid; place-items: center; }
-.brief-ic svg { width: 17px; height: 17px; }
-.brief-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
-.brief-title { font: 600 12.5px/1.3 var(--sans); color: var(--ink); }
-.brief-sub { font-size: 11px; line-height: 1.35; color: var(--faint);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.brief-count { flex: none; min-width: 20px; height: 20px; padding: 0 6px;
-  border-radius: var(--radius-pill); background: var(--accent);
-  color: var(--accent-ink); font: 700 11.5px/20px var(--sans); text-align: center; }
-.brief-arrow { flex: none; color: var(--faint); display: grid; place-items: center; }
-.brief-arrow svg { width: 15px; height: 15px; }
-.brief-card:hover .brief-arrow { color: var(--accent); }
-.brief-clear { display: flex; align-items: center; gap: 10px;
-  border: 1px solid var(--border); background: var(--surface);
-  border-radius: 12px; padding: 12px; }
-.brief-clear-ic { flex: none; width: 30px; height: 30px; border-radius: var(--radius-pill);
-  background: var(--ok-bg, var(--accent-soft)); color: var(--ok, var(--accent));
-  display: grid; place-items: center; }
-.brief-clear-ic svg { width: 16px; height: 16px; }
-.brief-clear div { display: flex; flex-direction: column; }
-.brief-clear b { font-size: 13px; color: var(--ink); }
-.brief-clear span { font-size: 11.5px; color: var(--faint); }
-.brief-starters-h { font: 600 10.5px/1 var(--sans); letter-spacing: .06em;
-  text-transform: uppercase; color: var(--faint); margin: 12px 2px 8px; }
-/* Scannable answer list: one row per record (title + detail), instead of a
-   run-on sentence that's hard to parse. */
-.copilot-list { list-style: none; margin: 0; padding: 0; display: flex;
-  flex-direction: column; border: 1px solid var(--border); border-radius: 12px;
-  overflow: hidden; background: var(--surface); }
-.copilot-li { padding: 8px 11px; border-top: 1px solid var(--border); }
-.copilot-li:first-child { border-top: none; }
+.copilot-msg.me .copilot-body {
+  background: var(--surface-2, var(--bg));
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px 12px;
+}
+.copilot-msg.me p { font-size: 13.5px; line-height: 1.5; }
+
+.copilot-list { list-style: none; margin: 4px 0 0; padding: 0; display: flex;
+  flex-direction: column; }
+.copilot-li { padding: 8px 0; border-top: 1px solid var(--border); }
+.copilot-li:first-child { border-top: none; padding-top: 2px; }
 .copilot-li.is-link { cursor: pointer; transition: background .1s ease; }
 .copilot-li.is-link:hover { background: var(--surface-2); }
 .cli-main { display: flex; align-items: baseline; gap: 8px; justify-content: space-between; }
@@ -5643,94 +5784,105 @@ a.rail-attn:hover { text-decoration: underline; }
 .cli-study { font-size: 10.5px; color: var(--faint); text-align: right;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 48%; flex: none; }
 .cli-detail { font-size: 11.5px; line-height: 1.4; color: var(--muted); margin-top: 2px; }
-.copilot-li-more { font-size: 11.5px; color: var(--faint); text-align: center; }
-.brief-suggest { margin-top: 12px; }
+.copilot-li-more { text-align: center; padding: 6px 0 2px; }
+.copilot-more { background: var(--surface); border: 1px solid var(--border); border-radius: 999px;
+  cursor: pointer; color: var(--muted); font: 600 11.5px/1 var(--sans); padding: 5px 10px; }
+.copilot-more:hover { color: var(--ink); background: var(--surface-2);
+  border-color: var(--border-strong, var(--border)); }
+
+/* Chat history: past chats, newest first, reopened in place. */
+.copilot-history { display: flex; flex-direction: column; gap: 6px; }
+.ch-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+.ch-head b { font-size: 13px; color: var(--ink); }
+.ch-link { background: none; border: 0; cursor: pointer; color: var(--accent);
+  font: 600 12px/1 var(--sans); padding: 4px 0; }
+.ch-link:hover { text-decoration: underline; }
+.ch-empty { margin: 8px 0; font-size: 13px; line-height: 1.45; color: var(--muted); }
+.ch-item { display: flex; align-items: center; border: 1px solid var(--border);
+  border-radius: 10px; background: var(--surface); overflow: hidden; }
+.ch-item.is-current { border-color: var(--accent); }
+.ch-open { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px;
+  text-align: left; background: none; border: 0; cursor: pointer; padding: 9px 10px; }
+.ch-open:hover { background: var(--surface-2); }
+.ch-title { font: 600 12.5px/1.35 var(--sans); color: var(--ink);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ch-meta { font-size: 11px; color: var(--faint); }
+.ch-del { background: none; border: 0; cursor: pointer; color: var(--faint);
+  padding: 6px; margin: 0 4px; border-radius: 6px; display: inline-flex; }
+.ch-del:hover { color: var(--ink); background: var(--surface-2); }
+.ch-del svg { width: 14px; height: 14px; }
 .copilot-suggest, .copilot-cites { display: flex; flex-wrap: wrap; gap: 6px;
-  margin-top: 8px; }
+  margin-top: 2px; }
 .copilot-chip {
   border: 1px solid var(--border); background: var(--surface); cursor: pointer;
-  color: var(--accent); font: 600 12px/1 var(--sans);
-  padding: 7px 10px; border-radius: var(--radius-pill); text-align: left;
+  color: var(--ink-soft, var(--muted)); font: 500 12px/1 var(--sans);
+  padding: 6px 10px; border-radius: 8px; text-align: left;
 }
+.copilot-chip:hover { border-color: var(--border-strong, var(--border)); color: var(--ink);
+  background: var(--surface-2); }
 .copilot-cites a {
   display: inline-flex; align-items: center; gap: 4px;
   border: 1px solid var(--border); background: var(--surface);
-  color: var(--accent); text-decoration: none; font-size: 12px; font-weight: 600;
-  padding: 5px 9px; border-radius: var(--radius-pill);
+  color: var(--muted); text-decoration: none; font-size: 11.5px; font-weight: 500;
+  padding: 4px 8px; border-radius: 7px;
 }
-.copilot-cites a:hover { border-color: var(--accent); background: var(--accent-soft); }
-/* Each message gently slides in, like a chat assistant. */
+.copilot-cites a:hover { color: var(--ink); background: var(--surface-2); }
 @keyframes copilot-in {
-  from { opacity: 0; transform: translateY(6px); }
+  from { opacity: 0; transform: translateY(4px); }
   to { opacity: 1; transform: none; }
 }
-.copilot-msg { animation: copilot-in .18s ease both; }
-.copilot-msg.bot p { box-shadow: var(--shadow-sm, 0 1px 2px rgba(2,6,23,.05)); }
-/* "Working" row: a typing indicator, like an agent that's on the task. */
-.copilot-working {
-  display: inline-flex; align-items: center; gap: 9px;
-  padding: 12px 14px; border-radius: 13px; border-top-left-radius: 4px;
-  background: var(--bg); border: 1px solid var(--border);
-}
-.cw-spin {
-  width: 14px; height: 14px; border-radius: var(--radius-pill); flex-shrink: 0;
-  border: 2px solid var(--border); border-top-color: var(--accent);
-  animation: cw-spin .7s linear infinite;
-}
-@keyframes cw-spin { to { transform: rotate(360deg); } }
-.cw-dots { display: inline-flex; gap: 4px; align-items: center; }
-.cw-dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--faint);
-  animation: cw-bounce 1s infinite ease-in-out; }
-.cw-dots i:nth-child(2) { animation-delay: .15s; }
-.cw-dots i:nth-child(3) { animation-delay: .3s; }
-@keyframes cw-bounce { 0%,80%,100% { opacity: .3; transform: translateY(0); }
-  40% { opacity: 1; transform: translateY(-3px); } }
-/* Agent step trace: each thing it did, revealed with a check (Codex-style). */
-.copilot-steps { display: flex; flex-direction: column; gap: 5px; }
+.copilot-msg { animation: copilot-in .16s ease both; }
+
+/* Thinking: the four-square Lottie morph, sized for a chat turn. */
+.copilot-thinking { display: flex; align-items: center; min-height: 28px; }
+.copilot-lottie { width: 28px; height: 28px; flex: none; }
+.copilot-lottie svg { display: block; width: 100%; height: 100%; }
+
+/* Tool rows, quiet, like Cursor's "Read file" traces. */
+.copilot-steps { display: flex; flex-direction: column; gap: 4px; }
 .copilot-step {
   display: flex; align-items: flex-start; gap: 7px;
-  font: 500 12.5px/1.45 var(--sans); color: var(--ink-soft, var(--muted));
-  animation: copilot-in .18s ease both;
+  font: 400 12px/1.45 var(--sans); color: var(--muted);
+  animation: copilot-in .16s ease both;
 }
-.cs-check { color: var(--green, #16a34a); flex-shrink: 0; display: inline-flex; margin-top: 1px; }
-.cs-check svg { width: 13px; height: 13px; }
+.cs-check { color: var(--muted); flex-shrink: 0; display: inline-flex; margin-top: 1px;
+  opacity: .7; }
+.cs-check svg { width: 12px; height: 12px; }
 @media (prefers-reduced-motion: reduce) {
-  .copilot-msg, .copilot-step, .bridget-brief { animation: none; }
-  .cw-spin { animation-duration: 0s; }
-  .cw-dots i { animation: none; }
+  .copilot-msg, .copilot-step { animation: none; }
 }
-/* Confirmable action card ("send this / book this") shown inline in the log. */
+
 .copilot-confirm {
-  margin-top: 10px; border: 1px solid var(--border); background: var(--surface);
-  border-radius: var(--radius); padding: 10px; display: flex; flex-direction: column;
+  border: 1px solid var(--border); background: var(--bg);
+  border-radius: 10px; padding: 10px; display: flex; flex-direction: column;
   gap: 8px;
 }
 .cc-to { font: 600 12px/1.3 var(--sans); color: var(--ink); }
 .cc-to span {
   display: inline-block; margin-right: 6px; padding: 2px 6px;
-  border-radius: var(--radius-pill); background: var(--bg); color: var(--muted);
+  border-radius: 6px; background: var(--surface); color: var(--muted);
   font-size: 11px; text-transform: uppercase; letter-spacing: .03em;
 }
 .cc-text {
   width: 100%; resize: vertical; border: 1px solid var(--border);
-  border-radius: var(--radius-sm); padding: 8px 10px; background: var(--bg);
+  border-radius: 8px; padding: 8px 10px; background: var(--surface);
   color: var(--ink); font: 400 13px/1.45 var(--sans);
 }
 .cc-url {
   font: 500 12px/1.3 var(--sans); color: var(--accent); word-break: break-all;
-  background: var(--bg); border: 1px solid var(--border);
-  border-radius: var(--radius-sm); padding: 7px 9px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 8px; padding: 7px 9px;
 }
 .cc-actions { display: flex; gap: 8px; }
 .cc-confirm {
   border: none; cursor: pointer; background: var(--accent); color: #fff;
-  font: 700 12px/1 var(--sans); padding: 9px 14px; border-radius: var(--radius-pill);
+  font: 600 12px/1 var(--sans); padding: 8px 12px; border-radius: 8px;
 }
 .cc-confirm:disabled { opacity: .6; cursor: default; }
 .cc-cancel {
   border: 1px solid var(--border); cursor: pointer; background: var(--surface);
-  color: var(--muted); font: 600 12px/1 var(--sans); padding: 9px 12px;
-  border-radius: var(--radius-pill);
+  color: var(--muted); font: 500 12px/1 var(--sans); padding: 8px 12px;
+  border-radius: 8px;
 }
 .cc-note { color: var(--danger); font-size: 12px; }
 .cc-note:empty { display: none; }
@@ -5738,71 +5890,60 @@ a.rail-attn:hover { text-decoration: underline; }
 .cc-done { display: inline-flex; align-items: center; gap: 6px;
   color: var(--ok, var(--green)); font: 600 13px/1.4 var(--sans); }
 .cc-done svg { width: 15px; height: 15px; }
-/* Composer: a single rounded pill with an inline circular send button. */
-.dock-form { padding: 12px 16px 16px; border-top: 1px solid var(--border); flex-shrink: 0; }
-.dock-inputwrap { display: flex; align-items: center; gap: 6px;
-  border: 1px solid var(--border-strong); border-radius: var(--radius-pill);
-  background: var(--surface); padding: 4px 4px 4px 15px;
-  transition: border-color .12s ease, box-shadow .12s ease; }
-.dock-inputwrap:focus-within { border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-soft); }
-.dock-form input {
-  flex: 1; min-width: 0; border: none; outline: none; background: transparent;
-  font: 400 13.5px/1 var(--sans); color: var(--ink); padding: 8px 0;
+
+/* Composer, Cursor input: rounded box, textarea, send in the corner. */
+.dock-form { padding: 8px 12px 14px; flex-shrink: 0; border-top: 0; }
+.dock-composer {
+  display: flex; flex-direction: column;
+  border: 1px solid var(--border-strong, var(--border));
+  border-radius: 12px; background: var(--surface);
+  padding: 10px 10px 8px;
+  box-shadow: 0 1px 2px rgba(2,6,23,.04);
+  transition: border-color .12s ease, box-shadow .12s ease;
 }
-.dock-form input:disabled { opacity: .7; }
-.dock-form button {
-  border: none; cursor: pointer; background: var(--accent); color: var(--accent-ink);
-  width: 34px; height: 34px; flex-shrink: 0; border-radius: 50%;
+.dock-composer:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.dock-composer textarea {
+  width: 100%; min-height: 22px; max-height: 160px; resize: none;
+  border: 0; outline: none; background: transparent;
+  font: 400 13.5px/1.45 var(--sans); color: var(--ink);
+  padding: 0 2px; field-sizing: content;
+}
+.dock-composer textarea:disabled { opacity: .7; }
+.dock-composer textarea::placeholder { color: var(--faint); }
+.dock-composer-bar { display: flex; justify-content: flex-end; padding-top: 6px; }
+.dock-composer-bar button {
+  border: none; cursor: pointer; background: var(--btn); color: var(--accent-ink);
+  width: 26px; height: 26px; flex-shrink: 0; border-radius: 7px;
   display: inline-flex; align-items: center; justify-content: center;
-  transition: opacity .12s ease, transform .08s ease;
+  transition: background .12s ease, transform .08s ease, opacity .12s ease;
 }
-.dock-form button:hover:not(:disabled) { opacity: .9; }
-.dock-form button:active:not(:disabled) { transform: scale(.94); }
-.dock-form button:disabled { opacity: .45; cursor: default; }
-.dock-form button svg { width: 17px; height: 17px; }
-/* Collapsed-state launcher: a labeled pill so a first-time user knows what it is
-   (Bridget is on-click only now, so the launcher has to be self-explanatory). */
-.copilot-fab {
-  position: fixed; right: max(16px, env(safe-area-inset-right));
-  bottom: max(16px, env(safe-area-inset-bottom)); z-index: 60; display: none;
-  height: 52px; padding: 0 18px 0 13px; gap: 9px; border: 1px solid var(--border);
-  cursor: pointer; background: var(--surface);
-  border-radius: var(--radius-pill); box-shadow: var(--shadow-lg, 0 12px 30px rgba(2,6,23,.22));
-  align-items: center; justify-content: center;
-  transition: transform .14s ease, box-shadow .14s ease;
-}
-.copilot-fab:hover { transform: translateY(-2px) scale(1.03);
-  box-shadow: 0 16px 38px rgba(2,6,23,.28); }
-.copilot-fab .copilot-fab-ic { position: relative; display: inline-flex;
-  align-items: center; justify-content: center; }
-.copilot-fab img { width: 26px; height: 26px; display: block; }
-.copilot-fab .copilot-fab-label { font-size: 14px; font-weight: 700; color: var(--ink);
-  white-space: nowrap; }
-.copilot-fab .fab-dot { position: absolute; top: -3px; right: -3px; width: 10px; height: 10px;
-  border-radius: var(--radius-pill); background: var(--green, #16a34a);
-  border: 2px solid var(--surface); }
-.appdock[data-open="0"] ~ .copilot-fab { display: inline-flex; }
-/* Below full-width, the dock overlays as a drawer instead of eating a column
-   (which would squeeze/clip the page's content). It only sits inline once the
-   screen is wide enough for the sidebar + content + dock together. */
+.dock-composer-bar button:hover:not(:disabled) { background: var(--btn-hover); }
+.dock-composer-bar button:active:not(:disabled) { transform: scale(.94); }
+/* A send button at 28% opacity made the whole composer read as switched off -
+   people saw a dead panel and did not try to type. It IS disabled until there
+   is text (nothing to send), but "not yet" should look quieter than the active
+   state, not broken. Keep it legible and keep the text cursor over the field. */
+.dock-composer-bar button:disabled { opacity: 1; cursor: default;
+  background: var(--surface-2); color: var(--faint);
+  border: 1px solid var(--border); }
+.dock-composer-bar button svg { width: 13px; height: 13px; }
+
 @media (max-width: 1023px) {
-  .appdock { position: fixed; top: 0; right: 0; bottom: 0; height: 100vh;
-    width: min(380px, 100vw); z-index: 62; box-shadow: var(--shadow-lift); }
+  .appdock[data-open="1"] { position: fixed; top: 0; right: 0; bottom: 0; height: 100vh;
+    width: min(400px, 100vw); z-index: 62; box-shadow: var(--shadow-lift); }
+  .appdock[data-open="0"] { position: fixed; top: 0; right: 0; bottom: 0; height: 100vh;
+    z-index: 62; box-shadow: none; }
 }
-/* Above that, the dock is a real flex sibling of .appmain (see .appshell,
-   .appmain above) - no position override needed, it just reflows inline and
-   .appmain (min-width:0) shrinks to give it room. This used to be gated behind
-   `.appshell:has(.gm)`, a selector that never matches anything in this
-   codebase, so the dock silently stayed a fixed overlay - never resizing the
-   middle content - at every width below 1440px. Deleted; inline is simply the
-   default above the breakpoint now. */
 @media (min-width: 1024px) and (max-width: 1180px) {
-  .appdock { width: 300px; }
+  .appdock { width: 340px; }
 }
 [data-theme="dark"] .appdock, [data-theme="dark"] .copilot-chip,
 [data-theme="dark"] .copilot-cites a { background: var(--surface); }
-[data-theme="dark"] .copilot-working { background: var(--surface); }
+[data-theme="dark"] .copilot-msg.me .copilot-body { background: var(--bg); }
 
 /* ── Ad maker (campaign creative): editor + live channel-native preview ── */
 .admaker { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr);
@@ -6068,7 +6209,7 @@ a.rail-attn:hover { text-decoration: underline; }
 .role-custom input[type="text"] { min-width: 180px; }
 
 /* ============================================================= *
- * For-sites flagship marketing page (scoped .fs-* — token-based)
+ * For-sites flagship marketing page (scoped .fs-*, token-based)
  * ============================================================= */
 /* The hero tint is painted on the PAGE, not the hero, so it runs continuously
    behind the transparent sticky nav. Painting it on .fs-hero left a hard seam at
@@ -6087,7 +6228,7 @@ body.fs-page { background:
 .fs-eyebrow svg { width: 15px; height: 15px; }
 .fs-hero h1 { font-family: var(--sans); font-size: clamp(36px, 4.4vw, 56px); line-height: 1.04;
   letter-spacing: -.035em; margin: 18px 0 0; color: var(--ink); font-weight: 800; }
-/* Subtle ombré on the highlighted headline word — derived from each page's own
+/* Subtle ombré on the highlighted headline word, derived from each page's own
    tokens (accent -> its lighter mark tone), so it's green on /for-sites and blue
    on the patient site with one rule. */
 .fs-grad, .hero-grad {
@@ -6131,7 +6272,7 @@ body.fs-page { background:
   border-radius: var(--radius); box-shadow: var(--shadow); text-decoration: none;
   transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease; }
 .fs-seal-item:hover { border-color: var(--accent); box-shadow: var(--shadow-lift); transform: translateY(-1px); }
-/* Circular glyph medallion — reads as a trust badge without impersonating any
+/* Circular glyph medallion, reads as a trust badge without impersonating any
    trademarked certification seal (AICPA/SOC etc.). */
 .fs-seal-medal { display: grid; place-items: center; width: 36px; height: 36px; flex: none;
   border-radius: 50%; background: var(--accent-soft);
@@ -6407,7 +6548,7 @@ body.fs-page { background:
   color: var(--accent-ink); background: var(--accent); }
 .fs-ai-btn.ghost { color: var(--accent); background: var(--accent-soft); border: 1px solid var(--brand-border); }
 /* AI copilot scene: proactive triage (auto-drafted actions) + a command bar that
-   DOES things. No stat strip — the value is the actions, not the counts. */
+   DOES things. No stat strip, the value is the actions, not the counts. */
 .fs-ai-auto { margin-left: auto; display: inline-flex; align-items: center; gap: 5px;
   font-size: 10.5px; font-weight: 700; color: var(--green); background: var(--green-bg);
   border: 1px solid var(--ok-border);
@@ -6476,8 +6617,7 @@ body.fs-page { background:
 .fs-hv-panel[data-hv="ask"].is-active .fs-cop { animation: fs-hv-row .4s ease both; animation-delay: .52s; }
 
 /* Demo affordance: the mock UI inside the hero film looks interactive (pointer +
-   hover feedback) so it feels like the real product, but it's a walkthrough —
-   clicking performs no real action. */
+   hover feedback) so it feels like the real product, but it's a walkthrough, clicking performs no real action. */
 .fs-hv .fs-ai-btn,
 .fs-hv .fs-cop-ask,
 .fs-hv .fs-cop-ask-btn,
@@ -6549,7 +6689,7 @@ body.fs-page { background:
   .fs-hv-panel[data-hv="ask"].is-active .fs-ai-rail em { animation: none; }
 }
 
-/* Animated "ask the protocol" AI demo — SHOW the AI (compliant), don't describe it. */
+/* Animated "ask the protocol" AI demo, SHOW the AI (compliant), don't describe it. */
 /* Product window: the shared chrome for every preview inside a dark section
    (protocol Q&A, amendment diff, document vault). One primitive, three uses. */
 .fs-win { background: var(--surface); border: 1px solid var(--border);
@@ -6648,7 +6788,7 @@ body.fs-page { background:
 .fs-nav.is-stuck { background: color-mix(in srgb, var(--surface) 76%, transparent);
   backdrop-filter: saturate(180%) blur(14px); -webkit-backdrop-filter: saturate(180%) blur(14px);
   border-bottom-color: var(--border); box-shadow: 0 1px 14px rgba(0, 0, 0, .045); }
-/* Without backdrop blur, translucency turns to mud — fall back to near-opaque. */
+/* Without backdrop blur, translucency turns to mud, fall back to near-opaque. */
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .fs-nav.is-stuck { background: color-mix(in srgb, var(--surface) 97%, transparent); }
 }
@@ -6774,7 +6914,7 @@ body.fs-page { background:
   border-top: 1px solid var(--border); font-size: 12px; color: var(--faint); }
 
 /* ============================================================= *
- * Site-side feature detail pages (/for-sites/<slug>) — one layout
+ * Site-side feature detail pages (/for-sites/<slug>), one layout
  * shared by every pillar, so the honest sections are always there.
  * ============================================================= */
 .fp-hero { padding: 40px 24px 30px; }
@@ -6870,7 +7010,7 @@ body.fs-page { background:
 
 @media (max-width: 560px) {
   /* On a phone the bar only has room for the wordmark, the one action and the
-     menu — "for sites" is obvious from the page, sign-in moves into the sheet. */
+     menu, "for sites" is obvious from the page, sign-in moves into the sheet. */
   .fs-nav-brand span, .fs-nav-signin { display: none; }
   .fs-nav-cta { gap: 8px; }
   .fs-nav-cta .fs-btn { padding: 9px 13px; font-size: 13.5px; }
@@ -7019,7 +7159,7 @@ body.fs-page { background:
 .fs-demo-note { display: flex; align-items: center; justify-content: center; gap: 7px;
   font-size: 13px; color: var(--faint); margin: 16px 0 0; }
 .fs-demo-note svg { width: 14px; height: 14px; }
-/* Shown only where the screenshot pans (phones) — see the 620px block below. */
+/* Shown only where the screenshot pans (phones), see the 620px block below. */
 .fs-swipe { display: none; align-items: center; gap: 6px; margin: 10px 0 0;
   font-size: 12.5px; font-weight: 600; color: var(--faint); }
 .fs-swipe svg { width: 13px; height: 13px; }
@@ -7645,7 +7785,7 @@ body.fs-page { background:
 }
 
 /* ======================================================================
-   Calendar (study-team app) — trial-aware scheduling surface.
+   Calendar (study-team app), trial-aware scheduling surface.
    ====================================================================== */
 .cal-toolbar { display:flex; align-items:center; justify-content:space-between;
   gap:12px; flex-wrap:wrap; margin-bottom:14px; }
@@ -8377,7 +8517,43 @@ body.fs-page { background:
    sits flush against the Bridget dock. No padding, or the workspace becomes a short
    inset card detached from the full-height dock next to it. */
 .mh-page { width: 100%; display: flex; flex-direction: column;
-  height: 100dvh; padding: 0; }
+  height: calc(100dvh - var(--apptop-h)); padding: 0; }
+
+/* Landing hero iframe (?embed=1): hide chrome, keep inbox + Bridget open. */
+body[data-embed="1"] .skip-link,
+body[data-embed="1"] .toast-stack { display: none !important; }
+/* The frame shows the real product, sidebar and top bar included - hiding
+   them read as "where did the product go". Only the dock is narrowed. */
+body[data-embed="1"] .appshell { --appdock-w: 320px; min-height: 100dvh; }
+body[data-embed="1"] .mh-page .mh-workspace {
+  height: 100dvh; max-height: 100dvh;
+}
+/* Desktop only: on a phone the !important column would beat the single-column
+   mobile grid and leave the conversation 320px wide in a 390px frame. */
+@media (min-width: 810px) {
+  body[data-embed="1"] .mh-page .mh-workspace {
+    grid-template-columns: 320px minmax(0, 1fr) !important;
+  }
+}
+/* Keep the column's own grid (display:flex here laid the thread rows out
+   sideways as 63px slivers); only lift the height cap so it fills the frame. */
+body[data-embed="1"] .mh-thread-column { max-height: none; }
+/* Phone-width embed (the landing hero on a phone): a 320px dock would cover
+   most of a 390px viewport, so show the inbox itself and drop the dock. The
+   inbox is sized 100dvh on phones while the 56px top bar stays in flow, which
+   pushed the composer off the bottom of the frame; take the bar off. */
+@media (max-width: 809px) {
+  body[data-embed="1"] #copilot { display: none !important; }
+  body[data-embed="1"] .appshell:has(.mh-page) .appbody,
+  body[data-embed="1"] .mh-page,
+  body[data-embed="1"] .mh-page .mh-workspace {
+    height: calc(100dvh - 56px); max-height: calc(100dvh - 56px);
+  }
+}
+/* Embed mode used to pin the dock open at 320px and show its contents even
+   when collapsed, so the ">" button did nothing inside the landing frame.
+   The dock starts open there anyway (see _copilot.html); the normal
+   collapse to the 48px rail now applies. */
 .mh-eyebrow {
   display: flex;
   align-items: center;
@@ -8404,8 +8580,12 @@ body.fs-page { background:
   justify-content: center;
   flex: 0 0 auto;
   border-radius: 11px;
-  background: #173f5f;
-  color: #fff;
+  /* Was a hardcoded #173f5f navy that matched nothing else in the product, so
+     next to .mh-contact-avatar it read as a pasted-in logo rather than a
+     teammate. Same accent pair as every other avatar now, and it follows the
+     theme instead of staying dark-navy in dark mode. */
+  background: var(--accent-soft);
+  color: var(--accent);
   font-size: 12px;
   font-weight: 800;
   box-shadow: inset 0 0 0 1px rgba(255,255,255,.18);
@@ -8473,7 +8653,7 @@ body.fs-page { background:
 }
 .mh-channel-ic .ico,
 .mh-channel-ic .brand-ico { width: 18px; height: 18px; }
-/* Gmail + Instagram SVGs already include the official app tile — fill the chip. */
+/* Gmail + Instagram SVGs already include the official app tile, fill the chip. */
 .mh-channel-ic.is-email .brand-ico,
 .mh-channel-ic.is-instagram .brand-ico { width: 100%; height: 100%; }
 .mh-channel-ic.is-all,
@@ -8516,15 +8696,16 @@ body.fs-page { background:
   border-right: 1px solid var(--border);
   background: var(--surface);
 }
-.mh-thread-toolbar { display: flex; gap: 8px; padding: 15px 13px 10px; }
-/* In-inbox study scoper: swap the inbox between trials without leaving the page
-   (the global top-bar switcher is hidden on .mh-page by design). Compact so the
-   search field keeps flex:1. Reuses base <select> styling + set_scope backend. */
-.mh-scope { flex: 0 0 auto; min-width: 0; display: flex; align-items: center; }
-.mh-scope select { height: 34px; max-width: 148px; padding: 0 26px 0 10px;
-  border: 1px solid var(--border); border-radius: var(--radius-sm); background-color: var(--surface-2);
-  color: var(--ink); font: inherit; font-size: 11.5px; font-weight: 600; cursor: pointer; }
-.mh-scope select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); outline: 0; }
+/* One header row: what you're looking at, search, and the two list actions. */
+.mh-thread-toolbar { display: flex; align-items: center; gap: 8px;
+  padding: 12px 13px 10px; }
+.mh-list-title { display: inline-flex; align-items: baseline; gap: 6px;
+  flex: 0 0 auto; margin: 0; font-size: 15px; font-weight: 800; color: var(--ink);
+  max-width: 148px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mh-list-title span { font-size: 11px; font-weight: 700; color: var(--accent); }
+/* The in-inbox study <select> (.mh-scope) was removed: the top-bar switcher is
+   no longer hidden on .mh-page, so this list had a second, narrower picker for
+   the same setting. One scope control, in one place, for the whole workspace. */
 .mh-search {
   min-width: 0;
   flex: 1;
@@ -8642,7 +8823,7 @@ body.fs-page { background:
    flexible 1fr on the wrong row and crushed the message list. Flex + the message
    list as the single flex:1 scroll area is resilient to whatever chrome renders. */
 .mh-conversation { display: flex; flex-direction: column; min-height: 0; background: var(--surface); }
-.mh-conversation-head { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 16px 18px 13px; }
+.mh-conversation-head { display: flex; flex-direction: column; align-items: stretch; gap: 12px; padding: 16px 18px 13px; }
 .mh-contact-main { min-width: 0; display: flex; align-items: center; gap: 11px; }
 .mh-contact-main > span:last-child { min-width: 0; }
 .mh-contact-main small { display: block; overflow: hidden; color: var(--faint); font-size: 8.5px; font-weight: 650; letter-spacing: .03em; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; }
@@ -8746,10 +8927,15 @@ body.fs-page { background:
 .mh-oauth-preview small,
 .mh-coverage-explainer b,
 .mh-coverage-explainer small { display: block; }
+/* These were 10.5px/9px while every other line in the same dialog is ~13px, so
+   the card read as a cramped sticker pasted into the layout. On the shared type
+   scale it reads as part of the page. */
 .mh-oauth-preview b,
-.mh-coverage-explainer b { color: var(--ink); font-size: 10.5px; }
+.mh-coverage-explainer b { color: var(--ink); font-size: var(--text-sm);
+  font-weight: 650; }
 .mh-oauth-preview small,
-.mh-coverage-explainer small { margin-top: 2px; color: var(--faint); font-size: 9px; line-height: 1.4; }
+.mh-coverage-explainer small { margin-top: 3px; color: var(--muted);
+  font-size: var(--text-xs); line-height: var(--leading-body); }
 .mh-gmail-connect {
   display: grid;
   grid-template-columns: 46px minmax(0, 1fr) auto;
@@ -8820,6 +9006,12 @@ body.fs-page { background:
 .mh-vacation-switch input:checked + i::after { transform: translateX(16px); }
 .mh-vacation-switch input:focus-visible + i { outline: 2px solid var(--accent); outline-offset: 2px; }
 .mh-coverage-explainer { margin-bottom:15px; background:var(--surface-2); }
+/* Plain supporting copy, not a boxed callout: this sentence states what the
+   dialog is about to do, so boxing it only competed with the modal title above
+   and the fields below. */
+.mh-coverage-lede { margin:0 0 var(--space-4); color:var(--muted);
+  font-size:var(--text-sm); line-height:var(--leading-body); }
+.mh-coverage-lede b { color:var(--ink); font-weight:650; }
 .mh-invite-nudge { color: var(--muted); font-size: 9.5px; }
 .mh-invite-nudge .ico { width: 15px; color: var(--accent); }
 .mh-invite-nudge span { flex: 1; }
@@ -9287,7 +9479,7 @@ body.fs-page { background:
 .fsx-list li { display:flex; align-items:center; gap:8px; font-size:14px; color:var(--ink-soft); font-weight:600; }
 .fsx-list svg { width:16px; height:16px; color:var(--ok); flex-shrink:0; }
 
-/* Closing CTA: one action on the page's last screen — book the demo. */
+/* Closing CTA: one action on the page's last screen, book the demo. */
 .fsx-close { max-width:720px; margin:0 auto; text-align:center; padding:46px 32px;
   background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-lg);
   box-shadow:var(--shadow-lift); }
@@ -9369,7 +9561,44 @@ html.fs-motion .fsx-proof-stat:nth-child(4) { transition-delay:.18s; }
 .mh-thread-row.is-unread { background:var(--surface); }
 .mh-thread-row h3 { font-size:12px; margin:var(--space-2) 0 var(--space-1) 38px; }
 .mh-thread-row p { font-size:11.5px; line-height:1.45; margin-left:38px; }
-.mh-thread-row-foot { margin-left:38px; flex-wrap:wrap; }
+.mh-thread-row-foot { margin-left:38px; flex-wrap:wrap; gap:4px; }
+
+/* Person tags: the stage someone is at and the trial they are on. The inbox and
+   the Applicants queue both scope to one study via the top-bar switcher, so on
+   "All studies" a row otherwise gave no way to tell which protocol a message was
+   about. Same pill in the list row, the open conversation and the applicant
+   panel, so one person reads identically everywhere. */
+.mh-tag { display:inline-flex; align-items:center; gap:4px; min-width:0;
+  max-width:100%; padding:2px 7px; border:1px solid transparent;
+  border-radius:var(--radius-pill); font-size:10px; font-weight:700;
+  line-height:1.5; white-space:nowrap; }
+.mh-tag .ico { flex:0 0 auto; width:11px; height:11px; }
+.mh-tag.is-study { max-width:170px; border-color:var(--border);
+  background:var(--surface-2); color:var(--ink-soft); font-weight:650; }
+/* The ellipsis has to live on the label, not the pill: a bare text node inside a
+   flex row has no box to truncate, so a long study title just ran past the pill
+   edge instead of ending in "...". */
+.mh-tag-label { min-width:0; overflow:hidden; text-overflow:ellipsis;
+  white-space:nowrap; }
+.mh-tag.is-link { border-color:var(--border); background:var(--surface);
+  color:var(--accent); text-decoration:none; }
+.mh-tag.is-link:hover { background:var(--accent-soft); text-decoration:none; }
+.mh-tag.tone-neutral { background:var(--surface-2); color:var(--ink-soft);
+  border-color:var(--border); }
+.mh-tag.tone-brand { background:var(--accent-soft); color:var(--accent); }
+.mh-tag.tone-ok { background:var(--ok-bg); color:var(--ok); }
+.mh-tag.tone-warn { background:var(--amber-bg); color:var(--amber); }
+.mh-tag.tone-violet { background:var(--violet-bg); color:var(--violet); }
+.mh-tag.tone-info { background:#edf2ff; color:#3c4a8a; }
+.mh-thread-state { color:var(--faint); font-size:10px; font-weight:600; }
+.mh-thread-state.is-waiting { color:var(--amber); }
+/* The tag row sits under the contact line in the open conversation, where there
+   is room for the study name to run longer than in a 350px list row. */
+.mh-read-tags { display:flex; flex-wrap:wrap; align-items:center; gap:5px;
+  width:100%; margin-top:6px; }
+.mh-read-from { flex-wrap:wrap; }
+.mh-read-tags .mh-tag.is-study { max-width:min(38vw,340px); }
+
 .mh-conversation { min-width:0; background:var(--bg); overflow:hidden;
   container-type:inline-size; container-name:mh-conv; }
 .mh-conversation-head { position:sticky; top:0; z-index:3; background:var(--surface);
@@ -9394,12 +9623,10 @@ html.fs-motion .fsx-proof-stat:nth-child(4) { transition-delay:.18s; }
    own rendered width, whatever's eating into it, so opening Bridget on a
    normal laptop stacks the header gracefully instead of overflowing it. */
 @container mh-conv (max-width:640px) {
-  .mh-conversation-head { align-items:flex-start; flex-direction:column; gap:var(--space-3); }
+  .mh-conversation-head { align-items:stretch; flex-direction:column; gap:var(--space-3); }
+  .mh-read-top { flex-direction:column; align-items:stretch; }
+  .mh-read-actions { width:100%; max-width:none; justify-content:flex-start; flex-wrap:wrap; }
   .mh-conversation-actions { width:100%; max-width:none; justify-content:flex-start; flex-wrap:wrap; }
-  .mh-assign-form { flex:1 1 130px; }
-  .mh-assign-form select { width:100%; }
-  .mh-link-applicant { align-items:flex-start; flex-direction:column; }
-  .mh-link-applicant form { width:100%; justify-content:flex-start; }
   .mh-compose-foot { align-items:stretch; flex-direction:column; }
   .mh-compose-actions { justify-content:flex-end; flex-wrap:wrap; }
   .mh-clinical-card > header { align-items:flex-start; flex-wrap:wrap; }
@@ -9438,9 +9665,9 @@ html.fs-motion .fsx-proof-stat:nth-child(4) { transition-delay:.18s; }
 .mh-search input { height:34px; font-size:var(--text-xs); }
 .mh-stage-tabs { padding:var(--space-2) var(--space-3); }
 .mh-stage-tabs a { font-size:var(--text-xs); }
-.mh-thread-row { min-height:112px; transition:background var(--duration-fast) var(--ease-standard),
+.mh-thread-row { min-height:0; transition:background var(--duration-fast) var(--ease-standard),
   border-color var(--duration-fast) var(--ease-standard);
-  content-visibility:auto; contain-intrinsic-size:auto 112px; }
+  content-visibility:auto; contain-intrinsic-size:auto 88px; }
 .mh-thread-row:hover { background:var(--surface-2); }
 .mh-contact-avatar { width:32px; height:32px; border-radius:var(--radius-sm);
   color:var(--accent); background:var(--accent-soft); font-size:var(--text-xs); }
@@ -9483,13 +9710,24 @@ html.fs-motion .fsx-proof-stat:nth-child(4) { transition-delay:.18s; }
    card layout above without changing any backend forms or actions. */
 .mh-page .mh-workspace { grid-template-columns:350px minmax(0,1fr); }
 .mh-thread-column { grid-template-rows:auto auto auto minmax(0,1fr); }
+/* Four controls (title, search, two icon buttons) used to sit in a three-column
+   grid, so the last one wrapped onto a row of its own - a visibly broken header
+   with a stray button under it. The title also had a 148px cap that clipped any
+   real study name mid-word. Title and its two actions share the top row now, and
+   search gets the full width beneath, which is the shape every mail client uses
+   and the only one that survives a 350px column. */
 .mh-thread-toolbar { display:grid; grid-template-columns:minmax(0,1fr) auto auto;
-  gap:var(--space-2); padding:var(--space-3); border-bottom:1px solid var(--border); }
+  grid-template-areas:"title action-a action-b" "search search search";
+  align-items:center; gap:var(--space-2); padding:var(--space-3);
+  border-bottom:1px solid var(--border); }
+.mh-thread-toolbar > .mh-list-title { grid-area:title; max-width:none; }
+.mh-thread-toolbar > .mh-search { grid-area:search; }
+.mh-thread-toolbar > .ui-icon-btn:nth-last-of-type(2) { grid-area:action-a; }
+.mh-thread-toolbar > .ui-icon-btn:last-of-type { grid-area:action-b; }
 .mh-thread-toolbar .mh-scope { min-width:0; }
 .mh-thread-toolbar .mh-scope select { width:100%; max-width:none; height:36px;
   background-color:var(--surface); }
 .mh-thread-toolbar .mh-search { min-height:36px; background:var(--surface); }
-.mh-thread-toolbar:has(.mh-scope) .mh-search { grid-column:1 / -1; grid-row:2; }
 .mh-thread-toolbar .ui-icon-btn { width:36px; height:36px; }
 .mh-owner-toggle { margin-top:var(--space-2); }
 .mh-stage-tabs { min-height:45px; align-items:center; gap:2px; }
@@ -9497,8 +9735,22 @@ html.fs-motion .fsx-proof-stat:nth-child(4) { transition-delay:.18s; }
 
 .mh-conversation { display:flex; flex-direction:column; min-height:0; overflow:hidden;
   background:var(--surface); }
-.mh-conversation-head { position:relative; top:auto; flex:0 0 auto; gap:var(--space-5);
-  min-height:82px; padding:var(--space-4) var(--space-5); }
+.mh-conversation-head { position:relative; top:auto; flex:0 0 auto;
+  flex-direction:column; align-items:stretch; gap:var(--space-3);
+  min-height:0; padding:14px var(--space-5) 12px; }
+.mh-read-top { display:flex; align-items:flex-start; justify-content:space-between;
+  gap:var(--space-4); min-width:0; }
+.mh-read-subject { min-width:0; flex:1; margin:0; color:var(--ink);
+  font-size:18px; font-weight:650; letter-spacing:-.02em; line-height:1.3; }
+.mh-read-actions { display:flex; align-items:center; justify-content:flex-end;
+  gap:8px; flex:0 0 auto; }
+.mh-read-actions form { margin:0; }
+.mh-read-from { display:flex; align-items:center; gap:10px; min-width:0; }
+.mh-read-from-copy { min-width:0; display:flex; flex-direction:column; gap:1px; }
+.mh-read-from-copy b { overflow:hidden; color:var(--ink); font-size:13px;
+  font-weight:650; text-overflow:ellipsis; white-space:nowrap; }
+.mh-read-from-copy span { overflow:hidden; color:var(--muted); font-size:12px;
+  text-overflow:ellipsis; white-space:nowrap; }
 .mh-mobile-back { display:none; }
 .mh-contact-main { min-width:0; flex:1; }
 .mh-contact-copy { min-width:0; flex:1; }
@@ -9533,7 +9785,7 @@ html.fs-motion .fsx-proof-stat:nth-child(4) { transition-delay:.18s; }
 .mh-detail-layout.has-applicant {
   grid-template-columns:minmax(420px,1fr) minmax(310px,370px); }
 .mh-dialogue { min-width:0; min-height:0; display:grid;
-  grid-template-rows:auto minmax(0,1fr) auto; overflow:hidden;
+  grid-template-rows:minmax(0,1fr) auto; overflow:hidden;
   background:var(--surface); }
 .mh-dialogue-top { min-width:0; }
 .mh-dialogue .mh-link-applicant { min-height:0; margin:var(--space-3);
@@ -9559,24 +9811,115 @@ html.fs-motion .fsx-proof-stat:nth-child(4) { transition-delay:.18s; }
 .mh-dialogue .mh-quick-replies::-webkit-scrollbar { display:none; }
 .mh-dialogue .mh-quick-chip { flex:0 0 auto; }
 
+/* Contact details in the conversation header. One line of ways to reach this
+   person - the handle they wrote in from, plus email and phone once the
+   applicant record is revealed - each one actually clickable, so "call them"
+   does not mean copying digits out of another page. */
+.mh-read-from-copy .mh-read-contact { display:flex; flex-wrap:wrap;
+  align-items:center; gap:2px var(--space-3); overflow:visible;
+  white-space:normal; }
+.mh-read-contact > a, .mh-read-contact > span { display:inline-flex;
+  align-items:center; gap:5px; max-width:100%; color:var(--muted);
+  font-size:var(--text-xs); text-decoration:none; }
+.mh-read-contact > a:hover { color:var(--accent); text-decoration:underline; }
+.mh-read-contact .ico { width:12px; height:12px; color:var(--faint); }
+.mh-read-contact .mh-channel-ic { width:15px; height:15px; padding:0;
+  border:0; background:none; box-shadow:none; }
+.mh-read-contact .mh-channel-ic .brand-ico { width:13px; height:13px; }
+
+/* One composer: Bridget line + reply in a single surface (no box-in-box). */
+.mh-ask-wrap { border:1px solid var(--border); border-radius:12px;
+  background:var(--surface); overflow:hidden;
+  transition:border-color .12s ease, box-shadow .12s ease; }
+.mh-ask-wrap:has(.mh-ask:focus-within),
+.mh-ask-wrap:has(#replyBody:focus),
+.mh-ask-wrap:has(.mh-ask-input:not(:placeholder-shown)) { border-color:var(--accent);
+  box-shadow:0 0 0 3px var(--accent-soft); }
+.mh-ask { display:flex; align-items:center; gap:8px;
+  margin:0; padding:0 10px 0 14px; min-height:44px;
+  border:0; border-bottom:1px solid var(--border); border-radius:0;
+  background:transparent; box-shadow:none;
+  transition:border-color .12s ease, opacity .12s ease; }
+html[data-theme="dark"] .mh-ask { background:transparent; }
+.mh-ask:hover { border-bottom-color:var(--border); }
+.mh-ask:focus-within { border-bottom-color:var(--border); box-shadow:none; }
+.mh-ask-mark { display:inline-flex; flex:0 0 auto; color:var(--accent);
+  opacity:.9; pointer-events:none; }
+.mh-ask-mark .ico { width:15px; height:15px; }
+/* The name stays on the line after the placeholder is typed over, so the
+   composer never loses the one thing that says a machine writes here. */
+.mh-ask-name { flex:0 0 auto; padding-right:9px; margin-right:1px;
+  border-right:1px solid var(--border);
+  color:var(--accent); font-size:12.5px; font-weight:700; line-height:1;
+  letter-spacing:-.01em; user-select:none; pointer-events:none; }
+/* Beat the global input[type=text] chrome: this field IS the box. */
+.mh-ask .mh-ask-input { flex:1; min-width:0; height:42px; padding:0; border:0;
+  border-radius:0; outline:0; background:transparent; box-shadow:none;
+  color:var(--ink); font:inherit; font-size:14px; line-height:1.4;
+  caret-color:var(--accent); cursor:text; }
+.mh-ask .mh-ask-input::placeholder { color:var(--muted); font-weight:400;
+  opacity:.9; }
+.mh-ask-go { flex:0 0 auto; width:34px; height:34px; display:inline-flex;
+  align-items:center; justify-content:center; border:0; border-radius:8px;
+  color:#fff; background:var(--btn); cursor:pointer;
+  transition:background .12s ease, transform .08s ease, opacity .12s ease; }
+.mh-ask-go .ico { width:15px; height:15px; }
+.mh-ask-go:hover { background:var(--btn-hover); }
+.mh-ask-go:active { transform:scale(.96); }
+.mh-ask .mh-ask-input:placeholder-shown ~ .mh-ask-go { opacity:.65; }
+.mh-ask .mh-ask-input:not(:placeholder-shown) ~ .mh-ask-go { opacity:1; }
+.mh-ask-go:disabled { opacity:.45; cursor:default; }
+.mh-ask-status { padding:6px 12px 0; font-size:12px; line-height:1.4; color:var(--muted); }
+.mh-ask-status.is-error { color:var(--red); }
+.mh-ask.is-busy .mh-ask-mark { animation:mh-ask-pulse 1s ease-in-out infinite; }
+.mh-ask.is-error .mh-ask-mark { color:var(--red); }
+@keyframes mh-ask-pulse { 0%,100% { opacity:.3; } 50% { opacity:1; } }
+@media (prefers-reduced-motion: reduce) {
+  .mh-ask.is-busy .mh-ask-mark { animation:none; opacity:.6; }
+}
+/* Reply field: no second border; room under the ask row. */
+.mh-dialogue .mh-compose-panel .mh-ask-wrap textarea { border:0; border-radius:0;
+  background:transparent; box-shadow:none; margin:0; padding:12px 14px 14px;
+  resize:vertical; }
+.mh-dialogue .mh-compose-panel .mh-ask-wrap textarea:focus { box-shadow:none; }
+/* While Bridget streams, one surface: hide the ask row so the draft is not a box
+   inside a box. */
+.mh-ask-wrap:has(#replyBody.is-bridget-writing) .mh-ask,
+.mh-ask-wrap:has(#replyBody.is-bridget-writing) .mh-ask-suggest { display:none; }
+.mh-ask-wrap:has(#replyBody.is-bridget-writing) textarea {
+  padding-top:14px; min-height:108px; }
+
+/* Suggestions, not buttons: the lightest thing in the composer, gone the moment
+   a reply is in progress. They sit in the tray under the ask line because that
+   is the field they write into. */
+.mh-ask-suggest { display:flex; flex-wrap:wrap; gap:2px 4px;
+  margin:0; padding:8px 14px 0; border-bottom:1px solid var(--border); }
+.mh-ask-suggest[hidden] { display:none; }
+.mh-ask-suggest button { padding:4px 8px; border:0; border-radius:7px;
+  background:transparent; color:var(--faint); font:inherit; font-size:10.5px;
+  font-weight:600; line-height:1.3; white-space:nowrap; cursor:pointer;
+  transition:background .12s ease, color .12s ease; }
+.mh-ask-suggest button:hover { background:var(--accent-soft);
+  color:var(--accent); }
+.mh-ask-suggest button:focus-visible { outline:2px solid var(--accent);
+  outline-offset:2px; }
+
 .mh-applicant-panel { min-width:0; min-height:0; overflow-y:auto;
   padding:var(--space-4); border-left:1px solid var(--border);
   background:var(--surface-2); }
-.mh-applicant-panel-head { display:grid; grid-template-columns:auto minmax(0,1fr) auto;
-  align-items:center; gap:var(--space-3); padding:2px 2px var(--space-4); }
-.mh-applicant-panel-head > span:nth-child(2) { min-width:0; display:flex;
+.mh-applicant-panel-head { display:flex; align-items:center; gap:var(--space-3);
+  padding:2px 2px var(--space-4); }
+.mh-applicant-panel-head > span:first-child { min-width:0; flex:1; display:flex;
   flex-direction:column; gap:1px; }
-.mh-applicant-panel-head small { color:var(--faint); font-size:var(--text-xs);
-  font-weight:750; letter-spacing:.05em; text-transform:uppercase; }
 .mh-applicant-panel-head b { overflow:hidden; color:var(--ink);
   font-size:var(--text-sm); text-overflow:ellipsis; white-space:nowrap; }
 .mh-applicant-panel-head em { color:var(--muted); font-size:var(--text-xs);
   font-style:normal; }
 .mh-applicant-panel .mh-clinical-card { margin:0 0 var(--space-3);
   border-radius:var(--radius); background:var(--surface); box-shadow:none; }
-.mh-clinical-card > summary { min-height:68px; display:grid;
+.mh-clinical-card > summary { min-height:48px; display:grid;
   grid-template-columns:minmax(0,1fr) auto 16px; align-items:center;
-  gap:var(--space-2); padding:var(--space-3); list-style:none; cursor:pointer;
+  gap:var(--space-2); padding:10px var(--space-3); list-style:none; cursor:pointer;
   user-select:none; }
 .mh-clinical-card > summary::-webkit-details-marker { display:none; }
 .mh-clinical-card > summary > div { min-width:0; display:flex; align-items:center;
@@ -9596,6 +9939,8 @@ html.fs-motion .fsx-proof-stat:nth-child(4) { transition-delay:.18s; }
 .mh-clinical-content { min-width:0; }
 .mh-applicant-panel .mh-record-summary { margin:var(--space-3); }
 .mh-applicant-panel .mh-record-text { margin:0 var(--space-3) var(--space-3); }
+.mh-record-updated { margin:var(--space-3) var(--space-3) 0; color:var(--faint);
+  font-size:var(--text-xs); }
 .mh-applicant-panel .mh-record-grid { grid-template-columns:1fr;
   margin:0 var(--space-3) var(--space-3); }
 .mh-applicant-panel .mh-record-empty { align-items:flex-start;
@@ -9609,12 +9954,6 @@ html.fs-motion .fsx-proof-stat:nth-child(4) { transition-delay:.18s; }
 .mh-applicant-panel .mh-criteria-head { align-items:flex-start;
   flex-direction:column; gap:3px; }
 .mh-applicant-panel .mh-checklist { padding:var(--space-2) var(--space-3) var(--space-3); }
-
-/* The full assistant duplicates the contextual Draft with Bridget action here.
-   Keep its launcher available, but reduce it to an unobtrusive icon button. */
-.appshell:has(.mh-page) .copilot-fab { width:46px; height:46px; padding:0;
-  justify-content:center; border-radius:14px; }
-.appshell:has(.mh-page) .copilot-fab .copilot-fab-label { display:none; }
 
 @container mh-conv (max-width:900px) {
   .mh-detail-tabs { display:flex; }
@@ -9648,16 +9987,13 @@ html.fs-motion .fsx-proof-stat:nth-child(4) { transition-delay:.18s; }
     gap:6px; color:var(--accent); font-size:var(--text-xs); font-weight:750;
     text-decoration:none; }
   .mh-mobile-back .ico { width:13px; height:13px; }
+  .mh-read-top { flex-direction:column; align-items:stretch; }
+  .mh-read-actions { width:100%; justify-content:flex-start; flex-wrap:wrap; }
   .mh-contact-main { width:100%; max-width:100%; align-items:flex-start; }
   .mh-contact-copy { width:calc(100% - 54px); max-width:calc(100% - 54px); }
   .mh-contact-copy > p { align-items:flex-start; flex-direction:column; gap:3px; }
   .mh-study-context { max-width:100%; }
-  .mh-conversation-actions { width:100%; max-width:none; display:grid;
-    grid-template-columns:minmax(0,1fr) minmax(0,1fr); align-items:end; }
-  .mh-conversation-actions > form { min-width:0; }
-  .mh-conversation-actions > form:last-child { grid-column:1 / -1; }
-  .mh-assign-form { min-width:0; }
-  .mh-assign-form select,.mh-resolve-btn { width:100%; }
+  .mh-conversation-actions { width:100%; max-width:none; }
   .mh-resolve-btn { justify-content:center; }
   .mh-detail-layout,.mh-dialogue,.mh-dialogue-top,.mh-message-list,.mh-composer {
     width:100%; max-width:100%; }
@@ -9669,7 +10005,6 @@ html.fs-motion .fsx-proof-stat:nth-child(4) { transition-delay:.18s; }
   .mh-dialogue .mh-message { width:94%; max-width:100%; }
   .mh-dialogue .mh-message-bubble { max-width:100%; overflow-wrap:anywhere; }
   .mh-applicant-panel { padding:var(--space-3); }
-  .appshell:has(.mh-page) .copilot-fab { display:none !important; }
 }
 
 html.ui-motion [data-ui-reveal] { opacity:0; transform:translateY(8px); }
@@ -9735,7 +10070,10 @@ html.ui-motion [data-ui-reveal].is-visible { opacity:1; transform:none;
     flex:1; min-height:0; height:auto; max-height:none;
     display:grid; grid-template-columns:minmax(0,1fr); overflow:hidden; }
   .mh-workspace.is-list-only .mh-conversation { display:none; }
-  .mh-workspace:not(.is-list-only) .mh-thread-column { display:none; }
+  /* Hide the list only when a thread is actually open. The server picks an
+     active thread even without ?thread=, so `:not(.is-list-only)` hid the
+     list while the conversation was ALSO hidden - a blank inbox on phones. */
+  .mh-workspace.is-thread-selected .mh-thread-column { display:none; }
   .mh-thread-column, .mh-conversation {
     min-height:0; max-height:none; height:100%; overflow:hidden; }
   .mh-thread-stack { max-height:none; min-height:0; }
@@ -9750,7 +10088,8 @@ html.ui-motion [data-ui-reveal].is-visible { opacity:1; transform:none;
   .mh-back .ico { width:18px; height:18px; }
   .mh-conversation-head { gap:10px; }
   .mh-owner-toggle a, .mh-thread-tabs a, .mh-stage-tabs a, .mh-quick-chip {
-    min-height:44px; padding:10px 12px; font-size:13px; }
+    min-height:44px; padding:10px 8px; font-size:13px; }
+  .mh-seg, .mh-filter-btn { min-height:40px; padding:8px 12px; font-size:13px; }
   .mh-search { min-height:44px; }
   .mh-search input { height:44px; }
   .mh-scope select, .mh-resolve-btn, .mh-assign-form select { min-height:44px; }
@@ -9758,7 +10097,6 @@ html.ui-motion [data-ui-reveal].is-visible { opacity:1; transform:none;
     position:sticky; bottom:0; z-index:4;
     padding-bottom:max(12px, env(safe-area-inset-bottom)); }
   .mh-compose-foot .btn { min-height:44px; width:100%; justify-content:center; font-size:15px; }
-  .copilot-fab { display:none !important; }
 }
 
 /* ---------- Field hint (shared form row) ---------- */
@@ -10810,20 +11148,6 @@ input[type="radio"]:disabled { opacity: .5; cursor: not-allowed; }
 .mh-assign-form select,
 .mh-stage-form select { text-overflow: ellipsis; }
 
-/* ---------- Floating Bridget button: stay off primary actions ---------- */
-/* On the inbox the composer's Send button sits in the same bottom-right corner
-   as the FAB, so the FAB covered it. Lift the FAB above the composer there.
-   Only while the FAB is actually up - when the dock is open it is hidden and
-   nothing needs moving. */
-body.has-bridget-fab[data-page="marketing_hub"] .copilot-fab {
-  bottom: max(104px, calc(env(safe-area-inset-bottom) + 104px));
-}
-@media (max-width: 1100px) {
-  body.has-bridget-fab[data-page="marketing_hub"] .copilot-fab {
-    bottom: max(16px, env(safe-area-inset-bottom));
-  }
-}
-
 /* ---------- Patient portal: appointments ---------- */
 /* The date leads. Someone opening this page is usually answering one question -
    "when am I next in, and what do I need to bring" - so the date sits in its own
@@ -10952,3 +11276,150 @@ body.has-bridget-fab[data-page="marketing_hub"] .copilot-fab {
 .portal-history[open] > summary::after { content: "Hide"; }
 .portal-history > summary:hover { color: var(--ink); }
 .portal-history .portal-visits { margin-top: var(--space-2); }
+
+/* ---------- Bridget: generative draft animation --------------------------
+   A draft that appears fully-formed reads as a canned string; the same text
+   written out reads as something that was just thought up. Three beats, in
+   order: a shimmer while the model is working, tokens landing one at a time,
+   then a settle. Purely presentational - the text is already in hand before
+   any of this starts, so nothing here can change what gets sent.
+
+   Every beat is disabled under prefers-reduced-motion, where the finished
+   draft is simply shown at once. */
+
+@keyframes bridgetTokIn {
+  from { opacity: 0; transform: translateY(.24em); filter: blur(2px); }
+  to   { opacity: 1; transform: none; filter: none; }
+}
+@keyframes bridgetCaret {
+  0%, 45%  { opacity: 1; }
+  55%, 100%{ opacity: 0; }
+}
+@keyframes bridgetSkeleton {
+  from { background-position: 180% 0; }
+  to   { background-position: -80% 0; }
+}
+
+/* Beat 1 - working. Skeleton lines that sweep, so the wait has a shape
+   instead of a spinner sitting on nothing. */
+.bridget-thinking { display: grid; gap: 7px; padding: 2px 0; }
+/* The panel these sit on is already --accent-soft, so the bars are mixed
+   against --accent (not against the panel) or they disappear into it. */
+.bridget-thinking i {
+  display: block; height: 9px; border-radius: 999px;
+  --sk-base: color-mix(in srgb, var(--accent) 18%, transparent);
+  --sk-lift: color-mix(in srgb, var(--accent) 42%, transparent);
+  background: linear-gradient(90deg,
+    var(--sk-base) 0%, var(--sk-base) 28%,
+    var(--sk-lift) 48%,
+    var(--sk-base) 68%, var(--sk-base) 100%);
+  background-size: 220% 100%;
+  animation: bridgetSkeleton 1.15s linear infinite;
+}
+.bridget-thinking i:nth-child(1) { width: 92%; }
+.bridget-thinking i:nth-child(2) { width: 78%; animation-delay: .12s; }
+.bridget-thinking i:nth-child(3) { width: 54%; animation-delay: .24s; }
+
+/* Beat 2 - writing. Each token lands with a short rise + de-blur, and a soft
+   sheen rides across the text that has landed so far. */
+.bridget-stream { position: relative; }
+.bridget-stream .bg-tok {
+  animation: bridgetTokIn .26s cubic-bezier(.22, .61, .36, 1) both;
+  will-change: opacity, transform;
+}
+/* No gradient-sheen on the text itself, deliberately: `background-clip: text`
+   is painted by the element that owns the background, so with one <span> per
+   token the children render with an inherited transparent fill and no
+   background of their own - i.e. invisible text mid-write. The per-token
+   landing below IS the effect; the sheen is reserved for the skeleton, which
+   is a single element and can carry it safely. */
+.bridget-stream.is-writing { color: inherit; }
+/* The caret only exists mid-write; it is removed on settle. */
+.bridget-stream .bg-caret {
+  display: inline-block; width: .5em; height: 1em; margin-left: 1px;
+  vertical-align: -.14em; border-radius: 1px;
+  background: var(--accent); animation: bridgetCaret .9s steps(1) infinite;
+}
+
+/* Beat 3 - settle. One brief lift as the draft becomes editable text. */
+@keyframes bridgetSettle {
+  from { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 26%, transparent); }
+  to   { box-shadow: 0 0 0 0 transparent; }
+}
+.bridget-settled { animation: bridgetSettle .5s ease-out both; }
+
+/* A textarea can't carry per-token spans, so the field itself signals that it
+   is being written into: an accent ring that breathes while text streams in. */
+@keyframes bridgetFieldGlow {
+  0%, 100% { box-shadow: 0 0 0 1px var(--accent),
+                         0 0 0 4px color-mix(in srgb, var(--accent) 14%, transparent); }
+  50%      { box-shadow: 0 0 0 1px var(--accent),
+                         0 0 0 7px color-mix(in srgb, var(--accent) 6%, transparent); }
+}
+textarea.is-bridget-writing, input.is-bridget-writing {
+  border-color: var(--accent) !important;
+  animation: bridgetFieldGlow 1.3s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bridget-thinking i,
+  .bridget-stream .bg-tok,
+  .bridget-stream .bg-caret,
+  .bridget-settled,
+  textarea.is-bridget-writing,
+  input.is-bridget-writing { animation: none; }
+  .bridget-stream .bg-caret { display: none; }
+}
+
+/* ---- Phone top bar -------------------------------------------------------
+   At phone width the three-zone grid ran the search pill into the study
+   switcher (they overlapped by ~22px) and the switcher's menu hung off the
+   right edge. App pattern instead: [menu] [search icon] · [study] · [bell] [me].
+   The search is an icon until tapped, then it takes the whole bar. */
+@media (max-width: 640px) {
+  .apptop { grid-template-columns: auto 1fr auto; gap: 8px; padding: 0 10px; }
+  .apptop-left { gap: 4px; }
+  .apptop-mid { justify-self: center; min-width: 0; }
+  .appswitch { max-width: min(58vw, 260px); padding: 7px 12px; font-size: 13px; }
+  .appsearch-kbd { display: none; }
+  .apptop-left .appsearch-wrap { flex: 0 0 40px; width: 40px; margin: 0; }
+  .apptop-left .appsearch-wrap .appsearch-input {
+    width: 40px; height: 40px; padding: 0; border-radius: 50%;
+    color: transparent; caret-color: transparent; background: transparent;
+    border-color: transparent; }
+  .apptop-left .appsearch-wrap .appsearch-input::placeholder { color: transparent; }
+  .apptop-left .appsearch-wrap .appsearch-ico { left: 50%; transform: translate(-50%, -50%); }
+  /* Expanded: overlays the bar edge to edge; the results panel already hangs
+     from the wrap, so it lines up underneath. */
+  .apptop-left .appsearch-wrap:focus-within {
+    position: absolute; left: 10px; right: 10px; top: 8px; width: auto; flex: none;
+    z-index: 30; }
+  .apptop-left .appsearch-wrap:focus-within .appsearch-input {
+    width: 100%; height: 40px; padding: 0 14px 0 42px; border-radius: var(--radius-pill);
+    color: var(--ink); caret-color: auto; background: var(--surface);
+    border-color: var(--accent); }
+  .apptop-left .appsearch-wrap:focus-within .appsearch-input::placeholder { color: var(--faint); }
+  .apptop-left .appsearch-wrap:focus-within .appsearch-ico { left: 14px; transform: translateY(-50%); }
+  .appswitch-menu { position: fixed; left: 12px; right: 12px; top: calc(var(--apptop-h) + 4px);
+    min-width: 0; max-height: 70vh; }
+  .appmenu-panel { max-width: calc(100vw - 24px); }
+}
+
+/* ---- Phone Bridget -------------------------------------------------------
+   The collapsed dock was a 48px full-height rail on the right edge: it covered
+   the top bar's avatar (the user menu could not be tapped) and clipped the
+   composer's send arrow. On phones the rail is gone; a button in the top bar
+   opens the full-screen Bridget sheet, and the sheet's ">" closes it again. */
+.apptop-bridget { display: none; }
+@media (max-width: 780px) {
+  .appdock[data-open="0"] { display: none; }
+  .appdock[data-open="1"] { width: 100vw; }
+  .apptop-bridget { display: inline-flex; align-items: center; justify-content: center;
+    width: 36px; height: 36px; padding: 0; border: 0; border-radius: 50%;
+    background: var(--accent-soft); color: var(--accent); cursor: pointer;
+    --mark-a: var(--accent); --mark-b: #7fb8ee; }
+  .apptop-bridget:hover { background: var(--accent); --mark-a: #fff; --mark-b: rgba(255,255,255,.55); }
+  .apptop-bridget svg { width: 18px; height: 18px; }
+  /* The landing-page frame hides Bridget at phone width altogether. */
+  body[data-embed="1"] .apptop-bridget { display: none; }
+}

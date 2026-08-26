@@ -579,6 +579,8 @@ MATCH_SCHEMA = (
 
 def llm_chat(system, user, retries=2):
     """Minimal single-turn chat call (plain text out)."""
+    from copy_sanitize import sanitize_copy, contains_em_dash
+
     body = json.dumps({
         "model": LLM_MODEL,
         "messages": [{"role": "system", "content": system},
@@ -593,7 +595,11 @@ def llm_chat(system, user, retries=2):
                 headers={"Authorization": f"Bearer {LLM_API_KEY}",
                          "Content-Type": "application/json"})
             with urllib.request.urlopen(req, timeout=60) as r:
-                return json.load(r)["choices"][0]["message"]["content"].strip()
+                raw = json.load(r)["choices"][0]["message"]["content"].strip()
+                out = sanitize_copy(raw)
+                if contains_em_dash(out):
+                    out = sanitize_copy(out)
+                return out
         except Exception as e:
             last = e
             if attempt < retries - 1:

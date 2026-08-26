@@ -13,7 +13,11 @@ import re
 
 import match_trials as mt
 
-from . import actions, registry, tools
+from copy_sanitize import sanitize_copy
+
+import db
+
+from . import actions, drafts, registry, tools
 
 SYSTEM_PROMPT = (
     "You are BridgeMD Copilot, an assistant for a clinical-trial study team. "
@@ -29,7 +33,8 @@ SYSTEM_PROMPT = (
     "4. Be concise: write a SINGLE short headline sentence stating the key number "
     "or takeaway. Do NOT list individual applicants, visits, or documents by name - "
     "the interface shows those to the user as a separate, scannable list beneath "
-    "your reply, so enumerating them is redundant."
+    "your reply, so enumerating them is redundant.\n"
+    "5. Never use em dashes. Use commas, periods, or hyphens instead."
 )
 
 
@@ -101,10 +106,35 @@ def _display_items(items):
 # Action-first starters shown in the empty rail - phrased as work to do, not
 # questions to ask (Bridget is an agent that acts, not a Q&A bot).
 STARTERS = [
+    "List my studies",
     "Draft replies to my inbox",
-    "Send booking reminders to everyone stuck",
-    "Find my biggest funnel leak",
+    "Send a blast to everyone accepted",
 ]
+
+# Starting points while an inbox conversation is open. Each is an instruction
+# the reply drafter understands (drafts._ASK_LADDER), so clicking one writes a
+# reply into the box rather than answering in the rail. The rail shows the same
+# four in its empty state (see _copilot.html); keep the two lists identical.
+DRAFT_PRESETS = [
+    "Answer their question",
+    "Offer a call",
+    "Ask availability",
+    "Check in",
+]
+
+# With a conversation open, anything addressed to the other person is a reply
+# to write, not a question to answer. These are the giveaways.
+_DRAFT_CUES = ("reply", "respond", "answer", "draft", "write", "tell them",
+               "tell her", "tell him", "say ", "let them know", "let her know",
+               "let him know", "ask them", "ask her", "ask him", "ask if",
+               "ask whether", "ask for", "ask which", "ask what", "ask when",
+               "offer", "thank", "check in", "follow up", "nudge", "decline",
+               "not a fit", "invite", "confirm", "apolog", "them", "their",
+               "they")
+
+
+def _wants_draft(q):
+    return any(c in q for c in _DRAFT_CUES)
 
 # The trace ("what I actually did") now lives with each tool in registry.py.
 
@@ -125,19 +155,42 @@ _BULK_HINTS = ("everyone", "all of them", "each of", "each one", "stuck",
                "all applicants", "everybody")
 
 
-def _classify(query, has_lead=False):
+def _classify(query, ctx=None):
     """Return (intent, params) from keyword rules. Deterministic + cheap; the
     LLM is only used later to phrase the grounded answer, not to route.
 
     Order matters: ACTION intents (that write) are matched before READ intents,
     so 'send a booking reminder to everyone stuck' is a bulk action, not the
     'who is stuck' read."""
+    ctx = ctx or {}
+    has_lead = bool(ctx.get("has_lead"))
+    has_thread = bool(ctx.get("has_thread"))
+    active_nct = (ctx.get("active_nct") or "").strip().upper()
     q = (query or "").lower().strip()
+
+    # An inbox conversation is open: the person is looking at a message and
+    # Bridget is the only writer on the page. Anything aimed at the other
+    # person ("offer a call", "tell them the next step") is a reply to write.
+    # Workspace questions ("list my studies", "who is out of window") still
+    # fall through to the read tools below.
+    if has_thread and _wants_draft(q):
+        return "draft_reply", {}
 
     m = re.search(r"(mention|about|said|talk\w*|contain\w*)\s+[\"']?([\w\- ]{2,40})",
                   q)
     if ("search" in q or "find" in q or "mention" in q) and m:
         return "search_messages", {"term": m.group(2).strip()}
+
+    # --- List claimed studies (before blast/send so "send me my studies" works) -
+    if ((("studies" in q or "trials" in q) and
+         any(w in q for w in ("list", "show", "what are", "which are", "do i have",
+                              "we have", "i have", "my studies", "my trials",
+                              "send me", "tell me", "give me")))
+            or any(w in q for w in ("my studies", "my trials", "studies i have",
+                                    "trials i have", "studies we run",
+                                    "what studies", "which studies",
+                                    "what trials", "which trials"))):
+        return "list_studies", {}
 
     # --- Inbox / new replies (read + a suggested draft per applicant) ----------
     # This is inbox triage, not a single-applicant send, so it must beat the
@@ -167,14 +220,21 @@ def _classify(query, has_lead=False):
 
     # --- Blast: messaging a described GROUP inside one study -------------------
     m_nct = re.search(r"(nct\d{6,10})", q)
-    if (any(w in q for w in ("blast", "message everyone", "message all",
-                             "send to everyone", "email everyone",
-                             "notify everyone", "message everybody"))
+    if (any(w in q for w in ("blast", "text blast", "mass text", "mass message",
+                             "message everyone", "message all", "email everyone",
+                             "text everyone", "notify everyone",
+                             "message everybody"))
             or (m_nct and any(w in q for w in ("message", "send", "notify",
-                                               "remind", "tell")))):
+                                               "remind", "tell", "text")))):
         p_blast = {}
         if m_nct:
             p_blast["nct"] = m_nct.group(1).upper()
+        elif active_nct and any(p in q for p in tools._DEICTIC):
+            p_blast["nct"] = active_nct
+        elif active_nct and any(w in q for w in ("all applicant", "every applicant",
+                                                 "everyone accepted", "whole trial",
+                                                 "whole study")):
+            p_blast["nct"] = active_nct
         for st in ("prescreen", "eligible", "screening", "enrolled"):
             if st in q:
                 p_blast["stage"] = st
@@ -205,6 +265,8 @@ def _classify(query, has_lead=False):
     if any(w in q for w in ("draft", "reply", "replies", "message", "write",
                             "follow up", "followup", "nudge", "reschedule",
                             "thank", "respond")):
+        if has_thread:
+            return "draft_reply", {}
         # No applicant open -> they mean their inbox, not one person. Route to the
         # inbox reader (which drafts per applicant) instead of dead-ending on
         # "open an applicant first".
@@ -278,6 +340,10 @@ def _classify(query, has_lead=False):
     if any(w in q for w in ("summar", "brief", "who is this", "tell me about",
                             "this applicant", "this candidate", "recap")):
         return "applicant_summary", {}
+    # Nothing matched. With a conversation open that means "write this", not
+    # "I do not understand": a sentence typed at an open message is a reply.
+    if has_thread:
+        return "draft_reply", {}
     return "help", {}
 
 
@@ -291,13 +357,31 @@ _PROPOSAL_INTRO = {
 }
 
 
-def _help_payload():
+def _help_payload(ctx=None):
+    ctx = ctx or {}
+    n = len(ctx.get("studies") or [])
+    scope = ctx.get("scope_label") or "your studies"
+    if n:
+        summary = (f"You're on {scope}. I can list your studies, draft inbox "
+                   "replies, message a group, or check who's stuck. What do you "
+                   "want to do?")
+    else:
+        summary = ("Claim a study in Settings first. Then I can help with inbox "
+                   "replies, applicant blasts, and your review queue.")
     return {
-        "summary": ("I work across your studies \u2014 inbox, review queue, "
-                    "calendar, documents, and campaigns. Tell me what you want "
-                    "to do, or pick one below."),
+        "summary": summary,
         "items": [], "citations": [],
     }
+
+
+def _study_suggestions(ctx, limit=3):
+    """Quick prompts when Bridget needs a study picked."""
+    out = ["List my studies"]
+    for s in (ctx.get("studies") or [])[:limit]:
+        title = (s.get("title") or s.get("nct") or "")[:36]
+        if title:
+            out.append(f"Blast everyone in {title}")
+    return out[:4]
 
 
 _JSON_RE = re.compile(r"\{.*\}", re.DOTALL)
@@ -315,7 +399,12 @@ def _plan_llm(query, ctx):
     if not mt.LLM_API_KEY:
         return None
     try:
+        scope = ctx.get("scope_label") or "All studies"
+        active = ctx.get("active_nct") or "all"
+        n_studies = len(ctx.get("studies") or [])
         user = (f"TOOLS:\n{registry.catalog_for_prompt()}\n\n"
+                f"Active study scope: {scope} ({active})\n"
+                f"Claimed studies: {n_studies}\n"
                 f"An applicant record is currently open: {bool(ctx.get('has_lead'))}\n"
                 f"USER REQUEST: {query}\n\n"
                 "Pick the single best tool and its params. JSON only.")
@@ -331,7 +420,15 @@ def _plan_llm(query, ctx):
 
 def _plan(query, ctx):
     """Choose a tool: LLM planner first (if configured), keyword rules otherwise."""
-    return _plan_llm(query, ctx) or _classify(query, bool(ctx.get("has_lead")))
+    return _plan_llm(query, ctx) or _classify(query, ctx)
+
+
+def _enrich_params(params, ctx, query):
+    """Attach workspace scope for tools that need it."""
+    p = dict(params or {})
+    p["active_nct"] = ctx.get("active_nct") or ""
+    p["_query"] = query
+    return p
 
 
 def _ground_with_llm(query, payload):
@@ -345,54 +442,144 @@ def _ground_with_llm(query, payload):
                 f"Deterministic summary for reference: {payload.get('summary', '')}\n\n"
                 "Write the answer now, following your rules.")
         out = mt.llm_chat(SYSTEM_PROMPT, user)
-        return (out or "").strip() or None
+        return sanitize_copy((out or "").strip() or None)
     except Exception:
         return None
 
 
+def _sanitize_answer(res):
+    """Every user-visible string Bridget returns passes through here."""
+    if not isinstance(res, dict):
+        return res
+    if res.get("answer"):
+        res["answer"] = sanitize_copy(res["answer"])
+    if res.get("draft"):
+        res["draft"] = sanitize_copy(res["draft"])
+    prop = res.get("proposal")
+    if isinstance(prop, dict):
+        for key in ("text", "target", "confirm_label", "blocked"):
+            if prop.get(key):
+                prop[key] = sanitize_copy(prop[key])
+    for it in res.get("items") or []:
+        if isinstance(it, dict):
+            for key in ("title", "detail", "study"):
+                if it.get(key):
+                    it[key] = sanitize_copy(it[key])
+    res["suggestions"] = [sanitize_copy(s) for s in (res.get("suggestions") or [])
+                          if s]
+    return res
+
+
 def answer(user_id, query, context=None):
-    """Entry point. ``context`` may include {"lead_id": int} for the page the
-    user is on. Returns {answer, citations, action?, suggestions}.
+    """Entry point. ``context`` from ``context.build()``, study scope, lead, page.
+    Returns {answer, citations, action?, suggestions}.
 
     Flow: plan a tool (LLM planner or keyword rules) -> dispatch through the
     registry. Reads return a grounded answer; actions return a confirmable
     proposal. The safe confirm/send path is never bypassed here."""
-    context = context or {}
+    context = dict(context or {})
+    context["user_id"] = user_id
     lead_id = context.get("lead_id")
-    intent, params = _plan(query, {"has_lead": bool(lead_id)})
+    thread_id = context.get("thread_id")
+    if thread_id:
+        # Keyword rules only. The LLM planner routes across the registry and
+        # knows nothing about an open conversation; with one open the question
+        # is "write or answer", and the rules decide that deterministically.
+        intent, params = _classify(query, context)
+        tool = registry.get(intent)
+        # Anything that would act on, or needs, an open applicant is a reply to
+        # write here: "send them the booking link" with a conversation open
+        # means a message saying so, not a proposal that dead-ends on
+        # "no applicant open".
+        if intent == "draft_reply" or tool is None or tool.kind == "action" \
+                or tool.needs_lead:
+            return _sanitize_answer(_draft_reply(user_id, thread_id, query))
+    else:
+        intent, params = _plan(query, context)
+    params = _enrich_params(params, context, query)
 
     tool = registry.get(intent)
     if tool is None:                       # "help" or an unknown name
-        p = _help_payload()
-        return {"answer": p["summary"], "citations": [], "trace": [],
-                "suggestions": STARTERS}
+        p = _help_payload(context)
+        return _sanitize_answer({"answer": p["summary"], "citations": [], "trace": [],
+                "suggestions": STARTERS})
 
     if tool.needs_lead and not lead_id:
-        return {
+        return _sanitize_answer({
             "answer": "Open an applicant first, then ask again - that lets me "
                       "pull their record.",
             "citations": [], "suggestions": STARTERS,
-        }
+        })
 
     # --- Action tools: build a confirmable proposal (never auto-send) ----------
     if tool.kind == "action":
-        res = _propose(intent, user_id, lead_id, params)
+        res = _propose(intent, user_id, lead_id, params, context, query)
         res.setdefault("trace", tool.trace)
-        return res
+        return _sanitize_answer(res)
 
     # --- Read tools: grounded answer ------------------------------------------
     payload = tool.run(user_id, lead_id, params)
     text = _ground_with_llm(query, payload) or payload.get("summary", "")
-    return {
+    suggestions = []
+    if intent == "list_studies" and context.get("studies"):
+        suggestions = [f"Blast everyone accepted in {(context['studies'][0]['title'] or '')[:30]}"]
+    return _sanitize_answer({
         "answer": text,
         "items": _display_items(payload.get("items")),
         "citations": payload.get("citations", []),
         "trace": tool.trace,
-        "suggestions": [],
+        "suggestions": suggestions,
+    })
+
+
+def draft_for_thread(user_id, thread_id, instruction=""):
+    """Write the reply for an inbox conversation.
+
+    ``instruction`` is what the coordinator asked for ("offer a screening call
+    next week"); with none, the draft answers the last inbound message. Returns
+    {draft, target} or {error}. Never sends: the text lands in the reply box
+    for a person to edit and send (COMPLIANCE.md). Shared by the rail
+    (/app/copilot/ask with a thread open) and the thread's draft.json endpoint
+    so both write the same reply."""
+    thread = db.get_marketing_thread(user_id, thread_id)
+    if not thread:
+        return {"error": "I can't find that conversation."}
+    instruction = (instruction or "").strip()[:400]
+    messages = db.list_marketing_messages(user_id, thread_id)
+    latest = next(
+        (row["body"] for row in reversed(messages) if row["kind"] == "inbound"),
+        "")
+    if not latest and not instruction:
+        return {"error": "No inbound message to draft from."}
+    first = (thread["contact_name"] or "there").split()[0]
+    study = thread["study_label"] or "the study"
+    text = drafts.draft("reply", {
+        "first": first, "study": study, "inbound": latest, "ask": instruction})
+    return {"draft": text,
+            "target": thread["contact_name"] or thread["contact_handle"]
+            or "this contact",
+            "first": first}
+
+
+def _draft_reply(user_id, thread_id, query):
+    """The rail's answer when a conversation is open: the reply goes into the
+    box, the rail says so, and offers the other starting points."""
+    res = draft_for_thread(user_id, thread_id, query)
+    if res.get("error"):
+        return {"answer": res["error"], "citations": [], "suggestions": []}
+    used = (query or "").strip().lower()
+    return {
+        "answer": f"Written into the reply box for {res['first']}. Edit it "
+                  "there and send it when it reads right.",
+        "draft": res["draft"],
+        "target": res["target"],
+        "citations": [],
+        "trace": ["Read this conversation", "Wrote a reply for you to review"],
+        "suggestions": [p for p in DRAFT_PRESETS if p.lower() != used],
     }
 
 
-def _propose(intent, user_id, lead_id, params):
+def _propose(intent, user_id, lead_id, params, ctx, query):
     """Build a confirmable action proposal, or explain why it can't be done."""
     if intent == "send_message":
         prop = actions.build_message_proposal(user_id, lead_id, params.get("intent"))
@@ -403,7 +590,8 @@ def _propose(intent, user_id, lead_id, params):
     elif intent == "blast":
         prop = actions.build_blast_proposal(
             user_id, nct=params.get("nct", ""), stage=params.get("stage", ""),
-            tag=params.get("tag", ""), idle_days=params.get("idle_days"))
+            tag=params.get("tag", ""), idle_days=params.get("idle_days"),
+            active_nct=params.get("active_nct", ""), query=query)
     elif intent == "handoff_coverage":
         prop = actions.build_handoff_proposal(user_id, params.get("cover", ""))
     else:  # bulk_booking
@@ -411,9 +599,10 @@ def _propose(intent, user_id, lead_id, params):
 
     if prop is None:
         return {"answer": "I can't find that applicant in your studies.",
-                "citations": [], "suggestions": []}
+                "citations": [], "suggestions": STARTERS}
     if prop.get("blocked"):
-        return {"answer": prop["blocked"], "citations": [], "suggestions": []}
+        sug = _study_suggestions(ctx) if intent == "blast" else STARTERS
+        return {"answer": prop["blocked"], "citations": [], "suggestions": sug}
 
     intro = _PROPOSAL_INTRO.get(intent, "Confirm to continue:").format(
         target=prop.get("target", "this applicant"))

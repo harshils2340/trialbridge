@@ -1,4 +1,4 @@
-# BridgeMD — Test Log
+# BridgeMD, Test Log
 
 A running log of changes and the local tests that verify them. Every entry lists
 what changed, how to reproduce the test, and the result. Tests are hermetic
@@ -16,7 +16,7 @@ cd web
 
 ---
 
-## 2026-07-08 — Fix "That trial result expired" on trial detail pages
+## 2026-07-08, Fix "That trial result expired" on trial detail pages
 
 **Symptom:** Clicking "Proceed / see more details" on a trial sometimes bounced
 back with *"That trial result expired - please run your search again."*
@@ -42,14 +42,14 @@ automatically on startup (`CREATE TABLE IF NOT EXISTS`), so no manual migration.
 |------|----------------|
 | `test_cross_worker_function_level` | After clearing the in-process cache (simulating a *different* worker), the trial is still found via SQLite. |
 | `test_missing_sid_returns_none` | Unknown search id returns nothing (no false hits). |
-| `test_detail_route_survives_worker_switch` | `/trial/<sid>/<nct>` renders **200** after the L1 cache is cleared — the exact bug scenario, which previously produced the "expired" redirect. |
+| `test_detail_route_survives_worker_switch` | `/trial/<sid>/<nct>` renders **200** after the L1 cache is cleared, the exact bug scenario, which previously produced the "expired" redirect. |
 | `test_expired_search_redirects` | A genuinely unknown search id still shows the friendly redirect. |
 
 **Result:** `All 4 tests passed`.
 
 ---
 
-## 2026-07-10 — Auto-hide "Probably not a fit" + real location on mobile
+## 2026-07-10, Auto-hide "Probably not a fit" + real location on mobile
 
 **Two patient-facing fixes.**
 
@@ -76,7 +76,7 @@ threw, and the search box fell back to the literal string "Current location".
 
 | Test | What it proves |
 |------|----------------|
-| `test_geo_reverse_public_no_login` | `/geo/reverse` returns 200 JSON when logged out (`NO_LOGIN=0`) — no login redirect. |
+| `test_geo_reverse_public_no_login` | `/geo/reverse` returns 200 JSON when logged out (`NO_LOGIN=0`), no login redirect. |
 | `test_label_us_includes_zip` | US coordinates format as `City, State ZIP`. |
 | `test_label_canada_city_region` | Non-US coordinates format as `City, Region` (no ZIP). |
 | `test_results_hide_probably_not_by_default` | Results template renders the "no" fit checkbox unchecked, "good" checked, and applies the filter on load. |
@@ -85,7 +85,7 @@ threw, and the search box fell back to the literal string "Current location".
 
 ---
 
-## 2026-07-10 — Mobile responsiveness, dark mode & accessibility
+## 2026-07-10, Mobile responsiveness, dark mode & accessibility
 
 **Feedback addressed:** the app was "whacky" on phones; red/green fit indicators
 are invisible to colorblind users; and white backgrounds with grey text are hard
@@ -108,7 +108,7 @@ overflow = the tell-tale sign of a broken mobile layout).
 
 ### 2. Clean dark mode
 - Set before first paint by an inline script in both base templates (honors a
-  saved choice, else the OS `prefers-color-scheme`) — no white flash on load.
+  saved choice, else the OS `prefers-color-scheme`), no white flash on load.
 - A round **sun/moon toggle** (nav on public pages, sidebar on the app, floating
   on auth pages) persists the choice in `localStorage`.
 - The theme is token-driven: `[data-theme="dark"]` redefines the CSS variables and
@@ -118,14 +118,14 @@ overflow = the tell-tale sign of a broken mobile layout).
 
 ### 3. Colorblind-safe status + other a11y
 - Fit badges now carry **distinct icons per verdict** (good = check, maybe =
-  sparkle, not-a-fit = ✕) — not hue alone — plus a defining border.
+  sparkle, not-a-fit = ✕), not hue alone, plus a defining border.
 - Match-quality filter dots use distinct **shapes** (circle / square / diamond).
 - Eligibility chips/criteria get a leading glyph (✓ / ? / ✕).
 - Added: visible `:focus-visible` rings on all controls, a **skip-to-content**
   link, a `#main` landmark and `role="main"`, accessible name + `aria-pressed`
   on the theme toggle, and `<meta name="color-scheme">`.
 
-**Tests:** `web/test_a11y_theme.py` (6 checks) — dark-mode wiring in both bases,
+**Tests:** `web/test_a11y_theme.py` (6 checks), dark-mode wiring in both bases,
 skip link + `#main`, dark theme + focus/skip/toggle CSS, colorblind dot shapes,
 mobile sidebar-wrap + table/tab scroll rules, and distinct fit-badge icons.
 Visual verification (headless Chromium, 390px + 1280px, light + dark) confirmed
@@ -136,7 +136,7 @@ Visual verification (headless Chromium, 390px + 1280px, light + dark) confirmed
 
 ---
 
-## 2026-07-13 — Demo lane 4: EHR background matching
+## 2026-07-13, Demo lane 4: EHR background matching
 
 **Goal:** the 4th demo lane ("EHR background matching") deep-linked to the plain
 physician search view, so there was nothing showing the clinic-wide EHR story.
@@ -147,7 +147,7 @@ Build a clear, self-explanatory demo of it.
    records screened + last sync).
 2. The platform **continuously screens the clinic's own patients** against the
    trials that clinic runs (3-step "how it works" strip + summary stats).
-3. **New matches surface grouped by trial** — each patient shown de-identified
+3. **New matches surface grouped by trial**: each patient shown de-identified
    (`PT-####` + initials, age/sex, last seen) with a plain-language "why matched"
    reason and a match-strength flag.
 4. Staff **moves forward in one click**: *Email patient* or *Send to physician*.
@@ -157,7 +157,7 @@ Build a clear, self-explanatory demo of it.
 - `web/app.py`: `dashboard()` branches on `wf=proactive` to render a dedicated
   view; `_ehr_matching_demo()` supplies the demo payload (gated on preview mode).
 - `web/templates/ehr_matching.html`: the new view.
-- `web/static/style.css`: `.ehr-*` styles — token-driven so dark mode themes it
+- `web/static/style.css`: `.ehr-*` styles, token-driven so dark mode themes it
   automatically; stacks on mobile.
 
 **Compliance:** this is clinical decision support for the treating clinic (their
@@ -182,9 +182,9 @@ Visual + interaction check (headless Chromium): **0px** horizontal overflow at
 **Result:** `All 4 tests passed`; prior suites still green
 (`test_a11y_theme.py` 6/6, `test_ui_fixes.py` 4/4, `test_search_cache.py` 4/4).
 
-## 2026-07-13 — Lane 4 de-slop: user-POV work queue
+## 2026-07-13, Lane 4 de-slop: user-POV work queue
 
-**Feedback:** the lane opened with a marketing "Epic EHR connected — clinic-wide"
+**Feedback:** the lane opened with a marketing "Epic EHR connected, clinic-wide"
 banner and a "Connect once → we screen → matches appear" 3-step explainer. That
 reads like an investor/landing pitch, not the tool a clinic coordinator actually
 uses ("bare AI slop … this isn't an investor website, it's a user POV").

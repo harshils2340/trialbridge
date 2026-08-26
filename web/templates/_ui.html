@@ -47,8 +47,8 @@
 
 {# --- Badge ----------------------------------------------------------------
    Small status label. tone: neutral | brand | ok | warn | danger | info | violet #}
-{% macro badge(label, tone="neutral", icon="") -%}
-  <span class="ui-badge ui-badge-{{ tone }}">{% if icon %}{{ ic.icon(icon) }}{% endif %}{{ label }}</span>
+{% macro badge(label, tone="neutral", icon="", extra="") -%}
+  <span class="ui-badge ui-badge-{{ tone }}" {{ extra|safe }}>{% if icon %}{{ ic.icon(icon) }}{% endif %}{{ label }}</span>
 {%- endmacro %}
 
 {# --- Count badge (e.g. unread) -------------------------------------------- #}

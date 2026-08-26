@@ -1,0 +1,36 @@
+{% extends "omni/base.html" %}
+{% import "_icons.html" as ic %}
+{% import "_ui.html" as ui %}
+
+{% block title %}Rules | {{ ws.name }} | {{ OMNI_BRAND }}{% endblock %}
+
+{% block body %}
+<div class="om-page">
+  <header class="om-page-head">
+    <h1>Rules</h1>
+    <p class="om-lede">Sentences you typed that {{ OMNI_BRAND }} applies to every conversation: flag it, move it, mark it urgent, or reject it politely. Add one by typing it in the bar above{% if examples %}, for example "{{ examples[0] }}"{% endif %}.</p>
+  </header>
+
+  <div class="om-rules">
+    {% for r in rules %}
+    <article class="om-rule {{ 'is-off' if not r.enabled }}">
+      <div class="om-rule-main">
+        <b>{{ r.text or r.name }}</b>
+        <p>{{ r.words }}</p>
+      </div>
+      <div class="om-rule-meta">
+        <a class="om-rule-count" href="{{ url_for('om_inbox', wid=ws.wid, status='all', q='') }}" title="Conversations this rule matches right now">{{ r.count }} match{{ 'es' if r.count != 1 }}</a>
+        <form method="post" action="{{ url_for('om_rule_toggle', wid=ws.wid, key=r.key) }}">
+          {{ ui.btn('Turn off' if r.enabled else 'Turn on', 'ghost', 'sm', type='submit') }}
+        </form>
+        <form method="post" action="{{ url_for('om_rule_delete', wid=ws.wid, key=r.key) }}">
+          {{ ui.btn('Delete', 'link', 'sm', type='submit') }}
+        </form>
+      </div>
+    </article>
+    {% else %}
+    {{ ui.empty('No rules yet', 'Type one in the bar above, like "flag anyone mentioning a court date".', icon='list') }}
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

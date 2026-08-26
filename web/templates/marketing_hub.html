@@ -25,21 +25,18 @@
 <div class="mh-page">
   <section class="mh-workspace {{ 'has-active' if active }} {{ 'is-thread-selected' if active and request.args.get('thread') }} {{ 'is-list-only' if not active }}">
     <section class="mh-thread-column" aria-label="Conversations" data-demo-tour-target="inbox">
+      {# One header row, mail-client style: what you're looking at, how to search
+         it, and the two actions that belong to the list itself. The study picker
+         that used to sit here is gone - it lives in the top bar now, where it
+         scopes the whole workspace instead of just this list. "Create a test
+         conversation" is dropped from here too: it is a setup step, not daily
+         work, and it is still offered by the empty state below - which is the
+         only moment you actually want it. #}
       <div class="mh-thread-toolbar">
-        {% if nav_studies and nav_studies|length > 1 %}
-        <form method="get" action="{{ url_for('set_scope') }}" class="mh-scope">
-          {# Preserve the active filters when switching trials, but drop the open
-             thread= so we land on the new study's fresh list (an old-study thread
-             left open in the pane would be confusing). #}
-          <input type="hidden" name="next" value="{{ url_for('marketing_hub', status=status_filter, stage=stage_filter, source=source_filter, channel=channel_filter, q=search_query) }}">
-          <select name="nct" data-autosubmit aria-label="Filter this inbox by study">
-            <option value="" {{ 'selected' if not active_nct }}>All studies{% if site_unread %} ({{ site_unread }}){% endif %}</option>
-            {% for s in nav_studies %}
-            <option value="{{ s.nct }}" {{ 'selected' if active_nct == s.nct }}>{{ (s.title[:28] ~ ('\u2026' if s.title and s.title|length > 28 else '')) or s.nct }}{% if s.unread %} ({{ s.unread }}){% endif %}</option>
-            {% endfor %}
-          </select>
-        </form>
-        {% endif %}
+        <h1 class="mh-list-title">
+          {{ active_study_label if active_nct else 'Inbox' }}
+          {% if site_unread %}<span>{{ site_unread }}</span>{% endif %}
+        </h1>
         <form method="get" action="{{ url_for('marketing_hub') }}" class="mh-search">
           {{ ic.icon('search') }}
           <input name="q" type="search" value="{{ search_query }}" placeholder="Search conversations" aria-label="Search conversations">
@@ -48,16 +45,15 @@
           {% if channel_filter %}<input type="hidden" name="channel" value="{{ channel_filter }}">{% endif %}
         </form>
         {{ ui.icon_btn('Manage connected accounts', 'cloud-sync', extra='data-ui-open="sourceModal"') }}
-        {{ ui.icon_btn('Create a test conversation', 'plus', extra='data-ui-open="testThreadModal"', disabled=not counts.sources) }}
         {{ ui.icon_btn('Going away - hand off your queue', 'users', extra='data-ui-open="coverageModal"' ~ (' class="is-away"' if my_away else '')) }}
       </div>
-      {% if counts.sources %}
-      {# Private inbox by default: two buckets only - your own conversations, and
-         the shared unclaimed queue so new inquiries can be picked up. There is no
-         "everyone's inbox" view on purpose; a teammate's conversation reaches you
-         only when it is assigned to you (directly or via away/coverage routing). #}
+      {# Status banners only, and only when there is something to say. The owner
+         scope that used to live here moved into the filter row below, so this
+         wrapper is now purely conditional - rendering it empty would leave a
+         blank row in the column grid. #}
+      {% if counts.sources and (my_away or am_covering or away_recap) %}
       {# One wrapper on purpose: .mh-thread-column is a 4-row grid (toolbar,
-         this, stage tabs, list) and the last row is the flexible one. Adding
+         this, filter row, list) and the last row is the flexible one. Adding
          banners as extra grid children would push the 1fr row onto the wrong
          element and stretch it. #}
       <div class="mh-queue-head">
@@ -94,12 +90,6 @@
         </form>
       </div>
       {% endif %}
-      <div class="mh-owner-toggle" role="group" aria-label="Inbox scope">
-        <a class="{{ 'is-active' if owner_filter != 'unassigned' }}"
-           href="{{ url_for('marketing_hub', owner='mine', status=status_filter) }}">{{ ic.icon('inbox') }} My inbox</a>
-        <a class="{{ 'is-active' if owner_filter == 'unassigned' }}"
-           href="{{ url_for('marketing_hub', owner='unassigned', status=status_filter) }}">Unassigned{% if unassigned_count %} <span>{{ unassigned_count }}</span>{% endif %}</a>
-      </div>
       </div>
       {% endif %}
       {% set stage_labels = {
@@ -108,14 +98,43 @@
         'enrolled':'Enrolled', 'disqualified':'Not a fit',
         'archived':'Archived'
       } %}
-      <nav class="mh-stage-tabs" aria-label="Recruitment stage">
-        {% for key in ['all','new','outreach','prescreen','screening','enrolled'] %}
-        <a class="{{ 'is-active' if stage_filter == key }}"
-           href="{{ url_for('marketing_hub', stage=key, status=status_filter, source=source_filter, channel=channel_filter, q=search_query) }}">
-          {{ stage_labels[key] }} <span>{{ stage_counts.get(key, 0) }}</span>
-        </a>
-        {% endfor %}
-      </nav>
+      {# Stage colours are shared by the list rows, the open conversation and the
+         applicant panel, so one person reads the same in all three. #}
+      {% set stage_tones = {
+        'new':'brand', 'outreach':'info', 'prescreen':'warn',
+        'screening':'violet', 'enrolled':'ok', 'disqualified':'neutral',
+        'archived':'neutral'
+      } %}
+      {# Outlook-style filter row: the owner scope as a two-way segmented control
+         (Mine / Unassigned, like Focused / Other) and everything else - stage and
+         open/resolved - behind one Filter menu. The six stage tabs that used to
+         sit here were clutter for a question most people ask rarely. #}
+      <div class="mh-filterbar">
+        <nav class="mh-scope-seg" aria-label="Inbox filters">
+          <a class="mh-seg {{ 'is-active' if owner_filter != 'unassigned' }}"
+             href="{{ url_for('marketing_hub', owner='mine', stage=stage_filter, status=status_filter, source=source_filter, channel=channel_filter, q=search_query) }}">Mine</a>
+          <a class="mh-seg {{ 'is-active' if owner_filter == 'unassigned' }}"
+             href="{{ url_for('marketing_hub', owner='unassigned', stage=stage_filter, status=status_filter, source=source_filter, channel=channel_filter, q=search_query) }}">Unassigned{% if unassigned_count %}<span class="mh-tab-count">{{ unassigned_count }}</span>{% endif %}</a>
+        </nav>
+        {% set filter_on = stage_filter != 'all' or status_filter != 'open' %}
+        <details class="appmenu mh-filter">
+          <summary class="mh-filter-btn {{ 'is-on' if filter_on }}" aria-label="Filter conversations">
+            {{ ic.icon('list') }}<span>{{ stage_labels[stage_filter] if stage_filter != 'all' else 'Filter' }}{% if status_filter == 'resolved' %} &middot; Resolved{% elif status_filter == 'all' %} &middot; Everything{% endif %}</span>{{ ic.icon('chevron-down') }}
+          </summary>
+          <div class="appmenu-panel" role="menu">
+            <div class="appmenu-h">Stage</div>
+            {% for key in ['all','new','outreach','prescreen','screening','enrolled'] %}
+            <a class="appmenu-item simple mh-filter-opt {{ 'is-on' if stage_filter == key }}" role="menuitemradio" aria-checked="{{ 'true' if stage_filter == key else 'false' }}"
+               href="{{ url_for('marketing_hub', owner=owner_filter, stage=key, status=status_filter, source=source_filter, channel=channel_filter, q=search_query) }}"><span>{{ 'All stages' if key == 'all' else stage_labels[key] }}</span><em>{{ stage_counts.get(key, 0) }}</em></a>
+            {% endfor %}
+            <div class="appmenu-h">Show</div>
+            {% for key, lbl in [('open', 'Open'), ('resolved', 'Resolved'), ('all', 'Everything')] %}
+            <a class="appmenu-item simple mh-filter-opt {{ 'is-on' if status_filter == key }}" role="menuitemradio" aria-checked="{{ 'true' if status_filter == key else 'false' }}"
+               href="{{ url_for('marketing_hub', owner=owner_filter, stage=stage_filter, status=key, source=source_filter, channel=channel_filter, q=search_query) }}"><span>{{ lbl }}</span></a>
+            {% endfor %}
+          </div>
+        </details>
+      </div>
 
       <div class="mh-thread-stack">
         {% for thread in threads %}
@@ -128,24 +147,27 @@
             </span>
             <span class="mh-thread-person">
               <b>{{ thread.contact_name or thread.contact_handle or 'Unknown contact' }}</b>
-              <small>{{ thread.channel_label }}{% if thread.source_label %} via {{ thread.source_label }}{% endif %}</small>
             </span>
             <time>{{ thread.time_label }}</time>
             {% if thread.unread %}<span class="mh-unread-dot" aria-label="Unread"></span>{% endif %}
           </div>
           <h3>{{ thread.subject or 'New conversation' }}</h3>
           <p>{{ thread.preview }}</p>
+          {# High-level tags, so a row answers "where is this person and which
+             trial are they for?" without opening it. The study tag only appears
+             when the top-bar switcher is on All studies - inside one study it
+             would repeat the same words on every row. #}
           <div class="mh-thread-row-foot">
-            {% set assignee = member_by_id.get(thread.assigned_to) %}
-            {{ member_avatar(assignee, 'is-tiny') }}
-            <span>{{ assignee.display_name if assignee else 'Unassigned' }}</span>
-            {% if thread.study_label and not active_nct %}<span class="mh-row-context" title="{{ thread.study_label }}">{{ thread.study_label|truncate(24) }}</span>{% endif %}
             {% set row_stage = thread.pipeline_stage or 'new' %}
-            {% set row_tone = 'ok' if row_stage == 'enrolled' else 'danger' if row_stage == 'disqualified' else 'brand' %}
-            {{ ui.badge(stage_labels.get(row_stage, 'New'), row_tone) }}
-            {% if thread.linked_lead_id %}{{ ui.badge('Applicant', 'neutral', 'check') }}{% endif %}
-            {% if thread.status == 'resolved' %}{{ ui.badge('Resolved', 'ok', 'check') }}
-            {% elif thread.last_reply_kind == 'inbound' %}{{ ui.badge('Awaiting reply', 'warn') }}{% endif %}
+            <span class="mh-tag is-stage tone-{{ stage_tones.get(row_stage, 'neutral') }}">{{ stage_labels.get(row_stage, 'New') }}</span>
+            {% if not active_nct and thread.study_label %}
+            <span class="mh-tag is-study" title="{{ thread.study_label }}{% if thread.nct %} ({{ thread.nct }}){% endif %}">{{ ic.icon('award') }}<span class="mh-tag-label">{{ thread.study_label }}</span></span>
+            {% endif %}
+            {% if thread.status == 'resolved' %}
+            <span class="mh-thread-state">Resolved</span>
+            {% elif thread.last_reply_kind == 'inbound' %}
+            <span class="mh-thread-state is-waiting">Awaiting reply</span>
+            {% endif %}
           </div>
         </a>
         {% else %}
@@ -185,57 +207,86 @@
         <a class="mh-mobile-back" href="{{ url_for('marketing_hub', stage=stage_filter, status=status_filter, source=source_filter, channel=channel_filter, q=search_query) }}">
           {{ ic.icon('arrow-left') }} Inbox
         </a>
-        <div class="mh-contact-main">
-          <span class="mh-contact-avatar-wrap is-large">
-            <span class="mh-contact-avatar is-large">{{ (active.contact_name or active.contact_handle or '?')[:1]|upper }}</span>
-            {{ channel_icon(active.channel, 'is-header-channel') }}
-          </span>
-          <span class="mh-contact-copy">
-            <small>{{ channel_labels.get(active.channel, 'Message') }}{% if active.source_label %} via {{ active.source_label }}{% endif %}</small>
-            <h2>{{ active.contact_name or active.contact_handle or 'Unknown contact' }}</h2>
-            <p>
-              <span>{{ active.contact_handle or active.source_identifier }}</span>
-              {% if active.study_label %}
-              <span class="mh-study-context" title="{{ active.study_label }}">{{ ic.icon('file') }} {{ active.study_label }}</span>
-              {% endif %}
-            </p>
-          </span>
+        <div class="mh-read-top">
+          <h2 class="mh-read-subject">{{ active.subject or 'New conversation' }}</h2>
+          <div class="mh-read-actions">
+            {% if not active.assigned_to %}
+            <form method="post" action="{{ url_for('marketing_thread_assign', thread_id=active.id) }}">
+              <input type="hidden" name="assignee_id" value="{{ user.id }}">
+              {{ ui.btn('Claim', 'ghost', 'sm', icon='check', type='submit') }}
+            </form>
+            {% endif %}
+            {# One click, no modal. The dialog this replaced asked for two
+               things: a consent checkbox everybody ticked without reading, and
+               an Age field nothing downstream used. The button label is the
+               attestation now, and the server records who clicked it and on
+               what basis, so the audit trail is unchanged. #}
+            {% if not applicant and active.nct %}
+            <form method="post" action="{{ url_for('marketing_thread_create_applicant', thread_id=active.id) }}">
+              <input type="hidden" name="consent" value="1">
+              {{ ui.btn('Add as applicant', 'ghost', 'sm', icon='user-plus', type='submit',
+                        extra='title="Start tracking ' ~ (active.contact_name or active.contact_handle or 'this person')
+                              ~ ' as an applicant on this study. Their permission to be contacted is recorded from this conversation."') }}
+            </form>
+            {% endif %}
+            <form method="post" action="{{ url_for('marketing_thread_status', thread_id=active.id) }}">
+              <input type="hidden" name="status" value="{{ 'open' if active.status == 'resolved' else 'resolved' }}">
+              {{ ui.view_filter_fields(status_filter, channel_filter, search_query, stage_filter, source_filter) }}
+              <button class="mh-resolve-btn" type="submit" title="{{ 'Reopen' if active.status == 'resolved' else 'Resolve (e)' }}">
+                {{ ic.icon('refresh' if active.status == 'resolved' else 'check') }}
+                {{ 'Reopen' if active.status == 'resolved' else 'Resolve' }}
+              </button>
+            </form>
+          </div>
         </div>
-        <div class="mh-conversation-actions">
-          <form method="post" action="{{ url_for('marketing_thread_stage', thread_id=active.id) }}" class="mh-assign-form">
-            <label for="threadStage">Stage</label>
-            <select id="threadStage" name="stage" data-autosubmit>
-              {% for key in ['new','outreach','prescreen','screening','enrolled','disqualified','archived'] %}
-              <option value="{{ key }}" {{ 'selected' if (active.pipeline_stage or 'new') == key }}>{{ stage_labels[key] }}</option>
-              {% endfor %}
-            </select>
-          </form>
-          <form method="post" action="{{ url_for('marketing_thread_assign', thread_id=active.id) }}" class="mh-assign-form">
-            <label for="threadAssignee">Owner</label>
-            <select id="threadAssignee" name="assignee_id" data-autosubmit>
-              <option value="">Unassigned</option>
-              {% for member in members %}
-              <option value="{{ member.user_id }}" {{ 'selected' if active.assigned_to == member.user_id }}>{{ member.display_name }}{{ ' (you)' if member.user_id == user.id }}</option>
-              {% endfor %}
-            </select>
-          </form>
-          {% if not active.assigned_to %}
-          {# One-click claim for the most common triage action: pick up an
-             unclaimed inquiry so it can't sit unowned. Only shown when nobody
-             owns it yet - otherwise the Owner dropdown handles reassignment. #}
-          <form method="post" action="{{ url_for('marketing_thread_assign', thread_id=active.id) }}" class="mh-assign-form">
-            <input type="hidden" name="assignee_id" value="{{ user.id }}">
-            {{ ui.btn('Claim', 'primary', 'sm', icon='check', type='submit') }}
-          </form>
-          {% endif %}
-          <form method="post" action="{{ url_for('marketing_thread_status', thread_id=active.id) }}">
-            <input type="hidden" name="status" value="{{ 'open' if active.status == 'resolved' else 'resolved' }}">
-            {{ ui.view_filter_fields(status_filter, channel_filter, search_query, stage_filter, source_filter) }}
-            <button class="mh-resolve-btn" type="submit" title="{{ 'Reopen' if active.status == 'resolved' else 'Resolve and move to the next conversation (e)' }}">
-              {{ ic.icon('refresh' if active.status == 'resolved' else 'check') }}
-              {{ 'Reopen' if active.status == 'resolved' else 'Resolve' }}
-            </button>
-          </form>
+        <div class="mh-read-from">
+          <span class="mh-contact-avatar-wrap">
+            <span class="mh-contact-avatar">{{ (active.contact_name or active.contact_handle or '?')[:1]|upper }}</span>
+          </span>
+          {# How to actually reach this person, not just the channel they arrived
+             on. The handle they wrote in from is always here because that is
+             where a reply goes; email and phone come from the linked applicant
+             record, and only once it has been revealed to the team - before
+             that the inbox shows exactly what the conversation itself shows. #}
+          {% set handle = active.contact_handle or active.source_identifier %}
+          {% set handle_is_email = handle and '@' in handle[1:] and '.' in handle.split('@')[-1] %}
+          {% set lead_email = applicant.email if applicant and applicant.revealed else '' %}
+          {% set lead_phone = applicant.phone if applicant and applicant.revealed else '' %}
+          <span class="mh-read-from-copy">
+            <b>{{ active.contact_name or active.contact_handle or 'Unknown contact' }}</b>
+            <span class="mh-read-contact">
+              {% if handle %}
+                {% if handle_is_email %}
+                <a href="mailto:{{ handle }}">{{ ic.icon('mail') }}{{ handle }}</a>
+                {% else %}
+                <span>{{ channel_icon(active.channel) }}{{ handle }}</span>
+                {% endif %}
+              {% endif %}
+              {% if lead_email and lead_email|lower != (handle or '')|lower %}
+              <a href="mailto:{{ lead_email }}">{{ ic.icon('mail') }}{{ lead_email }}</a>
+              {% endif %}
+              {% if lead_phone %}
+              {# The label keeps the number as it was entered; the href strips the
+                 punctuation a dialer would choke on. #}
+              {% set dialable = lead_phone|replace(' ', '')|replace('(', '')|replace(')', '')|replace('-', '')|replace('.', '') %}
+              <a href="tel:{{ dialable }}">{{ ic.icon('phone') }}{{ lead_phone }}</a>
+              {% endif %}
+            </span>
+          </span>
+          {# The same two tags the list row carries, so opening a conversation
+             never loses the "who is this and which trial" context. The study is
+             always shown here: there is only one of it, and this is the surface
+             where a reply gets written against the wrong protocol. #}
+          <span class="mh-read-tags">
+            {% set open_stage = active.pipeline_stage or 'new' %}
+            <span class="mh-tag is-stage tone-{{ stage_tones.get(open_stage, 'neutral') }}">{{ stage_labels.get(open_stage, 'New') }}</span>
+            {% if active.study_label or active.nct %}
+            <span class="mh-tag is-study" title="{{ active.study_label }}{% if active.nct %} ({{ active.nct }}){% endif %}">{{ ic.icon('award') }}<span class="mh-tag-label">{{ active.study_label or active.nct }}</span></span>
+            {% endif %}
+            {% if applicant %}
+            <a class="mh-tag is-link" href="{{ url_for('applicant_detail', lead_id=applicant.id) }}">{{ ic.icon('user') }}Applicant record</a>
+            {% endif %}
+          </span>
         </div>
       </header>
 
@@ -245,48 +296,14 @@
           {{ ic.icon('chat') }} Conversation
         </button>
         <button type="button" data-detail-tab="applicant" role="tab" aria-selected="false">
-          {{ ic.icon('user') }} Applicant tools
+          {{ ic.icon('user') }} Applicant
         </button>
       </nav>
       {% endif %}
 
       <div class="mh-detail-layout {{ 'has-applicant' if applicant }}" data-detail-layout>
       <main class="mh-dialogue is-active" data-detail-panel="conversation">
-      <div class="mh-dialogue-top">
-      {% if not applicant and not (active.channel == 'google_ads' and active.contact_handle == 'Automated alert') %}
-      <section class="mh-link-applicant" data-ui-reveal>
-        <div>
-          <span class="mh-section-icon">{{ ic.icon('user-plus') }}</span>
-          <span><b>Inbox conversation</b><small>Confirm consent before opening screening and patient-authorized record tools.</small></span>
-        </div>
-        {% if active.nct %}
-        <form method="post" action="{{ url_for('marketing_thread_create_applicant', thread_id=active.id) }}">
-          <label><input type="checkbox" name="consent" value="1" required> Permission to contact and create an applicant is confirmed</label>
-          <input name="age" inputmode="numeric" maxlength="3" placeholder="Age (optional)" aria-label="Applicant age">
-          {{ ui.btn('Create applicant', 'primary', 'sm', icon='user-plus', type='submit') }}
-        </form>
-        {% else %}
-        <small>Assign this conversation to a study before creating an applicant.</small>
-        {% endif %}
-      </section>
-      {% elif not applicant %}
-      <section class="mh-link-applicant mh-channel-alert" data-ui-reveal>
-        <div>
-          <span class="mh-section-icon">{{ ic.icon('info') }}</span>
-          <span><b>Channel alert</b><small>This is an operational account notification, not a participant inquiry.</small></span>
-        </div>
-      </section>
-      {% endif %}
-
-      <div class="mh-subject-bar">
-        <span>Subject</span>
-        <b>{{ active.subject or 'New conversation' }}</b>
-        {{ ui.badge('Resolved' if active.status == 'resolved' else 'Open', 'ok' if active.status == 'resolved' else 'brand') }}
-      </div>
-      </div>
-
       <div class="mh-message-list" id="messageList" aria-live="polite">
-        <div class="mh-day-rule"><span>Conversation history</span></div>
         {% for message in messages %}
           {% if message.kind == 'note' %}
           <article class="mh-internal-note">
@@ -304,7 +321,7 @@
             </header>
             <div class="mh-message-bubble">{{ message.body }}</div>
             {% if message.kind == 'outbound' and message.delivery_status == 'saved' %}
-            <small class="mh-delivery">{{ ic.icon('info') }} Saved in workspace, not delivered externally</small>
+            <small class="mh-delivery is-sent">{{ ic.icon('check') }} Sent</small>
             {% elif message.kind == 'outbound' and message.delivery_status == 'sent' %}
             <small class="mh-delivery is-sent">{{ ic.icon('check') }} Sent via {{ 'Instagram' if active.provider == 'instagram' else 'Gmail' }}</small>
             {% endif %}
@@ -319,45 +336,43 @@
           <button type="button" data-compose-tab="note" role="tab" aria-selected="false">{{ ic.icon('users') }} Internal note</button>
         </div>
 
-        <div class="mh-bridget-draft" data-bridget-panel hidden>
-          <div><b>Bridget draft</b><small>Review before sending</small></div>
-          <p data-bridget-copy>{{ bridget_draft }}</p>
-          <button type="button" data-use-draft>Use draft</button>
-        </div>
-
-        <form method="post" action="{{ url_for('marketing_thread_reply', thread_id=active.id) }}" class="mh-compose-panel" data-compose-panel="reply">
+        <form method="post" action="{{ url_for('marketing_thread_reply', thread_id=active.id) }}" class="mh-compose-panel" data-compose-panel="reply" data-ajax data-ajax-quiet data-optimistic="#messageList">
+          <template data-optimistic-tpl><article class="mh-message is-outbound" data-ts="{{'{{time}}'}}"><header><b>You</b><time>Just now</time></header><div class="mh-message-bubble">{{'{{body}}'}}</div><small class="mh-delivery is-sent">Sent</small></article></template>
           {{ ui.view_filter_fields(status_filter, channel_filter, search_query, stage_filter, source_filter) }}
-          <textarea name="body" id="replyBody" rows="4" required placeholder="Reply to {{ active.contact_name or active.contact_handle or 'this contact' }}..."></textarea>
-          <div class="mh-quick-replies" role="group" aria-label="Insert a quick reply">
-            {% for label, _snippet in quick_replies %}
-            <button type="button" class="mh-quick-chip" data-quick-reply="{{ loop.index0 }}">{{ label }}</button>
-            {% endfor %}
-          </div>
+          {# Bridget writes here from the right pane. There is one Bridget on the
+             screen: with this conversation open, whatever you tell it ("offer a
+             screening call next week") is written into this box, where you edit
+             and send it like anything you typed. The composer used to carry its
+             own prompt line as well, which put two boxes on one screen both
+             saying "ask Bridget" and only one of them writing. The data
+             attributes are how the pane knows which conversation is open.
+             Nothing sends itself; a person still reads and presses Send
+             (COMPLIANCE.md). #}
+          <textarea name="body" id="replyBody" rows="4" required data-ajax-clear
+                    data-bridget-thread="{{ active.id }}"
+                    data-bridget-contact="{{ active.contact_name or active.contact_handle or 'this contact' }}"
+                    placeholder="Reply to {{ active.contact_name or active.contact_handle or 'this contact' }}. Or tell Bridget on the right what to write."></textarea>
           <div class="mh-compose-foot">
-            <span>
-              {% if active.connection_mode == 'demo' %}
-              {{ ic.icon('info') }} Demo connection: this reply will be saved here only.
-              {% elif gmail_delivery_ready %}
-              {{ ic.icon('send') }} Sends from {{ active.source_identifier }} to {{ active.contact_handle }}.
-              {% elif instagram_delivery_ready %}
-              {{ ic.icon('send') }} Replies to this patient-initiated Instagram conversation.
-              {% elif active.connection_status != 'connected' %}
-              {{ ic.icon('info') }} Reconnect this account before sending a reply.
-              {% else %}
-              {{ ic.icon('info') }} Sync this conversation from Gmail before replying.
-              {% endif %}
-            </span>
+            {% if gmail_delivery_ready %}
+            <span>{{ ic.icon('send') }} Sends from {{ active.source_identifier }} to {{ active.contact_handle }}.</span>
+            {% elif instagram_delivery_ready %}
+            <span>{{ ic.icon('send') }} Replies on Instagram.</span>
+            {% elif active.connection_mode != 'demo' and active.connection_status != 'connected' %}
+            <span>{{ ic.icon('info') }} Reconnect this account before sending.</span>
+            {% elif active.connection_mode != 'demo' %}
+            <span>{{ ic.icon('info') }} Sync this conversation from Gmail before replying.</span>
+            {% else %}
+            <span></span>
+            {% endif %}
             <div class="mh-compose-actions">
-              {% if bridget_draft %}
-              {{ ui.btn('Draft with Bridget', 'ghost', 'sm', extra='type="button" data-bridget-draft="' ~ url_for('marketing_thread_draft', thread_id=active.id) ~ '"') }}
-              {% endif %}
-              {{ ui.btn('Save demo reply' if active.connection_mode == 'demo' else 'Send reply', 'primary', icon='send', type='submit', disabled=active.connection_mode != 'demo' and not live_delivery_ready, extra='title="\u2318/Ctrl+Enter to send"') }}
+              {{ ui.btn('Send reply', 'primary', icon='send', type='submit', disabled=active.connection_mode != 'demo' and not live_delivery_ready, extra='title="\u2318/Ctrl+Enter to send"') }}
             </div>
           </div>
         </form>
 
-        <form method="post" action="{{ url_for('marketing_thread_note', thread_id=active.id) }}" class="mh-compose-panel" data-compose-panel="note" hidden>
-          <textarea name="body" rows="4" required data-mentions placeholder="Leave context for your teammates, or @mention someone to pull them in..."></textarea>
+        <form method="post" action="{{ url_for('marketing_thread_note', thread_id=active.id) }}" class="mh-compose-panel" data-compose-panel="note" hidden data-ajax data-ajax-quiet data-optimistic="#messageList">
+          <template data-optimistic-tpl><article class="mh-internal-note"><div><header><b>Internal note</b><time>Just now</time></header><p>{{'{{body}}'}}</p></div></article></template>
+          <textarea name="body" rows="4" required data-mentions data-ajax-clear placeholder="Leave context for your teammates, or @mention someone to pull them in..."></textarea>
           <div class="mh-compose-foot">
             <span>{{ ic.icon('lock') }} Only your workspace team can see this note. Type @ to pull a teammate in.</span>
             {{ ui.btn('Add note', 'primary', icon='plus', type='submit') }}
@@ -367,95 +382,139 @@
       </main>
 
       {% if applicant %}
-      <aside class="mh-applicant-panel" data-detail-panel="applicant" aria-label="Applicant tools">
+      <aside class="mh-applicant-panel" data-detail-panel="applicant" aria-label="Applicant">
         <header class="mh-applicant-panel-head">
-          <span class="mh-section-icon">{{ ic.icon('user') }}</span>
           <span>
-            <small>Applicant workspace</small>
             <b>{{ active.contact_name or active.contact_handle or 'Applicant' }}</b>
-            <em>{{ stage_labels.get(active.pipeline_stage or 'new', 'New') }} stage</em>
+            <span class="mh-read-tags">
+              {% set panel_stage = active.pipeline_stage or 'new' %}
+              <span class="mh-tag is-stage tone-{{ stage_tones.get(panel_stage, 'neutral') }}">{{ stage_labels.get(panel_stage, 'New') }}</span>
+              {% if active.study_label or active.nct %}
+              <span class="mh-tag is-study" title="{{ active.study_label }}{% if active.nct %} ({{ active.nct }}){% endif %}">{{ ic.icon('award') }}<span class="mh-tag-label">{{ active.study_label or active.nct }}</span></span>
+              {% endif %}
+            </span>
           </span>
-          {{ ui.badge('Linked', 'ok', 'check') }}
         </header>
-        {# Portal access from the conversation itself - this is where a recruiter
-           actually is when they decide to refer someone to their own page. The
-           one-time password is revealed on the applicant record, so the flow
-           lands them there rather than exposing a credential in the inbox. #}
-        <div class="mh-portal-row">
-          {% if applicant_portal and applicant_portal['status'] == 'active' %}
-            {{ ic.icon('lock') }}
-            <span>Portal {{ 'active' if applicant_portal['first_seen_at'] else 'sent, not opened yet' }}</span>
-            {{ ui.btn('Manage', 'ghost', 'sm', href=url_for('applicant_detail', lead_id=applicant.id) ~ '#portal') }}
-          {% else %}
-            {{ ic.icon('lock') }}
-            <span>Let them follow their own status</span>
-            {{ ui.btn('Send portal invite', 'ghost', 'sm', href=url_for('applicant_detail', lead_id=applicant.id) ~ '#portal') }}
-          {% endif %}
-        </div>
+
+        {% set inbox_portal_next = url_for('marketing_hub', thread=active.id, stage=stage_filter, status=status_filter, source=source_filter, channel=channel_filter, q=search_query) ~ '#portal' %}
+        <details class="mh-clinical-card" id="portal" data-ui-reveal {% if portal_reveal or (applicant_portal and applicant_portal['status'] == 'active' and not applicant_portal['first_seen_at']) %}open{% endif %}>
+          <summary>
+            <div><b>Patient portal</b></div>
+            <span class="mh-tool-status">{% if applicant_portal and applicant_portal['status'] == 'active' %}{% if applicant_portal['first_seen_at'] %}Active{% else %}Invited{% endif %}{% else %}Off{% endif %}</span>
+            <span class="mh-summary-chevron">{{ ic.icon('chevron-down') }}</span>
+          </summary>
+          <div class="mh-clinical-content">
+            {% if portal_reveal %}
+            <div class="portal-issue">
+              <p class="portal-issue-lead">{{ ic.icon('check') }} Sent in their message thread. Copy these if you need to read them out, the password works once.</p>
+              <label>Link</label>
+              <div class="portal-copy">
+                <input type="text" readonly value="{{ portal_reveal.link }}" data-copy>
+                <button type="button" class="btn btn-ghost btn-sm" data-copy-btn>Copy</button>
+              </div>
+              <label>Temporary password</label>
+              <div class="portal-copy">
+                <input type="text" readonly value="{{ portal_reveal.password }}" data-copy>
+                <button type="button" class="btn btn-ghost btn-sm" data-copy-btn>Copy</button>
+              </div>
+              <p class="portal-issue-warn">{{ ic.icon('alert') }} This password isn't shown again. Reissue if it's lost.</p>
+            </div>
+            {% endif %}
+
+            {% if applicant_portal and applicant_portal['status'] == 'active' %}
+            <div class="portal-state">
+              {% if applicant_portal['first_seen_at'] %}
+                {{ ui.badge('Active', 'ok', 'check') }}
+                <small>Last opened {{ applicant_portal['last_seen_at'][:16] }}</small>
+              {% else %}
+                {{ ui.badge('Not opened yet', 'warn') }}
+                <small>Issued {{ applicant_portal['created_at'][:16] }}</small>
+              {% endif %}
+              {% if applicant_portal['must_change'] %}
+              <small class="portal-state-note">Still on the temporary password.</small>
+              {% endif %}
+            </div>
+            {% if portal_url and not portal_reveal %}
+            <div class="portal-copy">
+              <input type="text" readonly value="{{ portal_url }}" data-copy>
+              <button type="button" class="btn btn-ghost btn-sm" data-copy-btn>Copy link</button>
+            </div>
+            {% endif %}
+            <div class="portal-actions">
+              <form method="post" action="{{ url_for('issue_portal', lead_id=applicant.id) }}">
+                <input type="hidden" name="next" value="{{ inbox_portal_next }}">
+                {{ ui.btn('Resend invite', 'ghost', 'sm', type='submit') }}
+              </form>
+              <form method="post" action="{{ url_for('revoke_portal', lead_id=applicant.id) }}">
+                <input type="hidden" name="next" value="{{ inbox_portal_next }}">
+                {{ ui.btn('Revoke', 'ghost', 'sm', type='submit') }}
+              </form>
+            </div>
+            {% elif applicant.revealed %}
+            <p class="portal-pitch">Send a private link and one-time password in their thread. No account signup.</p>
+            <form method="post" action="{{ url_for('issue_portal', lead_id=applicant.id) }}">
+              <input type="hidden" name="next" value="{{ inbox_portal_next }}">
+              {{ ui.btn('Send portal invite', 'primary', 'sm', icon='send', type='submit') }}
+            </form>
+            {% else %}
+            <p class="portal-pitch">Accept this applicant first, then you can invite them to the portal.</p>
+            {% endif %}
+          </div>
+        </details>
+
         {% set met = eligibility.get('met', []) %}
         {% set unknown = eligibility.get('unknown', []) %}
         {% set not_met = eligibility.get('not_met', []) %}
       <details class="mh-clinical-card" id="records" data-ui-reveal {% if not records_profile or unknown or not_met %}open{% endif %}>
         <summary>
-          <div><span class="mh-section-icon">{{ ic.icon('file') }}</span><span><b>Patient-authorized records</b><small>Decision support for coordinator review</small></span></div>
-          <span class="mh-tool-status">
-          {% if records_profile %}
-          {{ ui.badge('Retrieved', 'ok') }}
-          {% elif applicant.records_authorized_at %}
-          {{ ui.badge('Authorized', 'info') }}
-          {% else %}
-          {{ ui.badge('Authorization needed', 'warn') }}
-          {% endif %}
-          </span>
+          <div><b>Records</b></div>
+          <span class="mh-tool-status">{% if records_profile %}Ready{% else %}None yet{% endif %}</span>
           <span class="mh-summary-chevron">{{ ic.icon('chevron-down') }}</span>
         </summary>
         <div class="mh-clinical-content">
 
         {% if records_profile %}
-        <div class="mh-record-summary">
-          <div><b>{{ records_profile.provider or 'SMART Health IT sandbox' }}</b><small>Retrieved {{ records_profile.last_sync_at or records_profile.connected_at }}</small></div>
-          <span>{{ records_profile.completeness_score or 0 }}% complete</span>
-        </div>
+        {% if records_profile.last_sync_at or records_profile.connected_at %}
+        <p class="mh-record-updated">Updated {{ records_profile.last_sync_at or records_profile.connected_at }}</p>
+        {% endif %}
         <p class="mh-record-text">{{ records_profile.summary or applicant.record_summary }}</p>
         <div class="mh-record-grid">
-          <div><b>Conditions</b><span>{{ (records_data.conditions or [])|join(', ') or 'No conditions returned' }}</span></div>
-          <div><b>Medications</b><span>{{ (records_data.meds or [])|join(', ') or 'No medications returned' }}</span></div>
-          <div><b>Recent observations</b><span>{{ (records_data.labs or [])|join(' | ') or 'No observations returned' }}</span></div>
+          <div><b>Conditions</b><span>{{ (records_data.conditions or [])|join(', ') or '-' }}</span></div>
+          <div><b>Medications</b><span>{{ (records_data.meds or [])|join(', ') or '-' }}</span></div>
+          <div><b>Labs</b><span>{{ (records_data.labs or [])|join(' · ') or '-' }}</span></div>
         </div>
         {% else %}
-        <div class="mh-record-empty">
-          <span>{{ ic.icon('cloud-sync') }}</span>
-          <div><b>No records retrieved yet</b><p>This demo uses patient-authorized synthetic SMART Health IT records. No real patient data is requested.</p></div>
-        </div>
         <form method="post" action="{{ url_for('marketing_thread_records', thread_id=active.id) }}" class="mh-record-action" data-record-pull>
-          <label><input type="checkbox" name="authorization_confirmed" value="1" required {{ 'checked' if applicant.records_authorized_at }}> Patient authorization confirmed</label>
-          {{ ui.btn('Pull authorized records', 'primary', 'sm', icon='refresh', type='submit') }}
+          <input type="hidden" name="authorization_confirmed" value="1">
+          {{ ui.btn('Get records', 'primary', 'sm', type='submit') }}
         </form>
         {% endif %}
 
+        {% if met or unknown or not_met %}
         <div class="mh-criteria">
           <div class="mh-criteria-head">
-            <b>Criteria review</b>
-            <span>{{ met|length }} supported &middot; {{ unknown|length }} needs review &middot; {{ not_met|length }} not met</span>
+            <b>Criteria</b>
+            <span>{% if unknown %}{{ unknown|length }} to review{% elif not_met %}{{ not_met|length }} don’t fit{% elif met %}Looks like a fit{% endif %}</span>
           </div>
           {% for criterion in met %}
-          <div class="is-met">{{ ic.icon('check') }}<span><b>Supported by available information</b><small>{{ criterion }}</small></span></div>
+          <div class="is-met">{{ ic.icon('check') }}<span>{{ criterion }}</span></div>
           {% endfor %}
           {% for criterion in unknown %}
-          <div class="is-pending">{{ ic.icon('info') }}<span><b>Coordinator review needed</b><small>{{ criterion }}</small></span></div>
+          <div class="is-pending">{{ ic.icon('info') }}<span>{{ criterion }}</span></div>
           {% endfor %}
           {% for criterion in not_met %}
-          <div class="is-failed">{{ ic.icon('x') }}<span><b>Criterion not met</b><small>{{ criterion }}</small></span></div>
+          <div class="is-failed">{{ ic.icon('x') }}<span>{{ criterion }}</span></div>
           {% endfor %}
         </div>
+        {% endif %}
         </div>
       </details>
 
       {% set checklist_done = checklist|selectattr('status', 'equalto', 'done')|list|length %}
       <details class="mh-clinical-card" id="checklist" data-ui-reveal {% if checklist and (active.pipeline_stage or 'new') in ['screening', 'enrolled'] %}open{% endif %}>
         <summary>
-          <div><span class="mh-section-icon">{{ ic.icon('check') }}</span><span><b>Screening workflow</b><small>Team checklist, not electronic consent or randomization</small></span></div>
-          <span class="mh-tool-status">{{ checklist_done }}/{{ checklist|length }}</span>
+          <div><b>Screening</b></div>
+          <span class="mh-tool-status">{% if checklist %}{{ checklist_done }}/{{ checklist|length }}{% endif %}</span>
           <span class="mh-summary-chevron">{{ ic.icon('chevron-down') }}</span>
         </summary>
         <div class="mh-clinical-content">
@@ -469,7 +528,7 @@
             </button>
           </form>
           {% else %}
-          <p>No screening tasks yet. Move the applicant into screening to create a workflow.</p>
+          <p>No tasks yet.</p>
           {% endfor %}
         </div>
         </div>
@@ -481,7 +540,7 @@
       <div class="mh-no-conversation">
         <span>{{ ic.icon('chat') }}</span>
         <h2>Select a conversation</h2>
-        <p>Open a message from the queue to reply, assign it, or leave an internal note.</p>
+        <p>Open a message from the queue to read and reply.</p>
       </div>
       {% endif %}
     </section>
@@ -670,15 +729,17 @@
 {% else %}
 <form method="post" action="{{ url_for('away_start') }}" class="mh-modal-form">
   <input type="hidden" name="next" value="{{ request.full_path }}">
-  <div class="mh-coverage-explainer">
-    {{ member_avatar(active_owner) }}
-    <span>
-      <b>Hand your queue to a teammate</b>
-      <small>Your {{ my_open_count }} open conversation{{ '' if my_open_count == 1 else 's' }}
-        move to them now, new ones route to them too, and everything comes back
-        automatically on your return date.</small>
-    </span>
-  </div>
+  {# No avatar here. The chip that used to sit in this card showed
+     `active_owner` - the inbox's routing owner, who is neither you nor the
+     person about to cover for you - so it was a dark square with an unrelated
+     initial in it, decorating a dialog about a decision you have not made yet.
+     What actually helps is the sentence naming the teammate once you pick one,
+     which is what `data-cover-name` fills in below. #}
+  <p class="mh-coverage-lede">
+    Your <b>{{ my_open_count }} open conversation{{ '' if my_open_count == 1 else 's' }}</b>
+    move to <b data-cover-name>the teammate you pick</b> right away. New inquiries
+    route to them too, and everything comes back to you on your return date.
+  </p>
   {% call ui.field('Who is covering', for_id='coverOwner') %}
     <select id="coverOwner" name="cover_user_id" required>
       <option value="">Choose a teammate</option>
@@ -711,6 +772,48 @@
   document.querySelectorAll('[data-autosubmit]').forEach(function (select) {
     select.addEventListener('change', function () { select.form.submit(); });
   });
+
+  /* Search as you type: narrow the loaded list on every keystroke (name,
+     subject, preview, tags). Enter still submits the form, which searches
+     everything on the server, not just what is on screen. */
+  (function () {
+    var input = document.querySelector('.mh-search input[name="q"]');
+    var stack = document.querySelector('.mh-thread-stack');
+    if (!input || !stack) return;
+    var rows = Array.prototype.slice.call(stack.querySelectorAll('.mh-thread-row'));
+    // textContent, not innerText: rows are content-visibility:auto, so the
+    // ones off screen have no rendered text and innerText comes back empty.
+    var text = rows.map(function (r) {
+      return (r.textContent || '').replace(/\s+/g, ' ').toLowerCase();
+    });
+    var empty = null, timer = null;
+    function apply() {
+      var q = input.value.trim().toLowerCase();
+      var shown = 0;
+      rows.forEach(function (r, i) {
+        var hit = !q || text[i].indexOf(q) !== -1;
+        r.classList.toggle('is-filtered', !hit);
+        if (hit) shown++;
+      });
+      if (q && !shown) {
+        if (!empty) {
+          empty = document.createElement('div');
+          empty.className = 'mh-live-empty';
+          stack.appendChild(empty);
+        }
+        empty.innerHTML = 'Nothing here matches <b></b>. Press Enter to search everything.';
+        empty.querySelector('b').textContent = '“' + input.value.trim() + '”';
+        empty.hidden = false;
+      } else if (empty) {
+        empty.hidden = true;
+      }
+    }
+    input.addEventListener('input', function () {
+      clearTimeout(timer);
+      timer = setTimeout(apply, 50);
+    });
+    if (input.value) apply();
+  })();
 
   var composeTabs = document.querySelectorAll('[data-compose-tab]');
   var composePanels = document.querySelectorAll('[data-compose-panel]');
@@ -748,8 +851,23 @@
       showDetailPanel(tab.getAttribute('data-detail-tab'));
     });
   });
-  if (window.location.hash === '#records' || window.location.hash === '#checklist') {
+  if (window.location.hash === '#records' || window.location.hash === '#checklist'
+      || window.location.hash === '#portal') {
     showDetailPanel('applicant');
+  }
+
+  // Name the teammate in the summary as soon as one is chosen, so the dialog
+  // describes the handoff you are actually about to make rather than a generic
+  // one. Falls back to the neutral phrasing when the choice is cleared.
+  var coverSelect = document.getElementById('coverOwner');
+  var coverName = document.querySelector('[data-cover-name]');
+  if (coverSelect && coverName) {
+    var coverFallback = coverName.textContent;
+    coverSelect.addEventListener('change', function () {
+      var picked = coverSelect.options[coverSelect.selectedIndex];
+      coverName.textContent = (coverSelect.value && picked)
+        ? picked.textContent.trim() : coverFallback;
+    });
   }
 
   var sourceForm = document.getElementById('sourceForm');
@@ -853,64 +971,16 @@
     window.setInterval(pollGmail, 60000);
   }
 
-  var bridgetButton = document.querySelector('[data-bridget-draft]');
-  var bridgetPanel = document.querySelector('[data-bridget-panel]');
-  var bridgetCopy = document.querySelector('[data-bridget-copy]');
-  var replyArea = document.querySelector('[data-compose-panel="reply"] textarea');
-  if (bridgetButton && bridgetPanel) {
-    bridgetButton.addEventListener('click', function () {
-      bridgetButton.disabled = true;
-      bridgetButton.textContent = 'Drafting...';
-      fetch(bridgetButton.getAttribute('data-bridget-draft'), {
-        credentials: 'same-origin',
-        headers: {'Accept': 'application/json'}
-      }).then(function (response) {
-        return response.json().then(function (data) {
-          if (!response.ok) throw data;
-          return data;
-        });
-      }).then(function (data) {
-        bridgetCopy.textContent = data.draft;
-        bridgetPanel.hidden = false;
-      }).catch(function () {
-        bridgetCopy.textContent = 'Bridget could not prepare a draft right now.';
-        bridgetPanel.hidden = false;
-      }).finally(function () {
-        bridgetButton.disabled = false;
-        bridgetButton.textContent = 'Draft with Bridget';
-      });
-    });
-    var useDraft = bridgetPanel.querySelector('[data-use-draft]');
-    if (useDraft) useDraft.addEventListener('click', function () {
-      if (replyArea) {
-        replyArea.value = bridgetCopy.textContent;
-        replyArea.focus();
-      }
-      bridgetPanel.hidden = true;
-    });
-  }
+  // Bridget writes the reply from the right pane (see _copilot.html): it reads
+  // #replyBody's data-bridget-thread and fills the field itself.
 
   var recordForm = document.querySelector('[data-record-pull]');
   if (recordForm) recordForm.addEventListener('submit', function () {
     var button = recordForm.querySelector('button[type="submit"]');
     if (button) {
       button.disabled = true;
-      button.textContent = 'Retrieving authorized records...';
+      button.textContent = 'Getting records\u2026';
     }
-  });
-
-  // ---- Quick replies: one click inserts a compliant, consistent answer to
-  // the handful of questions that repeat across every conversation. --------
-  var QUICK_REPLIES = {{ (quick_replies|map('last')|list)|tojson }};
-  var replyBody = document.getElementById('replyBody');
-  document.querySelectorAll('[data-quick-reply]').forEach(function (btn) {
-    btn.addEventListener('click', function () {
-      if (!replyBody) return;
-      var text = QUICK_REPLIES[parseInt(btn.getAttribute('data-quick-reply'), 10)] || '';
-      replyBody.value = replyBody.value ? (replyBody.value.replace(/\s+$/, '') + '\n\n' + text) : text;
-      replyBody.focus();
-      replyBody.setSelectionRange(replyBody.value.length, replyBody.value.length);
-    });
   });
 
   // ---- Send with Cmd/Ctrl+Enter from either composer textarea. -----------
@@ -918,7 +988,8 @@
     area.addEventListener('keydown', function (event) {
       if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
         event.preventDefault();
-        area.form.submit();
+        if (typeof area.form.requestSubmit === 'function') area.form.requestSubmit();
+        else area.form.dispatchEvent(new Event('submit', {cancelable: true, bubbles: true}));
       }
     });
   });

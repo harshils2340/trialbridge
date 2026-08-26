@@ -107,11 +107,10 @@
   </aside>
 
   <div class="pr-main">
-    {# Inline "search something new" - starts with a blank query (we don't want the
-       last term stuck in the box) but keeps the last location + profile so patients
-       can just retype and re-run. lat/lon omitted so a changed location re-geocodes.
-       The "By condition / Describe it" toggle mirrors the homepage's plain-language
-       search mode. #}
+    {# Keep the current condition and location in the boxes so both are equally
+       editable. lat/lon omitted so a changed location re-geocodes. The
+       "By condition / Describe it" toggle mirrors the homepage's plain-language
+       search mode. Condition is not required so a location-only browse still works. #}
     <form class="pr-topsearch" id="prTopSearch" method="post" action="{{ url_for('find') }}">
       <div class="search-modes" role="tablist" aria-label="How to search">
         <button type="button" class="search-mode is-active" data-mode="condition" role="tab" aria-selected="true">By condition</button>
@@ -120,9 +119,11 @@
       <div class="pr-topsearch-row">
         <div class="pr-topsearch-field pr-topsearch-cond">
           {{ ic.icon('search') }}
-          <input type="text" id="prCondInput" name="condition" value=""
+          <input type="text" id="prCondInput" name="condition"
+                 value="{{ '' if location_only else (q_condition or condition) }}"
                  placeholder="Condition, treatment, or drug" autocomplete="off"
-                 autocapitalize="off" spellcheck="false" aria-label="Condition, treatment, or drug" required>
+                 autocapitalize="off" spellcheck="false" aria-label="Condition, treatment, or drug"
+                 {% if not location_only %}required{% endif %}>
           <div id="prCondSuggest" class="hero-suggest" hidden></div>
         </div>
         <div class="pr-topsearch-field pr-topsearch-loc">

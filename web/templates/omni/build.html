@@ -1,0 +1,77 @@
+{% extends "omni/base.html" %}
+{% import "_icons.html" as ic %}
+{% import "_ui.html" as ui %}
+{% import "omni/_question.html" as qm %}
+{% import "omni/_preview.html" as pv %}
+
+{% block title %}Setting up | {{ OMNI_BRAND }}{% endblock %}
+{% block body_class %}om-building{% endblock %}
+
+{% block top %}
+<header class="om-top om-top-build">
+  <div class="om-top-row">
+    <a class="om-brand" href="{{ url_for('om_landing') }}">{{ ic.icon('mark', 'brand-glyph') }}<b>{{ OMNI_BRAND }}</b></a>
+    <span class="om-ws-name">Setting up your inbox</span>
+    <ol class="om-progress" aria-label="Setup progress" data-progress>
+      {% for key, label in [('sources', 'Sources'), ('fields', 'Fields'), ('views', 'Views'), ('autonomy', 'Autonomy'), ('tone', 'Tone')] %}
+      <li class="{{ 'is-done' if progress[key] }}" data-step="{{ key }}">{{ ic.icon('check') }}<span>{{ label }}</span></li>
+      {% endfor %}
+    </ol>
+    <span class="om-progress-compact" data-progress-compact>{{ progress.values()|select|list|length }} of 5 decided</span>
+    <nav class="mh-detail-tabs om-build-tabs" role="tablist">
+      <button type="button" class="is-active" data-build-tab="chat" role="tab">Interview</button>
+      <button type="button" data-build-tab="preview" role="tab">Preview</button>
+    </nav>
+  </div>
+</header>
+{% endblock %}
+
+{% block body %}
+<div class="om-build" data-wid="{{ ws.wid }}" data-answer-url="{{ url_for('om_builder_answer', wid=ws.wid) }}"
+     data-skip-url="{{ url_for('om_builder_skip', wid=ws.wid) }}" data-build-url="{{ url_for('om_builder_build', wid=ws.wid) }}"
+     data-change-url="{{ url_for('om_builder_change', wid=ws.wid) }}">
+  <section class="om-chat is-active" data-build-panel="chat" aria-label="Setup interview">
+    <div class="om-log" id="omLog" aria-live="polite">
+      {% for t in turns %}
+        {% if t.role == 'user' %}
+          {{ qm.you(t.body) }}
+        {% elif t.kind == 'question' %}
+          {% if question and t.payload.qid == question.id and loop.last %}
+            {{ qm.question(question) }}
+          {% elif not (question and t.payload.qid == question.id) %}
+            {{ qm.bubble(t.body, 'question') }}
+          {% endif %}
+        {% elif t.kind == 'summary' %}
+          {{ qm.summary(t.payload.lines, ws) }}
+        {% elif t.kind == 'built' %}
+          {{ qm.bubble(t.body, 'built') }}
+        {% else %}
+          {{ qm.bubble(t.body, t.kind) }}
+        {% endif %}
+      {% endfor %}
+      {% if question and not turns or (question and turns and turns[-1].kind != 'question') %}
+        {{ qm.question(question) }}
+      {% endif %}
+    </div>
+    <form class="om-chat-ask mh-ask-wrap" id="omChatAsk" autocomplete="off">
+      <div class="mh-ask">
+        <span class="mh-ask-mark" aria-hidden="true">{{ ic.icon('sparkle') }}</span>
+        <span class="mh-ask-name" aria-hidden="true">{{ OMNI_BRAND }}</span>
+        <input type="text" class="mh-ask-input" id="omChatInput" placeholder="{{ 'Type an answer' if question and question.kind == 'text' else 'Or type your own' }}" aria-label="Type an answer">
+        <button type="submit" class="mh-ask-go" aria-label="Send">{{ ic.icon('arrow-right') }}</button>
+      </div>
+      <div class="mh-ask-status" data-chat-status role="status" aria-live="polite" hidden></div>
+      <div class="om-chat-foot">
+        <button type="button" class="link-btn" data-skip>Just build it with sensible defaults</button>
+      </div>
+    </form>
+  </section>
+  <section class="om-preview" data-build-panel="preview" aria-label="Your inbox, assembling">
+    <div class="om-preview-label">Your inbox, assembling</div>
+    <div data-preview>{{ pv.preview(preview, source_meta) }}</div>
+    <div class="om-preview-foot">
+      {{ ui.btn('Open your inbox', 'primary', extra='data-open-inbox disabled', disabled=(ws.builder_state != 'built')) }}
+    </div>
+  </section>
+</div>
+{% endblock %}

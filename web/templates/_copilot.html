@@ -1,34 +1,43 @@
 {% import "_icons.html" as ic %}
-<aside class="appdock" id="copilot" data-open="0" aria-label="Bridget assistant">
+<aside class="appdock" id="copilot" data-open="1" data-empty="1" aria-label="Bridget"
+  data-uid="{{ user.id if user else '' }}"
+  {# The shared demo account (and the landing-page frame) must not remember
+     chats: a walk-up visitor should never find someone else's questions. #}
+  data-ephemeral="{{ '1' if (active_site_demo or request.args.get('embed')) else '0' }}"
+  data-lottie="{{ static_url('vendor/lottie_light.min.js') }}"
+  data-think="{{ static_url('lottie/thinking.json') }}">
   <div class="dock-resize" id="dockResize" role="separator" aria-orientation="vertical" aria-label="Resize Bridget" title="Drag to resize · double-click to reset"></div>
-  <header class="dock-head">
+  <header class="dock-head" id="copilotHead">
     <div class="dock-title">
-      <span class="dock-brand">
-        {{ ic.icon('mark', 'brand-glyph') }}
-        <span class="dock-dot" title="Online"></span>
-      </span>
-      <div><b>Bridget</b><span>Enrollment agent</span></div>
+      <span class="dock-brand">{{ ic.icon('mark', 'brand-glyph') }}</span>
+      <b>Bridget</b>
     </div>
     <div class="dock-head-actions">
+      <button type="button" class="dock-icon-btn" id="copilotHistory" aria-label="Chat history" title="Chat history">{{ ic.icon('clock') }}</button>
       <button type="button" class="dock-icon-btn" id="copilotReset" aria-label="New chat" title="New chat">{{ ic.icon('plus') }}</button>
-      <button type="button" class="dock-icon-btn" id="copilotCollapse" aria-label="Hide Bridget" title="Hide">{{ ic.icon('chevron-right') }}</button>
+      <button type="button" class="dock-icon-btn" id="copilotCollapse" aria-label="Collapse Bridget" title="Collapse">{{ ic.icon('chevron-right') }}</button>
     </div>
   </header>
   <div class="dock-log" id="copilotLog"></div>
+  {# One Bridget. Questions are answered here in the pane. When an inbox
+     conversation is open (the reply box carries data-bridget-thread), what
+     you type is written into that reply box instead, and the pane says so.
+     The inbox used to carry a second prompt line inside the composer for
+     that; two boxes on one screen both saying "ask Bridget" was confusing, so
+     the pane took the job over. The placeholder switches to match (see
+     threadCtx below). #}
   <form class="dock-form" id="copilotForm">
-    <div class="dock-inputwrap">
-      <input type="text" id="copilotInput" placeholder="Ask about your studies, or tell me what to do&hellip;" autocomplete="off" aria-label="Message Bridget">
-      <button type="submit" aria-label="Send">{{ ic.icon('send') }}</button>
+    <div class="dock-composer">
+      <textarea id="copilotInput" rows="1" placeholder="Ask about your studies" autocomplete="off" aria-label="Message Bridget"></textarea>
+      <div class="dock-composer-bar">
+        <button type="submit" aria-label="Send" disabled>{{ ic.icon('send') }}</button>
+      </div>
     </div>
   </form>
 </aside>
-<button type="button" class="copilot-fab" id="copilotReopen" aria-label="Open Bridget, your AI assistant" title="Ask Bridget">
-  <span class="copilot-fab-ic">{{ ic.icon('mark', 'brand-glyph brand-glyph-lg') }}<span class="fab-dot"></span></span>
-  <span class="copilot-fab-label">Ask Bridget</span>
-</button>
 {# Reusable icon library so JS-built cards use the same real icons (not inline one-offs). #}
 <div id="bridgetIcons" hidden aria-hidden="true">
-  <i data-ic="inbox">{{ ic.icon('inbox') }}</i><i data-ic="clock">{{ ic.icon('clock') }}</i><i data-ic="calendar">{{ ic.icon('calendar') }}</i><i data-ic="file">{{ ic.icon('file') }}</i><i data-ic="shield">{{ ic.icon('shield') }}</i><i data-ic="users">{{ ic.icon('users') }}</i><i data-ic="sparkle">{{ ic.icon('sparkle') }}</i><i data-ic="mark">{{ ic.icon('mark') }}</i><i data-ic="check">{{ ic.icon('check') }}</i><i data-ic="chevron-right">{{ ic.icon('chevron-right') }}</i>
+  <i data-ic="inbox">{{ ic.icon('inbox') }}</i><i data-ic="clock">{{ ic.icon('clock') }}</i><i data-ic="calendar">{{ ic.icon('calendar') }}</i><i data-ic="file">{{ ic.icon('file') }}</i><i data-ic="shield">{{ ic.icon('shield') }}</i><i data-ic="users">{{ ic.icon('users') }}</i><i data-ic="sparkle">{{ ic.icon('sparkle') }}</i><i data-ic="mark">{{ ic.icon('mark') }}</i><i data-ic="check">{{ ic.icon('check') }}</i><i data-ic="chevron-right">{{ ic.icon('chevron-right') }}</i><i data-ic="x">{{ ic.icon('x') }}</i>
 </div>
 <script>
 (function () {
@@ -36,29 +45,39 @@
   if (!dock) return;
   var collapse = document.getElementById('copilotCollapse');
   var resetBtn = document.getElementById('copilotReset');
-  var reopen = document.getElementById('copilotReopen');
+  var histBtn = document.getElementById('copilotHistory');
+  var head = document.getElementById('copilotHead');
   var log = document.getElementById('copilotLog');
   var form = document.getElementById('copilotForm');
   var input = document.getElementById('copilotInput');
   var sendBtn = form.querySelector('button[type="submit"]');
-  var busy = false, briefLoaded = false;
+  var busy = false;
+  var lottieWaiters = [];
 
-  // Map a live digest section to the icon + the question that runs its tool, so a
-  // card in the brief actually *does* something when clicked (not decoration).
-  var SECTION_MAP = [
-    { re: /decision|waiting/i,        icon: 'inbox',    q: "Who's waiting on my decision?" },
-    { re: /stuck|screening/i,         icon: 'clock',    q: "Who's stuck in screening?" },
-    { re: /visit|window|attention/i,  icon: 'calendar', q: "Which visits are out of window?" },
-    { re: /document|due/i,            icon: 'file',     q: "What documents need action?" },
-    { re: /consent/i,                 icon: 'shield',   q: "Who's due for re-consent?" },
-    { re: /match|record/i,            icon: 'users',    q: "Show me new record matches" },
-  ];
-  function sectionMeta(title) {
-    for (var i = 0; i < SECTION_MAP.length; i++) {
-      if (SECTION_MAP[i].re.test(title || '')) return SECTION_MAP[i];
-    }
-    return { icon: 'mark', q: title };
+  function withLottie(fn) {
+    if (window.lottie) { fn(window.lottie); return; }
+    lottieWaiters.push(fn);
+    if (withLottie.loading) return;
+    withLottie.loading = true;
+    var s = document.createElement('script');
+    s.src = dock.getAttribute('data-lottie');
+    s.onload = function () {
+      var L = window.lottie;
+      lottieWaiters.splice(0).forEach(function (w) { if (L) w(L); });
+    };
+    document.head.appendChild(s);
   }
+
+  function destroyThink(root) {
+    if (!root) return;
+    (root.querySelectorAll ? root.querySelectorAll('.copilot-lottie') : []).forEach(function (host) {
+      if (host._lottie) {
+        try { host._lottie.destroy(); } catch (e) {}
+        host._lottie = null;
+      }
+    });
+  }
+
   function iconHtml(name) {
     var el = document.querySelector('#bridgetIcons [data-ic="' + name + '"]');
     return el ? el.innerHTML : '';
@@ -72,22 +91,41 @@
     var m = (window.location.pathname || '').match(/\/app\/applicant\/(\d+)/);
     return m ? parseInt(m[1], 10) : null;
   }
-  // applyOpen only paints the state - used for the computed per-page default,
-  // which must NOT get written to localStorage (or the very first page's
-  // guess would "stick" and silently override every later page's own
-  // context-aware default). setOpen is for an actual user action (FAB, close
-  // button, Bridget-open links) and remembers the choice across navigation.
-  function applyOpen(open) {
+  // The inbox conversation open on screen, if any. The reply box declares it
+  // (data-bridget-thread) so the pane knows to write there rather than answer
+  // here. Read live, not cached: the field is server-rendered per page.
+  function threadCtx() {
+    var f = document.querySelector('textarea[data-bridget-thread]');
+    if (!f) return null;
+    var id = parseInt(f.getAttribute('data-bridget-thread'), 10);
+    if (!id) return null;
+    return { id: id, name: f.getAttribute('data-bridget-contact') || 'this contact', field: f };
+  }
+  // Same four as agent.DRAFT_PRESETS: each is an instruction the drafter
+  // understands, so a click writes a reply rather than asking a question.
+  var DRAFT_PRESETS = ['Answer their question', 'Offer a call', 'Ask availability', 'Check in'];
+  function syncPlaceholder() {
+    var tc = threadCtx();
+    input.placeholder = tc ? 'Say what you want written\u2026' : 'Ask about your studies';
+  }
+  // Bridget is a pane of the workspace, not a widget. applyOpen paints that
+  // pane; it does not steal the keyboard. Focus only happens when the person
+  // opens it themselves (setOpen).
+  function applyOpen(open, opts) {
+    opts = opts || {};
     dock.setAttribute('data-open', open ? '1' : '0');
-    reopen.style.display = open ? 'none' : '';
-    // The FAB is fixed to the bottom-right, which is exactly where the inbox
-    // keeps its Send button. Flag it so CSS can lift the FAB clear.
-    document.body.classList.toggle('has-bridget-fab', !open);
-    if (open) { input.focus(); if (!briefLoaded) renderIntro(); }
+    if (open) {
+      // Pick the chat up where it was left (it survives page changes), else
+      // the quiet empty prompt.
+      if (!log.children.length) {
+        if (current && chatById(current)) openChat(current); else renderIntro();
+      }
+      if (opts.focus) input.focus();
+    }
   }
   function setOpen(open) {
-    applyOpen(open);
-    try { localStorage.setItem('bm_copilot_open', open ? '1' : '0'); } catch (e) {}
+    applyOpen(open, { focus: !!open });
+    try { localStorage.setItem('bm_bridget_pane', open ? '1' : '0'); } catch (e) {}
   }
   function scroll() { log.scrollTop = log.scrollHeight; }
   function escapeHtml(s) {
@@ -96,72 +134,66 @@
     });
   }
 
-  // ---- Intro / live brief -------------------------------------------------- //
-  // The empty state is not a static blurb: it pulls the same real data the rest
-  // of the app shows and turns each thing that needs the coordinator today into a
-  // one-click action. Feels wired-in, because it is.
-  function renderIntro() {
-    briefLoaded = true;
-    log.innerHTML = '';
-    var hello = document.createElement('div');
-    hello.className = 'copilot-msg bot';
-    hello.innerHTML = '<div class="copilot-avatar">' + iconHtml('mark') + '</div>'
-      + '<div class="copilot-hello"><b>Hi, I\u2019m Bridget.</b> Here\u2019s where to start '
-      + '\u2014 or just ask.</div>';
-    log.appendChild(hello);
-
-    var brief = document.createElement('div');
-    brief.className = 'bridget-brief';
-    brief.innerHTML = '<div class="brief-load">'
-      + '<span class="cw-spin" aria-hidden="true"></span> Checking your studies\u2026</div>';
-    log.appendChild(brief);
-    scroll();
-
-    fetch('/app/copilot/digest', { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
-      .then(function (r) { return r.ok ? r.json() : null; })
-      .then(function (d) { renderBrief(brief, d); })
-      .catch(function () { renderBrief(brief, null); });
+  function setEmpty(empty) {
+    dock.setAttribute('data-empty', empty ? '1' : '0');
   }
 
-  function renderBrief(brief, d) {
-    brief.innerHTML = '';
-    var sections = (d && d.sections) || [];
-    if (sections.length) {
-      // Show only the top few priorities so it reads calm, not like a wall.
-      sections.slice(0, 3).forEach(function (s) {
-        var meta = sectionMeta(s.title);
-        var card = document.createElement('button');
-        card.type = 'button';
-        card.className = 'brief-card';
-        card.innerHTML =
-          '<span class="brief-ic">' + iconHtml(meta.icon) + '</span>'
-          + '<span class="brief-body"><span class="brief-title">' + escapeHtml(s.title) + '</span></span>'
-          + '<span class="brief-count">' + s.count + '</span>'
-          + '<span class="brief-arrow">' + iconHtml('chevron-right') + '</span>';
-        card.addEventListener('click', function () { ask(meta.q); });
-        brief.appendChild(card);
+  // Empty chat: Cursor-style blank panel. No dashboard, no counts, just a
+  // quiet prompt so a recruiter types the way they would in Gmail. With a
+  // conversation open it says where the writing goes and offers the four
+  // starting points the composer used to carry.
+  function renderIntro() {
+    log.innerHTML = '';
+    setEmpty(true);
+    var tc = threadCtx();
+    var empty = document.createElement('div');
+    empty.className = 'copilot-empty';
+    empty.innerHTML =
+      '<div class="copilot-empty-mark">' + iconHtml('mark') + '</div>'
+      + '<h2>Ask Bridget</h2>'
+      + (tc
+          ? '<p>' + escapeHtml(tc.name) + ' is open. Say what you want written '
+            + 'and it goes into the reply box. You can still ask about your '
+            + 'studies, applicants or schedule.</p>'
+          : '<p>Ask about your studies, applicants or schedule.</p>');
+    if (tc) {
+      var box = document.createElement('div');
+      box.className = 'copilot-suggest';
+      DRAFT_PRESETS.forEach(function (s) {
+        var c = document.createElement('button');
+        c.type = 'button'; c.className = 'copilot-chip'; c.textContent = s;
+        c.addEventListener('click', function () { ask(s); });
+        box.appendChild(c);
       });
-    } else {
-      var ok = document.createElement('div');
-      ok.className = 'brief-clear';
-      ok.innerHTML = '<span class="brief-clear-ic">' + iconHtml('check') + '</span>'
-        + '<div><b>You\u2019re all caught up.</b><span>Nothing needs you right now.</span></div>';
-      brief.appendChild(ok);
+      empty.appendChild(box);
     }
+    log.appendChild(empty);
+  }
 
-    scroll();
+  // A reply Bridget wrote lands in the open conversation's box, typed out the
+  // same way every other Bridget draft is (Bridget.fill), and the caret is
+  // left at the end so editing continues from the draft. Nothing sends.
+  function placeDraft(text) {
+    var tc = threadCtx();
+    if (!tc || !text) return Promise.resolve();
+    var field = tc.field;
+    var tab = document.querySelector('[data-compose-tab="reply"]');
+    if (tab && !tab.classList.contains('is-active')) tab.click();
+    var written = window.Bridget
+      ? window.Bridget.fill(field, text)
+      : Promise.resolve((field.value = text));
+    return written.then(function () {
+      try {
+        field.focus({ preventScroll: true });
+        field.setSelectionRange(field.value.length, field.value.length);
+      } catch (e) {}
+    });
   }
 
   // ---- Messages ------------------------------------------------------------ //
   function addMsg(role, text) {
     var wrap = document.createElement('div');
     wrap.className = 'copilot-msg ' + role;
-    if (role === 'bot') {
-      var av = document.createElement('div');
-      av.className = 'copilot-avatar';
-      av.innerHTML = iconHtml('mark');
-      wrap.appendChild(av);
-    }
     var body = document.createElement('div');
     body.className = 'copilot-body';
     var p = document.createElement('p');
@@ -176,42 +208,52 @@
 
   // Render structured rows as a clean, scannable list (title + detail) instead
   // of a run-on sentence. Only used when there are 2+ rows.
+  function buildItem(it) {
+    var li = document.createElement('li');
+    li.className = 'copilot-li' + (it.url ? ' is-link' : '');
+    var main = document.createElement('div');
+    main.className = 'cli-main';
+    var t = document.createElement('span');
+    t.className = 'cli-title';
+    t.textContent = it.title || 'Item';
+    main.appendChild(t);
+    if (it.study) {
+      var s = document.createElement('span');
+      s.className = 'cli-study';
+      s.textContent = it.study;
+      main.appendChild(s);
+    }
+    li.appendChild(main);
+    if (it.detail) {
+      var dt = document.createElement('div');
+      dt.className = 'cli-detail';
+      dt.textContent = it.detail;
+      li.appendChild(dt);
+    }
+    if (it.url) { li.addEventListener('click', function () { window.location.href = it.url; }); }
+    return li;
+  }
   function renderItems(wrap, items) {
     if (!items || items.length < 2) return;
     var host = bodyOf(wrap);
     var ul = document.createElement('ul');
     ul.className = 'copilot-list';
-    var CAP = 5;
-    var shown = items.slice(0, CAP);
-    shown.forEach(function (it) {
-      var li = document.createElement('li');
-      li.className = 'copilot-li' + (it.url ? ' is-link' : '');
-      var main = document.createElement('div');
-      main.className = 'cli-main';
-      var t = document.createElement('span');
-      t.className = 'cli-title';
-      t.textContent = it.title || 'Item';
-      main.appendChild(t);
-      if (it.study) {
-        var s = document.createElement('span');
-        s.className = 'cli-study';
-        s.textContent = it.study;
-        main.appendChild(s);
-      }
-      li.appendChild(main);
-      if (it.detail) {
-        var dt = document.createElement('div');
-        dt.className = 'cli-detail';
-        dt.textContent = it.detail;
-        li.appendChild(dt);
-      }
-      if (it.url) { li.addEventListener('click', function () { window.location.href = it.url; }); }
-      ul.appendChild(li);
-    });
+    var CAP = 3;
+    items.slice(0, CAP).forEach(function (it) { ul.appendChild(buildItem(it)); });
     if (items.length > CAP) {
+      // "+N more" is a button: it unfolds the rest of the list in place.
       var more = document.createElement('li');
       more.className = 'copilot-li copilot-li-more';
-      more.textContent = '+' + (items.length - CAP) + ' more';
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'copilot-more';
+      btn.textContent = '+' + (items.length - CAP) + ' more';
+      btn.addEventListener('click', function () {
+        more.remove();
+        items.slice(CAP).forEach(function (it) { ul.appendChild(buildItem(it)); });
+        scroll();
+      });
+      more.appendChild(btn);
       ul.appendChild(more);
     }
     host.appendChild(ul);
@@ -317,18 +359,39 @@
     });
   }
 
-  // A "working" row (spinner + status), like an agent narrating that it's on it.
+  // Cursor-style thinking: the four-square Lottie in the same turn that will
+  // hold the answer. No bubble, no bouncing dots.
   function addWorking() {
     var wrap = document.createElement('div');
-    wrap.className = 'copilot-msg bot';
-    wrap.innerHTML = '<div class="copilot-avatar">' + iconHtml('mark') + '</div>';
-    var body = document.createElement('div'); body.className = 'copilot-body';
+    wrap.className = 'copilot-msg bot is-thinking';
+    var body = document.createElement('div');
+    body.className = 'copilot-body';
     var w = document.createElement('div');
-    w.className = 'copilot-working';
-    w.setAttribute('aria-label', 'Bridget is working');
-    w.innerHTML = '<span class="cw-dots"><i></i><i></i><i></i></span>';
-    body.appendChild(w); wrap.appendChild(body);
+    w.className = 'copilot-thinking';
+    w.setAttribute('aria-label', 'Bridget is thinking');
+    var host = document.createElement('span');
+    host.className = 'copilot-lottie';
+    host.setAttribute('aria-hidden', 'true');
+    w.appendChild(host);
+    body.appendChild(w);
+    wrap.appendChild(body);
     log.appendChild(wrap);
+    withLottie(function (lottie) {
+      if (!host.isConnected) return;
+      var reduce = false;
+      try { reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) {}
+      var anim = lottie.loadAnimation({
+        container: host,
+        renderer: 'svg',
+        loop: !reduce,
+        autoplay: !reduce,
+        path: dock.getAttribute('data-think')
+      });
+      host._lottie = anim;
+      if (reduce) {
+        anim.addEventListener('DOMLoaded', function () { anim.goToAndStop(0, true); });
+      }
+    });
     scroll();
     return wrap;
   }
@@ -352,10 +415,19 @@
     })();
   }
 
-  // Stream the answer in so it reads like a live response.
+  // Stream the answer in so it reads like a live response. Delegates to the
+  // shared Bridget streamer (base.html) so the chat and the draft surfaces
+  // animate identically - the same agent should not write two different ways.
+  // Keeps a local fallback for the rare page that renders the dock without it.
   function revealText(p, text, done) {
     text = String(text == null ? '' : text);
     if (!text) { if (done) done(); return; }
+    if (window.Bridget) {
+      window.Bridget.stream(p, text, { onTick: scroll }).then(function () {
+        if (done) done();
+      });
+      return;
+    }
     var tokens = text.split(/(\s+)/);
     var i = 0;
     (function step() {
@@ -371,30 +443,32 @@
   function setBusy(b) {
     busy = b;
     input.disabled = b;
-    if (sendBtn) sendBtn.disabled = b;
+    syncSend();
     form.classList.toggle('is-busy', b);
-    if (!b) { input.focus(); }
+    // After a written reply the caret belongs in the reply box, not here.
+    if (!b && !(lastHadDraft && threadCtx())) { input.focus(); }
+    if (!b) lastHadDraft = false;
   }
-
-  function clearBrief() {
-    var b = log.querySelector('.bridget-brief');
-    if (b) b.remove();
-    var h = log.querySelector('.copilot-hello');
-    // keep the hello line; only the brief cards disappear once a conversation starts
-  }
+  var lastHadDraft = false;
 
   function ask(q) {
     if (busy || !q) return;
-    clearBrief();
+    setEmpty(false);
+    var empty = log.querySelector('.copilot-empty');
+    if (empty) empty.remove();
     setBusy(true);
-    addMsg('me', q);
+    var mine = addMsg('me', q);
+    record('me', q);
     input.value = '';
+    autosize();
     var working = addWorking();
+    if (mine.scrollIntoView) mine.scrollIntoView({ block: 'start' });
     fetch('/app/copilot/ask', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf(),
                  'X-Requested-With': 'XMLHttpRequest' },
-      body: JSON.stringify({ q: q, lead_id: leadId() })
+      body: JSON.stringify({ q: q, lead_id: leadId(),
+                             thread_id: (threadCtx() || {}).id || null })
     }).then(function (r) {
       return r.text().then(function (t) {
         var d = null;
@@ -402,48 +476,61 @@
         return { status: r.status, data: d };
       });
     }).then(function (res) {
-      working.remove();
       var d = res.data;
+      function fail(msg) {
+        destroyThink(working);
+        working.remove();
+        addMsg('bot', msg);
+      }
       if (!d) {
-        addMsg('bot', (res.status === 401 || res.status === 403)
+        fail((res.status === 401 || res.status === 403)
           ? 'Your session looks signed out. Refresh the page and try again.'
           : 'I couldn\u2019t reach the assistant. Refresh the page and try again.');
         return;
       }
       if (!d.ok) {
-        addMsg('bot', d.error === 'csrf_failed'
-          ? 'Your session expired \u2014 refresh the page and try again.'
+        fail(d.error === 'csrf_failed'
+          ? 'Your session expired. Refresh the page and try again.'
           : (d.error === 'auth_required'
               ? 'Please sign in again to use Bridget.'
               : (d.error || 'Something went wrong.')));
         return;
       }
       function deliver() {
-        var w = addMsg('bot', '');
-        revealText(w.querySelector('p'), d.answer || '', function () {
-          renderItems(w, d.items);
-          // Drop citation chips that just repeat the list rows; keep section links.
+        lastHadDraft = !!d.draft;
+        working.classList.remove('is-thinking');
+        var think = working.querySelector('.copilot-thinking');
+        if (think) { destroyThink(think); think.remove(); }
+        var p = working.querySelector('p');
+        if (!p) {
+          p = document.createElement('p');
+          bodyOf(working).appendChild(p);
+        }
+        p.textContent = '';
+        // The reply box fills while the pane says so: one motion, two places.
+        if (d.draft) placeDraft(d.draft);
+        revealText(p, d.answer || '', function () {
+          renderItems(working, d.items);
           var cites = d.citations || [];
           if (d.items && d.items.length > 1) {
             var titles = d.items.map(function (i) { return i.title; });
             cites = cites.filter(function (c) { return titles.indexOf(c.label) === -1; });
           }
-          addCitations(w, cites);
-          renderProposal(w, d.proposal);
-          renderFollowups(w, d.suggestions);
+          addCitations(working, cites);
+          renderProposal(working, d.proposal);
+          renderFollowups(working, d.suggestions);
+          record('bot', d.answer || '', { items: d.items, citations: cites });
         });
       }
       if (d.trace && d.trace.length) {
-        var sw = document.createElement('div');
-        sw.className = 'copilot-msg bot';
-        sw.innerHTML = '<div class="copilot-avatar">' + iconHtml('mark') + '</div>'
-          + '<div class="copilot-body"></div>';
-        log.appendChild(sw);
-        renderSteps(sw, d.trace, deliver);
+        var think = working.querySelector('.copilot-thinking');
+        if (think) { destroyThink(think); think.remove(); }
+        renderSteps(working, d.trace, deliver);
       } else {
         deliver();
       }
     }).catch(function () {
+      destroyThink(working);
       working.remove();
       addMsg('bot', 'I couldn\u2019t reach the assistant. Check your connection and try again.');
     }).finally(function () { setBusy(false); });
@@ -463,22 +550,203 @@
     scroll();
   }
 
-  collapse.addEventListener('click', function () { setOpen(false); });
-  reopen.addEventListener('click', function () { setOpen(true); });
-  resetBtn.addEventListener('click', function () { if (!busy) { briefLoaded = false; renderIntro(); } });
+  // ---- History ------------------------------------------------------------ //
+  // Chats are kept in this browser (localStorage, keyed by the signed-in user),
+  // so a conversation survives page changes and old ones can be reopened.
+  // Nothing about them is sent to the server.
+  var STORE = 'bm_bridget_chats_' + (dock.getAttribute('data-uid') || 'anon');
+  var MAX_CHATS = 30;
+  // Demo / embedded sessions keep history in memory only: it lasts for this
+  // page and is gone on refresh, and anything an earlier build stored for the
+  // demo account is wiped on sight.
+  var EPHEMERAL = dock.getAttribute('data-ephemeral') === '1';
+  var chats = [], current = null;
+  function loadStore() {
+    if (EPHEMERAL) {
+      try { localStorage.removeItem(STORE); } catch (e) {}
+      return;
+    }
+    try {
+      var d = JSON.parse(localStorage.getItem(STORE) || 'null');
+      if (d && d.chats) { chats = d.chats; current = d.current || null; }
+    } catch (e) { chats = []; current = null; }
+  }
+  function saveStore() {
+    if (EPHEMERAL) return;
+    try {
+      localStorage.setItem(STORE, JSON.stringify({ chats: chats.slice(0, MAX_CHATS), current: current }));
+    } catch (e) {}
+  }
+  function chatById(id) {
+    for (var i = 0; i < chats.length; i++) { if (chats[i].id === id) return chats[i]; }
+    return null;
+  }
+  function record(role, text, extra) {
+    var hasItems = !!(extra && extra.items && extra.items.length);
+    if (!text && !hasItems) return;
+    var c = current && chatById(current);
+    if (!c) {
+      c = { id: 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+            title: '', at: Date.now(), msgs: [] };
+      chats.unshift(c);
+      current = c.id;
+    }
+    var m = { role: role, text: text || '' };
+    if (hasItems) m.items = extra.items;
+    if (extra && extra.citations && extra.citations.length) m.citations = extra.citations;
+    c.msgs.push(m);
+    if (!c.title && role === 'me') c.title = text.slice(0, 80);
+    c.at = Date.now();
+    chats.splice(chats.indexOf(c), 1);
+    chats.unshift(c);
+    saveStore();
+  }
+  function startNewChat() {
+    current = null;
+    saveStore();
+    renderIntro();
+  }
+  function openChat(id) {
+    var c = chatById(id);
+    if (!c) return;
+    current = id;
+    saveStore();
+    log.innerHTML = '';
+    setEmpty(false);
+    c.msgs.forEach(function (m) {
+      var w = addMsg(m.role, m.text);
+      if (m.role === 'bot') { renderItems(w, m.items); addCitations(w, m.citations); }
+    });
+    scroll();
+  }
+  function timeAgo(t) {
+    var s = (Date.now() - t) / 1000;
+    if (s < 60) return 'just now';
+    if (s < 3600) return Math.floor(s / 60) + 'm ago';
+    if (s < 86400) return Math.floor(s / 3600) + 'h ago';
+    return new Date(t).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  }
+  function renderHistory() {
+    log.innerHTML = '';
+    setEmpty(false);
+    var box = document.createElement('div');
+    box.className = 'copilot-history';
+    var h = document.createElement('div');
+    h.className = 'ch-head';
+    h.innerHTML = '<b>Chat history</b>';
+    var back = document.createElement('button');
+    back.type = 'button';
+    back.className = 'ch-link';
+    back.textContent = (current && chatById(current)) ? 'Back to chat' : 'New chat';
+    back.addEventListener('click', function () {
+      if (current && chatById(current)) openChat(current); else renderIntro();
+    });
+    h.appendChild(back);
+    box.appendChild(h);
+    if (!chats.length) {
+      var e = document.createElement('p');
+      e.className = 'ch-empty';
+      e.textContent = 'No chats yet. Ask Bridget something and it will be kept here.';
+      box.appendChild(e);
+    }
+    chats.forEach(function (c) {
+      var row = document.createElement('div');
+      row.className = 'ch-item' + (c.id === current ? ' is-current' : '');
+      var open = document.createElement('button');
+      open.type = 'button';
+      open.className = 'ch-open';
+      var title = document.createElement('span');
+      title.className = 'ch-title';
+      title.textContent = c.title || 'Untitled chat';
+      var meta = document.createElement('span');
+      meta.className = 'ch-meta';
+      var n = Math.ceil(c.msgs.length / 2);
+      meta.textContent = timeAgo(c.at) + ' · ' + n + (n === 1 ? ' question' : ' questions');
+      open.appendChild(title);
+      open.appendChild(meta);
+      open.addEventListener('click', function () { openChat(c.id); });
+      var del = document.createElement('button');
+      del.type = 'button';
+      del.className = 'ch-del';
+      del.setAttribute('aria-label', 'Delete chat');
+      del.title = 'Delete';
+      del.innerHTML = iconHtml('x');
+      del.addEventListener('click', function (ev) {
+        ev.stopPropagation();
+        chats.splice(chats.indexOf(c), 1);
+        if (current === c.id) current = null;
+        saveStore();
+        renderHistory();
+      });
+      row.appendChild(open);
+      row.appendChild(del);
+      box.appendChild(row);
+    });
+    log.appendChild(box);
+    log.scrollTop = 0;
+  }
+  if (histBtn) {
+    histBtn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      if (!busy) renderHistory();
+    });
+  }
+
+  collapse.addEventListener('click', function (e) {
+    e.stopPropagation();
+    setOpen(false);
+  });
+  if (head) {
+    head.addEventListener('click', function () {
+      if (dock.getAttribute('data-open') === '0') setOpen(true);
+    });
+  }
+  resetBtn.addEventListener('click', function (e) {
+    e.stopPropagation();
+    if (!busy) startNewChat();
+  });
   form.addEventListener('submit', function (e) { e.preventDefault(); ask(input.value.trim()); });
 
-  var saved = null;
-  try { saved = localStorage.getItem('bm_copilot_open'); } catch (e) {}
-  // On-click only: Bridget never auto-opens, so it never steals width from the
-  // page or greets you with canned prompts. It opens from the FAB (or
-  // window.bridgetOpen / bridgetAsk) and remembers an explicit open across
-  // navigation so it doesn't slam shut mid-task.
-  var startOpen = saved === '1';
-  applyOpen(startOpen);
-  if (startOpen) renderIntro();
+  function syncSend() {
+    if (!sendBtn) return;
+    sendBtn.disabled = busy || !input.value.trim();
+  }
+  function autosize() {
+    input.style.height = 'auto';
+    input.style.height = Math.min(input.scrollHeight, 160) + 'px';
+  }
+  input.addEventListener('input', function () { autosize(); syncSend(); });
+  input.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      if (!busy && input.value.trim()) form.requestSubmit();
+    }
+  });
 
-  // Let any page open Bridget or ask it something (e.g. the Calendar's "Ask AI").
+  var embed = new URLSearchParams(location.search).get('embed') === '1';
+  var saved = null;
+  try { saved = localStorage.getItem('bm_bridget_pane'); } catch (e) {}
+  // Bridget is a column of the workspace. It starts open on a desk; on a
+  // phone it starts as the slim rail so it doesn't cover the inbox.
+  var narrow = window.matchMedia && window.matchMedia('(max-width: 1023px)').matches;
+  // On the inbox list Bridget starts closed: it held ~400px of a four-column
+  // workspace showing an empty prompt, and the top bar's Bridget button
+  // (base.html) is the way in. With a conversation open it starts open, because
+  // it is now the only place on the screen that writes the reply. An explicit
+  // user choice still wins - only the *default* is per-page. The landing-page
+  // iframe (?embed=1) keeps Bridget open so visitors see the Cursor-style rail.
+  var onInbox = document.body.getAttribute('data-page') === 'marketing_hub';
+  var startOpen = embed ? true
+                : saved === '0' ? false
+                : saved === '1' ? true
+                : (!narrow && (!onInbox || !!threadCtx()));
+  loadStore();
+  syncPlaceholder();
+  applyOpen(startOpen);
+  if (embed) {
+    try { localStorage.setItem('bm_bridget_pane', '1'); } catch (e) {}
+  }
+
   window.bridgetOpen = function () { setOpen(true); };
   window.bridgetAsk = function (q) { setOpen(true); if (q) { setTimeout(function () { ask(q); }, 60); } };
 })();
@@ -679,15 +947,22 @@
       .then(function (d) {
         if (!d || !d.ok) throw new Error('no draft');
         var text = d.draft || d.answer || '';
-        if (target) {
-          target.value = text;
-          target.dispatchEvent(new Event('input', { bubbles: true }));
-          target.focus();
-        }
         var note = btn.closest('.bridget-slot');
-        if (note) {
-          var hint = note.querySelector('[data-bridget-note]');
-          if (hint) hint.hidden = false;
+        var hint = note ? note.querySelector('[data-bridget-note]') : null;
+        if (target) {
+          // Focus first so the caret is already in the field as the draft
+          // writes itself in - it should look like the field is being filled,
+          // not like text was pasted and then clicked into.
+          target.focus();
+          var written = window.Bridget
+            ? window.Bridget.fill(target, text)
+            : Promise.resolve(target.value = text);
+          // The "Bridget drafted this - edit before sending" note belongs at
+          // the end: it's a prompt to review, and there is nothing to review
+          // until the draft has finished landing.
+          written.then(function () { if (hint) hint.hidden = false; });
+        } else if (hint) {
+          hint.hidden = false;
         }
       })
       .catch(function () {

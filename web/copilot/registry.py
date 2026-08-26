@@ -48,6 +48,10 @@ _READS = [
          "Enrollment funnel: totals, conversion, and the biggest drop-off.",
          trace=["Pulled funnel metrics across all your studies"],
          run=lambda uid, lid, p: tools.funnel_overview(uid)),
+    Tool("list_studies", "read",
+         "List the trials/studies your site has claimed, with applicant counts.",
+         trace=["Listed your claimed studies"],
+         run=lambda uid, lid, p: tools.list_studies(uid, p.get("active_nct", ""))),
     Tool("needs_reply", "read",
          "Your inbox: applicants who messaged and are waiting on a reply, each "
          "with a suggested response drafted from their last message.",

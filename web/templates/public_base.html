@@ -52,6 +52,8 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ static_url('style.css') }}">
+  {% import "_public_chrome.html" as pub_chrome %}
+  {{ pub_chrome.head_assets() }}
   {# Sitewide brand entity so Google + answer engines recognize BridgeMD as one
      consistent organization/site across every page. Page-specific schema (e.g.
      MedicalTrial / FAQPage on study pages) is added via head_extra. #}
@@ -82,27 +84,13 @@
 {% import "_icons.html" as ic %}
 {% import "_ui.html" as ui %}
 {% set demo_home = (request.endpoint == 'home' and pov_demo) %}
-{# The single-viewport hero layout belongs to the search landing, which both / and
-   /find (GET) render via _render_landing (landing_page=True). Keying off that flag
-   instead of the endpoint keeps / and /find identical without touching /find's POST
-   results page (which doesn't set landing_page). #}
-{% set home_screen = (landing_page|default(false) and not demo_home) %}
-<body class="pub{{ ' demo-home' if demo_home else '' }}{{ ' home-screen is-fy-split' if home_screen else '' }}{{ ' fs-page' if request.endpoint in ('for_sites', 'for_sites_feature') else '' }}">
+{# Split-carousel CSS is scoped to body.home-screen. That class used to be
+   withheld whenever NO_LOGIN set pov_demo, so local demo rendered the stacked
+   marketing page instead of production's two-panel finder. #}
+{% set home_screen = landing_page|default(false) %}
+<body class="pub{{ ' pub-marketing' if request.endpoint not in ('for_sites', 'for_sites_feature') else '' }}{{ ' demo-home' if demo_home else '' }}{{ ' home-screen' if home_screen else '' }}{{ ' is-fy-split' if home_screen else '' }}{{ ' fs-page' if request.endpoint in ('for_sites', 'for_sites_feature') else '' }}">
 <a class="skip-link" href="#main">Skip to main content</a>
-{% block site_header %}
-<header class="pub-nav">
-  <a class="brand" href="{{ url_for('home') }}">{{ ic.icon('mark', 'brand-glyph') }}BridgeMD</a>
-  {# Landing pages for both patients and sites - no login/account UI anywhere. #}
-  <nav class="pub-nav-center" aria-label="Primary">
-    <a href="{{ sites_home_url }}">For sites</a>
-  </nav>
-  <div class="pub-nav-auth">
-    <button type="button" class="theme-toggle" id="themeToggle" aria-label="Switch between light and dark theme" title="Toggle light / dark theme">
-      {{ ic.icon('sun', 'ico icon-sun') }}{{ ic.icon('moon', 'ico icon-moon') }}
-    </button>
-  </div>
-</header>
-{% endblock %}
+{% block site_header %}{{ pub_chrome.header(cal_link) }}{% endblock %}
 <div class="toast-stack">
   {% with messages = get_flashed_messages(with_categories=true) %}
     {% for cat, msg in messages %}

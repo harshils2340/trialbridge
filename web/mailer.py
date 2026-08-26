@@ -12,6 +12,12 @@ import os
 import smtplib
 import ssl
 from email.message import EmailMessage
+try:
+    from copy_sanitize import sanitize_copy
+except ImportError:  # imported outside the app, without the repo root on sys.path
+    import pathlib as _pl, sys as _sys
+    _sys.path.insert(0, str(_pl.Path(__file__).resolve().parent.parent))
+    from copy_sanitize import sanitize_copy
 
 
 def smtp_configured():
@@ -90,7 +96,7 @@ def build_candidate_message(lead, link):
 def build_owner_new_application(lead, link, inbox=""):
     """Internal heads-up to the operator that a new application came in, so they
     can act on it (forward to the study team) fast. De-identified on purpose:
-    NO name, email, phone, or clinical notes in the email itself — those live
+    NO name, email, phone, or clinical notes in the email itself, those live
     behind the secure record link. Includes triage context so the operator can
     prioritise before clicking through."""
     def _lget(key, default=""):
@@ -541,6 +547,10 @@ def send_email(to_addr, subject, body):
     sender = os.environ.get("SMTP_FROM", user)
     use_tls = os.environ.get("SMTP_TLS", "1") == "1"
 
+    # Coordinators asked for no em dashes anywhere, and an email is the copy
+    # that leaves the building.
+    subject = sanitize_copy(subject or "")
+    body = sanitize_copy(body or "")
     msg = EmailMessage()
     msg["Subject"] = subject
     msg["From"] = sender

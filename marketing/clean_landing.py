@@ -43,12 +43,13 @@ CDN_IMG = "https://framerusercontent.com/images/"
 # https://logos.apistemic.com/
 LOGO_API = "https://logos-api.apistemic.com/domain:"
 
-# Hero copy: clear, direct BridgeMD value prop. No em dashes, no AI slop.
-EYEBROW = "One inbox for every recruitment channel"
+# Hero copy: who it's for, then what it is, in the first screen. No em dashes.
+# Two sentences: the first period is a <br> in the hero.
+EYEBROW = "For research sites and study teams"
 H1_L1 = "Every Patient Inquiry"
 H1_L2 = "In One Shared Inbox"
-SUBHEAD = ("The first AI patient inbox for clinical trials. Every message from every "
-           "source, centralized in one place.")
+SUBHEAD = ("The first inbox built for clinical trials. Ads, email, and forms "
+           "land in one place, and Bridget is the AI that writes, sends, and books.")
 
 # Word-split headings (anchored by their now-new data-framer-name prefix) whose SSR
 # visible text must be rewritten to the plain new copy.
@@ -102,7 +103,7 @@ EMBED_CSS = (
     'font-feature-settings:"cv09" 1,"cv03" 1,"cv04" 1,"cv11" 1,"blwf" 1;'
     "background:#f5f7fb;padding:110px 24px}"
     "#bmd-embed .bmd-embed-wrap{max-width:1120px;margin:0 auto}"
-    "#bmd-embed .bmd-embed-head{text-align:center;max-width:660px;margin:0 auto 54px}"
+    "#bmd-embed .bmd-embed-head{text-align:center;max-width:720px;margin:0 auto 54px}"
     "#bmd-embed .pill{display:inline-block;padding:7px 15px;border-radius:999px;"
     "background:#fff;border:1px solid #dce6f5;color:#1257b0;font-size:13px;"
     "font-weight:700;margin-bottom:18px}"
@@ -340,11 +341,12 @@ EMBED_HTML = (
     '<section id="bmd-embed"><div class="bmd-embed-wrap">'
     '<div class="bmd-embed-head">'
     '<span class="pill">BridgeMD Embed</span>'
-    '<h2>Two ways to run the trial finder</h2>'
-    '<p class="lead">Use it as a standalone site your team can share anywhere, or embed '
-    'it straight into your hospital, clinic, or partner website, tailored to the '
-    'studies you run. Either way, people search your trials without leaving that site, '
-    'and every inquiry lands in your shared inbox, sorted and routed to your team.</p>'
+    '<h2>We also have a trial finder</h2>'
+    '<p class="lead">This is separate from the inbox. It is a public search page where '
+    'people look up your studies and ask to join. Share the link, or add it to your '
+    'hospital or clinic website as a small widget, so visitors search without leaving '
+    'your site. Every inquiry still lands in your shared inbox, sorted and routed to '
+    'your team.</p>'
     '</div>'
     + '<div class="bmd-embed-stage">' + EMBED_MOCK + ROUTE_CARD + '</div>' +
     '<div class="bmd-embed-grid">'
@@ -366,7 +368,7 @@ EMBED_HTML = (
     f'<button type="button" class="btn-primary" data-bmd-go="{FINDER_URL}">'
     'Open the trial finder</button>'
     f'<a class="btn-ghost" href="{CAL}" target="_blank" rel="noopener">'
-    'Talk to us about embedding</a>'
+    'Add this finder to your website</a>'
     '</div>'
     '</div>'
     '</section>'
@@ -378,23 +380,45 @@ EMBED_HTML = (
 # accordion that is dead now that we strip the runtime. So we render our own
 # using native <details>/<summary>, zero JS, works everywhere. Content is
 # capability/scope facts only (compliance.mdc + product-identity.mdc): Bridget
-# drafts + human sends, no-training + de-identified + audit-logged, free for
-# physicians / flat license, and "runs the inbox, not eligibility".
+# proposes actions + human confirms, no-training + de-identified + audit-logged,
+# free for physicians / flat license, and "runs the inbox, not eligibility".
 FAQ_ITEMS = [
     ("What is BridgeMD?",
-     "A shared inbox for clinical research sites. It pulls every patient inquiry "
-     "from email, web forms, ads, social, ClinicalTrials.gov, and physician "
-     "referrals into one place, organized by study, so your team can respond fast "
-     "and never lose an inquiry."),
+     "A shared inbox for clinical research sites. Ads, email, web forms, referrals, "
+     "and other marketing channels land in one place, organized by study. Bridget, "
+     "the AI, can take action there, from replies and blasts to booking and coverage. "
+     "A coordinator reviews every send, so the team follows up from this website "
+     "without losing a message."),
+    ("What's a patient inbox?",
+     "It is the same idea as email, built for the study team. Coordinators open "
+     "BridgeMD, see every inbound message from ads, forms, email, and referrals in "
+     "one list, reply from here, and send email or text blasts. Patients do not log "
+     "into this inbox; they write in through those channels or the trial finder."),
+    ("What's the trial finder?",
+     "A separate thing from the inbox. It is a public search page where people look "
+     "up studies by condition and location and ask to join. You can share the link, "
+     "or add the finder to your hospital or clinic website as a widget. Every "
+     "inquiry still lands in your shared inbox."),
+    ("How do you connect email, ads, and social?",
+     "You connect the accounts you already use. Gmail and Instagram sign in with "
+     "Google or Meta, no password shared. Other recruitment mail, including the "
+     "address listed on ClinicalTrials.gov, can auto-forward to a BridgeMD address. "
+     "Ad lead forms can post into the same inbox. If you add the trial finder to "
+     "your site, every search becomes an inquiry, already sorted by study. Replies "
+     "go back out on the same channel."),
     ("How does Bridget, the AI assistant, work?",
-     "Bridget summarizes a conversation thread and drafts a reply for your staff to "
-     "review and send. It never sends on its own. A human always decides."),
+     "You tell Bridget what to do, and it takes the action for you to confirm. That "
+     "includes replies, email or text blasts, booking links, handing coverage to a "
+     "teammate, and reading the queue so you know what needs attention. It never "
+     "sends on its own and never decides eligibility. A human always reviews, and "
+     "every action is audit-logged."),
     ("Do you train AI on our patient data?",
      "No. Inquiry and patient data is not used to train any model, it runs on a "
      "no-training endpoint, and it is de-identified. Every action is audit-logged."),
-    ("Which channels does it connect?",
-     "Email, website forms, Instagram, Facebook, Google Ads, ClinicalTrials.gov, and "
-     "physician referrals, all sorted by study in one shared inbox."),
+    ("Do you list focus groups or interview studies?",
+     "The trial finder lists recruiting clinical trials, including observational "
+     "studies on ClinicalTrials.gov and studies a site posts directly. Focus groups "
+     "and qualitative interviews are not listed today."),
     ("Does it decide who is eligible?",
      "No. BridgeMD runs the inbox: it captures, sorts, and routes inquiries so your "
      "team can respond and move suitable people toward screening. It does not decide "
@@ -405,7 +429,7 @@ FAQ_HTML = (
     '<section id="bmd-faq"><div class="bmd-faq-wrap">'
     '<div class="bmd-faq-head"><span class="pill">FAQ</span>'
     '<h2>Questions, answered</h2>'
-    '<p class="lead">What BridgeMD does, how Bridget works, and how your data is '
+    '<p class="lead">Who it is for, how channels connect, and how your data is '
     'handled.</p></div>'
     + ''.join(
         f'<details{" open" if i == 0 else ""}><summary>{q}</summary>'
@@ -763,10 +787,10 @@ SOURCES_HTML = (
     '<section id="bmd-sources"><div class="bmd-src-wrap">'
     '<p class="bmd-src-eyebrow">How it works</p>'
     '<h2 class="bmd-src-title">Every channel flows into one inbox</h2>'
-    '<p class="bmd-src-sub">Instagram, Facebook, Reddit, Gmail, Outlook, '
-    'ClinicalTrials.gov, REDCap, and web forms all stream into one shared inbox, sorted '
-    'by study. The replies your team sends go right back out to the same '
-    'channel.</p>'
+    '<p class="bmd-src-sub">Your team connects Gmail or Instagram, forwards '
+    'ClinicalTrials.gov mail, or adds the finder to your website. Instagram, Facebook, '
+    'Reddit, Gmail, Outlook, REDCap, and web forms then stream into one shared inbox, '
+    'sorted by study. Replies go right back out on the same channel.</p>'
     + _build_beams() +
     '<p class="bmd-src-note">Don&rsquo;t see your channel? '
     '<a href="' + CAL + '" target="_blank" rel="noopener">Contact us</a> '
@@ -781,7 +805,7 @@ SOURCES_HTML = (
 # BridgeMD footer instead: real links only, correct copy, no socials/404.
 FOOTER_LINKS = [
     ("/find-trial", "Trial finder"),
-    ("/for-sites", "For sites"),
+    ("/", "For sites"),
     (CAL, "Contact"),
     ("/privacy", "Privacy"),
     ("/terms", "Terms"),
@@ -817,9 +841,8 @@ COPY = [
     ("Saify is the ultimate AI-driven email marketing solution designed to boost "
      "outreach, automate campaigns, and increase conversions. Start scaling your "
      "email strategy today!",
-     "BridgeMD puts every message about your studies in one shared inbox. Email, "
-     "Instagram, Facebook, Google Ads, and referrals arrive sorted and routed to "
-     "the right coordinator."),
+     "The first inbox built for clinical trials. Ads, email, and forms land in "
+     "one place, and Bridget is the AI that writes, sends, and books."),
     # hero
     ("Unlimited Leads, Unlimited Outreach, Unlimited Growth", EYEBROW),
     ("Attract and Win Your Perfect Customers", f"{H1_L1} {H1_L2}"),
@@ -842,28 +865,32 @@ COPY = [
      "outreach, and everything needed to grow faster.",
      "One inbox for every recruitment channel, with pre-screening, routing, and a "
      "shared workspace, so your team can spend its time enrolling patients."),
-    ("The First Unlimited B2B Leads Database", "See every applicant, pre-screened"),
+    ("The First Unlimited B2B Leads Database", "Connect your channels in minutes"),
     ("Access unlimited leads and connect with over 170 million verified prospects "
      "to reach your ideal customers effortlessly.",
-     "Every person who contacts your site is scored and sorted, so coordinators "
-     "know who to call first."),
-    ("Stay Spam-Free with Warmup", "One shared workspace for your team"),
-    ("Activate with one click to keep your emails out of spam and ensure reliable "
-     "inbox delivery.",
-     "Everyone works from the same inbox. When a teammate is away, their messages "
-     "route to someone else so nothing waits."),
-    ("Limitless Emails &amp; Outreach", "Route each message to the right person"),
-    ("Limitless Emails & Outreach", "Route each message to the right person"),
-    ("Send unlimited emails, scale fast, and manage campaigns effortlessly.",
-     "Set a rule once and new inquiries land with the right coordinator "
-     "automatically, by channel or by study."),
-    ("AI-Powered Emails that Close Deals at Scale",
-     "Connect your channels in minutes"),
-    ("Access 170M+ verified leads, craft AI-powered emails effortlessly, and boost "
-     "engagement with personalized, impactful communication.",
      "Link email, Instagram, Facebook, Google Ads, and referrals, then pick the "
      "intake each study uses."),
-    # CTA
+    ("Stay Spam-Free with Warmup", "Tell Bridget what to do"),
+    ("Activate with one click to keep your emails out of spam and ensure reliable "
+     "inbox delivery.",
+     "Ask it to reply, blast a list, send a booking link, or cover for a teammate. "
+     "A coordinator reviews every action before anything goes out."),
+    ("Limitless Emails &amp; Outreach", "Email or text blast from one list"),
+    ("Limitless Emails & Outreach", "Email or text blast from one list"),
+    ("Email or text a cohort from one list", "Email or text blast from one list"),
+    ("Send unlimited emails, scale fast, and manage campaigns effortlessly.",
+     "Pick a list, write once, and send an email or text blast to everyone on it."),
+    ("Pick a segment, write once, and reach everyone on that list by email or "
+     "text.",
+     "Pick a list, write once, and send an email or text blast to everyone on it."),
+    ("AI-Powered Emails that Close Deals at Scale",
+     "See every applicant, pre-screened"),
+    ("Access 170M+ verified leads, craft AI-powered emails effortlessly, and boost "
+     "engagement with personalized, impactful communication.",
+     "Every person who contacts your site is scored and sorted, so coordinators "
+     "know who to call first."),
+    # CTA: live demo is already in the hero; primary action is book a call.
+    ("Request A Demo", "Get this for your site"),
     ("Get Started with Saify Today",
      "Bring your patient recruitment into one inbox"),
     ("Boost your outreach with Saify\u2019s unlimited emails, AI tools, and easy "
@@ -894,15 +921,71 @@ COPY = [
 
 # Real BridgeMD product screenshots (captured from the running demo) that replace the
 # template's fabricated Saify mockups. Keyed by the underlying Framer asset hash so we
-# overwrite EVERY md5-prefixed + srcset variant of each image. Interim shots; swap for
-# final polished captures later.
+# overwrite EVERY md5-prefixed + srcset variant of each image.
+_WEB_SHOTS = os.path.normpath(os.path.join(HERE, "..", "web", "static", "shots"))
+BRIDGET_GIF_HASH = "8jSIXe56zkJt9YNeya1XZ4nUt1o"
 PRODUCT = {
-    '4ufOW7NDRif7jTF9nwJtcqOsxmw':  'product_shots/hero_inbox.png',    # hero dashboard
-    'H72abFS6bS7RIKr4KJF741jYZQ':   'product_shots/card_applicants.png',
-    '8jSIXe56zkJt9YNeya1XZ4nUt1o':  'product_shots/card_team.png',
-    'F8RS7RlRKT2Wr0njw8G6qQSMV0':   'product_shots/card_routing.png',
-    'iM0MOfO7pUZHZ5Fk8wMUlAu4Lw':   'product_shots/card_settings.png',
+    "4ufOW7NDRif7jTF9nwJtcqOsxmw": os.path.join(_WEB_SHOTS, "inbox_hero.png"),
+    "H72abFS6bS7RIKr4KJF741jYZQ": os.path.join(_WEB_SHOTS, "sell_01_intake.png"),
+    BRIDGET_GIF_HASH: os.path.join(_WEB_SHOTS, "sell_gif_04_bridget.gif"),
+    "F8RS7RlRKT2Wr0njw8G6qQSMV0": os.path.join(_WEB_SHOTS, "sell_03_blast.png"),
+    "iM0MOfO7pUZHZ5Fk8wMUlAu4Lw": os.path.join(_WEB_SHOTS, "sell_02_applicants.png"),
 }
+
+
+def _wire_hero_primary(html):
+    """Point hero primary CTAs at booking; the live demo is already on the page."""
+    m = re.search(
+        r'(<section\b[^>]*data-framer-name="Hero Section"[^>]*>)(.*?)(</section>)',
+        html, re.S)
+    if not m:
+        return html
+    head, body, tail = m.group(1), m.group(2), m.group(3)
+    body = re.sub(
+        r'(<a\b(?:(?!</a>).)*data-framer-name="Primary Button"(?:(?!</a>).)*?)'
+        r'href="[^"]*"',
+        rf'\1href="{CAL}" target="_blank" rel="noopener"',
+        body, flags=re.S)
+    return html[:m.start()] + head + body + tail + html[m.end():]
+
+
+def _drop_secondary_cta(h, label='>Contact Us<'):
+    """Remove every secondary CTA anchor carrying `label`, together with its
+    ssr-variant/container wrapper: an emptied wrapper still takes the CTA row's
+    flex gap and nudges the primary button off-centre."""
+    tail = '<!--/$--></div></div>'
+    wrap_re = re.compile(
+        r'<div class="ssr-variant(?: [^"]*)?"><div class="framer-[\w-]+-container"'
+        r'[^>]*><!--\$-->$')
+    while True:
+        pos = h.find(label)
+        if pos < 0:
+            return h
+        a = h.rfind('<a ', 0, pos)
+        e = h.find('</a>', pos) + 4
+        start = h.rfind('<div class="ssr-variant', max(0, a - 600), a)
+        if start >= 0 and wrap_re.search(h[start:a]) and h.startswith(tail, e):
+            h = h[:start] + h[e + len(tail):]
+        else:
+            h = h[:a] + h[e:]
+
+
+def _wire_gif_card(h, asset_prefix, gif_hash):
+    """Point a feature card's <img> at the .gif variant (Framer ships .jpg)."""
+    pat = (rf"{re.escape(asset_prefix)}([0-9a-f]{{10}}_{re.escape(gif_hash)})"
+           rf"\.jpe?g")
+    m = re.search(pat, h, re.I)
+    if not m:
+        return h
+    gif_url = f"{asset_prefix}{m.group(1)}.gif"
+    h = re.sub(pat, gif_url, h, flags=re.I)
+    h = re.sub(
+        rf'srcset="[^"]*{re.escape(gif_hash)}[^"]*"',
+        f'srcset="{gif_url} 1280w"',
+        h,
+        flags=re.I,
+    )
+    return h
 
 # BridgeMD wordmark, drawn at the template logo's exact 104x40 box so it drops into
 # the nav/footer <img> (object-fit:cover) with no crop or squish. Glyph = the app
@@ -946,16 +1029,25 @@ BLUE = (
 )
 
 
+# Framer hero wash + glow blobs. CSS color maps can't retint these rasters.
+_OMBRE_STEMS = (
+    '0NagJ3HOued2RM0OQJ7Wd2fKY',
+    'higjO1S5q0qIdmf2BDcgIWOMAtM',
+    'UdS8zgu4nCtOVUF0Iai8PCB734',
+)
+
+
 def _recolor_rasters(adir, hue_deg):
-    # Framer bakes the hero ombre + dashboard mockup as raster (JPG/PNG); CSS color
-    # maps can't touch them. Hue-shift the cyan..violet band to the brand hue so the
-    # baked purple ombre matches the blue (or teal) theme.
+    # Hue-shift the indigo/violet wash toward sky blue. Brand solid #1257b0 is
+    # ~213deg, but tints of 213deg read as periwinkle; ~200deg stays blue in the
+    # pale hero band without eating skin tones or product-shot oranges.
     from PIL import Image
     tgt = int(round(hue_deg / 360 * 255))
-    lut = [(tgt if 138 <= i <= 214 else i) for i in range(256)]
+    # Pillow H is 0-255. 140..200 ≈ 197deg..282deg covers azure through violet.
+    lut = [(tgt if 140 <= i <= 200 else i) for i in range(256)]
     n = 0
     for f in os.listdir(adir):
-        if not f.lower().endswith(('.jpg', '.jpeg', '.png')):
+        if not any(stem in f for stem in _OMBRE_STEMS):
             continue
         fp = os.path.join(adir, f)
         try:
@@ -1024,7 +1116,7 @@ def _localize_brand_logos(h, adir, asset_prefix):
         fetched += 1
     # The Framer refresh rmtree's landing/assets. If the page was already rewritten
     # to local paths, the API-URL loop above finds nothing and the copies never
-    # land — Chrome then paints a broken-image placeholder over the SVG fallback.
+    # land; Chrome then paints a broken-image placeholder over the SVG fallback.
     for name in sorted(set(re.findall(r'bmd-logo-([a-z0-9\-]+)\.webp', h))):
         cache_fp = os.path.join(LOGO_CACHE, f"{name}.webp")
         dest = os.path.join(adir, f"bmd-logo-{name}.webp")
@@ -1094,13 +1186,13 @@ def _inject_pill_nav(h):
         '<nav class="pill-nav-center" aria-label="Primary">' + center + '</nav>'
         '<div class="pill-nav-auth">'
         '<a class="pill-nav-cta" href="' + CAL + '" target="_blank" rel="noopener">'
-        'Request a demo' + _PILL_ARROW + '</a>'
+        'Book a call' + _PILL_ARROW + '</a>'
         '<button type="button" class="pill-nav-burger" id="pillBurger" aria-expanded="false" '
         'aria-controls="pillSheet" aria-label="Open menu">' + _PILL_MENU + '</button>'
         '</div>'
         '<div class="pill-sheet" id="pillSheet" hidden>' + center +
         '<a class="pill-sheet-cta" href="' + CAL + '" target="_blank" rel="noopener">'
-        'Request a demo</a></div>'
+        'Book a call</a></div>'
         '</header>')
     # Overlay as a fixed pill (so the hero keeps the top padding it already had for
     # Framer's own fixed nav) and hide Framer's nav + its fixed positioner entirely.
@@ -1180,11 +1272,18 @@ def build(dst, colormap, asset_prefix, raster_hue=None, accent="#1257b0"):
     shots = 0
     for f in os.listdir(adir):
         stem = os.path.splitext(f)[0]
+        fext = os.path.splitext(f)[1].lower()
         for base, src_shot in PRODUCT.items():
-            if stem.endswith(base) and os.path.exists(src_shot):
-                shutil.copyfile(src_shot, os.path.join(adir, f))
-                shots += 1
-                break
+            if not stem.endswith(base) or not os.path.exists(src_shot):
+                continue
+            src_ext = os.path.splitext(src_shot)[1].lower()
+            dest = os.path.join(adir, f)
+            if src_ext == ".gif" and fext in (".jpg", ".jpeg", ".png"):
+                shutil.copyfile(src_shot, os.path.splitext(dest)[0] + ".gif")
+            else:
+                shutil.copyfile(src_shot, dest)
+            shots += 1
+            break
 
     # Image basename copies (strip the md5 prefix) so the repointed CDN URLs
     # (bare-hash, e.g. NBX8F9....svg) resolve to the FINAL overwritten files.
@@ -1245,20 +1344,22 @@ def build(dst, colormap, asset_prefix, raster_hue=None, accent="#1257b0"):
             'var(--token-2d28e01c-cef5-4fed-8a3e-b39db8015610, rgb(18, 18, 43))"')
     # Per-letter reveal: wrap each visible character in its own <span class="bmd-ch">
     # with an incrementing animation-delay so the headline "types" itself in instead of
-    # fading as one block. Spaces stay plain text (kept out of the stagger) so natural
-    # word spacing/wrapping is preserved. Delays continue across both lines.
+    # fading as one block. Each WORD is wrapped in .bmd-word (white-space:nowrap) so
+    # inline-block letters cannot wrap mid-word ("Inquir" / "y") at any viewport.
+    # Spaces between word spans keep natural wrapping. Delays continue across both lines.
     _L_BASE, _L_STEP = 0.5, 0.008
 
     def _letters(text, idx):
-        out = []
-        for ch in text:
-            if ch == ' ':
-                out.append(' ')
-                continue
-            out.append('<span class="bmd-ch" style="animation-delay:%.3fs">%s</span>'
-                       % (_L_BASE + idx * _L_STEP, ch))
-            idx += 1
-        return ''.join(out), idx
+        words = []
+        for word in text.split(' '):
+            chars = []
+            for ch in word:
+                chars.append(
+                    '<span class="bmd-ch" style="animation-delay:%.3fs">%s</span>'
+                    % (_L_BASE + idx * _L_STEP, ch))
+                idx += 1
+            words.append('<span class="bmd-word">%s</span>' % ''.join(chars))
+        return ' '.join(words), idx
 
     _l1, _i = _letters(H1_L1, 0)
     _l2, _i = _letters(H1_L2, _i)
@@ -1280,6 +1381,7 @@ def build(dst, colormap, asset_prefix, raster_hue=None, accent="#1257b0"):
     # original strings still contain "Saify".
     for _old, _new in COPY:
         h = h.replace(_old, _new)
+    h = _wire_gif_card(h, asset_prefix, BRIDGET_GIF_HASH)
 
     # Break the subhead onto two centered lines at the sentence boundary. Do it on the
     # visible TEXT node (>...<) so it hits every SSR breakpoint variant, not just the
@@ -1328,25 +1430,20 @@ def build(dst, colormap, asset_prefix, raster_hue=None, accent="#1257b0"):
         return tag.replace('opacity: 1;', '').replace('transform: none;', '')
     h = re.sub(r'<[a-zA-Z0-9]+[^>]*>', _strip_appear, h)
 
-    # 2a) The "Contact Us" buttons open the live product instead of a booking form:
-    # relabel to "See live demo" and point at /app/home (login-gated in prod, demo-open
-    # locally). Keyed on the button label so the header CTA + footer "Contact" links are
-    # left alone. Must run before the ./contact -> CAL rewrite so these are claimed first.
-    def _cta_to_demo(m):
-        a = m.group(0)
-        if '>Contact Us<' not in a:
-            return a
-        return (a.replace('href="./contact"', f'href="{APP_HOME}"')
-                 .replace('>Contact Us<', '>See live demo<'))
-    h = re.sub(r'<a\b.*?</a>', _cta_to_demo, h, flags=re.S)
+    # 2a) The "Contact Us" secondary buttons are dropped: the hero embeds the live
+    # product itself (app.py _LANDING_DEMO_EMBED), so a "See live demo" button next
+    # to it was redundant. Keyed on the button label so the header CTA + footer
+    # "Contact" links are left alone. Must run before the ./contact -> CAL rewrite.
+    h = _drop_secondary_cta(h)
 
     # 2b) The header CTA (filled pill, data-framer-name="Get Started", label "Contact")
-    # becomes "Request A Demo". Keyed on that name so the plain footer "Contact" text
-    # link is untouched. href stays ./contact -> becomes the booking link below.
+    # becomes "Book a call": it points at the booking link, and with the demo already
+    # on the page "Request a demo" asked for something the visitor already has.
+    # Keyed on that name so the plain footer "Contact" text link is untouched.
     def _nav_contact_to_demo(m):
         a = m.group(0)
         if '>Contact<' in a and 'data-framer-name="Get Started"' in a:
-            return a.replace('>Contact<', '>Request A Demo<')
+            return a.replace('>Contact<', '>Book a call<')
         return a
     h = re.sub(r'<a\b.*?</a>', _nav_contact_to_demo, h, flags=re.S)
 
@@ -1355,6 +1452,7 @@ def build(dst, colormap, asset_prefix, raster_hue=None, accent="#1257b0"):
     h = h.replace('href="./demo"', f'href="{CAL}"')
     h = h.replace('href="https://diversekit.lemonsqueezy.com/buy/97f23d28-1bd2-4f6b-96ca-ddac92b9dc35"', f'href="{CAL}"')
     h = re.sub(r'href="\./[^"]*"', 'href="/site-preview"', h)
+    h = _wire_hero_primary(h)
 
     # 2c) Wire the nav. All four text links shipped pointing at /site-preview (the
     # catch-all above); repoint each at its real destination, matched by the visible
@@ -1427,14 +1525,20 @@ def build(dst, colormap, asset_prefix, raster_hue=None, accent="#1257b0"):
         # Headline: the container only needs to be visible (override Framer's inline
         # opacity:0); the reveal is driven per character by .bmd-ch below.
         f'[data-framer-name="{_hero_h1}"]{{opacity:1}}'
+        f'[data-framer-name="{_hero_h1}"] h1{{overflow-wrap:normal;word-break:normal;'
+        'hyphens:none;white-space:normal}'
+        '.bmd-word{display:inline-block;white-space:nowrap}'
         '.bmd-ch{display:inline-block;opacity:0;will-change:opacity,transform;'
         'animation:bmdLetterIn .3s cubic-bezier(.22,.61,.36,1) both}'
         '@keyframes bmdLetterIn{from{opacity:0;transform:translateY(.5em)}'
         'to{opacity:1;transform:none}}'
-        # Subhead: block fade/rise, timed after the last letter.
+        # Subhead: block fade/rise, timed after the last letter. Keep wrapping at
+        # word boundaries only; Framer's preset uses word-break:break-word.
         f'[data-framer-name="{SUBHEAD}"]'
         '{opacity:0;animation:bmdHeroIn .7s cubic-bezier(.22,.61,.36,1) both;'
         f'animation-delay:{_sub_delay}s}}'
+        f'[data-framer-name="{SUBHEAD}"] p{{overflow-wrap:normal;word-break:normal;'
+        'hyphens:none}'
         '@keyframes bmdHeroIn{from{opacity:0;transform:translateY(14px)}'
         'to{opacity:1;transform:none}}'
         '@media(prefers-reduced-motion:reduce){'
@@ -1574,6 +1678,32 @@ def build(dst, colormap, asset_prefix, raster_hue=None, accent="#1257b0"):
         # nav pill doesn't cover the section heading it lands on.
         'html{scroll-behavior:smooth}'
         '#features,#metrics,#bmd-embed,#bmd-faq{scroll-margin-top:120px}'
+        '#features img[alt="Growth Card Image"]{object-fit:cover!important;'
+        'object-position:center top!important}'
+        '#features img[alt="Growth Card Image"][src*=".gif"]{object-fit:contain!important;'
+        'object-position:center top!important;background:#f5f7fb}'
+        # The shots are exported at exactly the slot aspect (640x392 big, 448x392
+        # small - see web/tools/capture_sell_story.py). Let the slot's height follow
+        # its width at that aspect instead of Framer's fixed 392px, so cover never
+        # has anything to crop at any viewport.
+        # Keyed on the container (it sets the slot width), not the card variant:
+        # the last card is a "small" component placed in a 640px container.
+        # width:100% too: the big variant's slot keeps Framer's base width:640px at
+        # phone widths (only the small variant gets width:100%), which overflowed
+        # the 350px card and cut the shot off on the right.
+        '#features .framer-1qrsu3t{width:100%!important;height:auto!important;aspect-ratio:640/392}'
+        '#features .framer-193nn7j-container .framer-1qrsu3t,'
+        '#features .framer-1x52wnc-container .framer-1qrsu3t{aspect-ratio:448/392}'
+        # The card root itself carries Framer's fixed 640px/448px width; at phone
+        # widths that overflowed the column and cut the shot off on the right.
+        '#features .framer-1276iqo{width:100%!important}'
+        # Hero live-inbox embed: taller slot so the 1280×720 iframe scales up.
+        '[data-framer-name="Hero Section"] [data-framer-background-image-wrapper="true"]{'
+        'min-height:clamp(520px,56vw,720px)!important;aspect-ratio:auto!important;'
+        'height:auto!important}'
+        '[data-framer-name="Hero Section"] .framer-vg3JI-container,'
+        '[data-framer-name="Hero Section"] .framer-kegzO-container'
+        '{min-height:clamp(520px,56vw,720px)!important}'
         # (d) FAQ block (native <details>, no JS). Themed to match the site.
         '#bmd-faq{background:#fff;padding:96px 24px;'
         'font-family:"Figtree",system-ui,-apple-system,sans-serif}'
@@ -1720,7 +1850,8 @@ def build(dst, colormap, asset_prefix, raster_hue=None, accent="#1257b0"):
         # recomputed on resize. Pick the Cal.com CTA that is NOT inside the nav pill.
         'var nav=document.querySelector(".framer-1m624rr");var thr=240;'
         'var calc=function(){var ls=[].slice.call('
-        'document.querySelectorAll(\'a[href*="cal.com"],a[href*="/demo"]\'));'
+        'document.querySelectorAll(\'a[href="#bmd-embed"],a[href*="cal.com"],'
+        'a[href*="/demo"]\'));'
         'for(var k=0;k<ls.length;k++){var e=ls[k];if(nav&&nav.contains(e))continue;'
         'var rr=e.getBoundingClientRect();if(rr.width<1&&rr.height<1)continue;'
         'thr=rr.bottom+window.scrollY-72;break;}};'
@@ -1870,4 +2001,4 @@ def build(dst, colormap, asset_prefix, raster_hue=None, accent="#1257b0"):
           f"imgcopies: {img_copies} | swap: {'bmd-theme-swap' in h}")
 
 
-build("../web/landing", BLUE, "/landing/assets/", raster_hue=214, accent="#1257b0")
+build("../web/landing", BLUE, "/landing/assets/", raster_hue=200, accent="#1257b0")

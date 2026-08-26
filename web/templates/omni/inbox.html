@@ -1,0 +1,248 @@
+{% extends "omni/base.html" %}
+{% import "_icons.html" as ic %}
+{% import "_ui.html" as ui %}
+{% import "omni/_tiles.html" as tiles %}
+{% import "omni/_thread_row.html" as rows %}
+{% import "omni/_side_panel.html" as side %}
+
+{% block title %}Inbox | {{ ws.name }} | {{ OMNI_BRAND }}{% endblock %}
+
+{% macro thread_href(t) -%}
+{{ url_for('om_inbox', wid=ws.wid, thread=t.id, view=view_key, stage=stage_filter or None, status=(status_filter if status_filter != 'open' else None), source=source_filter or None, q=q or None) }}
+{%- endmacro %}
+
+{% block body %}
+<section class="mh-workspace om-workspace {{ 'is-thread-selected' if active and request.args.get('thread') }} {{ 'is-list-only' if not active }}" data-wid="{{ ws.wid }}">
+  <section class="mh-thread-column" aria-label="Conversations">
+    <div class="mh-thread-toolbar">
+      <h1 class="mh-list-title">Inbox {% if unread %}<span>{{ unread }}</span>{% endif %}</h1>
+      <form method="get" action="{{ url_for('om_inbox', wid=ws.wid) }}" class="mh-search">
+        {{ ic.icon('search') }}
+        <input name="q" type="search" value="{{ q }}" placeholder="Search conversations" aria-label="Search conversations" data-live-search>
+        <input type="hidden" name="view" value="{{ view_key }}">
+        {% if stage_filter %}<input type="hidden" name="stage" value="{{ stage_filter }}">{% endif %}
+        {% if status_filter != 'open' %}<input type="hidden" name="status" value="{{ status_filter }}">{% endif %}
+        {% if source_filter %}<input type="hidden" name="source" value="{{ source_filter }}">{% endif %}
+      </form>
+    </div>
+    {# Views are the front of the inbox: saved filters in the person's own words. #}
+    <div class="mh-filterbar om-filterbar">
+      <nav class="mh-scope-seg om-views" aria-label="Views">
+        {% for v in pinned_views %}
+        <a class="mh-seg {{ 'is-active' if v.key == view_key }}"
+           href="{{ url_for('om_inbox', wid=ws.wid, view=v.key, q=q or None) }}">{{ v.name }}<span class="mh-tab-count">{{ view_counts.get(v.key, 0) }}</span></a>
+        {% endfor %}
+      </nav>
+      {% set filter_on = stage_filter or status_filter != 'open' or source_filter or (view and not view.pinned) %}
+      <details class="appmenu mh-filter">
+        <summary class="mh-filter-btn {{ 'is-on' if filter_on }}" aria-label="Filter conversations">
+          {{ ic.icon('list') }}<span>{% if view and not view.pinned %}{{ view.name }}{% elif stage_filter %}{{ stage_labels.get(stage_filter, stage_filter) }}{% else %}Filter{% endif %}{% if status_filter == 'resolved' %} · Resolved{% elif status_filter == 'all' %} · Everything{% endif %}</span>
+        </summary>
+        <div class="appmenu-panel" role="menu">
+          {% if more_views %}
+          <div class="appmenu-h">More views</div>
+          {% for v in more_views %}
+          <a class="appmenu-item simple mh-filter-opt {{ 'is-on' if v.key == view_key }}" role="menuitemradio" aria-checked="{{ 'true' if v.key == view_key else 'false' }}"
+             href="{{ url_for('om_inbox', wid=ws.wid, view=v.key) }}"><span>{{ v.name }}</span><span class="mh-tab-count">{{ view_counts.get(v.key, 0) }}</span></a>
+          {% endfor %}
+          {% endif %}
+          <div class="appmenu-h">Stage</div>
+          <a class="appmenu-item simple mh-filter-opt {{ 'is-on' if not stage_filter }}" role="menuitemradio" aria-checked="{{ 'true' if not stage_filter else 'false' }}"
+             href="{{ url_for('om_inbox', wid=ws.wid, view=view_key, status=(status_filter if status_filter != 'open' else None), source=source_filter or None) }}"><span>Any stage</span></a>
+          {% for s in spec.stages %}
+          <a class="appmenu-item simple mh-filter-opt {{ 'is-on' if stage_filter == s.key }}" role="menuitemradio" aria-checked="{{ 'true' if stage_filter == s.key else 'false' }}"
+             href="{{ url_for('om_inbox', wid=ws.wid, view=view_key, stage=s.key, status=(status_filter if status_filter != 'open' else None), source=source_filter or None) }}"><span>{{ s.label }}</span><span class="mh-tab-count">{{ stage_counts.get(s.key, 0) }}</span></a>
+          {% endfor %}
+          <div class="appmenu-h">Show</div>
+          {% for key, lbl in [('open', 'Open'), ('resolved', 'Resolved'), ('all', 'Everything')] %}
+          <a class="appmenu-item simple mh-filter-opt {{ 'is-on' if status_filter == key }}" role="menuitemradio" aria-checked="{{ 'true' if status_filter == key else 'false' }}"
+             href="{{ url_for('om_inbox', wid=ws.wid, view=view_key, stage=stage_filter or None, status=(key if key != 'open' else None), source=source_filter or None) }}"><span>{{ lbl }}</span></a>
+          {% endfor %}
+          {% if sources|length > 1 %}
+          <div class="appmenu-h">Source</div>
+          <a class="appmenu-item simple mh-filter-opt {{ 'is-on' if not source_filter }}" role="menuitemradio" aria-checked="{{ 'true' if not source_filter else 'false' }}"
+             href="{{ url_for('om_inbox', wid=ws.wid, view=view_key, stage=stage_filter or None, status=(status_filter if status_filter != 'open' else None)) }}"><span>Every source</span></a>
+          {% for s in sources if s.status == 'connected' %}
+          <a class="appmenu-item simple mh-filter-opt {{ 'is-on' if source_filter == s.key }}" role="menuitemradio" aria-checked="{{ 'true' if source_filter == s.key else 'false' }}"
+             href="{{ url_for('om_inbox', wid=ws.wid, view=view_key, stage=stage_filter or None, status=(status_filter if status_filter != 'open' else None), source=s.key) }}"><span>{{ s.label or s.meta.label }}</span></a>
+          {% endfor %}
+          {% endif %}
+        </div>
+      </details>
+    </div>
+
+    <div class="mh-thread-stack" data-thread-stack>
+      {% for t in threads %}
+      {{ rows.row(t, thread_href(t), stage_labels, stage_tones, source_meta, active=(active and active.id == t.id)) }}
+      {% else %}
+      <div class="mh-thread-empty">
+        <span>{{ ic.icon('inbox') }}</span>
+        {% if q %}
+        <h3>Nothing found</h3>
+        <p>Try a different word.</p>
+        {% elif not sources %}
+        <h3>Connect a source to start</h3>
+        <p>Link where your leads come from and they land here.</p>
+        {{ ui.btn('Connect a source', 'primary', 'sm', href=url_for('om_connect', wid=ws.wid)) }}
+        {% else %}
+        <h3>Nothing here</h3>
+        <p>No conversation matches this view right now.</p>
+        {{ ui.btn('See everything', 'ghost', 'sm', href=url_for('om_inbox', wid=ws.wid, status='all')) }}
+        {% endif %}
+      </div>
+      {% endfor %}
+      <div class="mh-live-empty" data-live-empty hidden>
+        <span>{{ ic.icon('search') }}</span><h3>Nothing matches</h3><p>Press Enter to search every conversation.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="mh-conversation" id="conversation" aria-label="Active conversation">
+    {% if active %}
+    <header class="mh-conversation-head">
+      <a class="mh-mobile-back" href="{{ url_for('om_inbox', wid=ws.wid, view=view_key, q=q or None) }}">{{ ic.icon('arrow-left') }} Inbox</a>
+      <div class="mh-read-top">
+        <h2 class="mh-read-subject">{{ active.subject or 'New conversation' }}</h2>
+        <div class="mh-read-actions">
+          <form method="post" action="{{ url_for('om_stage', wid=ws.wid, cid=active.id) }}" class="om-inline-form">
+            <input type="hidden" name="view" value="{{ view_key }}">
+            <label class="om-select om-select-compact">
+              <span>Stage</span>
+              <select name="stage" data-autosubmit aria-label="Stage">
+                {% for s in spec.stages %}
+                <option value="{{ s.key }}" {{ 'selected' if s.key == active.stage }}>{{ s.label }}</option>
+                {% endfor %}
+              </select>
+            </label>
+          </form>
+          <form method="post" action="{{ url_for('om_resolve', wid=ws.wid, cid=active.id) }}">
+            <input type="hidden" name="view" value="{{ view_key }}">
+            <button class="mh-resolve-btn" type="submit" title="{{ 'Reopen' if active.status == 'resolved' else 'Resolve' }}">
+              {{ ic.icon('refresh' if active.status == 'resolved' else 'check') }}
+              {{ 'Reopen' if active.status == 'resolved' else 'Resolve' }}
+            </button>
+          </form>
+        </div>
+      </div>
+      <div class="mh-read-from">
+        <span class="mh-contact-avatar-wrap">
+          <span class="mh-contact-avatar">{{ (active.contact.name or active.contact.handle or '?')[:1]|upper }}</span>
+        </span>
+        <span class="mh-read-from-copy">
+          <b>{{ active.contact.name or active.contact.handle or 'Unknown contact' }}</b>
+          <span class="mh-read-contact">
+            <span>{{ tiles.chip(active.source_kind, source_meta(active.source_kind)) }}{{ active.contact.handle }}</span>
+          </span>
+        </span>
+        <span class="mh-read-tags">
+          <span class="mh-tag is-stage tone-{{ stage_tones.get(active.stage, 'neutral') }}">{{ stage_labels.get(active.stage, active.stage) }}</span>
+          {% for f in active.flags %}
+          <span class="mh-tag tone-{{ f.tone if f is mapping else 'warn' }}">{{ f.label if f is mapping else f }}</span>
+          {% endfor %}
+          {% if active.priority == 'urgent' %}<span class="mh-tag tone-danger">Urgent</span>{% endif %}
+        </span>
+      </div>
+    </header>
+
+    <nav class="mh-detail-tabs" role="tablist" aria-label="Conversation workspace">
+      <button type="button" class="is-active" data-detail-tab="conversation" role="tab" aria-selected="true">{{ ic.icon('chat') }} Conversation</button>
+      <button type="button" data-detail-tab="applicant" role="tab" aria-selected="false">{{ ic.icon('list') }} Details</button>
+    </nav>
+
+    <div class="mh-detail-layout has-applicant" data-detail-layout>
+      <main class="mh-dialogue is-active" data-detail-panel="conversation">
+        <div class="mh-message-list" id="messageList" aria-live="polite">
+          {% for m in messages %}
+            {% if m.kind == 'note' %}
+            <article class="mh-internal-note" data-message-id="{{ m.id }}">
+              <span class="mh-note-icon">{{ ic.icon('users') }}</span>
+              <div>
+                <header><b>Note from {{ m.author or 'you' }}</b><time>{{ m.time_label }}</time></header>
+                <p>{{ m.body }}</p>
+              </div>
+            </article>
+            {% elif m.kind == 'system' %}
+            <p class="om-system" data-message-id="{{ m.id }}">{{ m.body }}</p>
+            {% else %}
+            <article class="mh-message {{ 'is-outbound' if m.kind == 'outbound' else 'is-inbound' }}" data-message-id="{{ m.id }}">
+              <header>
+                <b>{% if m.kind == 'outbound' %}{{ spec.agent.name if m.by_agent else (m.author or 'You') }}{% else %}{{ m.author or active.contact.name or 'Them' }}{% endif %}</b>
+                <time>{{ m.time_label }}</time>
+              </header>
+              <div class="mh-message-bubble">{{ m.body }}</div>
+              {% if m.kind == 'outbound' %}
+              <small class="mh-delivery is-sent">{{ ic.icon('check') }} {% if m.by_agent %}Sent by {{ spec.agent.name }}{% if m.action_token %} after your approval{% endif %}{% else %}Sent{% endif %}</small>
+              {% endif %}
+            </article>
+            {% endif %}
+          {% endfor %}
+          {% for a in pending %}
+          <div class="copilot-confirm om-proposal" data-action-token="{{ a.token }}">
+            <div class="cc-to">{{ spec.agent.name }} proposes {{ 'a reply' if a.kind == 'send_reply' else a.kind|replace('_', ' ') }}{% if a.payload.rule %} (rule: {{ a.payload.rule|replace('_', ' ') }}){% endif %}</div>
+            <textarea class="cc-text" rows="4" aria-label="Proposed message">{{ a.payload.text }}</textarea>
+            <div class="cc-note">{{ category_words(a.payload.category or 'routine')|capitalize }}. {{ 'Under your policy this could send on its own; since you asked for it, confirm to send.' if a.policy == 'auto_send' else 'Needs your OK.' }}</div>
+            <div class="cc-actions">
+              <button type="button" class="btn btn-primary btn-sm cc-confirm" data-act="confirm">Send</button>
+              <button type="button" class="btn btn-ghost btn-sm cc-cancel" data-act="cancel">Cancel</button>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+
+        <div class="mh-composer" id="composer">
+          <div class="mh-compose-tabs" role="tablist" aria-label="Composer type">
+            <button type="button" class="is-active" data-compose-tab="reply" role="tab" aria-selected="true">{{ ic.icon('send') }} Reply</button>
+            <button type="button" data-compose-tab="note" role="tab" aria-selected="false">{{ ic.icon('users') }} Note</button>
+          </div>
+
+          <form method="post" action="{{ url_for('om_reply', wid=ws.wid, cid=active.id) }}" class="mh-compose-panel" data-compose-panel="reply">
+            <input type="hidden" name="view" value="{{ view_key }}">
+            {# Writing starts on the prompt line, not at a button off to the side. #}
+            <div class="mh-ask-wrap">
+              <div class="mh-ask" data-draft-url="{{ url_for('om_draft', wid=ws.wid, cid=active.id) }}">
+                <span class="mh-ask-mark" aria-hidden="true">{{ ic.icon('sparkle') }}</span>
+                <span class="mh-ask-name" aria-hidden="true">{{ spec.agent.name }}</span>
+                <input type="text" class="mh-ask-input" data-ask-input autocomplete="off"
+                       placeholder="Say what you want written&hellip;"
+                       aria-label="Tell {{ spec.agent.name }} what to write, then press Enter">
+                <button type="button" class="mh-ask-go" data-ask-go title="Write it (Enter)" aria-label="Write this reply">{{ ic.icon('arrow-right') }}</button>
+              </div>
+              <div class="mh-ask-status" data-ask-status role="status" aria-live="polite" hidden></div>
+              <div class="mh-ask-suggest" data-ask-suggest>
+                {% for p in spec.tone.presets %}
+                <button type="button" data-ask-fill="{{ p.instruction }}">{{ p.label }}</button>
+                {% endfor %}
+              </div>
+              <textarea name="body" id="replyBody" rows="4" required placeholder="Reply to {{ active.contact.name or active.contact.handle or 'this contact' }}"></textarea>
+            </div>
+            <div class="mh-compose-foot">
+              <span class="om-policy-line" data-policy-line>{{ ic.icon('shield-check') }} Nothing sends without you.</span>
+              <div class="mh-compose-actions">
+                {{ ui.btn('Send reply', 'primary', icon='send', type='submit', extra='title="Ctrl+Enter to send"') }}
+              </div>
+            </div>
+          </form>
+
+          <form method="post" action="{{ url_for('om_note', wid=ws.wid, cid=active.id) }}" class="mh-compose-panel" data-compose-panel="note" hidden>
+            <input type="hidden" name="view" value="{{ view_key }}">
+            <textarea name="body" rows="4" required placeholder="Leave context for your team..."></textarea>
+            <div class="mh-compose-foot">
+              <span>{{ ic.icon('lock') }} Only your team sees this.</span>
+              {{ ui.btn('Add note', 'primary', icon='plus', type='submit') }}
+            </div>
+          </form>
+        </div>
+      </main>
+
+      {{ side.panel(ws, active, field_records, spec, stage_labels, stage_tones, template.personas or []) }}
+    </div>
+    {% else %}
+    <div class="mh-no-conversation">
+      <span>{{ ic.icon('chat') }}</span>
+      <h2>Pick a conversation</h2>
+      <p>Open one from the list to read, see what {{ spec.agent.name }} pulled out, and reply.</p>
+    </div>
+    {% endif %}
+  </section>
+</section>
+{% endblock %}

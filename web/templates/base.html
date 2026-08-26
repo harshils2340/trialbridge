@@ -53,7 +53,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ static_url('style.css') }}">
 </head>
-<body data-page="{{ request.endpoint or '' }}">
+<body data-page="{{ request.endpoint or '' }}"{% if request.args.get('embed') %} data-embed="1"{% endif %}>
 {% import "_icons.html" as ic %}
 {% import "_ui.html" as ui %}
 <a class="skip-link" href="#main">Skip to main content</a>
@@ -63,27 +63,29 @@
 {% if pov == 'study' %}
 {# ── Study-team app: "BridgeMD for sites" shell (sidebar + top bar) ── #}
 <div class="appshell">
-  <aside class="appside{{ ' is-collapsed' if request.endpoint == 'marketing_hub' else '' }}" id="appSidebar" {{ 'data-lock-rail' if request.endpoint == 'marketing_hub' else '' }}>
-    <a class="appside-brand" href="{{ url_for('marketing_hub') }}">
+  {# Outlook-style app rail: a fixed icon strip on every page. Labels fly out
+     on hover and never steal layout from the workspace. #}
+  <aside class="appside is-collapsed" id="appSidebar">
+    <a class="appside-brand" href="{{ url_for('marketing_hub') }}" aria-label="BridgeMD">
       <span class="appside-logo">{{ ic.icon('mark') }}</span>
-      <span class="bt"><b>BridgeMD</b><small>for sites</small></span>
+      <span class="bt rail-tip">BridgeMD</span>
     </a>
     <nav class="appnav">
       {# Lean product: shared AI-triaged inbox + calendar + team workspace. The
          fuller CTMS surfaces below are HIDDEN (routes still work) while we focus
          on the intake-inbox wedge. Un-comment to bring one back. #}
-      <a href="{{ url_for('marketing_hub') }}" class="{{ 'active' if request.endpoint in ['marketing_hub','applicant_detail'] or (request.endpoint and request.endpoint.startswith('marketing_')) }}">{{ ic.icon('inbox') }}Inbox{% if site_unread %}<span class="appnav-count">{{ site_unread }}</span>{% endif %}</a>
+      <a href="{{ url_for('marketing_hub') }}" class="{{ 'active' if request.endpoint in ['marketing_hub','applicant_detail'] or (request.endpoint and request.endpoint.startswith('marketing_')) }}">{{ ic.icon('inbox') }}<span class="appnav-label">Inbox</span>{% if site_unread %}<span class="appnav-count">{{ site_unread }}</span>{% endif %}</a>
       {# Calendar is no longer a primary tab - its useful bits (upcoming visits)
          are surfaced right on the inbox so nothing gets missed. Route still lives
          at /app/calendar (linked from the inbox "Upcoming" panel). #}
-      <a href="{{ url_for('leads') }}" class="{{ 'active' if request.endpoint == 'leads' }}">{{ ic.icon('user-plus') }}Applicants</a>
+      <a href="{{ url_for('leads') }}" class="{{ 'active' if request.endpoint == 'leads' }}">{{ ic.icon('user-plus') }}<span class="appnav-label">Applicants</span></a>
       {# Mentions sit next to the inbox on purpose: being pulled into a thread is
          inbox work, not team admin. #}
-      <a href="{{ url_for('mentions_page') }}" class="{{ 'active' if request.endpoint == 'mentions_page' }}">{{ ic.icon('chat') }}Mentions{% if mentions_new %}<span class="appnav-count">{{ mentions_new }}</span>{% endif %}</a>
-      <a href="{{ url_for('team_page') }}" class="{{ 'active' if request.endpoint in ['team_page','team_invite','team_set_role','team_remove'] }}">{{ ic.icon('users') }}Team</a>
-      <a href="{{ url_for('site_setup') }}" class="{{ 'active' if request.endpoint in ['site_setup','add_study_claim','remove_study_claim','intake_page','intake_import'] }}">{{ ic.icon('gear') }}Settings</a>
+      <a href="{{ url_for('mentions_page') }}" class="{{ 'active' if request.endpoint == 'mentions_page' }}">{{ ic.icon('chat') }}<span class="appnav-label">Mentions</span>{% if mentions_new %}<span class="appnav-count">{{ mentions_new }}</span>{% endif %}</a>
+      <a href="{{ url_for('team_page') }}" class="{{ 'active' if request.endpoint in ['team_page','team_invite','team_set_role','team_remove'] }}">{{ ic.icon('users') }}<span class="appnav-label">Team</span></a>
+      <a href="{{ url_for('site_setup') }}" class="{{ 'active' if request.endpoint in ['site_setup','add_study_claim','remove_study_claim','intake_page','intake_import'] }}">{{ ic.icon('gear') }}<span class="appnav-label">Settings</span></a>
       {% if is_owner and not site_demo %}
-      <a href="{{ url_for('internal_hub') }}" class="appnav-internal {{ 'active' if request.endpoint in ['internal_hub','operator_inbox','internal_registry','internal_registry_opt_out','internal_recruitment','internal_recruitment_targets','owner_analytics'] }}">{{ ic.icon('shield') }}Internal</a>
+      <a href="{{ url_for('internal_hub') }}" class="appnav-internal {{ 'active' if request.endpoint in ['internal_hub','operator_inbox','internal_registry','internal_registry_opt_out','internal_recruitment','internal_recruitment_targets','owner_analytics'] }}">{{ ic.icon('shield') }}<span class="appnav-label">Internal</span></a>
       {% endif %}
     </nav>
     {% if active_site_demo and walkthrough_enabled %}
@@ -102,19 +104,37 @@
     <div class="appside-foot">
       <div class="appside-user">
         <span class="appside-avatar">{{ _initials }}</span>
-        <span class="u"><b>{{ user['name'] or 'Study team' }}</b><span>{{ member_role_label or 'Study team' }}</span></span>
+        <span class="u rail-tip"><b>{{ user['name'] or 'Study team' }}</b><span>{{ member_role_label or 'Study team' }}</span></span>
       </div>
-      <a href="{{ url_for('logout') }}" class="mini">{{ ic.icon('logout') }}Sign out</a>
-      <button type="button" class="theme-toggle side-theme-toggle mini" id="themeToggle" aria-label="Switch between light and dark theme" title="Toggle light / dark theme">
-        {{ ic.icon('sun', 'ico icon-sun') }}{{ ic.icon('moon', 'ico icon-moon') }} <span>Theme</span>
+      <a href="{{ url_for('logout') }}" class="mini">{{ ic.icon('logout') }}<span class="rail-tip">Sign out</span></a>
+      <button type="button" class="theme-toggle side-theme-toggle mini" id="themeToggle" aria-label="Switch between light and dark theme">
+        {{ ic.icon('sun', 'ico icon-sun') }}{{ ic.icon('moon', 'ico icon-moon') }} <span class="rail-tip">Theme</span>
       </button>
     </div>
-    <div class="appside-resize" id="appSideResize" role="separator" aria-orientation="vertical" aria-label="Resize sidebar" title="Drag to resize · double-click to reset"></div>
   </aside>
   <div class="appside-backdrop" id="appSideBackdrop"></div>
   <div class="appmain">
+    {# Three zones: nav on the left, the study scope dead centre, account/agent
+       on the right. The scope is the one thing a coordinator must always be able
+       to read at a glance - it decides what every other screen is showing. #}
     <header class="apptop">
+      {# Search rides in the left zone with the nav toggle. It started out beside
+         the picker in the centre, which pushed the picker 38px off-centre - and
+         the picker is the anchor that has to read as centred. #}
+      <div class="apptop-left">
       <button type="button" class="apptop-panel-toggle" id="appSideToggle" aria-label="Toggle sidebar" title="Toggle sidebar">{{ ic.icon('menu') }}</button>
+      <div class="appsearch-wrap" id="omniWrap">
+        <span class="appsearch-ico">{{ ic.icon('search') }}</span>
+        <input id="omniInput" class="appsearch-input" type="text" autocomplete="off"
+               autocapitalize="off" spellcheck="false" role="combobox"
+               aria-expanded="false" aria-controls="omniResults" aria-autocomplete="list"
+               placeholder="Search applicants, studies, pages…"
+               aria-label="Search applicants, studies and pages">
+        <kbd class="appsearch-kbd">⌘K</kbd>
+        <div class="appsearch-panel" id="omniResults" role="listbox" hidden></div>
+      </div>
+      </div>
+      <div class="apptop-mid">
       <details class="appswitch-wrap" id="studySwitch">
         <summary class="appswitch">
           <span class="appswitch-lbl">{{ active_study_label or 'No studies yet' }}</span>
@@ -137,18 +157,12 @@
           {% endfor %}
         </div>
       </details>
-      <div class="appsearch-wrap" id="omniWrap">
-        <span class="appsearch-ico">{{ ic.icon('search') }}</span>
-        <input id="omniInput" class="appsearch-input" type="text" autocomplete="off"
-               autocapitalize="off" spellcheck="false" role="combobox"
-               aria-expanded="false" aria-controls="omniResults" aria-autocomplete="list"
-               placeholder="Search applicants, studies, pages…"
-               aria-label="Search applicants, studies and pages">
-        <kbd class="appsearch-kbd">⌘K</kbd>
-        <div class="appsearch-panel" id="omniResults" role="listbox" hidden></div>
       </div>
-      <span class="apptop-spacer"></span>
-
+      <div class="apptop-right">
+      {# Phone only: Bridget's collapsed rail is gone at phone width (it sat over
+         the avatar and the composer's send arrow), so this is the way in. #}
+      <button type="button" class="apptop-bridget" id="apptopBridget" aria-label="Open Bridget" title="Bridget"
+              onclick="if(window.bridgetOpen)window.bridgetOpen()">{{ ic.icon('mark', 'brand-glyph') }}</button>
       {% set notif_total = (site_unread or 0) + (matches_new or 0) + (mentions_new or 0) %}
       <details class="appmenu" id="notifMenu">
         <summary class="appbell" aria-label="Notifications" title="Notifications">
@@ -192,6 +206,7 @@
           <a class="appmenu-item simple" href="{{ url_for('logout') }}" role="menuitem">{{ ic.icon('logout') }} Sign out</a>
         </div>
       </details>
+      </div>
     </header>
     <main class="appbody{{ ' appbody-wide' if request.endpoint == 'marketing_hub' else '' }}" id="main" role="main" tabindex="-1">
 {% else %}
@@ -233,13 +248,12 @@
     {% block body %}{% endblock %}
   </main>
 {% if pov == 'study' %}</div>{% endif %}
-  {# Bridget rides as the right dock - the third pane of the workspace (icon rail ·
-     inbox · assistant), Cursor-style. It's not decoration: it reads the same live
-     data, drafts replies you confirm, and answers "who's waiting on me". #}
+  {# Bridget is the right pane of the workspace (rail · inbox · Bridget),
+     the same way Cursor keeps chat in the layout, not a floating assistant. #}
   {% if pov == 'study' and user %}{% include "_copilot.html" %}{% endif %}
 </div>
 {% if pov == 'study' %}{% include "_omni.html" %}{% else %}{% include "_cmdk.html" %}{% endif %}
-{% if active_site_demo %}{% include "_demo_tour.html" %}{% endif %}
+{% if active_site_demo and not request.args.get('embed') %}{% include "_demo_tour.html" %}{% endif %}
 {% else %}
 <button type="button" class="theme-toggle theme-toggle-float" id="themeToggle" aria-label="Switch between light and dark theme" title="Toggle light / dark theme">
   {{ ic.icon('sun', 'ico icon-sun') }}{{ ic.icon('moon', 'ico icon-moon') }}
@@ -316,9 +330,10 @@ document.addEventListener('click', function (e) {
 </script>
 <script>
 /* Resizable, customizable workspace panels (Cursor-style):
-   - drag either panel's inner edge to resize (persisted; double-click resets),
-   - a top-bar button collapses the left rail on desktop / opens the drawer on mobile,
-   - the left panel adapts to viewport: full (wide), icon rail (medium), drawer (mobile). */
+   - the left rail is a persistent icon strip (Outlook-style); labels overlay
+     on hover and never push the workspace,
+   - drag Bridget's inner edge to resize (persisted; double-click resets),
+   - a top-bar button opens the drawer on mobile. */
 (function () {
   var shell = document.querySelector('.appshell');
   if (!shell) return;
@@ -326,47 +341,25 @@ document.addEventListener('click', function (e) {
   var dock = document.getElementById('copilot');
   var toggle = document.getElementById('appSideToggle');
   var backdrop = document.getElementById('appSideBackdrop');
-  var sideHandle = document.getElementById('appSideResize');
   var dockHandle = document.getElementById('dockResize');
-  // v2 intentionally ignores the old bm_side_pref value. Some demo sessions had
-  // "rail" saved, which made the app open icon-only by default. New default:
-  // full labels unless the user explicitly collapses it again.
-  var LS_W = 'bm_side_w', LS_C = 'bm_side_pref_v2', LS_D = 'bm_dock_w';
+  var LS_D = 'bm_dock_w';
 
   function get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
   function set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
   function del(k) { try { localStorage.removeItem(k); } catch (e) {} }
-  // The left rail is never wider than its regular size (240), there's no reason
-  // to. Dragging narrower snaps it into the icon/logo rail below RAIL_SNAP.
-  var SIDE_FULL = 240, SIDE_MIN = 176, RAIL_SNAP = 132, RAIL_EXPAND = 150;
-  function clampSide(v) { return Math.max(SIDE_MIN, Math.min(SIDE_FULL, v)); }
   function clampDock(v) { return Math.max(300, Math.min(560, v)); }
 
-  // Restore saved widths.
-  var sw = parseInt(get(LS_W), 10);
-  if (sw) shell.style.setProperty('--appside-w', clampSide(sw) + 'px');
   var dw = parseInt(get(LS_D), 10);
   if (dw) shell.style.setProperty('--appdock-w', clampDock(dw) + 'px');
 
-  // Left panel view mode: drawer (mobile) | icon rail (medium/pref) | full.
   function isMobile() { return window.matchMedia('(max-width: 900px)').matches; }
-  // The inbox locks the rail to the compact icon width (see is-collapsed in the
-  // template + the .mh-page CSS) so it stays out of the workspace's way; don't let
-  // saved prefs expand it back to full labels here.
-  var lockRail = side.hasAttribute('data-lock-rail');
   function applyMode() {
     if (isMobile()) {
       shell.classList.add('is-drawer');
-      side.classList.remove('is-collapsed');
       return;
     }
     shell.classList.remove('is-drawer', 'is-drawer-open');
-    if (lockRail) { side.classList.add('is-collapsed'); return; }
-    var pref = get(LS_C);                        // 'rail' | 'full' | null
-    var rail = pref === 'rail' ? true
-             : pref === 'full' ? false
-             : false;                            // default: full labeled sidebar
-    side.classList.toggle('is-collapsed', rail);
+    side.classList.add('is-collapsed');
   }
   applyMode();
 
@@ -375,20 +368,15 @@ document.addEventListener('click', function (e) {
     clearTimeout(rt); rt = setTimeout(applyMode, 120);
   });
 
-  // Toggle button: drawer on mobile, rail <-> full on desktop.
   function openDrawer(o) { shell.classList.toggle('is-drawer-open', o); }
   if (toggle) toggle.addEventListener('click', function () {
-    if (isMobile()) { openDrawer(!shell.classList.contains('is-drawer-open')); return; }
-    var rail = !side.classList.contains('is-collapsed');
-    side.classList.toggle('is-collapsed', rail);
-    set(LS_C, rail ? 'rail' : 'full');
+    if (isMobile()) openDrawer(!shell.classList.contains('is-drawer-open'));
   });
   if (backdrop) backdrop.addEventListener('click', function () { openDrawer(false); });
   side.addEventListener('click', function (e) {
     if (isMobile() && e.target.closest('a')) openDrawer(false);
   });
 
-  // Generic edge drag: updates a CSS var live, persists on release.
   function drag(handle, opts) {
     if (!handle) return;
     handle.addEventListener('pointerdown', function (e) {
@@ -409,54 +397,6 @@ document.addEventListener('click', function (e) {
     handle.addEventListener('dblclick', function () {
       shell.style.removeProperty(opts.varName);
       del(opts.store);
-    });
-  }
-  // Left rail drag: shrink toward the icon rail, snap into it past the threshold,
-  // and never grow past the regular width.
-  if (sideHandle) {
-    sideHandle.addEventListener('pointerdown', function (e) {
-      e.preventDefault();
-      try { sideHandle.setPointerCapture(e.pointerId); } catch (_) {}
-      document.body.classList.add('is-resizing');
-      function snap() {                     // animate this one state change
-        side.classList.add('is-snapping');
-        clearTimeout(snap._t);
-        snap._t = setTimeout(function () { side.classList.remove('is-snapping'); }, 200);
-      }
-      function move(ev) {
-        var raw = ev.clientX - side.getBoundingClientRect().left;
-        var collapsed = side.classList.contains('is-collapsed');
-        if (!collapsed && raw < RAIL_SNAP) {          // resolve into the logo rail
-          snap();
-          side.classList.add('is-collapsed');
-          shell.style.setProperty('--appside-w', SIDE_FULL + 'px');  // reserve full
-        } else if (collapsed && raw > RAIL_EXPAND) {   // pull back out (hysteresis)
-          snap();
-          side.classList.remove('is-collapsed');
-          shell.style.setProperty('--appside-w', clampSide(raw) + 'px');
-        } else if (!collapsed) {                        // free resize, 1:1 with pointer
-          shell.style.setProperty('--appside-w', clampSide(raw) + 'px');
-        }
-      }
-      function up() {
-        document.body.classList.remove('is-resizing');
-        window.removeEventListener('pointermove', move);
-        window.removeEventListener('pointerup', up);
-        if (side.classList.contains('is-collapsed')) {
-          set(LS_C, 'rail'); del(LS_W);
-        } else {
-          set(LS_C, 'full');
-          var cur = parseInt(getComputedStyle(shell).getPropertyValue('--appside-w'), 10);
-          if (cur) set(LS_W, String(cur));
-        }
-      }
-      window.addEventListener('pointermove', move);
-      window.addEventListener('pointerup', up);
-    });
-    sideHandle.addEventListener('dblclick', function () {
-      shell.style.removeProperty('--appside-w');
-      side.classList.remove('is-collapsed');
-      del(LS_W); set(LS_C, 'full');
     });
   }
   drag(dockHandle, {
@@ -662,7 +602,7 @@ document.addEventListener('click', function (e) {
     // Paint + clear on submit, not on response, so the UI reacts instantly.
     var painted = optimistic(form, fd);
     if (painted) { form.querySelectorAll('[data-ajax-clear]').forEach(function (i) { i.value = ''; }); }
-    if (btn) btn.disabled = true;
+    if (btn && !painted) btn.disabled = true;
     fetch(action, {
       method: 'POST', body: fd, credentials: 'same-origin',
       headers: { 'X-BridgeMD-Ajax': '1', 'X-CSRF-Token': csrf }
@@ -673,16 +613,22 @@ document.addEventListener('click', function (e) {
     }).then(function (data) {
       if (!data) return;
       if (btn) btn.disabled = false;
-      if (data.ok === false) { toast(data.error || 'Something went wrong. Please retry.', 'error'); return; }
-      // Skip the toast when the in-place refresh IS the confirmation: forms inside
+      var failed = data.ok === false || data.category === 'error';
+      if (failed) {
+        toast(data.toast || data.error || 'Something went wrong. Please retry.', 'error');
+        refresh(form);
+        return;
+      }
+      // Skip the toast when the in-place paint IS the confirmation: forms inside
       // an open overlay/modal, or forms that opt out via data-ajax-quiet (chat,
-      // notes). Errors always toast.
+      // notes). Errors always toast. Skip a second HTML swap when we already
+      // painted the new item, so send does not flicker.
       var inModal = form.closest('.ui-modal');
       var quiet = form.hasAttribute('data-ajax-quiet');
       if (data.toast && !inModal && !quiet) toast(data.toast, data.category);
       form.querySelectorAll('[data-ajax-clear]').forEach(function (i) { i.value = ''; });
       if (!form.querySelector('[data-ajax-clear]')) { try { form.reset(); } catch (e) {} }
-      refresh(form);
+      if (!painted) refresh(form);
     }).catch(function () {
       if (btn) btn.disabled = false;
       toast('Something went wrong. Please retry.', 'error');
@@ -714,5 +660,86 @@ document.addEventListener('click', function (e) {
   nodes.forEach(function (node) { observer.observe(node); });
 })();
 </script>
+{% include "_bridget_js.html" %}
+{% if request.args.get('embed') %}
+<style>
+/* Landing-page iframe: every thread click is a full document load, which
+   flashed white between pages. Cross-document view transitions keep the old
+   page on screen and crossfade it into the new one (Chrome/Edge/Safari 18.2+;
+   others simply navigate as before). Short, so it reads as instant. */
+@view-transition { navigation: auto; }
+::view-transition-old(root), ::view-transition-new(root) { animation-duration: .12s; }
+</style>
+<script>
+/* Landing-page iframe (?embed=1): keep embed mode across in-app navigations
+   (thread clicks, filter tabs) so the chrome doesn't flash back in, and strip
+   #conversation / #portal hashes so the PARENT marketing page does not scroll
+   the iframe into view when a hash target is resolved. */
+(function () {
+  if (document.body.getAttribute('data-embed') !== '1') return;
+  /* Each thread click reloads the document, which put the thread list back at
+     the top - the row just clicked jumped away. Carry the list's scroll
+     position across the navigation. */
+  var STACK_KEY = 'bmd_embed_stack_scroll';
+  var stack = document.querySelector('.mh-thread-stack');
+  if (stack) {
+    try {
+      var saved = sessionStorage.getItem(STACK_KEY);
+      if (saved !== null) stack.scrollTop = parseInt(saved, 10) || 0;
+    } catch (e) {}
+    window.addEventListener('pagehide', function () {
+      try { sessionStorage.setItem(STACK_KEY, String(stack.scrollTop)); } catch (e) {}
+    });
+  }
+  if (location.hash) {
+    try {
+      history.replaceState(null, '', location.pathname + location.search);
+    } catch (e) {}
+  }
+  function rewriteAppUrl(href) {
+    try {
+      var u = new URL(href, location.href);
+      if (u.origin !== location.origin) return null;
+      if (u.pathname.indexOf('/app/') !== 0) return null;
+      var needs = u.searchParams.get('embed') !== '1' || !!u.hash;
+      if (!needs) return null;
+      u.searchParams.set('embed', '1');
+      u.hash = '';
+      return u.pathname + u.search;
+    } catch (e) { return null; }
+  }
+  document.addEventListener('click', function (e) {
+    var a = e.target && e.target.closest && e.target.closest('a[href]');
+    if (!a || a.target === '_blank' || a.hasAttribute('download')) return;
+    var raw = a.getAttribute('href');
+    if (!raw || raw.charAt(0) === '#' || /^mailto:|^tel:|^javascript:/i.test(raw)) return;
+    var next = rewriteAppUrl(raw);
+    if (!next) return;
+    e.preventDefault();
+    if (next !== location.pathname + location.search) location.assign(next);
+  }, true);
+  document.addEventListener('submit', function (e) {
+    var form = e.target;
+    if (!form) return;
+    if (!form.querySelector('input[name="embed"]')) {
+      var inp = document.createElement('input');
+      inp.type = 'hidden'; inp.name = 'embed'; inp.value = '1';
+      form.appendChild(inp);
+    }
+    var method = (form.getAttribute('method') || 'get').toLowerCase();
+    if (method === 'get' && form.action) {
+      try {
+        var u = new URL(form.action, location.href);
+        if (u.origin === location.origin && u.pathname.indexOf('/app/') === 0) {
+          u.searchParams.set('embed', '1');
+          u.hash = '';
+          form.action = u.pathname + u.search;
+        }
+      } catch (err) {}
+    }
+  }, true);
+})();
+</script>
+{% endif %}
 </body>
 </html>

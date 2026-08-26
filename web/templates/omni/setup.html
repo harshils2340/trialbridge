@@ -1,0 +1,121 @@
+{% extends "omni/base.html" %}
+{% import "_icons.html" as ic %}
+{% import "_ui.html" as ui %}
+
+{% block title %}Setup | {{ ws.name }} | {{ OMNI_BRAND }}{% endblock %}
+
+{% block body %}
+<div class="om-page om-doc">
+  <header class="om-page-head">
+    <h1>Setup</h1>
+    <p class="om-lede">Everything {{ OMNI_BRAND }} knows about this inbox. Edit the plain parts here, or type a change in the bar above for anything else (new fields, views, rules, stages).</p>
+  </header>
+
+  <form method="post" action="{{ url_for('om_setup_save', wid=ws.wid) }}" class="om-doc-form">
+  <section class="om-doc-sec">
+    <h2>Business</h2>
+    <div class="om-doc-grid">
+      <label class="om-doc-field"><span>Business name</span><input type="text" name="business_name" value="{{ spec.business.name }}" maxlength="80"></label>
+      <label class="om-doc-field"><span>Agent's name</span><input type="text" name="agent_name" value="{{ spec.agent.name }}" maxlength="24"></label>
+      <label class="om-doc-field"><span>Sign replies as</span><input type="text" name="signoff" value="{{ spec.tone.signoff }}" maxlength="60" placeholder="e.g. Dana at Harbor Point"></label>
+      <label class="om-doc-field"><span>Voice</span>
+        <select name="voice">
+          {% for v in ['warm', 'plain', 'formal', 'upbeat'] %}<option value="{{ v }}" {{ 'selected' if spec.tone.voice == v }}>{{ v|capitalize }}</option>{% endfor %}
+        </select></label>
+    </div>
+    {% if spec.business.summary %}<p class="om-muted">{{ spec.business.summary }}</p>{% endif %}
+  </section>
+
+  <section class="om-doc-sec">
+    <h2>Sources</h2>
+    <ul class="om-doc-list">
+      {% for s in sources %}
+      <li><span>{{ s.label or s.meta.label }}</span><small>{{ 'Connected' if s.status == 'connected' else 'Not connected' }} · {{ s.meta.how }}</small></li>
+      {% endfor %}
+    </ul>
+    <p><a href="{{ url_for('om_connect', wid=ws.wid) }}">Manage on Connections</a></p>
+  </section>
+
+  <section class="om-doc-sec">
+    <h2>Fields pulled out of every conversation</h2>
+    <ul class="om-doc-list om-doc-fields">
+      {% for f in spec.fields %}
+      <li>
+        <span>{{ f.label }}</span>
+        <small>{{ {'bool': 'yes or no', 'enum': f.options|map('replace', '_', ' ')|map('capitalize')|join(' / '), 'date': 'a date', 'number': 'a number', 'list': 'a list', 'text': 'text'}[f.type] }}{% if f.hint %} · {{ f.hint }}{% endif %}</small>
+        {{ ui.check('Show in the list', name='show_in_list', value=f.key, checked=f.show_in_list) }}
+      </li>
+      {% endfor %}
+    </ul>
+    <p class="om-muted">To add a field, type it in the bar above: "add a field for whether they already have a lawyer".</p>
+  </section>
+
+  <section class="om-doc-sec">
+    <h2>Views</h2>
+    <ul class="om-doc-list">
+      {% for v in views %}
+      <li><span>{{ v.name }}{% if v.pinned %} <em class="om-pin">on the front</em>{% endif %}</span><small>where {{ v.words }}</small></li>
+      {% endfor %}
+    </ul>
+  </section>
+
+  <section class="om-doc-sec">
+    <h2>Stages</h2>
+    <p class="om-stages">{% for s in spec.stages %}<span class="mh-tag is-stage tone-{{ s.tone }}">{{ s.label }}</span>{% endfor %}</p>
+    <p class="om-muted">Rename or add stages in the bar above: "rename Contacted to Reached out", "add a stage called Waiting on records".</p>
+  </section>
+
+  <section class="om-doc-sec">
+    <h2>Rules</h2>
+    <ul class="om-doc-list">
+      {% for r in rules %}
+      <li class="{{ 'is-off' if not r.enabled }}"><span>{{ r.text or r.name }}</span><small>{{ r.words }}{% if not r.enabled %} (off){% endif %}</small></li>
+      {% else %}
+      <li><span>No rules yet.</span></li>
+      {% endfor %}
+    </ul>
+    <p><a href="{{ url_for('om_rules', wid=ws.wid) }}">Manage on Rules</a></p>
+  </section>
+
+  <section class="om-doc-sec">
+    <h2>What {{ spec.agent.name }} may send on its own</h2>
+    <ul class="om-doc-list om-doc-policy">
+      {% for cat, words in [('routine', 'Routine replies and acknowledgements'), ('pricing', 'Pricing and cost questions'), ('medical_legal', 'Questions that need a professional')] %}
+      <li>
+        <span>{{ words }}</span>
+        {% set locked = cat in must_review %}
+        <label class="om-select">
+          <select name="policy_{{ cat }}" {{ 'disabled' if locked }}>
+            <option value="review" {{ 'selected' if spec.approval_policy[cat] == 'review' }}>Waits for my OK</option>
+            <option value="auto_send" {{ 'selected' if spec.approval_policy[cat] == 'auto_send' }}>Sends on its own, labeled</option>
+          </select>
+        </label>
+        {% if locked %}<small>Always waits for a person in this kind of business.</small>{% endif %}
+      </li>
+      {% endfor %}
+      <li><span>Anything urgent or sensitive</span><small>Always waits for a person.</small></li>
+    </ul>
+  </section>
+
+  <section class="om-doc-sec">
+    <h2>Playbook</h2>
+    <p class="om-muted">Standing facts and house style {{ spec.agent.name }} may use in drafts. One per line.</p>
+    <textarea name="playbook" rows="5" class="om-playbook-edit" maxlength="600">{{ spec.playbook }}</textarea>
+  </section>
+
+  {% if spec.guardrails %}
+  <section class="om-doc-sec">
+    <h2>Guardrails</h2>
+    <ul class="om-doc-list">
+      {% for g in spec.guardrails %}<li><span>{{ g.text }}</span></li>{% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+
+  <div class="om-doc-foot">
+    {{ ui.btn('Save', 'primary', type='submit') }}
+    <a class="link-btn" href="{{ url_for('om_inbox', wid=ws.wid) }}">Back to the inbox</a>
+  </div>
+  </form>
+</div>
+{% endblock %}

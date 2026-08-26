@@ -1,0 +1,80 @@
+{# Shared marketing chrome for the patient trial finder + SEO pages.
+   Keeps /find-trial, /trials, and condition pages visually aligned with `/`. #}
+{% import "_nav.html" as nav %}
+
+{% macro head_assets() %}
+<style id="bmd-pub-chrome">
+@font-face{ font-family:"Figtree"; font-style:normal; font-weight:400; font-display:swap;
+  src:url("/landing/assets/8221d5aa15__Xmz-HUzqDCFdgfMsYiV_F7wfS-Bs_d_QF5bwkEU4HTy.woff2") format("woff2"); }
+@font-face{ font-family:"Figtree"; font-style:normal; font-weight:500; font-display:swap;
+  src:url("/landing/assets/22a0ab5a22__Xmz-HUzqDCFdgfMsYiV_F7wfS-Bs_dNQF5bwkEU4HTy.woff2") format("woff2"); }
+@font-face{ font-family:"Figtree"; font-style:normal; font-weight:600; font-display:swap;
+  src:url("/landing/assets/7bde881678__Xmz-HUzqDCFdgfMsYiV_F7wfS-Bs_ehR15bwkEU4HTy.woff2") format("woff2"); }
+@font-face{ font-family:"Figtree"; font-style:normal; font-weight:700; font-display:swap;
+  src:url("/landing/assets/acab8c9edc__Xmz-HUzqDCFdgfMsYiV_F7wfS-Bs_eYR15bwkEU4HTy.woff2") format("woff2"); }
+
+body.pub-marketing, body.pub-marketing h1, body.pub-marketing h2, body.pub-marketing h3,
+body.pub-marketing p, body.pub-marketing a, body.pub-marketing span, body.pub-marketing li,
+body.pub-marketing label, body.pub-marketing button, body.pub-marketing input,
+body.pub-marketing select, body.pub-marketing textarea, body.pub-marketing .brand{
+  font-family:"Figtree", var(--sans), system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-feature-settings:"cv09" 1,"cv03" 1,"cv04" 1,"cv11" 1,"blwf" 1; }
+body.pub-marketing{ background:#fff; color:#12122b; }
+
+body.pub-marketing .pill-nav{
+  position:fixed; top:max(10px, env(safe-area-inset-top));
+  left:12px; right:12px; margin:0 auto; z-index:1000; max-width:none; }
+
+body.pub-marketing:not(.home-screen) .pub-main{
+  padding-top:max(88px, calc(env(safe-area-inset-top) + 76px)); }
+
+body.pub-marketing .cond-hero,
+body.pub-marketing .cond-list,
+body.pub-marketing .cond-cities,
+body.pub-marketing .cond-intro,
+body.pub-marketing .cond-faq{ max-width:820px; }
+body.pub-marketing .cond-hero{ margin:0 auto; padding:8px 24px 12px; text-align:center; }
+body.pub-marketing .cond-hero .crumbs{ justify-content:center; margin-bottom:14px; }
+body.pub-marketing .cond-hero h1{
+  font-size:clamp(28px, 4.2vw, 42px); line-height:1.08; letter-spacing:-.03em;
+  font-weight:800; color:#12122b; margin:0 0 12px; }
+body.pub-marketing .cond-lead{
+  margin:0 auto 24px; max-width:560px; font-size:18px; line-height:1.55; color:#516079; }
+body.pub-marketing .cond-search{
+  display:grid; gap:10px; margin:0 auto; max-width:820px; padding:18px;
+  border-radius:20px; border:1px solid rgba(18,40,80,.10); background:#fff;
+  box-shadow:0 26px 60px -36px rgba(15,26,46,.5), 0 2px 8px rgba(15,26,46,.05); }
+body.pub-marketing .cond-search .hero-field{
+  display:flex; align-items:center; gap:10px; padding:10px 12px;
+  border:1px solid rgba(18,40,80,.12); border-radius:14px; background:#fff; }
+body.pub-marketing .cond-search .hero-field input{
+  border:0; padding:0; background:transparent; flex:1; min-width:0; font-size:15px; }
+body.pub-marketing .cond-search .btn{ border-radius:11px; justify-self:stretch; }
+body.pub-marketing .cond-loc-actions{ justify-content:center; margin-top:12px; }
+body.pub-marketing .cond-intro p,
+body.pub-marketing .cond-list h2,
+body.pub-marketing .cond-cities h2,
+body.pub-marketing .cond-faq h2{ color:#12122b; }
+body.pub-marketing .chip{
+  border-color:rgba(18,87,176,.12); color:#3a4763; background:#fff; }
+body.pub-marketing .chip:hover{ border-color:rgba(18,87,176,.28); color:#1257b0; }
+
+@media (min-width:721px){
+  body.pub-marketing .cond-search{
+    grid-template-columns:1fr 1fr auto; align-items:center; }
+  body.pub-marketing .cond-search .btn{ justify-self:auto; white-space:nowrap; }
+}
+@media (max-width:720px){
+  body.pub-marketing .cond-search .btn{ width:100%; }
+}
+</style>
+{% endmacro %}
+
+{% macro header(cal_link='') %}
+{{ nav.pill(
+  [('How it works', url_for('for_sites') ~ '#features'),
+   ('Trial finder', url_for('home')),
+   ('FAQ', url_for('for_sites') ~ '#bmd-faq')],
+  'Book a call', cal_link, cta_blank=true,
+  brand_href=url_for('for_sites')) }}
+{% endmacro %}

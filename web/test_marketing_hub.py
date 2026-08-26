@@ -210,7 +210,7 @@ def test_marketing_hub_flow():
 def test_demo_seed_preserves_live_connections_and_fills_each_trial():
     with webapp.app.app_context():
         demo_id = db.create_user(
-            "dejosama@fieveclinical.com", "disabled", "Demo Owner",
+            db._MARKETING_DEMO_EMAIL, "disabled", "Demo Owner",
             verified=True)
         connected = db.connect_marketing_account(
             demo_id, provider="gmail", channel="email",
@@ -225,7 +225,7 @@ def test_demo_seed_preserves_live_connections_and_fills_each_trial():
         assert connection["status"] == "connected"
         assert db.get_marketing_source(
             demo_id, connected["source_id"])["connection_mode"] == "live"
-        assert any(source["identifier"] == "recruit@fieveclinical.com"
+        assert any(source["identifier"] == "recruit@northwindclinical.com"
                    for source in db.list_marketing_sources(demo_id))
         threads = db.list_marketing_threads(demo_id, status="all")
         comp360 = [thread for thread in threads
@@ -282,9 +282,43 @@ def test_demo_seed_preserves_live_connections_and_fills_each_trial():
     print("PASS: demo seed is distinct, idempotent, dense, and preserves live accounts")
 
 
+def test_demo_team_is_fictional():
+    banned = (
+        "Vanessa Fieve", "Paul Eder", "Margaret Henderson", "Sharita",
+        "Kara Walsh", "Josama", "Danny-Elle", "dejosama@", "vfieve@",
+        "peder@", "mhenderson@", "kwalsh@", "swomack@",
+    )
+    with webapp.app.app_context():
+        demo = db.get_user_by_email(db._MARKETING_DEMO_EMAIL)
+        demo_id = demo["id"] if demo else db.create_user(
+            db._MARKETING_DEMO_EMAIL, "disabled", "Demo Owner", verified=True)
+        db.seed_demo_team(demo_id)
+        roster = " ".join(
+            f"{m['name']} {m['email']}" for m in db.list_org_members(demo_id))
+        for needle in banned:
+            assert needle.lower() not in roster.lower(), needle
+        assert "Riley Patel" in roster
+        assert "David Chen" in roster
+        assert "Elena Vargas" in roster
+        conn = db.get_db()
+        conn.execute(
+            "INSERT INTO marketing_messages "
+            "(org_id, thread_id, kind, body, author_name, delivery_status, "
+            "created_at) VALUES (1, 1, 'note', ?, 'BridgeMD team', '', ?)",
+            ("@danny-elle @Vanessa @Margaret look", db.now()))
+        conn.commit()
+        db.migrate_demo_staff_identities()
+        leftover = conn.execute(
+            "SELECT body FROM marketing_messages WHERE "
+            "instr(body, 'danny-elle') OR instr(body, '@Vanessa') "
+            "OR instr(body, '@Margaret')").fetchall()
+        assert leftover == []
+    print("PASS: demo team roster is fictional")
+
+
 def test_demo_records_and_checklist():
     with webapp.app.app_context():
-        demo_id = db.get_user_by_email("dejosama@fieveclinical.com")["id"]
+        demo_id = db.get_user_by_email(db._MARKETING_DEMO_EMAIL)["id"]
         linked = next(
             row for row in db.list_marketing_threads(demo_id, status="all")
             if row["linked_lead_id"])
@@ -402,8 +436,33 @@ def test_quick_replies_and_context_drafts():
 
     page = client.get(f"/app/inbox?thread={ids['Nadia Brooks']}").get_data(
         as_text=True)
-    assert "mh-quick-chip" in page, "quick-reply chips did not render"
-    assert "Offer a screening call" in page
+    # Writing a reply starts with an instruction, not with a button off to the
+    # side: one Bridget, in the right pane. The reply box declares the open
+    # conversation (data-bridget-thread) and the pane writes into it. The
+    # composer's own prompt line is gone (two "ask Bridget" boxes on one
+    # screen), and so are the canned quick-reply chips and the old button.
+    assert "mh-quick-chip" not in page, "canned quick-reply chips came back"
+    assert "data-ask-input" not in page, "the composer grew its own prompt line again"
+    assert "data-bridget-draft" not in page, "the composer grew its own prompt line again"
+    assert "Draft with Bridget" not in page, "the old draft button came back"
+    nadia = ids["Nadia Brooks"]
+    assert f'data-bridget-thread="{nadia}"' in page, \
+        "reply box does not tell Bridget which conversation is open"
+    assert 'id="copilot"' in page, "Bridget pane missing from the inbox"
+
+    # An instruction decides what the draft says; the inbound message is context.
+    steered = _json.loads(_post(
+        client, f"/marketing-hub/threads/{ids['Priya Vault']}/draft.json",
+        {"instruction": "offer a screening call and ask which times work"},
+    ).get_data(as_text=True))
+    assert steered["ok"], steered
+    assert "screening call" in steered["draft"].lower(), steered["draft"]
+    # ... and without one, the draft still answers what they actually asked, so
+    # the fast path (press the arrow, type nothing) is unchanged.
+    unsteered = _json.loads(client.get(
+        f"/marketing-hub/threads/{ids['Priya Vault']}/draft.json").get_data(
+        as_text=True))
+    assert "privacy" in unsteered["draft"].lower(), unsteered["draft"]
 
     sched = _json.loads(client.get(
         f"/marketing-hub/threads/{ids['Nadia Brooks']}/draft.json").get_data(
@@ -446,6 +505,62 @@ def test_quick_replies_and_context_drafts():
         "drafts are not context-aware"
     print("PASS: quick-reply chips render + context-aware Bridget drafts")
 
+
+
+def test_bridget_pane_writes_reply_when_thread_open():
+    """The right pane is the only Bridget. With a conversation open, an
+    instruction comes back as a draft for the reply box; a workspace question
+    is still answered in the pane; without a thread nothing is drafted."""
+    import json as _json
+    with webapp.app.app_context():
+        owner_id = db.create_user(
+            "pane-owner@example.com", "disabled", "Pane Owner", verified=True)
+    client = _client_for(owner_id)
+    assert _post(client, "/marketing-hub/sources", {
+        "channel": "email", "label": "Main", "identifier": "hi@example.com",
+    }).status_code == 302
+    with webapp.app.app_context():
+        source_id = db.list_marketing_sources(owner_id)[0]["id"]
+    assert _post(client, "/marketing-hub/threads", {
+        "source_id": str(source_id), "contact_name": "Priya Vault",
+        "contact_handle": "priya@example.com", "subject": "Privacy",
+        "body": "Is my information private? Who sees it and will you spam me?",
+    }).status_code == 302
+    with webapp.app.app_context():
+        tid = db.list_marketing_threads(owner_id)[0]["id"]
+
+    def ask(q, thread_id=tid):
+        body = {"q": q}
+        if thread_id is not None:
+            body["thread_id"] = thread_id
+        r = client.post("/app/copilot/ask", json=body,
+                        headers={"X-Requested-With": "XMLHttpRequest",
+                                 "X-CSRF-Token": CSRF})
+        return _json.loads(r.get_data(as_text=True))
+
+    steered = ask("Offer a call")
+    assert steered["ok"] and steered.get("draft"), steered
+    assert "call" in steered["draft"].lower(), steered["draft"]
+    assert "reply box" in steered["answer"].lower(), steered["answer"]
+    assert "Offer a call" not in steered["suggestions"]
+    assert "Check in" in steered["suggestions"]
+
+    # No instruction the ladder knows: answers what they actually asked.
+    plain = ask("Answer their question")
+    assert plain.get("draft") and "privacy" in plain["draft"].lower(), plain
+
+    # Anything that would need an open applicant, or would act, becomes a
+    # written reply with a conversation open rather than a dead end.
+    booking = ask("send them the booking link")
+    assert booking.get("draft"), booking
+
+    # A workspace question is still a question.
+    studies = ask("list my studies")
+    assert studies["ok"] and not studies.get("draft"), studies
+
+    # Without a conversation open, an instruction is not a draft.
+    nothing = ask("Offer a call", thread_id=None)
+    assert not nothing.get("draft"), nothing
 
 def test_unread_by_study_counts():
     """Top-switcher badge data: unread threads grouped by study NCT. Unassigned
@@ -538,13 +653,16 @@ def test_inbox_study_scoper():
                      (ids["GammaThread"],))
         conn.commit()
 
-    # 1. Multi-study team: scoper renders with an option per study, and each
-    #    option surfaces its unread count (the inbox's only per-trial attention
-    #    cue, since the top switcher is hidden here).
+    # 1. Multi-study team: the scope control renders an entry per study, each
+    #    surfacing its unread count. This now comes from the shared top-bar
+    #    switcher (.appswitch) rather than a second <select> inside the inbox -
+    #    the inbox used to hide the top bar and carry its own duplicate picker.
     html = client.get("/app/inbox").get_data(as_text=True)
-    assert 'class="mh-scope"' in html, "scoper missing for a multi-study team"
-    assert 'value="NCT20000001"' in html and 'value="NCT20000002"' in html
-    assert "Alpha Study (1)" in html, "scoper option missing unread count"
+    assert 'class="appswitch"' in html, "top-bar study switcher missing on the inbox"
+    assert 'class="mh-scope"' not in html, "duplicate in-inbox study picker came back"
+    assert "nct=NCT20000001" in html and "nct=NCT20000002" in html
+    assert "Alpha Study" in html, "switcher entry missing its study"
+    assert 'class="ss-count"' in html, "switcher entry missing unread count"
 
     # 3. Selecting study B re-scopes the list to B's threads only.
     assert client.get(
@@ -556,14 +674,17 @@ def test_inbox_study_scoper():
     # visible in every study scope so it can't get lost behind the scoper.
     assert "GammaThread" in scoped, "unassigned thread vanished under a study scope"
 
-    # 2. Single-study team: no scoper (would be a useless control).
+    # 2. Single-study team: the switcher still names the study it is scoped to.
+    #    It doubles as the workspace title, so unlike the old <select> there is
+    #    nothing useless about showing it with one study.
     with webapp.app.app_context():
         solo_id = db.create_user(
             "scoper-solo@example.com", "disabled", "Solo", verified=True)
         db.add_study_claim(solo_id, "NCT20000009", "Only Study", verified=True)
     solo_html = _client_for(solo_id).get("/app/inbox").get_data(as_text=True)
-    assert 'class="mh-scope"' not in solo_html, "scoper shown for single-study team"
-    print("PASS: in-inbox study scoper renders, gates, and re-scopes the list")
+    assert 'class="mh-scope"' not in solo_html, "duplicate in-inbox picker came back"
+    assert "Only Study" in solo_html, "switcher does not name the single study"
+    print("PASS: study scope renders in the top bar, gates, and re-scopes the list")
 
 
 def test_inbox_owner_filter():
@@ -604,7 +725,7 @@ def test_inbox_owner_filter():
 
     # Mine is the privacy-preserving default; the two-bucket control renders.
     default = client.get("/app/inbox?status=all").get_data(as_text=True)
-    assert 'aria-label="Inbox scope"' in default, \
+    assert 'aria-label="Inbox filters"' in default, \
         "owner filter control did not render"
     assert "MineThread" in default
     assert "MateThread" not in default and "NobodyThread" not in default
@@ -678,7 +799,7 @@ def test_claim_unassigned_thread_end_to_end():
     assert _post(client, f"/marketing-hub/threads/{tid}/assign",
                  {"assignee_id": str(owner_id)}).status_code == 302
 
-    # Once owned, the Claim button is gone (dropdown handles reassignment).
+    # Once owned, the Claim button is gone.
     reopened = client.get(f"/app/inbox?thread={tid}").get_data(as_text=True)
     assert ">Claim<" not in reopened, "Claim button lingered after claiming"
 
@@ -779,10 +900,49 @@ def test_empty_inbox_prompts_channel_connect():
     print("PASS: empty inbox prompts channel connect for day-0 orientation")
 
 
+def test_reply_sends_in_place_without_demo_toast():
+    """A reply must land in the thread without a full reload or a 'demo' toast."""
+    with webapp.app.app_context():
+        uid = db.create_user(
+            "ajax-reply@example.com", "disabled", "Ajax Reply", verified=True)
+    client = _client_for(uid)
+    assert _post(client, "/marketing-hub/sources", {
+        "channel": "email", "label": "Main", "identifier": "hi@example.com",
+    }).status_code == 302
+    with webapp.app.app_context():
+        source_id = db.list_marketing_sources(uid)[0]["id"]
+    assert _post(client, "/marketing-hub/threads", {
+        "source_id": str(source_id), "contact_name": "Jamie Cole",
+        "contact_handle": "jamie@example.com", "subject": "Visit times",
+        "body": "When is screening this week?",
+    }).status_code == 302
+    with webapp.app.app_context():
+        thread_id = db.list_marketing_threads(uid)[0]["id"]
+    page = client.get(f"/app/inbox?thread={thread_id}").get_data(as_text=True)
+    assert "data-ajax-quiet" in page
+    assert 'data-optimistic="#messageList"' in page
+    sent = client.post(
+        f"/marketing-hub/threads/{thread_id}/reply",
+        data={"_csrf_token": CSRF, "body": "Tuesday or Thursday both work."},
+        headers={"X-BridgeMD-Ajax": "1"},
+        follow_redirects=False)
+    assert sent.status_code == 200, sent.status_code
+    assert sent.content_type.startswith("application/json")
+    payload = sent.get_json()
+    assert payload["ok"] is True
+    assert "Demo reply" not in (payload.get("toast") or "")
+    assert not payload.get("toast")
+    with webapp.app.app_context():
+        bodies = [m["body"] for m in db.list_marketing_messages(uid, thread_id)]
+        assert "Tuesday or Thursday both work." in bodies
+    print("PASS: reply sends in place with no demo toast")
+
+
 def main():
     try:
         test_marketing_hub_flow()
         test_quick_replies_and_context_drafts()
+        test_bridget_pane_writes_reply_when_thread_open()
         test_unread_by_study_counts()
         test_inbox_study_scoper()
         test_inbox_owner_filter()
@@ -790,8 +950,10 @@ def main():
         test_owed_reply_sorts_first()
         test_awaiting_reply_badge()
         test_empty_inbox_prompts_channel_connect()
+        test_reply_sends_in_place_without_demo_toast()
         test_marketing_seed_is_gated_to_demo_account()
         test_demo_seed_preserves_live_connections_and_fills_each_trial()
+        test_demo_team_is_fictional()
         test_demo_records_and_checklist()
         print("PASS: marketing hub tests")
     finally:
