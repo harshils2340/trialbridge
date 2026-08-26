@@ -146,6 +146,17 @@ def test_find_trial_is_split_carousel():
     print("PASS: /find-trial is the production split carousel")
 
 
+def test_find_trial_book_a_call_uses_cal_link():
+    """The sites-side Book a call pill must open Cal.com. The header lives in
+    a Jinja macro imported without context, so cal_link has to be passed in."""
+    client = app.app.test_client()
+    html = client.get("/find-trial").get_data(as_text=True)
+    assert 'class="pill-nav-cta"' in html
+    assert 'href="' + app.CAL_LINK + '"' in html
+    assert 'Book a call' in html
+    print("PASS: /find-trial Book a call points at Cal.com")
+
+
 def test_for_sites_legacy_url_redirects_home():
     """The footer used to 404 on /for-sites. That path must 301 to the hub."""
     from urllib.parse import urlparse
@@ -165,6 +176,7 @@ def main():
         test_label_canada_city_region,
         test_results_hide_probably_not_by_default,
         test_find_trial_is_split_carousel,
+        test_find_trial_book_a_call_uses_cal_link,
         test_for_sites_legacy_url_redirects_home,
     ]
     failed = 0

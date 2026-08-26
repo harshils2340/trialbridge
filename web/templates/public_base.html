@@ -90,7 +90,7 @@
 {% set home_screen = landing_page|default(false) %}
 <body class="pub{{ ' pub-marketing' if request.endpoint not in ('for_sites', 'for_sites_feature') else '' }}{{ ' demo-home' if demo_home else '' }}{{ ' home-screen' if home_screen else '' }}{{ ' is-fy-split' if home_screen else '' }}{{ ' fs-page' if request.endpoint in ('for_sites', 'for_sites_feature') else '' }}">
 <a class="skip-link" href="#main">Skip to main content</a>
-{% block site_header %}{{ pub_chrome.header() }}{% endblock %}
+{% block site_header %}{{ pub_chrome.header(cal_link) }}{% endblock %}
 <div class="toast-stack">
   {% with messages = get_flashed_messages(with_categories=true) %}
     {% for cat, msg in messages %}

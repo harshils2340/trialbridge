@@ -70,7 +70,7 @@ body.pub-marketing .chip:hover{ border-color:rgba(18,87,176,.28); color:#1257b0;
 </style>
 {% endmacro %}
 
-{% macro header() %}
+{% macro header(cal_link='') %}
 {{ nav.pill(
   [('How it works', url_for('for_sites') ~ '#features'),
    ('Trial finder', url_for('home')),

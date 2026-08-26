@@ -105,19 +105,35 @@
         'screening':'violet', 'enrolled':'ok', 'disqualified':'neutral',
         'archived':'neutral'
       } %}
-      {# One filter row: equal-width tabs (Outlook-style). Owner scope first,
-         then stage. Only one tab shows active at a time. #}
+      {# Outlook-style filter row: the owner scope as a two-way segmented control
+         (Mine / Unassigned, like Focused / Other) and everything else - stage and
+         open/resolved - behind one Filter menu. The six stage tabs that used to
+         sit here were clutter for a question most people ask rarely. #}
       <div class="mh-filterbar">
-        <nav class="mh-inbox-tabs" aria-label="Inbox filters">
-          <a class="mh-inbox-tab {{ 'is-active' if owner_filter != 'unassigned' }}"
-             href="{{ url_for('marketing_hub', owner='mine', stage=stage_filter, status=status_filter, source=source_filter, channel=channel_filter, q=search_query) }}">{{ ic.icon('inbox') }}<span>Mine</span></a>
-          <a class="mh-inbox-tab {{ 'is-active' if owner_filter == 'unassigned' }}"
-             href="{{ url_for('marketing_hub', owner='unassigned', stage=stage_filter, status=status_filter, source=source_filter, channel=channel_filter, q=search_query) }}"><span>Unassigned</span>{% if unassigned_count %}<span class="mh-tab-count">{{ unassigned_count }}</span>{% endif %}</a>
-          {% for key in ['all','new','outreach','prescreen','screening','enrolled'] %}
-          <a class="mh-inbox-tab {{ 'is-active' if stage_filter == key }}"
-             href="{{ url_for('marketing_hub', owner='mine', stage=key, status=status_filter, source=source_filter, channel=channel_filter, q=search_query) }}"><span>{{ stage_labels[key] }}</span><span class="mh-tab-count">{{ stage_counts.get(key, 0) }}</span></a>
-          {% endfor %}
+        <nav class="mh-scope-seg" aria-label="Owner">
+          <a class="mh-seg {{ 'is-active' if owner_filter != 'unassigned' }}"
+             href="{{ url_for('marketing_hub', owner='mine', stage=stage_filter, status=status_filter, source=source_filter, channel=channel_filter, q=search_query) }}">Mine</a>
+          <a class="mh-seg {{ 'is-active' if owner_filter == 'unassigned' }}"
+             href="{{ url_for('marketing_hub', owner='unassigned', stage=stage_filter, status=status_filter, source=source_filter, channel=channel_filter, q=search_query) }}">Unassigned{% if unassigned_count %}<span class="mh-tab-count">{{ unassigned_count }}</span>{% endif %}</a>
         </nav>
+        {% set filter_on = stage_filter != 'all' or status_filter != 'open' %}
+        <details class="appmenu mh-filter">
+          <summary class="mh-filter-btn {{ 'is-on' if filter_on }}" aria-label="Filter conversations">
+            {{ ic.icon('list') }}<span>{{ stage_labels[stage_filter] if stage_filter != 'all' else 'Filter' }}{% if status_filter == 'resolved' %} &middot; Resolved{% elif status_filter == 'all' %} &middot; Everything{% endif %}</span>{{ ic.icon('chevron-down') }}
+          </summary>
+          <div class="appmenu-panel" role="menu">
+            <div class="appmenu-h">Stage</div>
+            {% for key in ['all','new','outreach','prescreen','screening','enrolled'] %}
+            <a class="appmenu-item simple mh-filter-opt {{ 'is-on' if stage_filter == key }}" role="menuitemradio" aria-checked="{{ 'true' if stage_filter == key else 'false' }}"
+               href="{{ url_for('marketing_hub', owner=owner_filter, stage=key, status=status_filter, source=source_filter, channel=channel_filter, q=search_query) }}"><span>{{ 'All stages' if key == 'all' else stage_labels[key] }}</span><em>{{ stage_counts.get(key, 0) }}</em></a>
+            {% endfor %}
+            <div class="appmenu-h">Show</div>
+            {% for key, lbl in [('open', 'Open'), ('resolved', 'Resolved'), ('all', 'Everything')] %}
+            <a class="appmenu-item simple mh-filter-opt {{ 'is-on' if status_filter == key }}" role="menuitemradio" aria-checked="{{ 'true' if status_filter == key else 'false' }}"
+               href="{{ url_for('marketing_hub', owner=owner_filter, stage=stage_filter, status=key, source=source_filter, channel=channel_filter, q=search_query) }}"><span>{{ lbl }}</span></a>
+            {% endfor %}
+          </div>
+        </details>
       </div>
 
       <div class="mh-thread-stack">

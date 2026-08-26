@@ -406,57 +406,39 @@ textarea { resize: vertical; min-height: 150px; line-height: 1.6; }
 .mh-thread-row p { font-size:11.5px; line-height:1.45; margin-left:38px; }
 .mh-thread-row-foot { margin-left:38px; flex-wrap:wrap; }
 
-/* Owner scope + stage filters share one equal-width tab row. */
-.mh-filterbar { min-width:0; padding:0; border-bottom:1px solid var(--border);
-  overflow-x:auto; scrollbar-width:none; }
-.mh-filterbar::-webkit-scrollbar { display:none; }
-/* Eight tabs at 72px never fit a 320-350px column; scrolling a tab strip
-   sideways was the least usable thing in the inbox. Tabs keep their minimum
-   width and wrap into two rows of four in a narrow column, one row of eight
-   when the column is wide (12.5% each). */
-.mh-filterbar { container-type:inline-size; }
-.mh-inbox-tabs { display:flex; flex-wrap:wrap; align-items:stretch; width:100%; min-width:0; }
-.mh-inbox-tab {
-  --mh-tab-w:72px;
-  box-sizing:border-box;
-  flex:1 0 25%;
-  width:auto;
-  min-width:0;
-  min-height:36px;
-  display:inline-flex;
-  align-items:center;
-  justify-content:center;
-  gap:4px;
-  padding:8px 4px;
-  border:0;
-  border-bottom:2px solid transparent;
-  background:transparent;
-  color:var(--muted);
-  font:inherit;
-  font-size:10.5px;
-  font-weight:700;
-  line-height:1.15;
-  text-align:center;
-  text-decoration:none;
-  white-space:nowrap;
-}
-@container (min-width:600px) { .mh-inbox-tab { flex-basis:12.5%; } }
-.mh-inbox-tab > span:first-child { overflow:hidden; text-overflow:ellipsis; }
-.mh-inbox-tab .ico { width:12px; height:12px; flex:0 0 auto; }
-.mh-inbox-tab .mh-tab-count {
-  /* Integer box, text centred by flex: a fractional line-height (9px x 1.2)
-     plus 1px padding rounded differently per pill once the inbox is scaled
-     in the landing frame, so one "24" sat a pixel lower than its neighbour. */
+/* Outlook-style filter row: the owner scope as a two-way segmented control
+   (Mine / Unassigned, like Focused / Other), and everything else - stage and
+   open/resolved - behind one Filter menu. No overflow here: the menu is an
+   absolutely positioned popover and overflow-x:auto would have clipped it. */
+.mh-filterbar { display:flex; align-items:center; justify-content:space-between; gap:8px;
+  min-width:0; padding:6px 10px; border-bottom:1px solid var(--border); }
+.mh-scope-seg { display:inline-flex; align-items:center; gap:2px; padding:2px; min-width:0;
+  border-radius:8px; background:var(--surface-2); }
+.mh-seg { display:inline-flex; align-items:center; gap:6px; padding:5px 10px; border-radius:6px;
+  color:var(--muted); font:600 12px/1.2 var(--sans); text-decoration:none; white-space:nowrap; }
+.mh-seg:hover { color:var(--ink); text-decoration:none; }
+.mh-seg.is-active { background:var(--surface); color:var(--ink);
+  box-shadow:0 1px 2px rgba(15,23,42,.10); }
+.mh-tab-count {
+  /* Integer box, text centred by flex: a fractional line-height rounds
+     differently per pill once the inbox is scaled in the landing frame. */
   display:inline-flex; align-items:center; justify-content:center;
   box-sizing:border-box; min-width:16px; height:14px; padding:0 5px;
   border-radius:999px; background:var(--accent-soft); color:var(--accent);
   font-size:9px; font-weight:750; line-height:1;
 }
-.mh-inbox-tab:hover { color:var(--ink-soft); background:var(--surface-2); text-decoration:none; }
-.mh-inbox-tab.is-active {
-  color:var(--accent); border-bottom-color:var(--accent); background:var(--surface);
-}
-.mh-inbox-tab.is-active .mh-tab-count { background:var(--accent); color:var(--accent-ink); }
+.mh-seg.is-active .mh-tab-count { background:var(--accent); color:var(--accent-ink); }
+.mh-filter { flex:0 0 auto; }
+.mh-filter-btn { display:inline-flex; align-items:center; gap:5px; padding:5px 8px;
+  border-radius:6px; color:var(--muted); font:600 12px/1.2 var(--sans); white-space:nowrap; }
+.mh-filter-btn:hover, .mh-filter[open] > .mh-filter-btn { background:var(--surface-2); color:var(--ink); }
+.mh-filter-btn.is-on { color:var(--accent); background:var(--accent-soft); }
+.mh-filter-btn .ico { width:14px; height:14px; }
+.mh-filter .appmenu-panel { min-width:210px; }
+.mh-filter-opt { justify-content:space-between; }
+.mh-filter-opt em { font-style:normal; font-size:11.5px; font-weight:600; color:var(--faint); }
+.mh-filter-opt.is-on { color:var(--accent); }
+.mh-filter-opt.is-on em { color:var(--accent); }
 .mh-filterbar .mh-owner-toggle { flex:0 0 auto; margin:0; border-bottom:0;
   padding:0; }
 .mh-filterbar .mh-stage-tabs { flex:1 1 auto; min-width:0; border-bottom:0;
@@ -9752,7 +9734,6 @@ html.fs-motion .fsx-proof-stat:nth-child(4) { transition-delay:.18s; }
 .mh-thread-toolbar .mh-search { min-height:36px; background:var(--surface); }
 .mh-thread-toolbar .ui-icon-btn { width:36px; height:36px; }
 .mh-owner-toggle { margin-top:var(--space-2); }
-.mh-inbox-tabs .mh-inbox-tab { --mh-tab-w:72px; min-height:36px; font-size:var(--text-xs); }
 .mh-stage-tabs { min-height:45px; align-items:center; gap:2px; }
 .mh-stage-tabs a { padding:6px; }
 
@@ -10108,9 +10089,9 @@ html.ui-motion [data-ui-reveal].is-visible { opacity:1; transform:none;
     border-radius:12px; color:var(--ink); background:var(--surface-2); text-decoration:none; }
   .mh-back .ico { width:18px; height:18px; }
   .mh-conversation-head { gap:10px; }
-  .mh-owner-toggle a, .mh-inbox-tabs .mh-inbox-tab, .mh-thread-tabs a, .mh-stage-tabs a, .mh-quick-chip {
+  .mh-owner-toggle a, .mh-thread-tabs a, .mh-stage-tabs a, .mh-quick-chip {
     min-height:44px; padding:10px 8px; font-size:13px; }
-  .mh-inbox-tabs .mh-inbox-tab { --mh-tab-w:84px; }
+  .mh-seg, .mh-filter-btn { min-height:40px; padding:8px 12px; font-size:13px; }
   .mh-search { min-height:44px; }
   .mh-search input { height:44px; }
   .mh-scope select, .mh-resolve-btn, .mh-assign-form select { min-height:44px; }
