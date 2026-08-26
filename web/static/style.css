@@ -437,9 +437,13 @@ textarea { resize: vertical; min-height: 150px; line-height: 1.6; }
 .mh-inbox-tab > span:first-child { overflow:hidden; text-overflow:ellipsis; }
 .mh-inbox-tab .ico { width:12px; height:12px; flex:0 0 auto; }
 .mh-inbox-tab .mh-tab-count {
-  min-width:16px; padding:1px 5px; border-radius:999px;
-  background:var(--accent-soft); color:var(--accent);
-  font-size:9px; font-weight:750; line-height:1.2;
+  /* Integer box, text centred by flex: a fractional line-height (9px x 1.2)
+     plus 1px padding rounded differently per pill once the inbox is scaled
+     in the landing frame, so one "24" sat a pixel lower than its neighbour. */
+  display:inline-flex; align-items:center; justify-content:center;
+  box-sizing:border-box; min-width:16px; height:14px; padding:0 5px;
+  border-radius:999px; background:var(--accent-soft); color:var(--accent);
+  font-size:9px; font-weight:750; line-height:1;
 }
 .mh-inbox-tab:hover { color:var(--ink-soft); background:var(--surface-2); text-decoration:none; }
 .mh-inbox-tab.is-active {
