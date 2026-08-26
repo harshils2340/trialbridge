@@ -44,12 +44,15 @@ CDN_IMG = "https://framerusercontent.com/images/"
 LOGO_API = "https://logos-api.apistemic.com/domain:"
 
 # Hero copy: who it's for, then what it is, in the first screen. No em dashes.
+# Two sentences: the first period is a <br> in the hero. Lead with marketing
+# sources, then Bridget as an action-taking tool with a human in the loop.
 EYEBROW = "For research sites and study teams"
 H1_L1 = "Every Patient Inquiry"
 H1_L2 = "In One Shared Inbox"
-SUBHEAD = ("BridgeMD is the shared inbox your coordinators use to answer people "
-           "who want to join your trials. Email, ads, web forms, and referrals "
-           "all land here, on this website.")
+SUBHEAD = ("Ads, email, web forms, referrals, and every other marketing channel "
+           "land in one inbox. Bridget, the AI, can take action for your team, "
+           "from replies and blasts to booking and coverage, and a coordinator "
+           "confirms every send so it stays compliant.")
 
 # Word-split headings (anchored by their now-new data-framer-name prefix) whose SSR
 # visible text must be rewritten to the plain new copy.
@@ -380,20 +383,20 @@ EMBED_HTML = (
 # accordion that is dead now that we strip the runtime. So we render our own
 # using native <details>/<summary>, zero JS, works everywhere. Content is
 # capability/scope facts only (compliance.mdc + product-identity.mdc): Bridget
-# drafts + human sends, no-training + de-identified + audit-logged, free for
-# physicians / flat license, and "runs the inbox, not eligibility".
+# proposes actions + human confirms, no-training + de-identified + audit-logged,
+# free for physicians / flat license, and "runs the inbox, not eligibility".
 FAQ_ITEMS = [
     ("What is BridgeMD?",
-     "A shared inbox for clinical research sites, used by coordinators on this "
-     "website. Patients who want to join a trial use the public trial finder. "
-     "Inquiries from email, web forms, ads, social, ClinicalTrials.gov, and "
-     "physician referrals all land in one place, organized by study, so your team "
-     "can reply fast and never lose a message."),
+     "A shared inbox for clinical research sites. Ads, email, web forms, referrals, "
+     "and other marketing channels land in one place, organized by study. Bridget, "
+     "the AI, can take action there, from replies and blasts to booking and coverage. "
+     "A coordinator reviews every send, so the team follows up from this website "
+     "without losing a message."),
     ("What's a patient inbox?",
-     "It is the same idea as email, but only for people asking about your trials. "
-     "Your study team opens BridgeMD, sees every inquiry in one list, and replies "
-     "from here. Patients do not log into this inbox; they write in through email, "
-     "ads, forms, or the trial finder."),
+     "It is the same idea as email, built for the study team. Coordinators open "
+     "BridgeMD, see every inbound message from ads, forms, email, and referrals in "
+     "one list, reply from here, and send email or text blasts. Patients do not log "
+     "into this inbox; they write in through those channels or the trial finder."),
     ("What's the trial finder?",
      "A separate thing from the inbox. It is a public search page where people look "
      "up studies by condition and location and ask to join. You can share the link, "
@@ -407,8 +410,11 @@ FAQ_ITEMS = [
      "your site, every search becomes an inquiry, already sorted by study. Replies "
      "go back out on the same channel."),
     ("How does Bridget, the AI assistant, work?",
-     "Bridget summarizes a conversation thread and drafts a reply for your staff to "
-     "review and send. It never sends on its own. A human always decides."),
+     "You tell Bridget what to do, and it takes the action for you to confirm. That "
+     "includes replies, email or text blasts, booking links, handing coverage to a "
+     "teammate, and reading the queue so you know what needs attention. It never "
+     "sends on its own and never decides eligibility. A human always reviews, and "
+     "every action is audit-logged."),
     ("Do you train AI on our patient data?",
      "No. Inquiry and patient data is not used to train any model, it runs on a "
      "no-training endpoint, and it is de-identified. Every action is audit-logged."),
@@ -838,9 +844,8 @@ COPY = [
     ("Saify is the ultimate AI-driven email marketing solution designed to boost "
      "outreach, automate campaigns, and increase conversions. Start scaling your "
      "email strategy today!",
-     "BridgeMD is the shared inbox research sites use to answer people who want "
-     "to join their trials. Email, ads, web forms, and referrals land in one place "
-     "for the study team."),
+     "Ads, email, forms, and referrals land in one shared inbox. Bridget, the AI, "
+     "can take action for the study team, with a coordinator confirming every send."),
     # hero
     ("Unlimited Leads, Unlimited Outreach, Unlimited Growth", EYEBROW),
     ("Attract and Win Your Perfect Customers", f"{H1_L1} {H1_L2}"),
@@ -868,11 +873,11 @@ COPY = [
      "to reach your ideal customers effortlessly.",
      "Link email, Instagram, Facebook, Google Ads, and referrals, then pick the "
      "intake each study uses."),
-    ("Stay Spam-Free with Warmup", "Tell Bridget what to say"),
+    ("Stay Spam-Free with Warmup", "Tell Bridget what to do"),
     ("Activate with one click to keep your emails out of spam and ensure reliable "
      "inbox delivery.",
-     "Say what you want written. Bridget reads the thread and drafts the reply "
-     "for you to edit and send."),
+     "Ask it to reply, blast a list, send a booking link, or cover for a teammate. "
+     "A coordinator reviews every action before anything goes out."),
     ("Limitless Emails &amp; Outreach", "Email or text blast from one list"),
     ("Limitless Emails & Outreach", "Email or text blast from one list"),
     ("Email or text a cohort from one list", "Email or text blast from one list"),
