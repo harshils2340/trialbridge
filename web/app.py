@@ -5351,9 +5351,9 @@ _LANDING_HERO_IMAGE_RE = re.compile(
 #   .8 - 1     shrinks back toward the centre and fades; the next section is
 #              already rising underneath it, so no blank runway is left
 # p reaches 1 when the next section's top is 25% down the viewport.
-# Below the tablet breakpoint there is no runway and the frame just sits in
-# the slot (a desktop app scaled into 350px isn't usable anyway); the bar's
-# "Open full size" is the way in there.
+# On phones the frame is phone-shaped (the app's own mobile layout at a 390px
+# viewport, ~72vh tall) and goes through the same stage, expanding to the
+# width of the screen under the nav.
 #
 # How it navigates. Every thread click is a full document load inside the
 # frame, and the blank between documents read as a flicker. So the frame is
@@ -5386,8 +5386,12 @@ _LANDING_DEMO_PORTAL = (
     '.landing-demo-bar .dot{width:8px;height:8px;border-radius:50%;background:#22a06b;flex:0 0 auto}'
     '.landing-demo-bar b{color:#12122b;font-weight:700}'
     '.landing-demo-bar .hint{overflow:hidden;text-overflow:ellipsis}'
-    '.landing-demo-bar [data-live],.landing-demo.is-live .landing-demo-bar [data-idle]{display:none}'
+    '.landing-demo-bar [data-live],.landing-demo-bar [data-live-m],.landing-demo-bar [data-idle-m],'
+    '.landing-demo.is-live .landing-demo-bar [data-idle]{display:none}'
     '.landing-demo.is-live .landing-demo-bar [data-live]{display:inline}'
+    '@media(max-width:809px){.landing-demo-bar [data-idle],.landing-demo-bar [data-live]{display:none!important}'
+    '.landing-demo-bar [data-idle-m]{display:inline}.landing-demo.is-live .landing-demo-bar [data-idle-m]{display:none}'
+    '.landing-demo.is-live .landing-demo-bar [data-live-m]{display:inline}}'
     '.landing-demo-bar .demo-open{margin-left:auto;color:#1257b0;font-weight:600;'
     'text-decoration:none;flex:0 0 auto}'
     '.landing-demo-bar .demo-open:hover{text-decoration:underline}'
@@ -5399,13 +5403,13 @@ _LANDING_DEMO_PORTAL = (
     '.landing-demo iframe[data-buffer]{visibility:hidden}'
     '.landing-demo.is-live iframe{pointer-events:auto}'
     '.landing-demo-runway{height:150vh}'
-    '@media(max-width:809px){.landing-demo-runway{display:none}'
-    '.landing-demo-bar .hint{display:none}}'
+    '@media(max-width:809px){.landing-demo-runway{height:130vh}}'
     '</style>'
     '<div class="landing-demo">'
     '<div class="landing-demo-bar"><span class="dot"></span><b>Live demo</b>'
     '<span class="hint"><span data-idle>Scroll down to expand it and try it yourself</span>'
-    '<span data-live>This is the real product. Click anything.</span></span>'
+    '<span data-live>This is the real product. Click anything.</span>'
+    '<span data-idle-m>Scroll to try it</span><span data-live-m>Tap anything</span></span>'
     f'<a class="demo-open" href="{_LANDING_INBOX}" target="_blank" rel="noopener">'
     'Open full size &#8599;</a></div>'
     '<div class="landing-demo-clip"><div class="landing-demo-scale">'
@@ -5431,8 +5435,13 @@ _LANDING_DEMO_PORTAL = (
     'sc.style.height=f.style.height=g.style.height=VH+"px"}'
     'function layout(){raf=0;'
     'var vw=window.innerWidth,vh=window.innerHeight,sy=window.scrollY||0,sx=window.scrollX||0,'
-    'sr=box.getBoundingClientRect(),p=0;'
-    'if(vw>=810&&runway.offsetHeight>0){'
+    'phone=vw<810;'
+    # Phone slot: Framer's hero image box is a 180px banner; make it a phone
+    # screen (~72vh, no wider than 9:17) and let the page flow around it.
+    'if(phone){var bw=box.getBoundingClientRect().width,bh=Math.round(Math.min(vh*.72,bw*1.9));'
+    'if(box.style.height!==bh+"px")box.style.height=bh+"px"}else if(box.style.height)box.style.height="";'
+    'var sr=box.getBoundingClientRect(),p=0,NAVP=phone?80:NAV;'
+    'if(runway.offsetHeight>0){'
     'var start=sr.top+sy-vh*.18,end=runway.getBoundingClientRect().bottom+sy-vh*.25;'
     'p=clamp((sy-start)/Math.max(1,end-start),0,1)}'
     'var x,y,w,h,fixed=p>0;'
@@ -5442,15 +5451,15 @@ _LANDING_DEMO_PORTAL = (
     # frame never letterboxes and the expansion eases from a fixed start rect.
     # Phones get the app's own mobile layout (390px viewport at ~.9x).
     'x0=sr.left;y0=vh*.18;w0=sr.width;h0=sr.height;AR=w0/Math.max(1,h0-BAR);'
-    'VW=vw<810?390:VW0;VH=Math.round(VW/AR);size()}'
+    'VW=phone?390:VW0;VH=Math.round(VW/AR);size()}'
     # Stage: nearly the full width of the screen, from under the nav to a small
     # bottom margin. The frame's aspect is free to change on the way there.
-    'else{var tw=Math.min(vw*.96,1920),th=vh-NAV-24,'
-    'tx=(vw-tw)/2,ty=NAV,e=ease(clamp(p/.5,0,1));'
+    'else{var tw=phone?vw-16:Math.min(vw*.96,1920),th=vh-NAVP-(phone?12:24),'
+    'tx=(vw-tw)/2,ty=NAVP,e=ease(clamp(p/.5,0,1));'
     'x=x0+(tx-x0)*e;y=y0+(ty-y0)*e;w=w0+(tw-w0)*e;h=h0+(th-h0)*e;'
     # The app's viewport widens with the frame so it lands at native 1:1 scale
     # (largest, crispest, most room). Rounded to 8px to limit reflow churn.
-    'var vwp=Math.round((VW0+(tw-VW0)*e)/8)*8,vhp=Math.round((h-BAR)/(w/vwp));'
+    'var vwp=phone?390:Math.round((VW0+(tw-VW0)*e)/8)*8,vhp=Math.round((h-BAR)/(w/vwp));'
     'if(vwp!==VW||vhp!==VH){VW=vwp;VH=vhp;size()}}'
     # Exit mirrors the entrance: shrink toward the centre while fading.
     'if(fixed&&p>.8){var q=ease(clamp((p-.8)/.2,0,1)),k=1-.4*q,w2=w*k,h2=h*k;'

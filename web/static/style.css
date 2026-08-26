@@ -8545,9 +8545,16 @@ body[data-embed="1"] .mh-page .mh-workspace {
    sideways as 63px slivers); only lift the height cap so it fills the frame. */
 body[data-embed="1"] .mh-thread-column { max-height: none; }
 /* Phone-width embed (the landing hero on a phone): a 320px dock would cover
-   most of a 390px viewport, so show the inbox itself and drop the dock. */
+   most of a 390px viewport, so show the inbox itself and drop the dock. The
+   inbox is sized 100dvh on phones while the 56px top bar stays in flow, which
+   pushed the composer off the bottom of the frame; take the bar off. */
 @media (max-width: 809px) {
   body[data-embed="1"] #copilot { display: none !important; }
+  body[data-embed="1"] .appshell:has(.mh-page) .appbody,
+  body[data-embed="1"] .mh-page,
+  body[data-embed="1"] .mh-page .mh-workspace {
+    height: calc(100dvh - 56px); max-height: calc(100dvh - 56px);
+  }
 }
 body[data-embed="1"] #copilot {
   width: var(--appdock-w, 320px) !important;
@@ -10084,7 +10091,10 @@ html.ui-motion [data-ui-reveal].is-visible { opacity:1; transform:none;
     flex:1; min-height:0; height:auto; max-height:none;
     display:grid; grid-template-columns:minmax(0,1fr); overflow:hidden; }
   .mh-workspace.is-list-only .mh-conversation { display:none; }
-  .mh-workspace:not(.is-list-only) .mh-thread-column { display:none; }
+  /* Hide the list only when a thread is actually open. The server picks an
+     active thread even without ?thread=, so `:not(.is-list-only)` hid the
+     list while the conversation was ALSO hidden - a blank inbox on phones. */
+  .mh-workspace.is-thread-selected .mh-thread-column { display:none; }
   .mh-thread-column, .mh-conversation {
     min-height:0; max-height:none; height:100%; overflow:hidden; }
   .mh-thread-stack { max-height:none; min-height:0; }
