@@ -15,7 +15,9 @@ import match_trials as mt
 
 from copy_sanitize import sanitize_copy
 
-from . import actions, registry, tools
+import db
+
+from . import actions, drafts, registry, tools
 
 SYSTEM_PROMPT = (
     "You are BridgeMD Copilot, an assistant for a clinical-trial study team. "
@@ -109,6 +111,31 @@ STARTERS = [
     "Send a blast to everyone accepted",
 ]
 
+# Starting points while an inbox conversation is open. Each is an instruction
+# the reply drafter understands (drafts._ASK_LADDER), so clicking one writes a
+# reply into the box rather than answering in the rail. The rail shows the same
+# four in its empty state (see _copilot.html); keep the two lists identical.
+DRAFT_PRESETS = [
+    "Answer their question",
+    "Offer a call",
+    "Ask availability",
+    "Check in",
+]
+
+# With a conversation open, anything addressed to the other person is a reply
+# to write, not a question to answer. These are the giveaways.
+_DRAFT_CUES = ("reply", "respond", "answer", "draft", "write", "tell them",
+               "tell her", "tell him", "say ", "let them know", "let her know",
+               "let him know", "ask them", "ask her", "ask him", "ask if",
+               "ask whether", "ask for", "ask which", "ask what", "ask when",
+               "offer", "thank", "check in", "follow up", "nudge", "decline",
+               "not a fit", "invite", "confirm", "apolog", "them", "their",
+               "they")
+
+
+def _wants_draft(q):
+    return any(c in q for c in _DRAFT_CUES)
+
 # The trace ("what I actually did") now lives with each tool in registry.py.
 
 # The planner picks a tool. When an LLM key is set it reads the registry menu and
@@ -137,8 +164,17 @@ def _classify(query, ctx=None):
     'who is stuck' read."""
     ctx = ctx or {}
     has_lead = bool(ctx.get("has_lead"))
+    has_thread = bool(ctx.get("has_thread"))
     active_nct = (ctx.get("active_nct") or "").strip().upper()
     q = (query or "").lower().strip()
+
+    # An inbox conversation is open: the person is looking at a message and
+    # Bridget is the only writer on the page. Anything aimed at the other
+    # person ("offer a call", "tell them the next step") is a reply to write.
+    # Workspace questions ("list my studies", "who is out of window") still
+    # fall through to the read tools below.
+    if has_thread and _wants_draft(q):
+        return "draft_reply", {}
 
     m = re.search(r"(mention|about|said|talk\w*|contain\w*)\s+[\"']?([\w\- ]{2,40})",
                   q)
@@ -229,6 +265,8 @@ def _classify(query, ctx=None):
     if any(w in q for w in ("draft", "reply", "replies", "message", "write",
                             "follow up", "followup", "nudge", "reschedule",
                             "thank", "respond")):
+        if has_thread:
+            return "draft_reply", {}
         # No applicant open -> they mean their inbox, not one person. Route to the
         # inbox reader (which drafts per applicant) instead of dead-ending on
         # "open an applicant first".
@@ -302,6 +340,10 @@ def _classify(query, ctx=None):
     if any(w in q for w in ("summar", "brief", "who is this", "tell me about",
                             "this applicant", "this candidate", "recap")):
         return "applicant_summary", {}
+    # Nothing matched. With a conversation open that means "write this", not
+    # "I do not understand": a sentence typed at an open message is a reply.
+    if has_thread:
+        return "draft_reply", {}
     return "help", {}
 
 
@@ -411,6 +453,8 @@ def _sanitize_answer(res):
         return res
     if res.get("answer"):
         res["answer"] = sanitize_copy(res["answer"])
+    if res.get("draft"):
+        res["draft"] = sanitize_copy(res["draft"])
     prop = res.get("proposal")
     if isinstance(prop, dict):
         for key in ("text", "target", "confirm_label", "blocked"):
@@ -436,7 +480,22 @@ def answer(user_id, query, context=None):
     context = dict(context or {})
     context["user_id"] = user_id
     lead_id = context.get("lead_id")
-    intent, params = _plan(query, context)
+    thread_id = context.get("thread_id")
+    if thread_id:
+        # Keyword rules only. The LLM planner routes across the registry and
+        # knows nothing about an open conversation; with one open the question
+        # is "write or answer", and the rules decide that deterministically.
+        intent, params = _classify(query, context)
+        tool = registry.get(intent)
+        # Anything that would act on, or needs, an open applicant is a reply to
+        # write here: "send them the booking link" with a conversation open
+        # means a message saying so, not a proposal that dead-ends on
+        # "no applicant open".
+        if intent == "draft_reply" or tool is None or tool.kind == "action" \
+                or tool.needs_lead:
+            return _sanitize_answer(_draft_reply(user_id, thread_id, query))
+    else:
+        intent, params = _plan(query, context)
     params = _enrich_params(params, context, query)
 
     tool = registry.get(intent)
@@ -471,6 +530,53 @@ def answer(user_id, query, context=None):
         "trace": tool.trace,
         "suggestions": suggestions,
     })
+
+
+def draft_for_thread(user_id, thread_id, instruction=""):
+    """Write the reply for an inbox conversation.
+
+    ``instruction`` is what the coordinator asked for ("offer a screening call
+    next week"); with none, the draft answers the last inbound message. Returns
+    {draft, target} or {error}. Never sends: the text lands in the reply box
+    for a person to edit and send (COMPLIANCE.md). Shared by the rail
+    (/app/copilot/ask with a thread open) and the thread's draft.json endpoint
+    so both write the same reply."""
+    thread = db.get_marketing_thread(user_id, thread_id)
+    if not thread:
+        return {"error": "I can't find that conversation."}
+    instruction = (instruction or "").strip()[:400]
+    messages = db.list_marketing_messages(user_id, thread_id)
+    latest = next(
+        (row["body"] for row in reversed(messages) if row["kind"] == "inbound"),
+        "")
+    if not latest and not instruction:
+        return {"error": "No inbound message to draft from."}
+    first = (thread["contact_name"] or "there").split()[0]
+    study = thread["study_label"] or "the study"
+    text = drafts.draft("reply", {
+        "first": first, "study": study, "inbound": latest, "ask": instruction})
+    return {"draft": text,
+            "target": thread["contact_name"] or thread["contact_handle"]
+            or "this contact",
+            "first": first}
+
+
+def _draft_reply(user_id, thread_id, query):
+    """The rail's answer when a conversation is open: the reply goes into the
+    box, the rail says so, and offers the other starting points."""
+    res = draft_for_thread(user_id, thread_id, query)
+    if res.get("error"):
+        return {"answer": res["error"], "citations": [], "suggestions": []}
+    used = (query or "").strip().lower()
+    return {
+        "answer": f"Written into the reply box for {res['first']}. Edit it "
+                  "there and send it when it reads right.",
+        "draft": res["draft"],
+        "target": res["target"],
+        "citations": [],
+        "trace": ["Read this conversation", "Wrote a reply for you to review"],
+        "suggestions": [p for p in DRAFT_PRESETS if p.lower() != used],
+    }
 
 
 def _propose(intent, user_id, lead_id, params, ctx, query):

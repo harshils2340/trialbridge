@@ -44,6 +44,17 @@ def build(user, data=None):
     else:
         ctx["scope_label"] = "All studies"
 
+    # The inbox conversation that is open on screen, if any. With one open,
+    # Bridget writes the reply into that thread's box instead of answering in
+    # the rail (see agent._classify): one Bridget, and it knows what is open.
+    thread_id = data.get("thread_id")
+    if thread_id is not None and thread_id != "":
+        try:
+            ctx["thread_id"] = int(thread_id)
+        except (TypeError, ValueError):
+            pass
+
     ctx["has_lead"] = bool(ctx.get("lead_id"))
+    ctx["has_thread"] = bool(ctx.get("thread_id"))
     ctx["page"] = (data.get("page") or "").strip()
     return ctx

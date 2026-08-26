@@ -5749,6 +5749,9 @@ a.rail-attn:hover { text-decoration: underline; }
   letter-spacing: -.02em; }
 .copilot-empty p { margin: 0; font-size: 13px; line-height: 1.45; color: var(--muted);
   max-width: 240px; }
+/* With an inbox conversation open the empty pane offers the starting points
+   the composer used to carry (they write a reply into the box). */
+.copilot-empty .copilot-suggest { justify-content: center; margin-top: 8px; }
 
 /* Turns are full-width prose, not chat bubbles. User prompt sits in a card;
    Bridget's answer is plain text underneath, the Cursor agent pattern. */

@@ -31,6 +31,22 @@ def _two_studies(uid, a="NCT11111111", b="NCT22222222"):
     db.add_study_claim(uid, b, "Beta Migraine Study", verified=True)
 
 
+def test_open_thread_routes_instructions_to_the_drafter():
+    """With an inbox conversation open, what you type at Bridget is a reply to
+    write unless it is plainly a workspace question."""
+    ctx = {"has_thread": True}
+    for q in ("Offer a call", "tell them the next step is a phone screen",
+              "thank them for the records", "Answer their question",
+              "We can see you Tuesday at 10"):
+        assert agent._classify(q, ctx)[0] == "draft_reply", q
+    # Workspace questions still read.
+    assert agent._classify("list my studies", ctx)[0] == "list_studies"
+    assert agent._classify("who is out of window", ctx)[0] == "visits_out_of_window"
+    # Same words without a conversation open: not a draft.
+    assert agent._classify("Offer a call", {})[0] != "draft_reply"
+    assert agent._classify("tell them the next step", {})[0] != "draft_reply"
+
+
 def test_list_studies_routing():
     intent, _ = agent._classify("send me the studies I have", {})
     assert intent == "list_studies", intent
@@ -102,6 +118,7 @@ def test_answer_list_studies():
 
 if __name__ == "__main__":
     tests = [
+        test_open_thread_routes_instructions_to_the_drafter,
         test_list_studies_routing,
         test_blast_this_trial_uses_scope,
         test_resolve_deictic_and_scoped_cohort,

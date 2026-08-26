@@ -120,11 +120,12 @@ _REPLY_LADDER = [
 _ASK_LADDER = [
     (("screening call", "screening visit", "book", "schedule", "set up a call",
       "phone call", "call them", "call her", "call him", "get them on the phone",
-      "hop on a call", "meet"),
+      "hop on a call", "offer a call", "a call", "meet"),
      "I'd love to set up a short screening call to walk through a few "
      "questions. What days and times generally work best for you?"),
     (("best time", "when are they free", "when they are free", "availability",
-      "available", "what time", "reach them", "good number", "phone number"),
+      "available", "what time", "reach them", "good number", "phone number",
+      "which times", "what times"),
      "what's the best time and number to reach you? I'll work around your "
      "schedule."),
     (("still interested", "follow up", "following up", "check in", "checking in",

@@ -87,10 +87,10 @@ import redcap  # noqa: E402
 import reminders as reminders_mod  # noqa: E402
 import sites_features  # noqa: E402
 import summarize  # noqa: E402
-import omni_hub  # noqa: E402
 import trends  # noqa: E402
 import ctis  # noqa: E402
 import copilot  # noqa: E402
+import omni_hub  # noqa: E402
 import token_crypto  # noqa: E402
 
 app = Flask(__name__)
@@ -5606,23 +5606,6 @@ _MARKETING_QUICK_REPLIES = [
 ]
 
 
-def _bridget_reply_draft(first, study, inbound, ask=""):
-    """First-pass reply draft for the marketing inbox.
-
-    ``ask`` is the coordinator's own instruction from the composer ("offer a
-    screening call next week"). When present it decides what the draft says and
-    the inbound message is context; when empty the draft answers the inbound
-    message, which is the behaviour every caller had before.
-
-    The keyword ladder that used to live here now lives in ``copilot/drafts.py``
-    alongside the applicant-thread ladder and the blast/note drafts, so every
-    "Bridget writes this" surface shares one voice and one compliance rule (never
-    assert a study-specific fact a coordinator must confirm). Still always
-    human-reviewed before it can be sent - see COMPLIANCE.md."""
-    return copilot.drafts.draft("reply", {
-        "first": first, "study": study, "inbound": inbound, "ask": ask})
-
-
 @app.route("/app/inbox")
 @login_required
 def marketing_hub():
@@ -6595,22 +6578,18 @@ def marketing_thread_draft(thread_id):
     is what the GET form does. An instruction is enough on its own, so an
     outreach thread with nothing inbound can still be drafted. Nothing here
     sends: the draft lands in the composer for a human to edit."""
-    thread = db.get_marketing_thread(g.user["id"], thread_id)
-    if not thread:
+    if not db.get_marketing_thread(g.user["id"], thread_id):
         abort(404)
     data = request.get_json(silent=True) or {}
     instruction = (data.get("instruction")
                    or request.form.get("instruction") or "").strip()[:400]
-    messages = db.list_marketing_messages(g.user["id"], thread_id)
-    latest = next(
-        (row["body"] for row in reversed(messages) if row["kind"] == "inbound"),
-        "")
-    if not latest and not instruction:
-        return jsonify({"ok": False, "message": "No inbound message to draft from."}), 400
-    first = (thread["contact_name"] or "there").split()[0]
-    study = thread["study_label"] or "the study"
-    draft = _bridget_reply_draft(first, study, latest, instruction)
-    return jsonify({"ok": True, "draft": draft, "human_review_required": True})
+    # Same writer the rail uses (Bridget with this conversation open), so the
+    # two entry points can never drift apart.
+    res = copilot.agent.draft_for_thread(g.user["id"], thread_id, instruction)
+    if res.get("error"):
+        return jsonify({"ok": False, "message": res["error"]}), 400
+    return jsonify({"ok": True, "draft": res["draft"],
+                    "human_review_required": True})
 
 
 @app.route("/marketing-hub/coverage", methods=["POST"])

@@ -437,14 +437,18 @@ def test_quick_replies_and_context_drafts():
     page = client.get(f"/app/inbox?thread={ids['Nadia Brooks']}").get_data(
         as_text=True)
     # Writing a reply starts with an instruction, not with a button off to the
-    # side: the composer's first line takes "offer a screening call next week"
-    # and the draft writes itself into the reply box. The canned quick-reply
-    # chips stay gone - what sits under the line now are prompts that run
-    # through the drafter, not generic text to paste.
+    # side: one Bridget, in the right pane. The reply box declares the open
+    # conversation (data-bridget-thread) and the pane writes into it. The
+    # composer's own prompt line is gone (two "ask Bridget" boxes on one
+    # screen), and so are the canned quick-reply chips and the old button.
     assert "mh-quick-chip" not in page, "canned quick-reply chips came back"
-    assert "data-ask-input" in page, "no instruction line in the composer"
-    assert "data-bridget-draft" in page, "composer lost its drafting endpoint"
+    assert "data-ask-input" not in page, "the composer grew its own prompt line again"
+    assert "data-bridget-draft" not in page, "the composer grew its own prompt line again"
     assert "Draft with Bridget" not in page, "the old draft button came back"
+    nadia = ids["Nadia Brooks"]
+    assert f'data-bridget-thread="{nadia}"' in page, \
+        "reply box does not tell Bridget which conversation is open"
+    assert 'id="copilot"' in page, "Bridget pane missing from the inbox"
 
     # An instruction decides what the draft says; the inbound message is context.
     steered = _json.loads(_post(
@@ -501,6 +505,62 @@ def test_quick_replies_and_context_drafts():
         "drafts are not context-aware"
     print("PASS: quick-reply chips render + context-aware Bridget drafts")
 
+
+
+def test_bridget_pane_writes_reply_when_thread_open():
+    """The right pane is the only Bridget. With a conversation open, an
+    instruction comes back as a draft for the reply box; a workspace question
+    is still answered in the pane; without a thread nothing is drafted."""
+    import json as _json
+    with webapp.app.app_context():
+        owner_id = db.create_user(
+            "pane-owner@example.com", "disabled", "Pane Owner", verified=True)
+    client = _client_for(owner_id)
+    assert _post(client, "/marketing-hub/sources", {
+        "channel": "email", "label": "Main", "identifier": "hi@example.com",
+    }).status_code == 302
+    with webapp.app.app_context():
+        source_id = db.list_marketing_sources(owner_id)[0]["id"]
+    assert _post(client, "/marketing-hub/threads", {
+        "source_id": str(source_id), "contact_name": "Priya Vault",
+        "contact_handle": "priya@example.com", "subject": "Privacy",
+        "body": "Is my information private? Who sees it and will you spam me?",
+    }).status_code == 302
+    with webapp.app.app_context():
+        tid = db.list_marketing_threads(owner_id)[0]["id"]
+
+    def ask(q, thread_id=tid):
+        body = {"q": q}
+        if thread_id is not None:
+            body["thread_id"] = thread_id
+        r = client.post("/app/copilot/ask", json=body,
+                        headers={"X-Requested-With": "XMLHttpRequest",
+                                 "X-CSRF-Token": CSRF})
+        return _json.loads(r.get_data(as_text=True))
+
+    steered = ask("Offer a call")
+    assert steered["ok"] and steered.get("draft"), steered
+    assert "call" in steered["draft"].lower(), steered["draft"]
+    assert "reply box" in steered["answer"].lower(), steered["answer"]
+    assert "Offer a call" not in steered["suggestions"]
+    assert "Check in" in steered["suggestions"]
+
+    # No instruction the ladder knows: answers what they actually asked.
+    plain = ask("Answer their question")
+    assert plain.get("draft") and "privacy" in plain["draft"].lower(), plain
+
+    # Anything that would need an open applicant, or would act, becomes a
+    # written reply with a conversation open rather than a dead end.
+    booking = ask("send them the booking link")
+    assert booking.get("draft"), booking
+
+    # A workspace question is still a question.
+    studies = ask("list my studies")
+    assert studies["ok"] and not studies.get("draft"), studies
+
+    # Without a conversation open, an instruction is not a draft.
+    nothing = ask("Offer a call", thread_id=None)
+    assert not nothing.get("draft"), nothing
 
 def test_unread_by_study_counts():
     """Top-switcher badge data: unread threads grouped by study NCT. Unassigned
@@ -882,6 +942,7 @@ def main():
     try:
         test_marketing_hub_flow()
         test_quick_replies_and_context_drafts()
+        test_bridget_pane_writes_reply_when_thread_open()
         test_unread_by_study_counts()
         test_inbox_study_scoper()
         test_inbox_owner_filter()
