@@ -889,8 +889,8 @@ COPY = [
      "engagement with personalized, impactful communication.",
      "Every person who contacts your site is scored and sorted, so coordinators "
      "know who to call first."),
-    # CTA: demo is embedded in the hero; primary action is embed, not another demo.
-    ("Request A Demo", "Add to your site"),
+    # CTA: live demo is already in the hero; primary action is book a call.
+    ("Request A Demo", "Get this for your site"),
     ("Get Started with Saify Today",
      "Bring your patient recruitment into one inbox"),
     ("Boost your outreach with Saify\u2019s unlimited emails, AI tools, and easy "
@@ -934,7 +934,7 @@ PRODUCT = {
 
 
 def _wire_hero_primary(html):
-    """Point hero primary CTAs at the embed section; the live demo is already above."""
+    """Point hero primary CTAs at booking; the live demo is already on the page."""
     m = re.search(
         r'(<section\b[^>]*data-framer-name="Hero Section"[^>]*>)(.*?)(</section>)',
         html, re.S)
@@ -944,7 +944,7 @@ def _wire_hero_primary(html):
     body = re.sub(
         r'(<a\b(?:(?!</a>).)*data-framer-name="Primary Button"(?:(?!</a>).)*?)'
         r'href="[^"]*"',
-        r'\1href="#bmd-embed"',
+        rf'\1href="{CAL}" target="_blank" rel="noopener"',
         body, flags=re.S)
     return html[:m.start()] + head + body + tail + html[m.end():]
 
