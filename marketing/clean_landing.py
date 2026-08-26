@@ -44,15 +44,12 @@ CDN_IMG = "https://framerusercontent.com/images/"
 LOGO_API = "https://logos-api.apistemic.com/domain:"
 
 # Hero copy: who it's for, then what it is, in the first screen. No em dashes.
-# Two sentences: the first period is a <br> in the hero. Lead with marketing
-# sources, then Bridget as an action-taking tool with a human in the loop.
+# Two sentences: the first period is a <br> in the hero.
 EYEBROW = "For research sites and study teams"
 H1_L1 = "Every Patient Inquiry"
 H1_L2 = "In One Shared Inbox"
-SUBHEAD = ("Ads, email, web forms, referrals, and every other marketing channel "
-           "land in one inbox. Bridget, the AI, can take action for your team, "
-           "from replies and blasts to booking and coverage, and a coordinator "
-           "confirms every send so it stays compliant.")
+SUBHEAD = ("The first inbox built for clinical trials. Ads, email, and forms "
+           "land in one place, and Bridget is the AI that writes, sends, and books.")
 
 # Word-split headings (anchored by their now-new data-framer-name prefix) whose SSR
 # visible text must be rewritten to the plain new copy.
@@ -844,8 +841,8 @@ COPY = [
     ("Saify is the ultimate AI-driven email marketing solution designed to boost "
      "outreach, automate campaigns, and increase conversions. Start scaling your "
      "email strategy today!",
-     "Ads, email, forms, and referrals land in one shared inbox. Bridget, the AI, "
-     "can take action for the study team, with a coordinator confirming every send."),
+     "The first inbox built for clinical trials. Ads, email, and forms land in "
+     "one place, and Bridget is the AI that writes, sends, and books."),
     # hero
     ("Unlimited Leads, Unlimited Outreach, Unlimited Growth", EYEBROW),
     ("Attract and Win Your Perfect Customers", f"{H1_L1} {H1_L2}"),
