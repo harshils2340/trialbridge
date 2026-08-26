@@ -8547,26 +8547,10 @@ body[data-embed="1"] .mh-thread-column { max-height: none; }
     height: calc(100dvh - 56px); max-height: calc(100dvh - 56px);
   }
 }
-body[data-embed="1"] #copilot {
-  width: var(--appdock-w, 320px) !important;
-  min-width: var(--appdock-w, 320px) !important;
-  flex-shrink: 0;
-}
-body[data-embed="1"] #copilot[data-open="0"] .dock-log,
-body[data-embed="1"] #copilot[data-open="0"] .dock-form,
-body[data-embed="1"] #copilot[data-open="0"] .dock-head-actions { display: revert; }
-body[data-embed="1"] #copilot[data-open="0"] .dock-head {
-  flex: unset; flex-direction: row; align-items: center;
-  padding: 10px 12px 10px 14px; border-bottom: 1px solid var(--border);
-  cursor: default;
-}
-body[data-embed="1"] #copilot[data-open="0"] .dock-title {
-  flex-direction: row; gap: 8px; margin: 0;
-}
-body[data-embed="1"] #copilot[data-open="0"] .dock-title b {
-  writing-mode: horizontal-tb; transform: none;
-  font-size: 13.5px; letter-spacing: -.01em;
-}
+/* Embed mode used to pin the dock open at 320px and show its contents even
+   when collapsed, so the ">" button did nothing inside the landing frame.
+   The dock starts open there anyway (see _copilot.html); the normal
+   collapse to the 48px rail now applies. */
 .mh-eyebrow {
   display: flex;
   align-items: center;
