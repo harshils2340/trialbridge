@@ -3182,21 +3182,21 @@ def authorize_lead_records(lead_id):
 # The account the study-team demo runs as (see app._DEMO_EMAIL). The rich
 # marketing-hub demo is only ever seeded onto this throwaway account.
 _DEMO_LOGIN_NAME = "Riley Patel"
-_MARKETING_DEMO_EMAIL = "rpatel@fieveclinical.com"
+_MARKETING_DEMO_EMAIL = "rpatel@northwindclinical.com"
 # Fictional site roster. Emails stay on the demo domain so login keeps working;
 # display names are invented and must never match a real site's staff.
 _DEMO_TEAM = (
-    ("dchen@fieveclinical.com", "David Chen, MD", "pi",
+    ("dchen@northwindclinical.com", "David Chen, MD", "pi",
      "Principal Investigator", ("peder@fieveclinical.com",)),
-    ("mbrooks@fieveclinical.com", "Maya Brooks, PMHNP-BC", "pi",
+    ("mbrooks@northwindclinical.com", "Maya Brooks, PMHNP-BC", "pi",
      "Sub-Investigator", ("swomack@fieveclinical.com",)),
-    ("evargas@fieveclinical.com", "Elena Vargas, JD, CCRC", "coordinator",
+    ("evargas@northwindclinical.com", "Elena Vargas, JD, CCRC", "coordinator",
      "Site Director / President", ("vfieve@fieveclinical.com",)),
-    ("pshah@fieveclinical.com", "Priya Shah, MD, CCRC", "coordinator",
+    ("pshah@northwindclinical.com", "Priya Shah, MD, CCRC", "coordinator",
      "Director of Clinical Operations", ("mhenderson@fieveclinical.com",)),
-    ("rpatel@fieveclinical.com", "Riley Patel", "coordinator",
+    ("rpatel@northwindclinical.com", "Riley Patel", "coordinator",
      "Clinical Research Coordinator", ("dejosama@fieveclinical.com",)),
-    ("akim@fieveclinical.com", "Avery Kim, MPH", "student",
+    ("akim@northwindclinical.com", "Avery Kim, MPH", "student",
      "Clinical Research Coordinator", ("kwalsh@fieveclinical.com",)),
 )
 # Longest strings first so "Paul Eder, MD" is rewritten before "Paul Eder".
@@ -3240,7 +3240,7 @@ _DEMO_STAFF_TEXT_COLUMNS = (
 )
 # Sentinel: presence of this source means the rich demo has already been seeded,
 # so we never re-seed (and never trample edits made live during a demo).
-_MARKETING_DEMO_SENTINEL = "recruit@fieveclinical.com"
+_MARKETING_DEMO_SENTINEL = "recruit@northwindclinical.com"
 # Recognizable contact in the denser default-trial scenario.
 _MARKETING_DEMO_WORKFLOW_SENTINEL = "emily.carter@gmail.com"
 _MARKETING_DEMO_STUDIES = {
@@ -3253,6 +3253,53 @@ _MARKETING_DEMO_STUDIES = {
     "NCT07674654": "Elismetrep (K-304) Long-Term Safety in Acute Migraine",
     "NCT06417775": "Ubrogepant for Menstrual Migraine",
 }
+
+
+# The demo site used to carry a real clinic's name and email domain. Fresh
+# seeds no longer do, but existing DBs keep users, sources, notes and audit
+# rows across restarts, so the old strings would stay on screen forever.
+# Longest first so "Fieve Clinical Research" is rewritten as one unit; the bare
+# "Fieve" at the end catches anything left (a leftover real surname included).
+_DEMO_SITE_REWRITES = (
+    ("Fieve Clinical Research", "Northwind Clinical Research"),
+    ("Fieve Migraine Search", "Northwind Migraine Search"),
+    ("Fieve Depression Search", "Northwind Depression Search"),
+    ("@fieveclinical.com", "@northwindclinical.com"),
+    ("@fieveclinical", "@northwindclinical"),
+    ("fieveclinical", "northwindclinical"),
+    ("Fieve", "Northwind"),
+    ("fieve", "northwind"),
+)
+_DEMO_SITE_REWRITE_DONE = False
+
+
+def _rewrite_demo_site_everywhere(db):
+    """Sweep every text column in the DB once per process (see the note on
+    _DEMO_SITE_REWRITES). Brute force on purpose: the strings sat in emails,
+    source identifiers, org and site names, JSON metadata and message bodies,
+    and a curated column list would miss one."""
+    global _DEMO_SITE_REWRITE_DONE
+    if _DEMO_SITE_REWRITE_DONE:
+        return
+    tables = [r[0] for r in db.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' "
+        "AND name NOT LIKE 'sqlite_%'")]
+    for table in tables:
+        for col in db.execute(f'PRAGMA table_info("{table}")').fetchall():
+            ctype = (col[2] or "").upper()
+            if ctype and not any(t in ctype for t in ("TEXT", "CHAR", "CLOB")):
+                continue
+            name = col[1]
+            for old, new in _DEMO_SITE_REWRITES:
+                try:
+                    db.execute(
+                        f'UPDATE "{table}" SET "{name}" = REPLACE("{name}", ?, ?) '
+                        f'WHERE instr("{name}", ?) > 0', (old, new, old))
+                except sqlite3.IntegrityError:
+                    # e.g. a user with the new address already exists; the
+                    # staff migration above reconciles those by name.
+                    pass
+    _DEMO_SITE_REWRITE_DONE = True
 
 
 def migrate_demo_staff_identities():
@@ -3292,6 +3339,7 @@ def migrate_demo_staff_identities():
                 f"UPDATE {table} SET {column} = REPLACE({column}, ?, ?) "
                 f"WHERE instr({column}, ?) > 0",
                 (old, new, old))
+    _rewrite_demo_site_everywhere(db)
     db.commit()
 
 
@@ -3309,8 +3357,8 @@ def _top_up_demo_marketing_workflows(conn, user_id, oid):
         row["identifier"]: row["id"] for row in source_rows}
     source_ids = {
         "recruit": source_by_identifier.get(_MARKETING_DEMO_SENTINEL.lower()),
-        "instagram": source_by_identifier.get("@fieveclinical"),
-        "ads": source_by_identifier.get("fieve migraine search"),
+        "instagram": source_by_identifier.get("@northwindclinical"),
+        "ads": source_by_identifier.get("northwind migraine search"),
     }
     if not all(source_ids.values()):
         return 0
@@ -3799,8 +3847,8 @@ def seed_demo_marketing_hub(user_id):
             (oid, uid, "student", "Marketing teammate", ts))
         return uid
 
-    jordan_id = _demo_member("jordan.lee@fieveclinical.com", "Jordan Lee")
-    casey_id = _demo_member("casey.morgan@fieveclinical.com", "Casey Morgan")
+    jordan_id = _demo_member("jordan.lee@northwindclinical.com", "Jordan Lee")
+    casey_id = _demo_member("casey.morgan@northwindclinical.com", "Casey Morgan")
 
     def _source(channel, label, identifier, status="connected"):
         cur = conn.execute(
@@ -3815,20 +3863,20 @@ def seed_demo_marketing_hub(user_id):
     # "via" line, not just the people.
     recruit_id = _source("email", "Recruitment inbox", _MARKETING_DEMO_SENTINEL)
     migraine_id = _source("email", "Migraine study inbox",
-                          "migraine@fieveclinical.com")
+                          "migraine@northwindclinical.com")
     depression_id = _source("email", "Depression study inbox",
-                            "depression@fieveclinical.com")
+                            "depression@northwindclinical.com")
     ole_id = _source("email", "Azetukalner OLE inbox",
-                     "xnova-ole@fieveclinical.com")
+                     "xnova-ole@northwindclinical.com")
     menstrual_id = _source("email", "Menstrual migraine inbox",
-                           "cycle@fieveclinical.com")
-    instagram_id = _source("instagram", "Instagram DMs", "@fieveclinical")
+                           "cycle@northwindclinical.com")
+    instagram_id = _source("instagram", "Instagram DMs", "@northwindclinical")
     ads_id = _source("google_ads", "Google Ads: Migraine Search",
-                     "Fieve Migraine Search")
+                     "Northwind Migraine Search")
     dep_ads_id = _source("google_ads", "Google Ads: Depression Search",
-                         "Fieve Depression Search")
+                         "Northwind Depression Search")
     # One disconnected account so the connect/reconnect state is visible.
-    _source("email", "Newsletter replies", "news@fieveclinical.com",
+    _source("email", "Newsletter replies", "news@northwindclinical.com",
             status="disconnected")
 
     def _ago(minutes):
@@ -3905,7 +3953,7 @@ def seed_demo_marketing_hub(user_id):
         "NCT06417775": "Ubrogepant for Menstrual Migraine",
     }
 
-    # Fieve's 8 active trials (see seed_demo_leads' _S map) are looked up by
+    # The demo site's 8 active trials (see seed_demo_leads' _S map) are looked up by
     # exact NCT rather than fuzzy title keywords - several titles share words
     # like "MDD" and "Azetukalner", and a fuzzy match silently left some trials
     # with zero conversations whenever the top switcher scoped to them.
@@ -8748,7 +8796,7 @@ def _demo_lead_specs():
     plus accepted / declined / screening / enrolled so the board looks real."""
     scr_ok = {"travel": "yes", "other_trial": "no",
               "pregnancy": "no", "consent_capable": "yes"}
-    site, loc = "Fieve Clinical Research", "New York, NY"
+    site, loc = "Northwind Clinical Research", "New York, NY"
     specs = [
         # ---- Awaiting review (prescreen, no decision) ----------------------
         {"days": 1, "status": "prescreen", "records": 1,
@@ -8867,10 +8915,10 @@ def _demo_lead_specs():
     # Make the demo queue feel realistic for ATS walkthroughs: many candidates
     # across review/active/done instead of a tiny sample.
     # Study lookup (nct, title, condition) keyed by a short code, so the volume
-    # roster below stays readable. All applicants are at the one site (Fieve, NYC).
-    # Fieve Clinical Research's real, currently-active trials (verified on
-    # ClinicalTrials.gov by NCT + facility). Titles are shortened for the UI but
-    # the NCTs are exact, so the site recognizes each study as their own.
+    # roster below stays readable. All applicants are at the one demo site (NYC).
+    # Real, currently-active trials (verified on ClinicalTrials.gov by NCT),
+    # attributed to the fictional demo site. Titles are shortened for the UI but
+    # the NCTs are exact, so each study reads as a real protocol.
     _S = {
         "aze": ("NCT07076407",
                 "Azetukalner vs Placebo in Major Depressive Disorder (X-NOVA3)",
@@ -8898,7 +8946,7 @@ def _demo_lead_specs():
                 "Menstrual Migraine"),
     }
     # (first, last, sex, age, status, records, study-code). Spread across all 8
-    # active Fieve trials. Menstrual-migraine (umm) applicants are female by design.
+    # active demo trials. Menstrual-migraine (umm) applicants are female by design.
     _rows = [
         ("Ava", "Chen", "female", "41", "prescreen", 1, "aze"),
         ("Noah", "Bernstein", "male", "49", "prescreen", 0, "sel"),
@@ -10002,8 +10050,8 @@ def seed_demo_engagement(clinician_id):
             (clinician_id,)).fetchone()
         if not _prof or not ((_prof["org_name"] or "").strip()):
             upsert_site_profile(
-                clinician_id, "Fieve Clinical Research", "Elena Vargas",
-                "info@fieveclinical.com", "+1 212 555 0148")
+                clinician_id, "Northwind Clinical Research", "Elena Vargas",
+                "info@northwindclinical.com", "+1 212 555 0148")
 
     # Ensure at least one visible booking link exists in demo so "calendar invite"
     # UX can be tested immediately on both study-team and patient surfaces.
@@ -10153,7 +10201,7 @@ def seed_demo_team(clinician_id):
     oid = user_org_id(clinician_id)
     # Name the shared workspace after the site.
     db.execute("UPDATE organizations SET name = ? WHERE id = ?",
-               ("Fieve Clinical Research", oid))
+               ("Northwind Clinical Research", oid))
     # Fictional demo staff. Base role gates permissions:
     # pi = signs/approves docs; coordinator = admin (manages team + approves);
     # student = full day-to-day visibility, no sign-off/team management (fits the
@@ -10272,11 +10320,11 @@ def seed_demo_collaboration(clinician_id=None):
         oid = user_org_id(clinician_id)
         who = {}
         for email, disp in (
-            ("evargas@fieveclinical.com", "Elena Vargas"),
-            ("rpatel@fieveclinical.com", "Riley Patel"),
-            ("akim@fieveclinical.com", "Avery Kim"),
-            ("pshah@fieveclinical.com", "Priya Shah"),
-            ("dchen@fieveclinical.com", "Dr. Chen"),
+            ("evargas@northwindclinical.com", "Elena Vargas"),
+            ("rpatel@northwindclinical.com", "Riley Patel"),
+            ("akim@northwindclinical.com", "Avery Kim"),
+            ("pshah@northwindclinical.com", "Priya Shah"),
+            ("dchen@northwindclinical.com", "Dr. Chen"),
         ):
             r = db.execute(
                 "SELECT u.id FROM users u JOIN memberships m ON m.user_id = u.id "
@@ -10364,7 +10412,7 @@ def ensure_demo_claim_volume(user_id, minimum_rows=18):
         meta_for[_nct] = {
             "condition": (r["condition"] if r else "") or "Major Depressive Disorder",
             "location": (r["location"] if r else "") or "New York, NY",
-            "site": (r["site"] if r else "") or "Fieve Clinical Research",
+            "site": (r["site"] if r else "") or "Northwind Clinical Research",
         }
     # Real-sounding identities (first + last pools). Applicants are de-identified on
     # the board until revealed, but real names make the ones you accept read right.
@@ -10447,7 +10495,7 @@ def ensure_demo_claim_volume(user_id, minimum_rows=18):
         meta = meta_for.get(nct, {})
         cond = meta.get("condition") or "Major Depressive Disorder"
         city = meta.get("location") or "New York, NY"
-        site_name = meta.get("site") or "Fieve Clinical Research"
+        site_name = meta.get("site") or "Northwind Clinical Research"
         sex = "female" if idx % 2 else "male"
         # Sex-restricted studies (e.g. menstrual migraine) only enroll women.
         if "menstrual" in (title_for.get(nct, "") or "").lower():
@@ -10541,7 +10589,7 @@ def seed_demo_patient_apps(applicant_token):
             "title": "Elismetrep (K-304) for the Acute Treatment of Migraine",
             "condition": "Migraine",
             "location": "New York, NY",
-            "site": "Fieve Clinical Research",
+            "site": "Northwind Clinical Research",
             "status": "prescreen",
             "decision": "",
             "revealed": 0,
@@ -10552,7 +10600,7 @@ def seed_demo_patient_apps(applicant_token):
             "title": "Adjunctive Seltorexant in MDD With Insomnia Symptoms",
             "condition": "Major Depressive Disorder",
             "location": "New York, NY",
-            "site": "Fieve Clinical Research",
+            "site": "Northwind Clinical Research",
             "status": "screening",
             "decision": "accepted",
             "revealed": 1,

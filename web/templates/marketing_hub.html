@@ -110,7 +110,7 @@
          open/resolved - behind one Filter menu. The six stage tabs that used to
          sit here were clutter for a question most people ask rarely. #}
       <div class="mh-filterbar">
-        <nav class="mh-scope-seg" aria-label="Owner">
+        <nav class="mh-scope-seg" aria-label="Inbox filters">
           <a class="mh-seg {{ 'is-active' if owner_filter != 'unassigned' }}"
              href="{{ url_for('marketing_hub', owner='mine', stage=stage_filter, status=status_filter, source=source_filter, channel=channel_filter, q=search_query) }}">Mine</a>
           <a class="mh-seg {{ 'is-active' if owner_filter == 'unassigned' }}"
@@ -362,6 +362,9 @@
                 {{ ic.icon('arrow-right') }}
               </button>
             </div>
+            {# "Writing…" and any failure are said here, in the open, not in the
+               input's placeholder where they vanish behind the instruction. #}
+            <div class="mh-ask-status" data-ask-status role="status" aria-live="polite" hidden></div>
             {# Starting points, not canned text: each one writes an instruction on
                the line above and runs it, so what lands in the box is written
                against this conversation rather than pasted. They sit directly
@@ -1013,11 +1016,22 @@
     askSuggest.hidden = !!(replyArea && replyArea.value.trim());
   }
 
+  var askStatus = document.querySelector('[data-ask-status]');
+  // Progress and failure are said in a line under the box. They used to go
+  // into the input's placeholder, which is invisible the moment the field has
+  // text in it - so a failed preset looked like nothing had happened.
+  function setAskStatus(text, kind) {
+    if (!askStatus) return;
+    askStatus.textContent = text || '';
+    askStatus.hidden = !text;
+    askStatus.classList.toggle('is-error', kind === 'error');
+  }
   function askBridget(instruction) {
     if (!askBox || askBox.classList.contains('is-busy')) return;
     var meta = document.querySelector('meta[name="csrf-token"]');
     askBox.classList.add('is-busy');
     if (askGo) askGo.disabled = true;
+    setAskStatus('Bridget is writing…');
     fetch(askBox.getAttribute('data-bridget-draft'), {
       method: 'POST',
       credentials: 'same-origin',
@@ -1034,6 +1048,7 @@
       });
     }).then(function (data) {
       if (askInput) askInput.value = '';
+      setAskStatus('');
       var written = window.Bridget
         ? window.Bridget.fill(replyArea, data.draft)
         : Promise.resolve(replyArea && (replyArea.value = data.draft));
@@ -1047,11 +1062,13 @@
       });
     }).catch(function (err) {
       askBox.classList.add('is-error');
-      if (askInput) {
-        askInput.placeholder = (err && err.message)
-          || 'Bridget could not write that one. Try again, or type the reply yourself.';
-      }
+      setAskStatus((err && err.message)
+        || 'Bridget could not write that one. Try again, or type the reply yourself.',
+        'error');
       setTimeout(function () { askBox.classList.remove('is-error'); }, 2400);
+      setTimeout(function () {
+        if (askStatus && askStatus.classList.contains('is-error')) setAskStatus('');
+      }, 6000);
     }).finally(function () {
       askBox.classList.remove('is-busy');
       if (askGo) askGo.disabled = false;

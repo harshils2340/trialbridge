@@ -225,7 +225,7 @@ def test_demo_seed_preserves_live_connections_and_fills_each_trial():
         assert connection["status"] == "connected"
         assert db.get_marketing_source(
             demo_id, connected["source_id"])["connection_mode"] == "live"
-        assert any(source["identifier"] == "recruit@fieveclinical.com"
+        assert any(source["identifier"] == "recruit@northwindclinical.com"
                    for source in db.list_marketing_sources(demo_id))
         threads = db.list_marketing_threads(demo_id, status="all")
         comp360 = [thread for thread in threads

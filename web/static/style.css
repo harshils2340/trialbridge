@@ -9878,6 +9878,8 @@ html[data-theme="dark"] .mh-ask { background:transparent; }
 .mh-ask .mh-ask-input:placeholder-shown ~ .mh-ask-go { opacity:.65; }
 .mh-ask .mh-ask-input:not(:placeholder-shown) ~ .mh-ask-go { opacity:1; }
 .mh-ask-go:disabled { opacity:.45; cursor:default; }
+.mh-ask-status { padding:6px 12px 0; font-size:12px; line-height:1.4; color:var(--muted); }
+.mh-ask-status.is-error { color:var(--red); }
 .mh-ask.is-busy .mh-ask-mark { animation:mh-ask-pulse 1s ease-in-out infinite; }
 .mh-ask.is-error .mh-ask-mark { color:var(--red); }
 @keyframes mh-ask-pulse { 0%,100% { opacity:.3; } 50% { opacity:1; } }
