@@ -106,7 +106,8 @@
               <span class="mh-tag is-study" title="{{ q.title }}{% if q.nct %} ({{ q.nct }}){% endif %}">{{ ic.icon('award') }}<span class="mh-tag-label">{{ q.title or q.nct }}</span></span>
               {% endif %}
             </div>
-            {% if q.unread %}{{ ui.count(q.unread, 'brand') }}{% endif %}
+            {# No unread-count bubble here: on this row it read as a stray blue
+               circle, not as information. The Unread chip above still filters. #}
           </div>
         </td>
         {# Verdict only. The Score column was a second rendering of exactly this
