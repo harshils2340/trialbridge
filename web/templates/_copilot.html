@@ -1,5 +1,6 @@
 {% import "_icons.html" as ic %}
 <aside class="appdock" id="copilot" data-open="1" data-empty="1" aria-label="Bridget"
+  data-uid="{{ user.id if user else '' }}"
   data-lottie="{{ static_url('vendor/lottie_light.min.js') }}"
   data-think="{{ static_url('lottie/thinking.json') }}">
   <div class="dock-resize" id="dockResize" role="separator" aria-orientation="vertical" aria-label="Resize Bridget" title="Drag to resize · double-click to reset"></div>
@@ -9,6 +10,7 @@
       <b>Bridget</b>
     </div>
     <div class="dock-head-actions">
+      <button type="button" class="dock-icon-btn" id="copilotHistory" aria-label="Chat history" title="Chat history">{{ ic.icon('clock') }}</button>
       <button type="button" class="dock-icon-btn" id="copilotReset" aria-label="New chat" title="New chat">{{ ic.icon('plus') }}</button>
       <button type="button" class="dock-icon-btn" id="copilotCollapse" aria-label="Collapse Bridget" title="Collapse">{{ ic.icon('chevron-right') }}</button>
     </div>
@@ -29,7 +31,7 @@
 </aside>
 {# Reusable icon library so JS-built cards use the same real icons (not inline one-offs). #}
 <div id="bridgetIcons" hidden aria-hidden="true">
-  <i data-ic="inbox">{{ ic.icon('inbox') }}</i><i data-ic="clock">{{ ic.icon('clock') }}</i><i data-ic="calendar">{{ ic.icon('calendar') }}</i><i data-ic="file">{{ ic.icon('file') }}</i><i data-ic="shield">{{ ic.icon('shield') }}</i><i data-ic="users">{{ ic.icon('users') }}</i><i data-ic="sparkle">{{ ic.icon('sparkle') }}</i><i data-ic="mark">{{ ic.icon('mark') }}</i><i data-ic="check">{{ ic.icon('check') }}</i><i data-ic="chevron-right">{{ ic.icon('chevron-right') }}</i>
+  <i data-ic="inbox">{{ ic.icon('inbox') }}</i><i data-ic="clock">{{ ic.icon('clock') }}</i><i data-ic="calendar">{{ ic.icon('calendar') }}</i><i data-ic="file">{{ ic.icon('file') }}</i><i data-ic="shield">{{ ic.icon('shield') }}</i><i data-ic="users">{{ ic.icon('users') }}</i><i data-ic="sparkle">{{ ic.icon('sparkle') }}</i><i data-ic="mark">{{ ic.icon('mark') }}</i><i data-ic="check">{{ ic.icon('check') }}</i><i data-ic="chevron-right">{{ ic.icon('chevron-right') }}</i><i data-ic="x">{{ ic.icon('x') }}</i>
 </div>
 <script>
 (function () {
@@ -37,6 +39,7 @@
   if (!dock) return;
   var collapse = document.getElementById('copilotCollapse');
   var resetBtn = document.getElementById('copilotReset');
+  var histBtn = document.getElementById('copilotHistory');
   var head = document.getElementById('copilotHead');
   var log = document.getElementById('copilotLog');
   var form = document.getElementById('copilotForm');
@@ -89,7 +92,11 @@
     opts = opts || {};
     dock.setAttribute('data-open', open ? '1' : '0');
     if (open) {
-      if (!log.children.length) renderIntro();
+      // Pick the chat up where it was left (it survives page changes), else
+      // the quiet empty prompt.
+      if (!log.children.length) {
+        if (current && chatById(current)) openChat(current); else renderIntro();
+      }
       if (opts.focus) input.focus();
     }
   }
@@ -141,42 +148,52 @@
 
   // Render structured rows as a clean, scannable list (title + detail) instead
   // of a run-on sentence. Only used when there are 2+ rows.
+  function buildItem(it) {
+    var li = document.createElement('li');
+    li.className = 'copilot-li' + (it.url ? ' is-link' : '');
+    var main = document.createElement('div');
+    main.className = 'cli-main';
+    var t = document.createElement('span');
+    t.className = 'cli-title';
+    t.textContent = it.title || 'Item';
+    main.appendChild(t);
+    if (it.study) {
+      var s = document.createElement('span');
+      s.className = 'cli-study';
+      s.textContent = it.study;
+      main.appendChild(s);
+    }
+    li.appendChild(main);
+    if (it.detail) {
+      var dt = document.createElement('div');
+      dt.className = 'cli-detail';
+      dt.textContent = it.detail;
+      li.appendChild(dt);
+    }
+    if (it.url) { li.addEventListener('click', function () { window.location.href = it.url; }); }
+    return li;
+  }
   function renderItems(wrap, items) {
     if (!items || items.length < 2) return;
     var host = bodyOf(wrap);
     var ul = document.createElement('ul');
     ul.className = 'copilot-list';
     var CAP = 3;
-    var shown = items.slice(0, CAP);
-    shown.forEach(function (it) {
-      var li = document.createElement('li');
-      li.className = 'copilot-li' + (it.url ? ' is-link' : '');
-      var main = document.createElement('div');
-      main.className = 'cli-main';
-      var t = document.createElement('span');
-      t.className = 'cli-title';
-      t.textContent = it.title || 'Item';
-      main.appendChild(t);
-      if (it.study) {
-        var s = document.createElement('span');
-        s.className = 'cli-study';
-        s.textContent = it.study;
-        main.appendChild(s);
-      }
-      li.appendChild(main);
-      if (it.detail) {
-        var dt = document.createElement('div');
-        dt.className = 'cli-detail';
-        dt.textContent = it.detail;
-        li.appendChild(dt);
-      }
-      if (it.url) { li.addEventListener('click', function () { window.location.href = it.url; }); }
-      ul.appendChild(li);
-    });
+    items.slice(0, CAP).forEach(function (it) { ul.appendChild(buildItem(it)); });
     if (items.length > CAP) {
+      // "+N more" is a button: it unfolds the rest of the list in place.
       var more = document.createElement('li');
       more.className = 'copilot-li copilot-li-more';
-      more.textContent = '+' + (items.length - CAP) + ' more';
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'copilot-more';
+      btn.textContent = '+' + (items.length - CAP) + ' more';
+      btn.addEventListener('click', function () {
+        more.remove();
+        items.slice(CAP).forEach(function (it) { ul.appendChild(buildItem(it)); });
+        scroll();
+      });
+      more.appendChild(btn);
       ul.appendChild(more);
     }
     host.appendChild(ul);
@@ -378,6 +395,7 @@
     if (empty) empty.remove();
     setBusy(true);
     var mine = addMsg('me', q);
+    record('me', q);
     input.value = '';
     autosize();
     var working = addWorking();
@@ -434,6 +452,7 @@
           addCitations(working, cites);
           renderProposal(working, d.proposal);
           renderFollowups(working, d.suggestions);
+          record('bot', d.answer || '', { items: d.items, citations: cites });
         });
       }
       if (d.trace && d.trace.length) {
@@ -464,6 +483,139 @@
     scroll();
   }
 
+  // ---- History ------------------------------------------------------------ //
+  // Chats are kept in this browser (localStorage, keyed by the signed-in user),
+  // so a conversation survives page changes and old ones can be reopened.
+  // Nothing about them is sent to the server.
+  var STORE = 'bm_bridget_chats_' + (dock.getAttribute('data-uid') || 'anon');
+  var MAX_CHATS = 30;
+  var chats = [], current = null;
+  function loadStore() {
+    try {
+      var d = JSON.parse(localStorage.getItem(STORE) || 'null');
+      if (d && d.chats) { chats = d.chats; current = d.current || null; }
+    } catch (e) { chats = []; current = null; }
+  }
+  function saveStore() {
+    try {
+      localStorage.setItem(STORE, JSON.stringify({ chats: chats.slice(0, MAX_CHATS), current: current }));
+    } catch (e) {}
+  }
+  function chatById(id) {
+    for (var i = 0; i < chats.length; i++) { if (chats[i].id === id) return chats[i]; }
+    return null;
+  }
+  function record(role, text, extra) {
+    var hasItems = !!(extra && extra.items && extra.items.length);
+    if (!text && !hasItems) return;
+    var c = current && chatById(current);
+    if (!c) {
+      c = { id: 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+            title: '', at: Date.now(), msgs: [] };
+      chats.unshift(c);
+      current = c.id;
+    }
+    var m = { role: role, text: text || '' };
+    if (hasItems) m.items = extra.items;
+    if (extra && extra.citations && extra.citations.length) m.citations = extra.citations;
+    c.msgs.push(m);
+    if (!c.title && role === 'me') c.title = text.slice(0, 80);
+    c.at = Date.now();
+    chats.splice(chats.indexOf(c), 1);
+    chats.unshift(c);
+    saveStore();
+  }
+  function startNewChat() {
+    current = null;
+    saveStore();
+    renderIntro();
+  }
+  function openChat(id) {
+    var c = chatById(id);
+    if (!c) return;
+    current = id;
+    saveStore();
+    log.innerHTML = '';
+    setEmpty(false);
+    c.msgs.forEach(function (m) {
+      var w = addMsg(m.role, m.text);
+      if (m.role === 'bot') { renderItems(w, m.items); addCitations(w, m.citations); }
+    });
+    scroll();
+  }
+  function timeAgo(t) {
+    var s = (Date.now() - t) / 1000;
+    if (s < 60) return 'just now';
+    if (s < 3600) return Math.floor(s / 60) + 'm ago';
+    if (s < 86400) return Math.floor(s / 3600) + 'h ago';
+    return new Date(t).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  }
+  function renderHistory() {
+    log.innerHTML = '';
+    setEmpty(false);
+    var box = document.createElement('div');
+    box.className = 'copilot-history';
+    var h = document.createElement('div');
+    h.className = 'ch-head';
+    h.innerHTML = '<b>Chat history</b>';
+    var back = document.createElement('button');
+    back.type = 'button';
+    back.className = 'ch-link';
+    back.textContent = (current && chatById(current)) ? 'Back to chat' : 'New chat';
+    back.addEventListener('click', function () {
+      if (current && chatById(current)) openChat(current); else renderIntro();
+    });
+    h.appendChild(back);
+    box.appendChild(h);
+    if (!chats.length) {
+      var e = document.createElement('p');
+      e.className = 'ch-empty';
+      e.textContent = 'No chats yet. Ask Bridget something and it will be kept here.';
+      box.appendChild(e);
+    }
+    chats.forEach(function (c) {
+      var row = document.createElement('div');
+      row.className = 'ch-item' + (c.id === current ? ' is-current' : '');
+      var open = document.createElement('button');
+      open.type = 'button';
+      open.className = 'ch-open';
+      var title = document.createElement('span');
+      title.className = 'ch-title';
+      title.textContent = c.title || 'Untitled chat';
+      var meta = document.createElement('span');
+      meta.className = 'ch-meta';
+      var n = Math.ceil(c.msgs.length / 2);
+      meta.textContent = timeAgo(c.at) + ' · ' + n + (n === 1 ? ' question' : ' questions');
+      open.appendChild(title);
+      open.appendChild(meta);
+      open.addEventListener('click', function () { openChat(c.id); });
+      var del = document.createElement('button');
+      del.type = 'button';
+      del.className = 'ch-del';
+      del.setAttribute('aria-label', 'Delete chat');
+      del.title = 'Delete';
+      del.innerHTML = iconHtml('x');
+      del.addEventListener('click', function (ev) {
+        ev.stopPropagation();
+        chats.splice(chats.indexOf(c), 1);
+        if (current === c.id) current = null;
+        saveStore();
+        renderHistory();
+      });
+      row.appendChild(open);
+      row.appendChild(del);
+      box.appendChild(row);
+    });
+    log.appendChild(box);
+    log.scrollTop = 0;
+  }
+  if (histBtn) {
+    histBtn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      if (!busy) renderHistory();
+    });
+  }
+
   collapse.addEventListener('click', function (e) {
     e.stopPropagation();
     setOpen(false);
@@ -475,7 +627,7 @@
   }
   resetBtn.addEventListener('click', function (e) {
     e.stopPropagation();
-    if (!busy) renderIntro();
+    if (!busy) startNewChat();
   });
   form.addEventListener('submit', function (e) { e.preventDefault(); ask(input.value.trim()); });
 
@@ -512,6 +664,7 @@
                 : saved === '0' ? false
                 : saved === '1' ? true
                 : (!narrow && !onInbox);
+  loadStore();
   applyOpen(startOpen);
   if (embed) {
     try { localStorage.setItem('bm_bridget_pane', '1'); } catch (e) {}
