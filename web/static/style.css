@@ -11430,7 +11430,7 @@ textarea.is-bridget-writing, input.is-bridget-writing {
   .apptop-bridget { display: inline-flex; align-items: center; justify-content: center;
     width: 36px; height: 36px; padding: 0; border: 0; border-radius: 50%;
     background: var(--accent-soft); color: var(--accent); cursor: pointer;
-    --mark-a: var(--accent); --mark-b: var(--accent-soft); }
+    --mark-a: var(--accent); --mark-b: #7fb8ee; }
   .apptop-bridget:hover { background: var(--accent); --mark-a: #fff; --mark-b: rgba(255,255,255,.55); }
   .apptop-bridget svg { width: 18px; height: 18px; }
   /* The landing-page frame hides Bridget at phone width altogether. */
