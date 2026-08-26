@@ -3371,28 +3371,28 @@ def _top_up_demo_marketing_workflows(conn, user_id, oid):
         for row in existing_rows
     }
     specs = [
-        # Elismetrep acute migraine trial already has volume; these complete its
-        # assigned workflow stages for a useful scoped demo.
+        # Plain questions from people who saw an ad, one per pipeline stage,
+        # so every scoped trial shows a working queue. No protocol jargon.
         ("instagram", "NCT07645924", "Keisha Morgan", "@keisha.migraine",
          "Evening screening calls", "outreach", 58,
          "are there any phone screening times after 5pm during the week?", None),
         ("recruit", "NCT07645924", "Peter Young", "peter.young@gmail.com",
          "Migraine screening confirmation", "screening", 470,
          "I can attend the Tuesday screening. Should I bring my migraine diary "
-         "and current medication list?", 42),
+         "and a list of what I take?", 42),
 
         # Adjunctive Seltorexant with insomnia.
         ("recruit", "NCT06559306", "Camille Foster", "camille.foster@gmail.com",
-         "Can insomnia qualify me?", "new", 12,
+         "I can't sleep, is this study for that?", "new", 12,
          "My depression has not improved and I wake up throughout the night. "
-         "Is the insomnia part relevant for this study?", None),
+         "Is this study for that?", None),
         ("instagram", "NCT06559306", "Ethan Miller", "@ethan.restless",
          "Study visits while working nights", "outreach", 94,
          "i work overnight shifts. are screening visits only during the day?", None),
         ("ads", "NCT06559306", "Sonia Blake", "sonia.blake@gmail.com",
          "Two medications have not helped", "prescreen", 265,
-         "I have tried sertraline and venlafaxine and still cannot sleep. "
-         "Would that treatment history be reviewed in the pre-screen?", None),
+         "I have tried two antidepressants and still cannot sleep. Is this "
+         "study for people like me?", None),
         ("recruit", "NCT06559306", "Jamal Price", "jamal.price@outlook.com",
          "Confirming Friday screening", "screening", 640,
          "Friday afternoon works for me. Should I bring my medication bottles "
@@ -3403,9 +3403,9 @@ def _top_up_demo_marketing_workflows(conn, user_id, oid):
          "Saw the depression study ad", "new", 23,
          "I saw your ad today. How do I find out whether this study is a fit?", None),
         ("recruit", "NCT07076407", "Khalil Brown", "khalil.brown@gmail.com",
-         "Prior antidepressant history", "prescreen", 176,
-         "My doctor has changed my antidepressant twice this year. What details "
-         "do you need for the first eligibility call?", None),
+         "My doctor keeps changing my medication", "prescreen", 176,
+         "My doctor has changed my antidepressant twice this year. Does that "
+         "matter for the study?", None),
         ("instagram", "NCT07076407", "Mei Lin", "@mei.moves.forward",
          "Screening appointment details", "screening", 520,
          "I can make the Wednesday screening. Can you send the address and how "
@@ -3413,27 +3413,27 @@ def _top_up_demo_marketing_workflows(conn, user_id, oid):
 
         # Azetukalner open-label extension.
         ("recruit", "NCT06922110", "Victor Hale", "victor.hale@gmail.com",
-         "Extension study timing", "new", 33,
-         "I am finishing the main study next month. When does the extension "
-         "normally begin?", None),
+         "When does the follow-on start?", "new", 33,
+         "I am finishing the main study next month. When does the follow-on "
+         "study normally begin?", None),
         ("instagram", "NCT06922110", "Renee Cole", "@renee.recovery",
          "Will visits stay at the same clinic?", "outreach", 150,
-         "for the extension do i keep the same coordinator and clinic location?", None),
+         "for the follow-on study do i keep the same coordinator and clinic?", None),
         ("recruit", "NCT06922110", "Nina Patel", "nina.patel@outlook.com",
-         "Extension pre-screen questions", "prescreen", 420,
-         "I completed every visit in the main study. Is there another medical "
-         "review before joining the extension?", 48),
+         "Another checkup before the follow-on?", "prescreen", 420,
+         "I completed every visit in the main study. Is there another checkup "
+         "before joining the follow-on?", 48),
 
         # Seltorexant monotherapy trial.
         ("ads", "NCT07573176", "Luis Ortega", "luis.ortega@gmail.com",
          "Not taking an antidepressant now", "new", 16,
          "I am not currently taking an antidepressant. Can I still ask about "
-         "the monotherapy study?", None),
+         "the depression study?", None),
         ("instagram", "NCT07573176", "Farah Khan", "@farah.finds.rest",
          "Remote visit options", "outreach", 110,
          "are any of the follow-up visits by video or are they all in person?", None),
         ("recruit", "NCT07573176", "Brian Wells", "brian.wells@outlook.com",
-         "How long is the medication period?", "prescreen", 310,
+         "How long would I take the medication?", "prescreen", 310,
          "Before I continue, how many weeks would I take the study medication?", None),
         ("recruit", "NCT07573176", "Monique Taylor", "monique.t@gmail.com",
          "Screening forms completed", "screening", 810,
@@ -3442,30 +3442,31 @@ def _top_up_demo_marketing_workflows(conn, user_id, oid):
 
         # Elismetrep long-term migraine safety trial.
         ("recruit", "NCT07674654", "Hailey Brooks", "hailey.b@gmail.com",
-         "Migraine diary requirement", "outreach", 72,
-         "Do I need to start a migraine diary before the first phone call?", None),
+         "Do I need to track my migraines first?", "outreach", 72,
+         "Do I need to start writing down my migraines before the first phone "
+         "call?", None),
         ("ads", "NCT07674654", "Andre Silva", "andre.silva@gmail.com",
-         "Current migraine medication", "prescreen", 280,
-         "I use a preventive injection and a rescue medication. Can both be "
-         "reviewed during the pre-screen?", 37),
+         "I take two things for migraines", "prescreen", 280,
+         "I get a monthly injection and I have a pill for when a migraine hits. "
+         "Is that a problem for the study?", 37),
 
         # Ubrogepant menstrual-migraine trial.
         ("instagram", "NCT06417775", "Lucia Moretti", "@lucia.migraine",
-         "Tracking cycle-related migraines", "new", 20,
+         "I've been tracking my period migraines", "new", 20,
          "i have tracked migraines around my cycle for six months. how do i "
-         "share that for the study?", None),
+         "share that with you?", None),
         ("recruit", "NCT06417775", "Erin Shaw", "erin.shaw@gmail.com",
-         "Can screening be virtual?", "outreach", 125,
-         "Could the first screening conversation happen by video before I "
-         "travel to the clinic?", None),
+         "Can the first call be by video?", "outreach", 125,
+         "Could the first conversation happen by video before I travel to the "
+         "clinic?", None),
         ("ads", "NCT06417775", "Zara Ahmed", "zara.ahmed@gmail.com",
-         "Migraine diagnosis documentation", "prescreen", 360,
-         "I have a regular migraine diagnosis and a cycle diary. Is that enough "
-         "information to begin pre-screening?", None),
+         "Is a regular migraine diagnosis enough?", "prescreen", 360,
+         "I have a migraine diagnosis and I track my cycle. Is that enough to "
+         "get started?", None),
         ("recruit", "NCT06417775", "Chloe Martin", "chloe.martin@gmail.com",
          "Screening scheduled next week", "screening", 900,
-         "Next Thursday works. Please let me know whether I need to pause any "
-         "migraine medicine before the appointment.", 35),
+         "Next Thursday works. Do I need to stop any migraine medicine before "
+         "the appointment?", 35),
     ]
     replies = {
         "outreach": (
@@ -3575,54 +3576,53 @@ def _top_up_demo_marketing_workflows(conn, user_id, oid):
     # a real working inbox, not four hand-picked cards. Eight assigned threads and
     # two unassigned inquiries are added per trial, with deterministic identities
     # and message histories so repeated seeding remains a no-op.
+    # People describe a study the way the ad did ("the migraine study"), not
+    # by its code name, and they name their own medication the way they would
+    # to a friend.
     study_context = {
-        "NCT05711940": ("the COMP360 study", "escitalopram",
-                        "treatment-resistant depression"),
-        "NCT07645924": ("the acute migraine study", "sumatriptan", "migraine"),
-        "NCT06559306": ("the seltorexant insomnia study", "escitalopram",
-                        "depression with insomnia"),
-        "NCT07076407": ("the X-NOVA3 study", "sertraline",
-                        "major depressive disorder"),
-        "NCT06922110": ("the Azetukalner extension study",
-                        "the current study medication", "depression"),
-        "NCT07573176": ("the seltorexant monotherapy study",
-                        "a sleep medication", "depression"),
-        "NCT07674654": ("the long-term migraine safety study", "topiramate",
-                        "migraine"),
-        "NCT06417775": ("the menstrual migraine study", "ubrogepant",
-                        "menstrual migraine"),
+        "NCT05711940": ("the psilocybin study", "an antidepressant",
+                        "depression"),
+        "NCT07645924": ("the migraine study", "a migraine pill", "migraines"),
+        "NCT06559306": ("the depression and insomnia study",
+                        "an antidepressant", "depression"),
+        "NCT07076407": ("the depression study", "sertraline", "depression"),
+        "NCT06922110": ("the follow-on depression study",
+                        "the study medication", "depression"),
+        "NCT07573176": ("the depression study", "a sleep medication",
+                        "sleep"),
+        "NCT07674654": ("the long-term migraine study", "a daily preventive",
+                        "migraines"),
+        "NCT06417775": ("the period migraine study", "a migraine pill",
+                        "migraines"),
     }
     question_templates = [
-        ("Would my medication affect eligibility?",
-         "I currently take {medication} for {condition}. Could the study team "
-         "review whether that affects eligibility for {study}?"),
-        ("How many visits are required?",
-         "How many clinic visits are part of {study}, and roughly how long does "
-         "each appointment take?"),
-        ("Is participation compensated?",
-         "Is compensation available for completed visits, and when is it "
-         "normally provided?"),
-        ("Travel and parking support",
-         "I live about 45 minutes away. Does {study} offer mileage, transit, or "
-         "parking support?"),
-        ("Can the first call be virtual?",
-         "Could the first eligibility conversation happen by phone or video "
-         "before I travel to the clinic?"),
+        ("Would my medication be a problem?",
+         "I take {medication} for {condition}. Is that a problem for {study}?"),
+        ("How many visits are there?",
+         "How many visits are there for {study}, and roughly how long is each "
+         "one?"),
+        ("Do I get paid?",
+         "Do you pay people for taking part, and when do you pay?"),
+        ("Help with travel or parking?",
+         "I live about 45 minutes away. Is there any help with gas, transit, "
+         "or parking for {study}?"),
+        ("Can the first call be by phone?",
+         "Can the first conversation happen by phone or video before I travel "
+         "in?"),
         ("Who can see my information?",
-         "Who on the study team can see the information I share during the "
-         "pre-screen, and is it kept confidential?"),
-        ("Do I need a physician referral?",
+         "Who sees the information I share, and is it kept private?"),
+        ("Do I need a referral from my doctor?",
          "Do I need a referral or records from my doctor before asking about "
-         "{study}, or can I contact the team directly?"),
-        ("Evening or weekend appointments",
-         "I work weekdays until 5. Are any screening appointments available in "
-         "the evening or on weekends?"),
+         "{study}, or can I just contact you?"),
+        ("Evening or weekend appointments?",
+         "I work weekdays until 5. Are there any evening or weekend "
+         "appointments?"),
         ("Can a support person join?",
-         "Can a family member or support person join the first call and future "
-         "study visits with me?"),
+         "Can a family member or friend come with me to the first call and "
+         "to visits?"),
         ("What happens after I apply?",
-         "I just submitted my information for {study}. What is the next step, "
-         "and when should I expect to hear from someone?"),
+         "I just sent in my information for {study}. What is the next step, "
+         "and when will I hear from someone?"),
     ]
     first_names = [
         "Amara", "Theo", "Jasmine", "Caleb", "Elena", "Miles", "Naomi",
@@ -3724,6 +3724,48 @@ def _top_up_demo_marketing_workflows(conn, user_id, oid):
     return added
 
 
+def _purge_demo_leads(conn, lead_ids):
+    """Delete demo applicants and everything that hangs off them, in foreign
+    key order. The refresh used to delete tasks and events by hand and then the
+    leads, which failed with a FOREIGN KEY error the moment a demo applicant had
+    been clicked around (attachments, a portal, a visit). Walking the schema's
+    own foreign keys means a new table can never reintroduce that. Inbox threads
+    that point at a purged lead are unlinked rather than deleted, since some sit
+    on live sources the refresh must not touch."""
+    if not lead_ids:
+        return
+    tables = [r[0] for r in conn.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'table' "
+        "AND name NOT LIKE 'sqlite_%'").fetchall()]
+    children = {}
+    for t in tables:
+        for fk in conn.execute(f"PRAGMA foreign_key_list({t})").fetchall():
+            children.setdefault(fk[2], []).append((t, fk[3]))
+
+    def purge(table, ids, depth=0):
+        if not ids or depth > 6:
+            return
+        for i in range(0, len(ids), 400):
+            chunk = list(ids[i:i + 400])
+            ph = ",".join("?" * len(chunk))
+            for child, col in children.get(table, []):
+                if child == "marketing_threads":
+                    conn.execute(f"UPDATE marketing_threads SET {col} = NULL "
+                                 f"WHERE {col} IN ({ph})", chunk)
+                    continue
+                cols = [c[1] for c in conn.execute(
+                    f"PRAGMA table_info({child})").fetchall()]
+                if "id" in cols and child != table:
+                    sub = [r[0] for r in conn.execute(
+                        f"SELECT id FROM {child} WHERE {col} IN ({ph})",
+                        chunk).fetchall()]
+                    purge(child, sub, depth + 1)
+                conn.execute(f"DELETE FROM {child} WHERE {col} IN ({ph})", chunk)
+            conn.execute(f"DELETE FROM {table} WHERE id IN ({ph})", chunk)
+
+    purge("leads", list(lead_ids))
+
+
 def seed_demo_marketing_hub(user_id):
     """Populate the demo account with a realistic, multi-account marketing inbox.
 
@@ -3780,7 +3822,16 @@ def seed_demo_marketing_hub(user_id):
         "WHERE org_id = ? AND assigned_to IN ({}) AND nct IN ({})".format(
             ",".join("?" * len(owners)), ",".join("?" * len(_DEMO_NCTS))),
         (oid, *owners, *_DEMO_NCTS)).fetchone()[0]
-    if (seeded and tagged and linked and ad_lead
+    # Older seeds put protocol jargon in applicants' mouths (MADRS cutoffs,
+    # washouts, open-label extensions). Nobody who clicked an ad writes that,
+    # so a database still carrying those threads is refreshed once.
+    jargon = conn.execute(
+        "SELECT 1 FROM marketing_threads WHERE org_id = ? AND ("
+        "subject LIKE '%MADRS%' OR subject LIKE '%washout%' OR "
+        "subject LIKE '%monotherapy%' OR subject LIKE '%OLE%' OR "
+        "subject LIKE '%Azetukalner%' OR subject LIKE '%K-304%') LIMIT 1",
+        (oid,)).fetchone()
+    if (seeded and tagged and linked and ad_lead and not jargon
             and mine_covered >= len(_DEMO_NCTS)):
         _top_up_demo_marketing_workflows(conn, user_id, oid)
         get_marketing_handoff(user_id)
@@ -3807,15 +3858,9 @@ def seed_demo_marketing_hub(user_id):
             "WHERE org_id = ?)", (oid,)).fetchall()
     ]
     if demo_lead_ids:
-        placeholders = ",".join("?" for _ in demo_lead_ids)
         conn.execute("DELETE FROM records_profiles WHERE applicant_token "
                      "LIKE 'demo-inbox-%'")
-        conn.execute(f"DELETE FROM lead_tasks WHERE lead_id IN ({placeholders})",
-                     demo_lead_ids)
-        conn.execute(f"DELETE FROM lead_events WHERE lead_id IN ({placeholders})",
-                     demo_lead_ids)
-        conn.execute(f"DELETE FROM leads WHERE id IN ({placeholders})",
-                     demo_lead_ids)
+        _purge_demo_leads(conn, demo_lead_ids)
     # Delete demo connection shells before their sources to preserve FK ordering.
     if demo_source_ids:
         source_placeholders = ",".join("?" for _ in demo_source_ids)
@@ -3969,61 +4014,14 @@ def seed_demo_marketing_hub(user_id):
     migl = _study("NCT07674654")  # Elismetrep long-term safety
     umm = _study("NCT06417775")  # Ubrogepant for Menstrual Migraine
 
-    # ── Recruitment inbox (email) ──────────────────────────────────────────
-    _seq(recruit_id, "Emily Carter", _MARKETING_DEMO_WORKFLOW_SENTINEL,
-         "Can I stay on escitalopram?", me, "open", True,
-         [("inbound", "contact",
-           "I am interested in the psilocybin study, but I currently take "
-           "escitalopram. Does that automatically rule me out, or is it "
-           "something the study doctor reviews first?", 4)],
-         study=psi, stage="new")
-    daniel_thread = _seq(
-        recruit_id, "Daniel Cho", "daniel.cho@outlook.com",
-        "Screening visit confirmation", me, "open", False,
-        [("inbound", "contact",
-          "Tuesday at 10 works for my screening visit. Is there anything I "
-          "should bring with me?", 214),
-         ("outbound", me,
-          "Tuesday at 10 is confirmed. Please bring photo ID and your current "
-          "medication list. I will send the clinic directions separately.", 198)],
-        study=psi, stage="screening")
-    _seq(recruit_id, "Nadia Brooks", "nadia.brooks@gmail.com",
-         "Do you offer evening screening appointments?", me, "open", True,
-         [("inbound", "contact",
-           "Hi, I saw your migraine study online. I work until 5 most days, so "
-           "are evening screening appointments possible? Also, is parking "
-           "covered when I come in?", 6)], study=mig)
-    _seq(recruit_id, "Marcus Reed", "marcus.reed@outlook.com",
-         "Is travel reimbursed for study visits?", jordan_id, "open", False,
-         [("inbound", "contact",
-           "I'd have to drive about 45 minutes each way. Is mileage or travel "
-           "reimbursed for the visits?", 52),
-          ("outbound", jordan_id,
-           "Hi Marcus, yes, we reimburse travel for every completed visit, and "
-           "it's paid the same week. Want me to hold a screening slot for you?",
-           41),
-          ("note", casey_id,
-           "He's a strong fit, flagging so we prioritize the callback.", 39)],
-         study=mdd)
-    _seq(recruit_id, "Dr. Sam Patel", "spatel@riversidefamilymed.com",
-         "Referring a patient who may qualify", me, "open", True,
-         [("inbound", "contact",
-           "I have a patient with chronic migraine who's interested. What's the "
-           "best way to refer, and can you send materials my front desk can hand "
-           "out?", 96),
-          ("note", me,
-           "@Casey can you send the approved clinic one-pager and set up a warm "
-           "handoff for the patient?", 88)], study=mig)
-    _seq(recruit_id, "Priya Anand", "priya.anand@gmail.com",
-         "Compensation and visit schedule", casey_id, "resolved", False,
-         [("inbound", "contact",
-           "How much is the compensation, and when is it paid?", 1520),
-          ("outbound", casey_id,
-           "Hi Priya, participants receive up to $1,200 across the study, paid "
-           "per completed visit. I've emailed the full schedule. Let me know if "
-           "you'd like to book screening!", 1505)], study=psi)
-    # Every claimed trial gets its own people, channels, and questions so the
-    # study switcher never lands on a cloned or empty "My inbox".
+    # Every thread below reads like what actually lands in a recruiting inbox:
+    # a person who saw the ad on Instagram, Google or Facebook and has an
+    # ordinary question (is it still open, do I get paid, how many visits, can
+    # I keep taking my medication, is my information private). No protocol
+    # jargon in their mouths: nobody who clicked an ad asks about MADRS
+    # cutoffs, washouts or open-label extensions. Every claimed trial gets its
+    # own people, channels and questions so the study switcher never lands on
+    # a cloned or empty "My inbox".
     who = {"me": me, "jordan": jordan_id, "casey": casey_id}
 
     def _t(src, contact, handle, subject, owner, status, unread, messages,
@@ -4031,104 +4029,100 @@ def seed_demo_marketing_hub(user_id):
         return _seq(src, contact, handle, subject, who.get(owner), status,
                     unread, messages, study=study, stage=stage)
 
-    # ── Instagram DMs ──────────────────────────────────────────────────────
-    # Unassigned so the default trial also demonstrates shared intake triage.
-    _seq(instagram_id, "Noah Williams", "@noah.wellness",
-         "How private is the first call?", None, "open", True,
-         [("inbound", "contact",
-           "i want to learn more but do not want my employer or family "
-           "contacted. is the first screening call confidential?", 18)],
-         study=psi, stage="new")
-    _seq(instagram_id, "Alicia Vance", "@mig_warrior", "New DM", casey_id,
-         "open", True,
-         [("inbound", "contact",
-           "saw your ad on my feed 🙌 how do i sign up for the migraine study??",
-           13)], study=mig)
-    _seq(instagram_id, "Mina Chen", "@healthwithmina",
-         "Community partnership question", casey_id, "open", False,
-         [("inbound", "contact",
-           "hi! i run a local health education page, who can i talk to about "
-           "sharing your study with my followers?", 72),
-          ("note", casey_id,
-           "Local health educator with about 18k followers. Worth a call if the "
-           "study team has approved materials they can share.", 66)], study=mdd)
-    rob_thread = _seq(instagram_id, "Rob Torres", "@rob.torres.tx",
-         "Do I need a referral?", me, "open", False,
-         [("inbound", "contact",
-           "do i need a referral from my own doctor to join or can i just apply "
-           "directly?", 330),
-          ("outbound", me,
-           "You can apply directly, no referral needed! I'll send a quick link "
-           "to check if you're eligible. 👍", 322)], study=psi)
-    # Unassigned on purpose: a brand-new DM nobody has claimed yet, so the
-    # "Unassigned" owner filter shows a real inquiry to pick up (no lead lost).
-    _seq(instagram_id, "Sam W.", "@skeptical_sam", "Is this real?", None,
-         "open", True,
-         [("inbound", "contact",
-           "is this legit or a scam lol. how do i know my info is safe?", 145)],
-         study=mdd)
+    # ── COMP360 psilocybin in treatment-resistant depression ─────────────
+    _t(recruit_id, "Emily Carter", _MARKETING_DEMO_WORKFLOW_SENTINEL,
+       "Can I stay on my antidepressant?", "me", "open", True,
+       [("inbound", "contact",
+         "I saw your ad for the psilocybin depression study. I take an "
+         "antidepressant right now. Do I have to stop it to take part, or is "
+         "that something the study doctor looks at?", 4)], psi, "new")
+    daniel_thread = _t(recruit_id, "Daniel Cho", "daniel.cho@outlook.com",
+       "Screening visit confirmation", "me", "open", False,
+       [("inbound", "contact",
+         "Tuesday at 10 works for my screening visit. Is there anything I "
+         "should bring with me?", 214),
+        ("outbound", me,
+         "Tuesday at 10 is confirmed. Please bring photo ID and a list of what "
+         "you take. I will send the clinic directions separately.", 198)],
+       psi, "screening")
+    rob_thread = _t(instagram_id, "Rob Torres", "@rob.torres.tx",
+       "Do I need a referral?", "me", "open", False,
+       [("inbound", "contact",
+         "do i need a referral from my psychiatrist to join the psilocybin "
+         "study or can i just apply?", 330),
+        ("outbound", me,
+         "You can apply directly, no referral needed. I'll send a quick link "
+         "to check the basics. 👍", 322)], psi, "outreach")
+    aisha_thread = _t(ads_id, "Aisha Rahman", "aisha.rahman@gmail.com",
+       "Interested in the depression study", "me", "open", False,
+       [("inbound", "contact",
+         "I found the study through Google. I am 32 and I have tried two "
+         "antidepressants that did not help much. What happens next?", 82),
+        ("outbound", me,
+         "Thanks for reaching out, Aisha. The next step is a short, private "
+         "pre-screen so the coordinator can go over the basics with you.", 68),
+        ("inbound", "contact",
+         "That sounds good. I am free after 3 tomorrow if someone can call.",
+         49)], psi, "prescreen")
+    _t(depression_id, "Mei Lin", "mei.lin@gmail.com",
+       "How much time does it take?", "me", "open", True,
+       [("inbound", "contact",
+         "I saw the psilocybin study ad. How many visits are there and how "
+         "long is each one? I would need to take time off work.", 22)], psi)
+    _t(recruit_id, "Dr. Aaron Cole", "acole@lenoxhillpsych.com",
+       "Referring a patient", "me", "open", True,
+       [("inbound", "contact",
+         "I have a patient with depression who has not done well on several "
+         "medications and is interested in your psilocybin study. What is "
+         "the best way to refer her?", 110)], psi)
+    _t(depression_id, "Jonah Hale", "jonah.hale@outlook.com",
+       "Time off work for the treatment day", "me", "open", False,
+       [("inbound", "contact",
+         "How long is the day you take the medication, and do I need someone "
+         "to drive me home?", 200),
+        ("outbound", me,
+         "Plan on a full supervised day, and yes, someone needs to pick you "
+         "up. I can send the day-of schedule.", 188)], psi, "prescreen")
+    _t(recruit_id, "Priya Anand", "priya.anand@gmail.com",
+       "Do I get paid?", "casey", "resolved", False,
+       [("inbound", "contact",
+         "Do you pay people for taking part, and when?", 1520),
+        ("outbound", casey_id,
+         "Hi Priya, participants receive up to $1,200 across the study, paid "
+         "per completed visit. I emailed the full schedule. Let me know if "
+         "you'd like to book screening!", 1505)], psi)
+    _t(instagram_id, "Kit R.", "@kit.asks",
+       "Is this actual psilocybin or a placebo?", None, "open", True,
+       [("inbound", "contact",
+         "is this real psilocybin? i'm nervous about a trip and want to know "
+         "who is in the room with me.", 125)], psi)
+    _t(instagram_id, "Noah Williams", "@noah.wellness",
+       "How private is the first call?", None, "open", True,
+       [("inbound", "contact",
+         "i want to learn more but do not want my employer or family "
+         "contacted. is the first call confidential?", 18)], psi, "new")
 
-    # ── Google Ads leads and one operational alert ─────────────────────────
-    aisha_thread = _seq(
-        ads_id, "Aisha Rahman", "aisha.rahman@gmail.com",
-        "Interested in the depression study", me, "open", False,
-        [("inbound", "contact",
-          "I found the study through Google. I am 32 and have tried two "
-          "antidepressants without much improvement. What happens next?", 82),
-         ("outbound", me,
-          "Thanks for reaching out, Aisha. The next step is a short, private "
-          "pre-screen so the coordinator can review the basics with you.", 68),
-         ("inbound", "contact",
-          "That sounds good. I am free after 3 tomorrow if someone can call.", 49)],
-        study=psi, stage="prescreen")
-    _seq(ads_id, "Google Ads", "Automated alert",
-         "Ad disapproved: landing page policy", me, "open", True,
-         [("inbound", "system",
-           "One ad in 'Migraine Search' was disapproved for a landing page "
-           "policy issue. Affected ad is not serving. Review and resubmit to "
-           "resume delivery.", 9)], study=mig)
-    # Unassigned on purpose: a fresh ad lead lands with no owner (ad leads
-    # routinely arrive unclaimed), so triaging the "Unassigned" queue has teeth.
-    _seq(ads_id, "Maya Chen", "maya.chen@gmail.com",
-         "Can I join while taking topiramate?", None, "open", True,
-         [("inbound", "contact",
-           "I clicked your Google ad for the migraine study. I have around 10 "
-           "to 12 migraine days a month and take topiramate. Could I still be "
-           "eligible?", 58),
-          ("outbound", jordan_id,
-           "Thanks, Maya. Medication history is part of screening, so we can't "
-           "confirm eligibility by message. I can send the secure pre-screen "
-           "link if you'd like to continue.", 51)], study=mig)
-    _seq(ads_id, "Ben Walsh", "ben.walsh@outlook.com",
-         "Question about visits and travel", me, "open", False,
-         [("inbound", "contact",
-           "I saw the study in a Google ad. How many clinic visits are involved, "
-           "and is there any help with travel costs?", 180),
-          ("outbound", me,
-           "Hi Ben, I can send the study-team-approved visit schedule and "
-           "reimbursement details. What is the best email for you?", 168)],
-         study=mig)
     # ── Elismetrep (K-304) acute migraine ────────────────────────────────
     _t(recruit_id, "Nadia Brooks", "nadia.brooks@gmail.com",
-       "Do you offer evening screening appointments?", "me", "open", True,
+       "Do you have evening appointments?", "me", "open", True,
        [("inbound", "contact",
-         "Hi, I saw your Elismetrep migraine study online. I work until 5 most "
-         "days, so are evening screening appointments possible? Also, is "
-         "parking covered when I come in?", 6)], mig)
+         "Hi, I saw your migraine study ad. I work until 5 most days, so are "
+         "evening appointments possible? Also, is parking covered when I come "
+         "in?", 6)], mig)
     _t(recruit_id, "Dr. Sam Patel", "spatel@riversidefamilymed.com",
-       "Referring a patient with frequent migraine", "me", "open", True,
+       "Referring a patient with frequent migraines", "me", "open", True,
        [("inbound", "contact",
-         "I have a patient with 8–10 moderate migraines a month who asked about "
-         "K-304. What's the best way to refer, and can you send a one-pager "
-         "my front desk can hand out?", 96),
+         "I have a patient with 8 to 10 migraines a month who asked about "
+         "your study. What's the best way to refer, and can you send a "
+         "one-pager my front desk can hand out?", 96),
         ("note", me,
-         "@Casey can you send the approved Elismetrep clinic one-pager and "
-         "set up a warm handoff?", 88)], mig)
+         "@Casey can you send the approved clinic one-pager and set up a warm "
+         "handoff?", 88)], mig)
     lauren_thread = _t(migraine_id, "Lauren Fitzgerald", "lauren.f@yahoo.com",
-       "Eligible with 16 migraine days a month?", "me", "open", True,
+       "I get migraines most weeks, can I join?", "me", "open", True,
        [("inbound", "contact",
          "I get migraines about 16 days a month and I'm 34. Would I qualify "
-         "for the acute Elismetrep (K-304) study?", 19)], mig)
+         "for the migraine study?", 19)], mig)
     _t(ads_id, "Google Ads", "Automated alert",
        "Ad disapproved: landing page policy", "me", "open", True,
        [("inbound", "system",
@@ -4136,17 +4130,18 @@ def seed_demo_marketing_hub(user_id):
          "policy issue. Affected ad is not serving. Review and resubmit to "
          "resume delivery.", 9)], mig)
     _t(ads_id, "Ben Walsh", "ben.walsh@outlook.com",
-       "How many clinic visits for K-304?", "me", "open", False,
+       "How many visits, and is travel covered?", "me", "open", False,
        [("inbound", "contact",
-         "I saw the Elismetrep ad. How many clinic visits for an acute "
-         "migraine attack, and is there help with travel costs?", 180),
+         "I saw the migraine ad. How many clinic visits are involved, and is "
+         "there any help with travel costs?", 180),
         ("outbound", me,
-         "Hi Ben, I can send the approved visit schedule and reimbursement "
-         "details. What is the best email for you?", 168)], mig)
+         "Hi Ben, I can send the study-team-approved visit schedule and "
+         "reimbursement details. What is the best email for you?", 168)],
+       mig, "outreach")
     tomas_thread = _t(migraine_id, "Tomás Rivera", "trivera@gmail.com",
-       "Need to reschedule my screening visit", "jordan", "open", False,
+       "Need to move my screening visit", "jordan", "open", False,
        [("inbound", "contact",
-         "Something came up at work, can I move my Thursday K-304 screening "
+         "Something came up at work, can I move my Thursday screening visit "
          "to next week?", 215),
         ("outbound", jordan_id,
          "No problem, Tomás. Tuesday 10:00am or Wednesday 2:00pm, which "
@@ -4156,290 +4151,236 @@ def seed_demo_marketing_hub(user_id):
     _t(instagram_id, "Alicia Vance", "@mig_warrior", "New DM", "casey",
        "open", True,
        [("inbound", "contact",
-         "saw your Elismetrep ad on my feed 🙌 how do i sign up for the "
-         "acute migraine study??", 13)], mig)
+         "saw your ad on my feed 🙌 how do i sign up for the migraine study??",
+         13)], mig)
     _t(ads_id, "Maya Chen", "maya.chen@gmail.com",
-       "Can I join while taking topiramate?", None, "open", True,
+       "I take a daily preventive, can I still join?", None, "open", True,
        [("inbound", "contact",
-         "I clicked your Google ad for Elismetrep. I have around 10 to 12 "
-         "migraine days a month and take topiramate. Could I still be "
-         "eligible?", 58)], mig)
+         "I clicked your Google ad for the migraine study. I get 10 to 12 "
+         "migraine days a month and take a daily preventive pill. Could I "
+         "still be eligible?", 58)], mig)
 
     # ── Adjunctive Seltorexant in MDD with insomnia ──────────────────────
     helen_thread = _t(depression_id, "Helen Park", "helen.park@gmail.com",
-       "Still can't sleep on sertraline, is the add-on for me?", "me",
-       "open", True,
+       "Still can't sleep on my antidepressant", "me", "open", True,
        [("inbound", "contact",
-         "I'm on 100mg sertraline and my mood is a bit better, but I still "
-         "lie awake most nights. Is the adjunctive seltorexant study an "
-         "add-on to my current antidepressant?", 12)], mdd)
+         "I'm on an antidepressant and my mood is a bit better, but I still "
+         "lie awake most nights. Is this study for people like me?", 12)],
+       mdd)
     _t(depression_id, "Omar Diallo", "omar.diallo@outlook.com",
-       "Insomnia score / ISI, what do you need?", "me", "open", True,
+       "My psychiatrist said to ask about this", "me", "open", True,
        [("inbound", "contact",
-         "My psychiatrist said I might fit the MDD + insomnia study. Do I "
-         "need a formal ISI score before screening, or do you measure that "
-         "at the visit?", 34)], mdd, "prescreen")
+         "My psychiatrist said I might fit the depression and insomnia "
+         "study. Do I need anything from him before I call you, or can I "
+         "just book?", 34)], mdd, "prescreen")
     _t(recruit_id, "Dr. Lila Shah", "lshah@hudsonpsych.com",
-       "Referring a patient with residual insomnia", "me", "open", True,
+       "Referring a patient", "me", "open", True,
        [("inbound", "contact",
-         "I have a 47-year-old on stable escitalopram with residual insomnia. "
-         "Can you take a seltorexant adjunct referral this week?", 88)], mdd)
+         "I have a 47-year-old patient with depression who still sleeps "
+         "badly on her current medication. Can you take a referral this "
+         "week?", 88)], mdd)
     _t(dep_ads_id, "Keisha Boone", "keisha.boone@icloud.com",
        "Do I stay on my antidepressant?", "me", "open", False,
        [("inbound", "contact",
-         "Clicked the insomnia depression ad. If I join, do I stay on my "
-         "current SSRI the whole time?", 140),
+         "Clicked the insomnia and depression ad. If I join, do I keep "
+         "taking what I take now?", 140),
         ("outbound", me,
-         "Yes, this arm is add-on seltorexant on top of a stable "
-         "antidepressant. I can send the pre-screen if you want to continue.",
-         128)], mdd, "outreach")
-    _t(depression_id, "Marcus Reed", "marcus.reed@outlook.com",
-       "Is travel reimbursed for the insomnia visits?", "jordan", "open",
-       False,
+         "Good question, Keisha. This study is for people who stay on their "
+         "current antidepressant. Screening confirms the details. I can send "
+         "the pre-screen if you want to continue.", 128)], mdd, "outreach")
+    _t(recruit_id, "Marcus Reed", "marcus.reed@outlook.com",
+       "Is travel reimbursed?", "jordan", "open", False,
        [("inbound", "contact",
-         "I'd have to drive about 45 minutes for the seltorexant adjunct "
-         "visits. Is mileage reimbursed?", 52),
+         "I'd have to drive about 45 minutes each way. Is mileage or travel "
+         "reimbursed for the visits?", 52),
         ("outbound", jordan_id,
-         "Yes, we reimburse travel for every completed visit, paid the same "
-         "week. Want me to hold a screening slot?", 41)], mdd)
-    _t(instagram_id, "Sam W.", "@skeptical_sam",
-       "Is this just a sleeping-pill study?", None, "open", True,
+         "Hi Marcus, yes, we reimburse travel for every completed visit, and "
+         "it's paid the same week. Want me to hold a screening slot for you?",
+         41),
+        ("note", casey_id,
+         "He's a strong fit, flagging so we prioritize the callback.", 39)],
+       mdd)
+    _t(instagram_id, "Sam W.", "@skeptical_sam", "Is this real?", None,
+       "open", True,
        [("inbound", "contact",
-         "is the seltorexant thing a sleeping pill or an actual depression "
-         "study? how do i know my info is safe?", 145)], mdd)
+         "is this legit or a scam lol. how do i know my info is safe?", 145)],
+       mdd)
 
     # ── Azetukalner vs Placebo (X-NOVA3) ─────────────────────────────────
     aze_thread = _t(depression_id, "Denise Okafor", "denise.okafor@gmail.com",
-       "Currently on sertraline, still qualify for Azetukalner?", "me",
-       "open", True,
+       "On an antidepressant, can I still apply?", "me", "open", True,
        [("inbound", "contact",
-         "I have depression and I'm on 100mg sertraline but it's not helping "
-         "much. Can I still apply for X-NOVA3 / Azetukalner, or does being on "
-         "medication rule me out?", 24)], aze)
+         "I have depression and I'm on an antidepressant but it's not "
+         "helping much. Can I still apply, or does being on medication rule "
+         "me out?", 24)], aze)
     _t(depression_id, "Victor Lang", "victor.lang@gmail.com",
-       "How depressed do I need to be (MADRS)?", "me", "open", True,
+       "How bad does it have to be?", "me", "open", True,
        [("inbound", "contact",
-         "My doctor mentioned a MADRS cutoff for Azetukalner. I'm having a "
-         "rough month but I don't know my score, can I still come in?",
+         "I'm having a rough month but I don't know if it counts as bad "
+         "enough for a study. Can I still come in and talk to someone?",
          47)], aze, "prescreen")
     _t(dep_ads_id, "Amira Soltani", "amira.soltani@yahoo.com",
-       "Failed two antidepressants this episode", "me", "open", False,
+       "Two medications have not helped", "me", "open", False,
        [("inbound", "contact",
-         "I tried sertraline and then venlafaxine this episode. Does that "
-         "count as enough treatment failure for X-NOVA3?", 170),
+         "I have tried two different antidepressants this year and neither "
+         "helped much. Is this study for people like me?", 170),
         ("outbound", me,
-         "Two adequate trials this episode is exactly what we review at "
-         "screening. I can send the secure pre-screen link.", 158)], aze,
+         "That is exactly the kind of history we go over at screening, "
+         "Amira. I can send the secure pre-screen link.", 158)], aze,
        "outreach")
     _t(depression_id, "Robert Klein", "rklein@protonmail.com",
-       "Follow-up after Azetukalner phone screen", "jordan", "open", False,
+       "Follow-up after my phone call", "jordan", "open", False,
        [("inbound", "contact",
-         "Following up on last week's X-NOVA3 phone screen, any update on "
-         "an in-person screening date?", 260),
+         "Following up on last week's phone call, any update on an in-person "
+         "visit date?", 260),
         ("outbound", jordan_id,
          "You're through the phone screen. Monday 9am or Wednesday 1pm?",
          248)], aze, "outreach")
     _t(instagram_id, "Priya N.", "@priya.n.writes",
-       "Do I need my psychiatrist to refer?", "casey", "open", False,
+       "Do I need my psychiatrist to refer me?", "casey", "open", False,
        [("inbound", "contact",
-         "saw the Azetukalner ad, do you need a referral from my "
-         "psychiatrist or can i self refer to X-NOVA3?", 410)], aze)
+         "saw the depression study ad, do i need a referral from my "
+         "psychiatrist or can i sign up myself?", 410)], aze)
     _t(dep_ads_id, "Chris Nguyen", "chris.nguyen@gmail.com",
-       "Saw the X-NOVA3 ad, still enrolling?", None, "open", True,
+       "Saw the ad, still enrolling?", None, "open", True,
        [("inbound", "contact",
-         "Clicked your depression study ad. Is Azetukalner vs placebo still "
-         "enrolling in New York?", 70)], aze)
+         "Clicked your depression study ad. Are you still taking people in "
+         "New York?", 70)], aze)
 
     # ── Azetukalner open-label extension ─────────────────────────────────
     grace_ole = _t(ole_id, "Grace Kim", "grace.kim@icloud.com",
-       "Eligible for the Azetukalner extension?", "me", "open", True,
+       "Can I keep going after the study ends?", "me", "open", True,
        [("inbound", "contact",
-         "I just finished the 12-week X-NOVA3 double-blind. My coordinator "
-         "mentioned the open-label extension, am I eligible, and when "
-         "would it start?", 40),
+         "I just finished the 12 weeks. My coordinator mentioned there is a "
+         "follow-on study. Can I join it, and when would it start?", 40),
         ("outbound", me,
-         "Hi Grace, everyone who completes the double-blind period can roll "
-         "into the OLE. I'll confirm your window and send the visit "
-         "schedule today.", 31)], azeo, "screening")
+         "Hi Grace, everyone who completes the study can continue into the "
+         "follow-on. I'll confirm your dates and send the visit schedule "
+         "today.", 31)], azeo, "screening")
     _t(ole_id, "James Whitaker", "j.whitaker@gmail.com",
-       "When does OLE start after my last double-blind visit?", "me",
-       "open", True,
+       "When does the next part start?", "me", "open", True,
        [("inbound", "contact",
-         "Last X-NOVA3 visit was Friday. Is there a washout before the "
-         "open-label extension, or do I come straight back?", 55)], azeo)
+         "My last visit was Friday. Is there a break before the follow-on "
+         "study, or do I come straight back?", 55)], azeo)
     _t(ole_id, "Elena Cruz", "elena.cruz@outlook.com",
-       "I was on placebo, can I still get Azetukalner?", "me", "open",
-       False,
+       "I think I was on the placebo", "me", "open", False,
        [("inbound", "contact",
-         "I think I was on placebo in the blinded study. Does the OLE still "
-         "put me on Azetukalner?", 210),
+         "I think I was on placebo in the first study. Would I get the real "
+         "medication in the follow-on?", 210),
         ("outbound", me,
-         "The extension is open-label Azetukalner for completers, including "
-         "people who were on placebo. I'll send the OLE consent.", 198)],
+         "Everyone who completed the first study gets the active medication "
+         "in the follow-on, including people who were on placebo. I'll send "
+         "the consent form so you can read the details.", 198)],
        azeo, "prescreen")
     _t(ole_id, "David Okonkwo", "d.okonkwo@yahoo.com",
-       "OLE consent, washout section", "casey", "resolved", False,
+       "Questions before I sign", "casey", "resolved", False,
        [("inbound", "contact",
-         "Got the extension consent. Two questions on the washout section "
-         "before I sign.", 1980),
+         "Got the consent form. Two questions before I sign, can someone "
+         "call me?", 1980),
         ("outbound", casey_id,
-         "No washout if you're rolling over from X-NOVA3. I'll call this "
-         "afternoon to walk through the rest.", 1965)], azeo, "enrolled")
+         "Of course. I'll call this afternoon and walk through it with you.",
+         1965)], azeo, "enrolled")
     _t(instagram_id, "Leah P.", "@leah.p.notes",
-       "Is the extension only for people already in the study?", None,
-       "open", True,
+       "Is this only for people already in the study?", None, "open", True,
        [("inbound", "contact",
-         "can new patients join the Azetukalner extension or is it only if "
-         "you already finished X-NOVA3?", 160)], azeo)
+         "can new patients join the follow-on study or is it only if you "
+         "already did the first one?", 160)], azeo)
 
     # ── Seltorexant monotherapy in MDD ───────────────────────────────────
     wanda_thread = _t(depression_id, "Wanda Price", "wanda.price@yahoo.com",
-       "Not on an antidepressant, monotherapy still open?", "me", "open",
-       True,
+       "Not on any medication right now", "me", "open", True,
        [("inbound", "contact",
          "I stopped my antidepressant a few months ago and haven't "
-         "restarted. Is the seltorexant monotherapy study still an option, "
-         "or do I need to be on a medication already?", 18)], selm)
+         "restarted. Is the depression study still an option for me, or do "
+         "I need to be on something already?", 18)], selm)
     _t(depression_id, "Theo March", "theo.march@gmail.com",
-       "How is monotherapy different from the add-on study?", "me", "open",
-       True,
+       "Which depression study is for me?", "me", "open", True,
        [("inbound", "contact",
-         "There's an add-on seltorexant study and a monotherapy one. I'm "
-         "not on anything right now, which one is actually for me?", 42)],
+         "I saw two depression studies on your page. I'm not taking "
+         "anything right now. Which one should I ask about?", 42)],
        selm, "prescreen")
     _t(dep_ads_id, "Anika Bose", "anika.bose@icloud.com",
-       "Off meds for 12 weeks, still eligible?", "me", "open", False,
+       "Off medication for a few months", "me", "open", False,
        [("inbound", "contact",
-         "Clicked the monotherapy ad. I've been off antidepressants for "
-         "about 12 weeks. Is that long enough, or too long?", 190),
+         "Clicked the depression ad. I've been off antidepressants for "
+         "about three months. Does that matter?", 190),
         ("outbound", me,
-         "A recent washout like that is common for this arm. Screening "
-         "confirms timing, I can send the pre-screen.", 176)], selm,
-       "outreach")
+         "Thanks, Anika. Timing like that is part of what screening looks "
+         "at. I can send the pre-screen link.", 176)], selm, "outreach")
     _t(instagram_id, "@calm_and_c", "@calm_and_c",
-       "How many weeks is monotherapy?", "jordan", "open", False,
+       "How many weeks is the study?", "jordan", "open", False,
        [("inbound", "contact",
-         "how many weeks total is the seltorexant monotherapy study and "
-         "how many visits are in person vs phone?", 320),
+         "how many weeks total is the depression study and how many visits "
+         "are in person vs phone?", 320),
         ("outbound", jordan_id,
-         "It's 8 weeks: 2 in-person (screening + baseline), the rest are "
-         "short phone or video check-ins.", 305)], selm, "outreach")
+         "It's 8 weeks: 2 in-person (screening and a first visit), the rest "
+         "are short phone or video check-ins.", 305)], selm, "outreach")
     _t(dep_ads_id, "Riley Cho", "riley.cho@gmail.com",
-       "Monotherapy ad, still taking people?", None, "open", True,
+       "Saw your ad, still taking people?", None, "open", True,
        [("inbound", "contact",
-         "Saw your ad for seltorexant alone, not add-on. Are you still "
-         "enrolling people who aren't on an SSRI?", 80)], selm)
-
-    # ── COMP360 psilocybin in TRD ────────────────────────────────────────
-    rob_thread = _t(instagram_id, "Rob Torres", "@rob.torres.tx",
-       "Do I need a referral for the psilocybin study?", "me", "open",
-       False,
-       [("inbound", "contact",
-         "do i need a referral from my psychiatrist to join the COMP360 "
-         "psilocybin study or can i apply directly?", 330),
-        ("outbound", me,
-         "You can apply directly, no referral needed. I'll send a link to "
-         "check if the TRD criteria fit. 👍", 322)], psi, "outreach")
-    _t(depression_id, "Mei Lin", "mei.lin@gmail.com",
-       "Failed three antidepressants, is this the mushroom study?", "me",
-       "open", True,
-       [("inbound", "contact",
-         "I've failed sertraline, bupropion, and vortioxetine this episode. "
-         "Is COMP360 the psilocybin study, and is there therapy the same "
-         "day as dosing?", 22)], psi)
-    _t(recruit_id, "Dr. Aaron Cole", "acole@lenoxhillpsych.com",
-       "Referring a TRD patient for COMP360", "me", "open", True,
-       [("inbound", "contact",
-         "Treatment-resistant depression, three adequate trials. Does "
-         "COMP360 require integration therapy on site, and can I stay the "
-         "treating psychiatrist?", 110)], psi)
-    _t(depression_id, "Jonah Hale", "jonah.hale@outlook.com",
-       "Time off work for the dosing day", "me", "open", False,
-       [("inbound", "contact",
-         "How long is the psilocybin dosing day, and do I need someone to "
-         "take me home?", 200),
-        ("outbound", me,
-         "Plan on a full supervised day, and yes, a support person needs "
-         "to pick you up. I can send the day-of schedule.", 188)], psi,
-       "prescreen")
-    _t(recruit_id, "Priya Anand", "priya.anand@gmail.com",
-       "Compensation and visit schedule", "casey", "resolved", False,
-       [("inbound", "contact",
-         "How much is COMP360 compensation, and when is it paid?", 1520),
-        ("outbound", casey_id,
-         "Participants receive up to $1,200 across the study, paid per "
-         "completed visit. I emailed the full schedule.", 1505)], psi)
-    _t(instagram_id, "Kit R.", "@kit.asks",
-       "Is this actual psilocybin or a placebo?", None, "open", True,
-       [("inbound", "contact",
-         "is COMP360 real psilocybin? i'm nervous about a trip and want to "
-         "know what support is in the room.", 125)], psi)
+         "Saw your ad for the depression study. Are you still taking people "
+         "who aren't on medication?", 80)], selm)
 
     # ── Elismetrep long-term safety ──────────────────────────────────────
     isla_thread = _t(migraine_id, "Isla Thompson", "isla.thompson@gmail.com",
-       "Long-term study after finishing the acute trial", "me", "open",
-       True,
+       "Can I join the longer study?", "me", "open", True,
        [("inbound", "contact",
-         "I completed the short acute Elismetrep study in the spring. Is "
-         "the long-term safety study something I can join, or is it only "
-         "for new patients?", 95)], migl, "screening")
+         "I was in the short migraine study in the spring. Is the longer "
+         "one something I can join, or is it only for new patients?", 95)],
+       migl, "screening")
     _t(ads_id, "Colin Deb", "colin.deb@icloud.com",
-       "Triptan reaction, excluded from long-term K-304?", "me", "open",
-       False,
+       "Bad reaction to a migraine pill before", "me", "open", False,
        [("inbound", "contact",
-         "Saw the ad for the long-term Elismetrep safety study. I had a "
-         "bad reaction to a triptan a few years back. Does that exclude "
-         "me?", 500)], migl)
+         "Saw the ad for the long-term migraine study. I had a bad reaction "
+         "to a migraine pill a few years back. Does that matter?", 500)],
+       migl)
     _t(migraine_id, "Hannah Ruiz", "hannah.ruiz@gmail.com",
-       "How long is the safety follow-up?", "me", "open", True,
+       "How long does it go on?", "me", "open", True,
        [("inbound", "contact",
-         "If I roll from the acute K-304 study into the long-term safety "
-         "arm, how many extra months and how often do I come in?", 28)],
-       migl, "prescreen")
+         "If I join the long-term migraine study, how many months is it and "
+         "how often do I come in?", 28)], migl, "prescreen")
     _t(migraine_id, "Peter Lang", "peter.lang@yahoo.com",
-       "Can I use rescue meds during the safety year?", "jordan", "open",
+       "Can I still take my usual migraine pills?", "jordan", "open",
        False,
        [("inbound", "contact",
-         "During the long-term Elismetrep follow-up, am I allowed a rescue "
-         "triptan if an attack doesn't respond?", 240)], migl, "outreach")
+         "During the study, am I allowed to take my usual pill if a "
+         "migraine doesn't go away?", 240)], migl, "outreach")
     _t(ads_id, "Nora Ellis", "nora.ellis@gmail.com",
        "Long-term migraine ad, still open?", None, "open", True,
        [("inbound", "contact",
-         "I wasn't in the first Elismetrep study. Can new patients join "
-         "the long-term safety trial?", 90)], migl)
+         "I wasn't in the first migraine study. Can new patients join the "
+         "long-term one?", 90)], migl)
 
     # ── Ubrogepant for menstrual migraine ────────────────────────────────
     nadia_umm = _t(menstrual_id, "Nadia Haddad", "nadia.haddad@gmail.com",
-       "Timing screening around my cycle", "me", "open", True,
+       "My migraines come with my period", "me", "open", True,
        [("inbound", "contact",
-         "My migraines are tied to my period, so timing matters. Do I need "
-         "to schedule the ubrogepant screening for a specific day of my "
-         "cycle?", 20),
+         "My migraines are tied to my period. Does it matter which day of "
+         "my cycle I come in for the first visit?", 20),
         ("outbound", me,
-         "We'll time screening to your expected next cycle so we can "
-         "confirm the pattern. What's your usual cycle length?", 14)],
-       umm, "prescreen")
+         "Good question. We time the first visit around your expected next "
+         "cycle. What's your usual cycle length?", 14)], umm, "prescreen")
     _t(menstrual_id, "Camille Roy", "camille.roy@icloud.com",
        "Can I stay on my birth control?", "me", "open", True,
        [("inbound", "contact",
-         "I'm on a combined oral contraceptive. Does that exclude me from "
-         "the menstrual migraine / ubrogepant study?", 36)], umm)
+         "I'm on the pill. Does that rule me out of the period migraine "
+         "study?", 36)], umm)
     _t(instagram_id, "Tara O.", "@tara.okonkwo",
-       "Need a formal menstrual-migraine diagnosis?", "me", "open", False,
+       "Do I need a diagnosis first?", "me", "open", False,
        [("inbound", "contact",
-         "do you need a formal menstrual migraine diagnosis or is a "
-         "regular migraine diagnosis plus tracking my period enough for "
-         "ubrogepant?", 48)], umm, "outreach")
+         "do i need a doctor to say my migraines are from my period, or is "
+         "a regular migraine diagnosis plus tracking my cycle enough?", 48)],
+       umm, "outreach")
     _t(menstrual_id, "Sofia Grant", "sofia.grant@gmail.com",
-       "How many cycles do you follow?", "casey", "open", False,
+       "How long does it last?", "casey", "open", False,
        [("inbound", "contact",
-         "Is this one cycle of ubrogepant or several? I travel for work "
-         "every other month.", 300)], umm)
+         "Is this one month or several? I travel for work every other "
+         "month.", 300)], umm)
     _t(instagram_id, "Jen K.", "@jen.tracks.cycles",
-       "Period-migraine study, still enrolling?", None, "open", True,
+       "Period migraine study, still enrolling?", None, "open", True,
        [("inbound", "contact",
-         "saw your ubrogepant ad. i get attacks the day before my period. "
-         "is that enough to qualify?", 100)], umm)
+         "saw your ad. i get attacks the day before my period. is that "
+         "enough to qualify?", 100)], umm)
 
     # A raw conversation is not automatically an applicant. Seed three explicit,
     # consented links so the demo shows both sides of that boundary: general
