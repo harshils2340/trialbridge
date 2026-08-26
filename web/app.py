@@ -87,6 +87,7 @@ import redcap  # noqa: E402
 import reminders as reminders_mod  # noqa: E402
 import sites_features  # noqa: E402
 import summarize  # noqa: E402
+import omni_hub  # noqa: E402
 import trends  # noqa: E402
 import ctis  # noqa: E402
 import copilot  # noqa: E402
@@ -301,6 +302,8 @@ def _send_stored_file(stored_name, orig_name):
 
 # Create tables on import so the app is safe under any launcher (flask run, wsgi).
 db.init_db()
+# Omni: the prompt-configured inbox at /omni (own om_* tables, own routes).
+omni_hub.register(app)
 
 # In no-login demo mode, seed a few realistic (clearly fake) candidates so the
 # study-team review board shows an end-to-end picture. No-op once real leads exist.

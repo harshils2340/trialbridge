@@ -1,0 +1,27 @@
+{# Source chips and tiles. Known brands get their icon; everything else gets a
+   two letter monogram in the same chip so the row never looks half designed. #}
+{% import "_icons.html" as ic %}
+
+{% macro chip(kind, meta, extra='') -%}
+  {% set icon = meta.icon if meta and meta.icon else '' %}
+  {% set mono = meta.mono if meta and meta.mono else kind[:2]|upper %}
+  {% set label = meta.label if meta else kind %}
+  {% if icon in ('gmail', 'instagram') %}
+  <span class="mh-channel-ic is-{{ 'email' if icon == 'gmail' else icon }} {{ extra }}" title="{{ label }}" aria-label="{{ label }}">{{ ic.icon(icon, 'brand-ico') }}</span>
+  {% elif icon %}
+  <span class="mh-channel-ic om-ic {{ extra }}" title="{{ label }}" aria-label="{{ label }}">{{ ic.icon(icon) }}</span>
+  {% else %}
+  <span class="mh-channel-ic om-ic is-mono {{ extra }}" title="{{ label }}" aria-label="{{ label }}">{{ mono }}</span>
+  {% endif %}
+{%- endmacro %}
+
+{% macro tile(kind, meta, name='sources', checked=False, input_type='checkbox') -%}
+<label class="om-tile">
+  <input type="{{ input_type }}" name="{{ name }}" value="{{ kind }}" {% if checked %}checked{% endif %}>
+  <span>
+    {{ chip(kind, meta) }}
+    <b>{{ meta.label }}</b>
+    <small>{{ meta.feeds }}</small>
+  </span>
+</label>
+{%- endmacro %}

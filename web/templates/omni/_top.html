@@ -1,0 +1,48 @@
+{# The Omni top bar: brand, the four places, and the one line that changes
+   the setup. It is deliberately small: everything else lives in the tabs. #}
+{% import "_icons.html" as ic %}
+
+{% macro bar(ws, active='inbox', is_owner=False) -%}
+<header class="om-top" id="omTop">
+  <div class="om-top-row">
+    <a class="om-brand" href="{{ url_for('om_landing') }}" aria-label="{{ OMNI_BRAND }} home">
+      {{ ic.icon('mark', 'brand-glyph') }}<b>{{ OMNI_BRAND }}</b>
+    </a>
+    {% if ws %}
+    <span class="om-ws-name" title="{{ ws.name }}">{{ ws.name }}</span>
+    <nav class="om-top-nav" aria-label="Workspace">
+      <a href="{{ url_for('om_inbox', wid=ws.wid) }}" class="{{ 'is-active' if active == 'inbox' }}">Inbox</a>
+      <a href="{{ url_for('om_connect', wid=ws.wid) }}" class="{{ 'is-active' if active == 'connect' }}">Connections</a>
+      <a href="{{ url_for('om_rules', wid=ws.wid) }}" class="{{ 'is-active' if active == 'rules' }}">Rules</a>
+      <a href="{{ url_for('om_setup', wid=ws.wid) }}" class="{{ 'is-active' if active == 'setup' }}">Setup</a>
+    </nav>
+    <div class="om-top-actions">
+      <button type="button" class="link-btn om-share" data-share-url="{{ url_for('om_inbox', wid=ws.wid, _external=True) }}">Share</button>
+      <details class="appmenu om-more">
+        <summary class="link-btn">More</summary>
+        <div class="appmenu-panel" role="menu">
+          <a class="appmenu-item simple" href="{{ url_for('om_landing') }}#examples">Try another example</a>
+          {% if is_owner %}
+          <form method="post" action="{{ url_for('om_reset', wid=ws.wid) }}"><button type="submit" class="appmenu-item simple">Reload fresh conversations</button></form>
+          {% endif %}
+        </div>
+      </details>
+    </div>
+    {% endif %}
+  </div>
+  {% if ws %}
+  <form class="om-ask-top mh-ask-wrap" data-change-url="{{ url_for('om_change', wid=ws.wid) }}" autocomplete="off">
+    <div class="mh-ask">
+      <span class="mh-ask-mark" aria-hidden="true">{{ ic.icon('sparkle') }}</span>
+      <span class="mh-ask-name" aria-hidden="true">{{ OMNI_BRAND }}</span>
+      <input type="text" class="mh-ask-input" id="omSetupAsk" data-change-input
+             placeholder="Change the setup, e.g. {{ ws.example_change or 'add a field for whether they already have a lawyer' }}"
+             aria-label="Change the setup by describing the change, then press Enter">
+      <button type="submit" class="mh-ask-go" aria-label="Propose this change" title="Propose (Enter)">{{ ic.icon('arrow-right') }}</button>
+    </div>
+    <div class="mh-ask-status" data-change-status role="status" aria-live="polite" hidden></div>
+  </form>
+  <div class="om-proposal-dock" data-proposal-dock hidden></div>
+  {% endif %}
+</header>
+{%- endmacro %}

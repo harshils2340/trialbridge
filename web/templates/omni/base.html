@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
+  <meta name="color-scheme" content="light">
+  <meta name="robots" content="noindex">
+  <title>{% block title %}{{ OMNI_BRAND }}{% endblock %}</title>
+  <link rel="icon" type="image/svg+xml" href="{{ static_url('logo.svg') }}">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ static_url('style.css') }}">
+  <link rel="stylesheet" href="{{ static_url('omni.css') }}">
+  {% block head_extra %}{% endblock %}
+</head>
+{% import "_icons.html" as ic %}
+{% import "_ui.html" as ui %}
+{% import "omni/_top.html" as top %}
+{% import "omni/_tiles.html" as tiles %}
+<body class="om {% block body_class %}{% endblock %}" data-page="{{ request.endpoint }}">
+<a class="skip-link" href="#main">Skip to main content</a>
+{% block top %}{{ top.bar(ws, om_tab, is_owner) }}{% endblock %}
+<div class="toast-stack">
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for cat, msg in messages %}
+      <div class="flash flash-toast {{ cat }}">
+        <span>{{ msg }}</span>
+        <button type="button" class="toast-close" aria-label="Dismiss">×</button>
+      </div>
+    {% endfor %}
+  {% endwith %}
+</div>
+<main class="om-app" id="main" role="main" tabindex="-1">
+  {% block body %}{% endblock %}
+</main>
+{% include "_bridget_js.html" %}
+<script>
+(function () {
+  function attachCsrf() {
+    var meta = document.querySelector('meta[name="csrf-token"]');
+    var token = meta ? meta.getAttribute('content') : '';
+    if (!token) return;
+    document.querySelectorAll('form').forEach(function (f) {
+      var method = (f.getAttribute('method') || 'get').toLowerCase();
+      if (method !== 'post') return;
+      if (f.querySelector('input[name="_csrf_token"]')) return;
+      var inp = document.createElement('input');
+      inp.type = 'hidden'; inp.name = '_csrf_token'; inp.value = token;
+      f.appendChild(inp);
+    });
+  }
+  attachCsrf();
+  document.querySelectorAll('.flash-toast').forEach(function (t) {
+    var close = t.querySelector('.toast-close');
+    if (close) close.addEventListener('click', function () { t.remove(); });
+    setTimeout(function () {
+      t.classList.add('toast-hide');
+      setTimeout(function () { t.remove(); }, 260);
+    }, 4800);
+  });
+  document.querySelectorAll('form.js-pending-submit').forEach(function (f) {
+    f.addEventListener('submit', function () {
+      var btn = f.querySelector('button[type="submit"]');
+      if (!btn) return;
+      btn.disabled = true;
+      btn.classList.add('is-loading');
+      btn.textContent = f.getAttribute('data-pending-text') || 'Working...';
+    });
+  });
+})();
+</script>
+<script src="{{ static_url('omni.js') }}"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

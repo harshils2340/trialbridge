@@ -1,0 +1,291 @@
+{% import "_icons.html" as ic %}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ OMNI_BRAND }}: one inbox for every lead</title>
+<meta name="description" content="Describe your business and where leads come from. {{ OMNI_BRAND }} builds you an inbox in about a minute. It reads every message, pulls out the facts, sorts leads your way and drafts replies. Nothing sends without you.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: #0f172a;
+    --muted: #5b6572;
+    --line: #e5e7eb;
+    --bg: #ffffff;
+    --bg-soft: #f7f8fa;
+    --accent: #1257b0;
+    --accent-soft: #e8f0fb;
+    --mark-a: #1257b0;
+    --mark-b: #7fb3e6;
+    --radius: 14px;
+  }
+  *, *::before, *::after { box-sizing: border-box; }
+  html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    font-size: 16px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+  a { color: inherit; text-decoration: none; }
+  h1, h2, h3, p, ul, ol { margin: 0; }
+  ul, ol { padding: 0; list-style: none; }
+  button, textarea { font: inherit; color: inherit; }
+  img { max-width: 100%; display: block; }
+
+  .wrap { width: 100%; max-width: 1120px; margin: 0 auto; padding: 0 20px; }
+  .narrow { max-width: 760px; }
+
+  /* Top bar */
+  .top { position: sticky; top: 0; z-index: 5; background: rgba(255,255,255,.92); backdrop-filter: blur(8px); border-bottom: 1px solid transparent; }
+  .top.is-stuck { border-bottom-color: var(--line); }
+  .top-in { display: flex; align-items: center; justify-content: space-between; height: 60px; }
+  .brand { display: inline-flex; align-items: center; gap: 8px; font-weight: 700; font-size: 17px; letter-spacing: -0.01em; }
+  .brand-glyph { width: 26px; height: 26px; }
+  .top-right { display: flex; align-items: center; gap: 16px; }
+  .top-link { font-size: 14px; font-weight: 500; color: var(--muted); }
+  .top-link:hover { color: var(--ink); }
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 40px; padding: 0 16px; border-radius: 10px; border: 0; cursor: pointer; font-weight: 600; font-size: 14px; white-space: nowrap; }
+  .btn-dark { background: var(--ink); color: #fff; }
+  .btn-dark:hover { background: #1e293b; }
+  .btn-dark:disabled { opacity: .7; cursor: default; }
+  .btn-lg { height: 44px; padding: 0 18px; font-size: 15px; }
+
+  /* Hero */
+  .hero { padding: 72px 0 40px; text-align: center; background-image: radial-gradient(var(--line) 1px, transparent 1px); background-size: 22px 22px; background-position: center top; }
+  .h1 { font-size: clamp(38px, 7vw, 72px); font-weight: 800; line-height: 1.02; letter-spacing: -0.035em; max-width: 14ch; margin: 0 auto; }
+  .sub { font-size: clamp(17px, 2vw, 20px); color: var(--muted); max-width: 560px; margin: 20px auto 0; line-height: 1.5; }
+  .sub b { color: var(--ink); font-weight: 600; }
+
+  /* Prompt card */
+  .card { position: relative; max-width: 720px; margin: 36px auto 0; text-align: left; background: #fff; border: 1px solid var(--line); border-radius: 18px; box-shadow: 0 1px 2px rgba(15,23,42,.04), 0 12px 32px rgba(15,23,42,.07); }
+  .card:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft), 0 12px 32px rgba(15,23,42,.07); }
+  .card textarea { display: block; width: 100%; min-height: 108px; padding: 20px 20px 8px; border: 0; background: transparent; outline: 0; resize: none; font-size: 17px; line-height: 1.5; }
+  .card textarea::placeholder { color: #9aa3ae; }
+  .card-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 12px 12px 20px; }
+  .card-hint { font-size: 13px; color: var(--muted); }
+  .note { font-size: 14px; color: var(--muted); margin-top: 14px; }
+  .note a { color: var(--accent); font-weight: 500; }
+
+  /* Example chips */
+  .examples-label { font-size: 13px; font-weight: 500; color: var(--muted); margin: 28px 0 10px; }
+  .om-examples { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; max-width: 820px; margin: 0 auto; }
+  .mh-quick-chip { display: inline-flex; align-items: center; height: 34px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--line); background: #fff; font-size: 14px; font-weight: 500; color: var(--ink); cursor: pointer; }
+  .mh-quick-chip:hover { border-color: #c9cfd6; background: var(--bg-soft); }
+  .mh-quick-chip.is-active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+
+  /* Product strip: three crops of the same screenshot at one scale */
+  .strip { padding: 24px 0 8px; }
+  .strip-grid { display: grid; grid-template-columns: 366fr 366fr 610fr; gap: 16px; }
+  .shot { position: relative; overflow: hidden; border: 1px solid var(--line); border-radius: 12px; background: var(--bg-soft); }
+  .shot img { position: absolute; max-width: none; }
+  .shot-list { aspect-ratio: 366 / 300; }
+  .shot-list img { width: calc(1360 / 366 * 100%); left: 0; top: calc(-118 / 300 * 100%); }
+  .shot-fields { aspect-ratio: 366 / 300; }
+  .shot-fields img { width: calc(1360 / 366 * 100%); left: calc(-994 / 366 * 100%); top: calc(-340 / 300 * 100%); }
+  .shot-reply { aspect-ratio: 610 / 300; }
+  .shot-reply img { width: calc(1360 / 610 * 100%); left: calc(-375 / 610 * 100%); top: calc(-560 / 300 * 100%); }
+  .cap { margin-top: 10px; font-size: 15px; font-weight: 600; }
+  .cap small { display: block; font-weight: 400; color: var(--muted); font-size: 14px; margin-top: 2px; }
+
+  /* Sections */
+  .sec { padding: 72px 0 0; }
+  .h2 { font-size: clamp(26px, 3.4vw, 34px); font-weight: 700; letter-spacing: -0.025em; line-height: 1.15; }
+  .lead { color: var(--muted); font-size: 17px; margin-top: 10px; max-width: 620px; }
+  .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; margin-top: 32px; }
+  .step-n { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-weight: 700; font-size: 14px; }
+  .step h3 { font-size: 17px; font-weight: 600; margin-top: 14px; }
+  .step p { color: var(--muted); font-size: 15px; margin-top: 6px; }
+  .step .ex { display: block; margin-top: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg-soft); font-size: 14px; color: var(--ink); }
+
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 32px; }
+  .col h3 { font-size: 17px; font-weight: 600; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+  .col li { padding: 12px 0; border-bottom: 1px solid var(--line); font-size: 15px; }
+  .col li b { display: block; font-weight: 600; }
+  .col li span { color: var(--muted); }
+
+  /* Final prompt card, links back to the real one */
+  .again { padding: 72px 0 80px; text-align: center; }
+  .again .card { display: block; cursor: text; margin-top: 28px; }
+  .again .fake-input { padding: 20px 20px 8px; min-height: 108px; font-size: 17px; color: #9aa3ae; line-height: 1.5; }
+
+  footer { border-top: 1px solid var(--line); padding: 24px 0; font-size: 13px; color: var(--muted); }
+  .foot-in { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; }
+  .foot-in a:hover { color: var(--ink); }
+
+  @media (max-width: 760px) {
+    .hero { padding: 44px 0 32px; }
+    .h1 { max-width: 11ch; }
+    .card { margin-top: 28px; }
+    .card textarea { font-size: 16px; min-height: 96px; padding: 16px 16px 6px; }
+    .card-foot { padding: 6px 10px 10px 16px; }
+    .card-hint { display: none; }
+    .card-foot .btn { width: 100%; }
+    .strip-grid { grid-template-columns: 1fr; gap: 20px; }
+    .steps, .cols { grid-template-columns: 1fr; gap: 28px; }
+    .sec { padding-top: 56px; }
+    .again { padding: 56px 0 64px; }
+    .again .fake-input { font-size: 16px; min-height: 96px; padding: 16px 16px 6px; }
+  }
+</style>
+</head>
+<body>
+
+<header class="top" id="top">
+  <div class="wrap top-in">
+    <a class="brand" href="{{ url_for('om_landing') }}">{{ ic.icon('mark', 'brand-glyph') }}{{ OMNI_BRAND }}</a>
+    <div class="top-right">
+      {% if current and current.builder_state == 'built' %}
+      <a class="top-link" href="{{ url_for('om_inbox', wid=current.wid) }}">Open your inbox</a>
+      {% endif %}
+      <a class="btn btn-dark" href="#start" data-focus-prompt>Build my inbox</a>
+    </div>
+  </div>
+</header>
+
+<main>
+  <section class="hero" id="start">
+    <div class="wrap">
+      <h1 class="h1">One inbox<br>for every lead.</h1>
+      <p class="sub">Describe your business and where leads come from. {{ OMNI_BRAND }} builds you an inbox in about a minute.</p>
+
+      <form method="post" action="{{ url_for('om_start') }}" id="omStartForm" class="card js-pending-submit" data-pending-text="Building your inbox...">
+        <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="example" id="omExample" value="">
+        <textarea name="prompt" id="omPrompt" rows="3" required
+                  placeholder="A personal injury law firm in Chicago. Leads come from our web form, Avvo, phone calls, texts and voicemail."
+                  aria-label="Describe your business and where leads come from"></textarea>
+        <div class="card-foot">
+          <span class="card-hint">Enter to build. Shift+Enter for a new line.</span>
+          <button type="submit" class="btn btn-dark btn-lg">Build my inbox</button>
+        </div>
+      </form>
+      <p class="note">No account. Your workspace lives in this browser, with a link you can share.
+        {% if current and current.builder_state == 'built' %}<a href="{{ url_for('om_inbox', wid=current.wid) }}">Open your inbox</a>{% endif %}</p>
+
+      <p class="examples-label">Or start from an example</p>
+      <div class="om-examples" role="list" aria-label="Examples">
+        {% for t in templates %}
+        <button type="button" class="mh-quick-chip" role="listitem" data-example="{{ t.key }}" data-prompt="{{ t.example_prompt }}">{{ t.name }}</button>
+        {% endfor %}
+      </div>
+    </div>
+  </section>
+
+  <section class="strip" aria-label="What the inbox looks like">
+    <div class="wrap">
+      <div class="strip-grid">
+        <div>
+          <div class="shot shot-list"><img src="{{ static_url('omni-inbox.png') }}" alt="The inbox list: each lead with the facts pulled from their message"></div>
+          <p class="cap">Every lead, one list<small>Email, texts, DMs, forms, voicemail.</small></p>
+        </div>
+        <div>
+          <div class="shot shot-fields"><img src="{{ static_url('omni-inbox.png') }}" alt="The details panel: incident type, date, whether they already have a lawyer, each with a link to where it was said"></div>
+          <p class="cap">Facts pulled into fields<small>Each one links to the message it came from.</small></p>
+        </div>
+        <div>
+          <div class="shot shot-reply"><img src="{{ static_url('omni-inbox.png') }}" alt="The reply box with a drafted reply and a Send reply button"></div>
+          <p class="cap">Reply drafted, you send<small>One line of instruction, written in your voice.</small></p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="sec" id="how">
+    <div class="wrap narrow">
+      <h2 class="h2">What happens when you press Build</h2>
+      <p class="lead">About a minute, start to finish. Your inbox assembles on the right while you answer.</p>
+      <ol class="steps">
+        <li class="step">
+          <span class="step-n">1</span>
+          <h3>Type one sentence</h3>
+          <p>What you do and where leads come from. Or pick an example above.</p>
+          <span class="ex">Group therapy practice. Inquiries come from Psychology Today, our web form, Instagram and voicemail.</span>
+        </li>
+        <li class="step">
+          <span class="step-n">2</span>
+          <h3>Answer 4 to 6 short questions</h3>
+          <p>Which sources to connect, your business name, what to pull out of each message, how to sort leads, what {{ OMNI_BRAND }} may send on its own, and the tone of replies.</p>
+          <span class="ex">Views: "serious injuries with no lawyer", "moving within two weeks".</span>
+        </li>
+        <li class="step">
+          <span class="step-n">3</span>
+          <h3>Open your inbox</h3>
+          <p>Connect your accounts, forward the portals that only send email, and start replying. Change anything later by typing what you want.</p>
+          <span class="ex">"Add a field for whether they have a lawyer." "Flag anyone mentioning a court date."</span>
+        </li>
+      </ol>
+    </div>
+  </section>
+
+  <section class="sec" id="what">
+    <div class="wrap narrow">
+      <h2 class="h2">What it does, and what stays yours</h2>
+      <div class="cols">
+        <div class="col">
+          <h3>What it does</h3>
+          <ul>
+            <li><b>Pulls every lead into one place.</b><span>Email, texts, Instagram DMs, web forms and voicemail. Portals that only send email (Zillow, Avvo, Zocdoc, Psychology Today, Indeed, Care.com) get forwarded to your {{ OMNI_BRAND }} address.</span></li>
+            <li><b>Reads each message and fills in fields.</b><span>For a law firm: incident type, date, whether they already have a lawyer. You name the fields, it finds the answers.</span></li>
+            <li><b>Sorts leads into views you describe in plain words.</b><span>"Serious injuries with no lawyer." "Moving within two weeks." "Not a fit."</span></li>
+            <li><b>Drafts replies from a one-line instruction.</b><span>"Ask for the police report and offer Tuesday." Written in your voice, in the reply box.</span></li>
+          </ul>
+        </div>
+        <div class="col">
+          <h3>What stays yours</h3>
+          <ul>
+            <li><b>Nothing sends without you.</b><span>Every draft waits for a person to read and send it, unless you allow {{ OMNI_BRAND }} to handle something routine.</span></li>
+            <li><b>Anything it sends on its own is labeled.</b><span>You can see exactly what went out and tighten the rules at any time.</span></li>
+            <li><b>Every fact shows where it came from.</b><span>Click a field and see the message it was read from.</span></li>
+            <li><b>Change anything by typing.</b><span>"Auto reject anyone outside IL and IN." "Add a field for insurance carrier." No settings pages to learn.</span></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="again">
+    <div class="wrap narrow">
+      <h2 class="h2">Describe your business. Get your inbox.</h2>
+      <a class="card" href="#start" data-focus-prompt aria-label="Go to the prompt box">
+        <div class="fake-input">A dental office with a med spa, two locations. Requests come through Zocdoc, Instagram DMs, texts and our web form.</div>
+        <div class="card-foot">
+          <span class="card-hint">About a minute. No account.</span>
+          <span class="btn btn-dark btn-lg">Build my inbox</span>
+        </div>
+      </a>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap foot-in">
+    <span>Built by the BridgeMD team.</span>
+    <span><a href="{{ url_for('privacy') }}">Privacy</a> &middot; <a href="{{ url_for('terms') }}">Terms</a></span>
+  </div>
+</footer>
+
+<script>
+(function () {
+  var top = document.getElementById('top');
+  function onScroll() { top.classList.toggle('is-stuck', window.scrollY > 8); }
+  onScroll(); window.addEventListener('scroll', onScroll, { passive: true });
+  document.querySelectorAll('form.js-pending-submit').forEach(function (f) {
+    f.addEventListener('submit', function () {
+      var btn = f.querySelector('button[type="submit"]');
+      if (!btn) return;
+      btn.disabled = true;
+      btn.textContent = f.getAttribute('data-pending-text') || 'Working...';
+    });
+  });
+})();
+</script>
+<script src="{{ static_url('omni.js') }}"></script>
+</body>
+</html>

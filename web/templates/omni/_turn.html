@@ -1,0 +1,9 @@
+{# Fragments the builder returns as JSON after each answer. #}
+{% import "omni/_question.html" as qm %}
+{% import "omni/_preview.html" as pv %}
+{% if what == 'you' %}{{ qm.you(text) }}
+{% elif what == 'question' %}{{ qm.question(question) }}
+{% elif what == 'summary' %}{{ qm.summary(lines, ws) }}
+{% elif what == 'say' %}{{ qm.bubble(text, kind or 'say') }}
+{% elif what == 'preview' %}{{ pv.preview(preview, source_meta) }}
+{% endif %}

@@ -1,0 +1,316 @@
+{#- Omni landing, candidate C: the onboarding is the page. Standalone: no
+    public_base, no pill nav, no BridgeMD chrome. Three steps stacked like a
+    form you are about to fill in. Step 1 is the real start form. -#}
+{% import "_icons.html" as ic %}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
+  <meta name="color-scheme" content="light">
+  <title>{{ OMNI_BRAND }}: one inbox for every lead, built from a sentence</title>
+  <meta name="description" content="Describe your business and where leads come from. {{ OMNI_BRAND }} builds an inbox that reads every message, pulls out the facts, sorts them your way and drafts the reply. Nothing sends without you.">
+  <link rel="icon" type="image/svg+xml" href="{{ static_url('logo.svg') }}">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #fff; --ink: #111; --ink-2: #444; --muted: #6b6b6b; --line: #e4e4e4; --line-2: #ececec;
+      --panel: #f7f7f7; --accent: #1257b0; --accent-soft: #e8f0fa; --dark: #111;
+      --mark-a: #1257b0; --mark-b: #7fb3e6;
+      --col: 720px; --wide: 960px;
+    }
+    * { box-sizing: border-box; }
+    html { -webkit-text-size-adjust: 100%; }
+    body { margin: 0; background: var(--bg); color: var(--ink);
+      font-family: Inter, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+      font-size: 16px; line-height: 1.55; -webkit-font-smoothing: antialiased; }
+    h1, h2, h3, p, ul, ol, figure { margin: 0; }
+    a { color: inherit; }
+    button, textarea { font: inherit; }
+    .wrap { width: 100%; max-width: var(--col); margin: 0 auto; padding: 0 20px; }
+    .wrap.wide { max-width: var(--wide); }
+
+    /* Top bar */
+    .top { display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      max-width: var(--wide); margin: 0 auto; padding: 18px 20px; }
+    .brand { display: inline-flex; align-items: center; gap: 8px; text-decoration: none;
+      font-weight: 700; font-size: 17px; letter-spacing: -0.01em; }
+    .brand .brand-glyph { width: 22px; height: 22px; display: block; }
+    .top-right { display: flex; align-items: center; gap: 18px; }
+    .top-right .open { font-size: 14px; color: var(--accent); text-decoration: none; font-weight: 500; }
+    .top-right .open:hover { text-decoration: underline; }
+    .btn-dark { display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+      background: var(--dark); color: #fff; border: 1px solid var(--dark); border-radius: 8px;
+      padding: 9px 16px; font-size: 14px; font-weight: 600; text-decoration: none; cursor: pointer;
+      line-height: 1.2; white-space: nowrap; }
+    .btn-dark:hover { background: #000; }
+    .btn-dark:disabled { opacity: .6; cursor: default; }
+    .btn-dark:focus-visible, .btn-line:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+    /* Hero */
+    .hero { padding: 56px 0 28px; }
+    .hero h1 { font-size: 46px; line-height: 1.08; letter-spacing: -0.025em; font-weight: 800; max-width: 26ch; }
+    .hero p { margin-top: 18px; font-size: 18px; color: var(--ink-2); max-width: 52ch; }
+    .hero .hint { margin-top: 14px; font-size: 14px; color: var(--muted); }
+
+    /* Steps */
+    .steps { list-style: none; padding: 0; margin: 32px 0 0; }
+    .step { display: grid; grid-template-columns: 56px minmax(0, 1fr); gap: 0 16px;
+      padding: 32px 0 40px; border-top: 1px solid var(--line); }
+    .step-n { font-size: 14px; font-weight: 600; color: var(--muted); padding-top: 6px; }
+    .step-n b { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px;
+      border: 1px solid var(--line); border-radius: 50%; color: var(--ink); font-weight: 700; font-size: 14px; }
+    .step h2 { font-size: 24px; line-height: 1.25; letter-spacing: -0.015em; font-weight: 700; }
+    .step .lede { margin-top: 8px; font-size: 16px; color: var(--ink-2); max-width: 60ch; }
+    .step .body { margin-top: 20px; }
+    .what { margin-top: 20px; display: grid; gap: 6px; font-size: 14px; color: var(--ink-2); max-width: 64ch; }
+    .what span { color: var(--ink); font-weight: 600; }
+
+    /* Step 1: the real form */
+    .card { border: 1px solid var(--line); border-radius: 14px; background: #fff;
+      box-shadow: 0 1px 2px rgba(0,0,0,.04), 0 8px 24px rgba(0,0,0,.05); }
+    .card:focus-within { border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft); }
+    .card textarea { display: block; width: 100%; min-height: 112px; padding: 18px 18px 8px; border: 0; outline: 0;
+      background: transparent; resize: vertical; color: var(--ink); font-size: 17px; line-height: 1.5; }
+    .card textarea::placeholder { color: #9a9a9a; }
+    .card-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 12px 12px 18px; }
+    .card-foot .note { font-size: 13px; color: var(--muted); }
+    .om-examples { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+    .om-examples-label { font-size: 13px; color: var(--muted); margin-top: 16px; }
+    .mh-quick-chip { display: inline-flex; align-items: center; padding: 7px 12px; border: 1px solid var(--line);
+      border-radius: 999px; background: #fff; color: var(--ink-2); font-size: 13px; font-weight: 500; line-height: 1.2;
+      cursor: pointer; transition: background .12s, border-color .12s, color .12s; }
+    .mh-quick-chip:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+    .mh-quick-chip.is-active { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+    .mh-quick-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+    /* Step 2: the questions, as plain text */
+    .qs { list-style: none; padding: 0; margin: 0; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+    .qs-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+      padding: 12px 18px; background: var(--panel); border-bottom: 1px solid var(--line); font-size: 13px; color: var(--muted); }
+    .qs-head b { color: var(--ink); font-weight: 600; }
+    .q { padding: 16px 18px; border-top: 1px solid var(--line-2); }
+    .q:first-of-type { border-top: 0; }
+    .q-text { font-weight: 600; font-size: 16px; }
+    .q-why { margin-top: 2px; font-size: 13px; color: var(--muted); }
+    .q-opts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+    .q-opts span { font-size: 13px; color: var(--ink-2); border: 1px solid var(--line); border-radius: 999px; padding: 4px 10px; line-height: 1.3; }
+    .q-opts span.on { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+    .q-ans { margin-top: 10px; font-size: 15px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; max-width: 32ch; }
+    .q-note { margin-top: 10px; font-size: 13px; color: var(--muted); max-width: 60ch; }
+
+    /* Step 3: the product */
+    .shot { position: relative; overflow: hidden; border: 1px solid var(--line); border-radius: 12px; background: #fff;
+      aspect-ratio: 990 / 748; box-shadow: 0 1px 2px rgba(0,0,0,.04), 0 10px 30px rgba(0,0,0,.06); }
+    .shot img { position: absolute; right: 0; top: -14.98%; width: 137.4%; max-width: none; height: auto; display: block; }
+    @media (min-width: 1040px) { .shot-out { margin: 0 -120px; } }
+    .shot-cap { margin-top: 12px; font-size: 14px; color: var(--muted); max-width: 70ch; }
+
+    /* Control list */
+    .keep { border-top: 1px solid var(--line); padding: 40px 0 8px; }
+    .keep h2 { font-size: 24px; letter-spacing: -0.015em; font-weight: 700; }
+    .keep ul { list-style: none; padding: 0; margin: 18px 0 0; display: grid; gap: 14px; max-width: 64ch; }
+    .keep li { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 10px; font-size: 16px; color: var(--ink-2); }
+    .keep li::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); margin: 10px 0 0 4px; }
+    .keep li b { color: var(--ink); font-weight: 600; }
+    .keep code { font-family: inherit; color: var(--ink); background: var(--panel); border-radius: 5px; padding: 1px 6px; }
+    .last { padding: 36px 0 0; }
+    .last .btn-dark { padding: 12px 22px; font-size: 15px; }
+    .last p { margin-top: 12px; font-size: 14px; color: var(--muted); }
+
+    footer { margin-top: 64px; border-top: 1px solid var(--line); padding: 20px 0 36px; font-size: 13px; color: var(--muted); }
+    footer .wrap { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+    footer a { text-decoration: none; }
+
+    @media (max-width: 640px) {
+      .top { padding: 14px 16px; }
+      .wrap { padding: 0 16px; }
+      .hero { padding: 32px 0 20px; }
+      .hero h1 { font-size: 34px; max-width: none; }
+      .hero p { font-size: 16px; }
+      .step { grid-template-columns: 1fr; gap: 10px; padding: 26px 0 30px; }
+      .step-n { padding-top: 0; }
+      .step h2 { font-size: 21px; }
+      .card textarea { font-size: 16px; min-height: 120px; padding: 14px 14px 6px; }
+      .card-foot { padding: 6px 10px 10px 14px; }
+      .shot { aspect-ratio: 370 / 403; }
+      .shot img { width: 367.6%; top: -68.25%; }
+      .q, .qs-head { padding-left: 14px; padding-right: 14px; }
+      .top-right .open { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+<header class="top">
+  <a class="brand" href="{{ url_for('om_landing') }}">{{ ic.icon('mark', 'brand-glyph') }}{{ OMNI_BRAND }}</a>
+  <div class="top-right">
+    {% if current and current.builder_state == 'built' %}
+      <a class="open" href="{{ url_for('om_inbox', wid=current.wid) }}">Open your inbox</a>
+    {% endif %}
+    <a class="btn-dark" href="#start" data-focus-prompt>Start</a>
+  </div>
+</header>
+
+<main>
+  <section class="hero">
+    <div class="wrap">
+      <h1>One inbox for every lead, built from one sentence.</h1>
+      <p>Tell {{ OMNI_BRAND }} what your business is and where leads come from. It builds you an inbox that reads every message, pulls out the facts you care about, sorts them the way you say, and drafts the reply. Nothing goes out without you.</p>
+      <p class="hint">Three steps. About a minute. No account.</p>
+    </div>
+  </section>
+
+  <div class="wrap">
+    <ol class="steps">
+
+      <li class="step" id="start">
+        <div class="step-n"><b>1</b></div>
+        <div>
+          <h2>Say what you do and where leads come from.</h2>
+          <p class="lede">One sentence is enough. {{ OMNI_BRAND }} works out the rest and starts assembling your inbox.</p>
+          <div class="body">
+            <form method="post" action="{{ url_for('om_start') }}" id="omStartForm" class="js-pending-submit" data-pending-text="Building your inbox...">
+              <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="example" id="omExample" value="">
+              <div class="card">
+                <textarea name="prompt" id="omPrompt" rows="3" required
+                  placeholder="For example: Personal injury law firm. Leads come from our website form, Avvo, Google calls, texts, and voicemail."
+                  aria-label="Describe your business and where leads come from"></textarea>
+                <div class="card-foot">
+                  <span class="note">Enter to build. Your inbox is ready in about a minute.</span>
+                  <button type="submit" class="btn-dark">Build my inbox</button>
+                </div>
+              </div>
+            </form>
+            <p class="om-examples-label">Or start from one of these. Click once to fill it in, again to build.</p>
+            <div class="om-examples" role="list" aria-label="Examples">
+              {% for t in templates if t.example_prompt %}
+                <button type="button" class="mh-quick-chip" role="listitem" data-example="{{ t.key }}" data-prompt="{{ t.example_prompt }}">{{ t.name }}</button>
+              {% endfor %}
+            </div>
+          </div>
+          <div class="what">
+            <div><span>What happens:</span> {{ OMNI_BRAND }} reads your sentence, picks the closest ready-made setup, and opens the builder.</div>
+            <div><span>What you decide:</span> your own words, or one of the ten examples. You can change every detail in the next step.</div>
+          </div>
+        </div>
+      </li>
+
+      <li class="step">
+        <div class="step-n"><b>2</b></div>
+        <div>
+          <h2>Answer a few short questions.</h2>
+          <p class="lede">Four to six of them, each with sensible defaults already picked. Your inbox assembles live beside them as you answer. Skip any question and the default stands.</p>
+          <div class="body">
+            <ol class="qs" aria-label="The questions Omni asks">
+              <li class="qs-head"><b>The questions, for a personal injury law firm</b><span>Other businesses get their own set</span></li>
+              <li class="q">
+                <div class="q-text">Where do new leads come in?</div>
+                <div class="q-why">Each one becomes a connector and a way to filter.</div>
+                <div class="q-opts"><span class="on">Web form</span><span class="on">Avvo</span><span class="on">Email</span><span class="on">Texts</span><span class="on">Google calls</span><span>Voicemail</span><span>Facebook leads</span></div>
+                <p class="q-note">Email, texts, Instagram DMs, web forms and voicemail connect directly. Portals that only send email (Zillow, Avvo, Zocdoc, Psychology Today, Indeed, Care.com) forward to your {{ OMNI_BRAND }} address.</p>
+              </li>
+              <li class="q">
+                <div class="q-text">What is the firm called?</div>
+                <div class="q-why">It goes on every reply.</div>
+                <div class="q-ans">Harbor Point Injury Law</div>
+              </li>
+              <li class="q">
+                <div class="q-text">What should I pull out of every new inquiry?</div>
+                <div class="q-why">Each one becomes a column you can sort and filter by.</div>
+                <div class="q-opts"><span class="on">Type of injury</span><span class="on">When it happened</span><span class="on">Already has a lawyer</span><span class="on">How serious</span><span>Got treatment</span><span class="on">Insurer calling</span><span class="on">State it happened in</span></div>
+              </li>
+              <li class="q">
+                <div class="q-text">Which views do you want on the front of the inbox?</div>
+                <div class="q-why">Views are saved filters. You can add more later by typing.</div>
+                <div class="q-opts"><span class="on">Serious, no lawyer</span><span class="on">Insurer calling</span><span>Older than 18 months</span><span>Unassigned</span></div>
+              </li>
+              <li class="q">
+                <div class="q-text">What may I send without you looking first?</div>
+                <div class="q-why">Anything about fees, case value, or legal advice always waits for you.</div>
+                <div class="q-opts"><span class="on">Acknowledgements and scheduling</span><span>Nothing, I review every reply</span></div>
+              </li>
+              <li class="q">
+                <div class="q-text">How should replies sound?</div>
+                <div class="q-why">Sets the voice for every draft.</div>
+                <div class="q-opts"><span class="on">Warm</span><span>Plain</span><span>Formal</span></div>
+              </li>
+            </ol>
+          </div>
+          <div class="what">
+            <div><span>What happens:</span> every answer changes the preview on the right: the sources, the columns, the views, the reply voice.</div>
+            <div><span>What you decide:</span> where leads come from, what to extract, how to sort, what {{ OMNI_BRAND }} may send on its own, and how it sounds.</div>
+          </div>
+        </div>
+      </li>
+
+      <li class="step">
+        <div class="step-n"><b>3</b></div>
+        <div>
+          <h2>Open your inbox.</h2>
+          <p class="lede">Every lead lands in one place, with the facts pulled out and a reply already drafted.</p>
+        </div>
+        <div class="body" style="grid-column: 1 / -1;">
+          <figure>
+            <div class="shot-out"><div class="shot"><img src="{{ static_url('omni-inbox.png') }}" alt="The Omni inbox for a personal injury firm: an open message, the facts pulled out of it on the right, and a drafted reply waiting for Send." loading="lazy"></div></div>
+            <figcaption class="shot-cap">A message from a web form, read by {{ OMNI_BRAND }}. On the right, the six facts it pulled out: type of injury, date, whether they have a lawyer, how serious. Each one has a Where link to the line it came from. Below, the reply it drafted from the firm's instructions, waiting for someone to press Send.</figcaption>
+          </figure>
+          <div class="what">
+            <div><span>What happens:</span> email, texts, Instagram DMs, web forms, voicemail and forwarded portal leads all arrive here, sorted into the views you named. Type a one-line instruction and {{ OMNI_BRAND }} writes the reply in your voice.</div>
+            <div><span>What you decide:</span> whether it sends. And anything you want changed later, you type: <em>add a field for whether they have a lawyer</em>, <em>flag anyone mentioning a court date</em>, <em>auto reject anyone outside IL and IN</em>.</div>
+          </div>
+        </div>
+      </li>
+
+    </ol>
+
+    <section class="keep">
+      <h2>What stays under your control</h2>
+      <ul>
+        <li><div><b>Sending.</b> Nothing goes out without you unless you allow it. Anything {{ OMNI_BRAND }} sends on its own is labeled as sent by {{ OMNI_BRAND }}.</div></li>
+        <li><div><b>The facts.</b> Every extracted field links to the message it came from, so you can check it in one click.</div></li>
+        <li><div><b>The setup.</b> Fields, views, rules and tone all change by typing a sentence. You see the change before it applies.</div></li>
+        <li><div><b>Your data.</b> No account. Your workspace lives in your browser, with a link you can share with your team.</div></li>
+      </ul>
+      <div class="last">
+        <a class="btn-dark" href="#start" data-focus-prompt>Start with step 1</a>
+        <p>Ten ready examples: clinical research site, personal injury law firm, group therapy practice, dental office with a med spa, specialty clinic referrals, home health agency, nurse staffing agency, coding bootcamp admissions, legal aid nonprofit, property management leasing.</p>
+      </div>
+    </section>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>{{ OMNI_BRAND }}</span>
+    <span>Built by the BridgeMD team</span>
+  </div>
+</footer>
+
+<script>
+(function () {
+  // Pending state for the start form (the shared handler lives in public_base, which this page does not use).
+  document.querySelectorAll('form.js-pending-submit').forEach(function (f) {
+    f.addEventListener('submit', function () {
+      var btn = f.querySelector('button[type="submit"]');
+      if (!btn) return;
+      btn.disabled = true;
+      btn.textContent = f.getAttribute('data-pending-text') || 'Working...';
+    });
+  });
+  // "Start" links: jump to the box and put the cursor in it.
+  document.querySelectorAll('[data-focus-prompt]').forEach(function (a) {
+    a.addEventListener('click', function () {
+      var box = document.getElementById('omPrompt');
+      if (box) setTimeout(function () { box.focus({preventScroll: true}); }, 250);
+    });
+  });
+})();
+</script>
+<script src="{{ static_url('omni.js') }}"></script>
+</body>
+</html>

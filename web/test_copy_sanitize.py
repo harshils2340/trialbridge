@@ -61,6 +61,7 @@ def test_no_em_dash_in_user_facing_web_copy():
         HERE / "mailer.py",
         HERE / "notifications.py",
         HERE / "copilot",
+        HERE / "omni_hub",
         root / "marketing" / "clean_landing.py",
     ]
     # The character itself, its HTML entities, and the Python/JS escape: the

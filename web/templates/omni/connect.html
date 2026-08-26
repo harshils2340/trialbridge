@@ -1,0 +1,81 @@
+{% extends "omni/base.html" %}
+{% import "_icons.html" as ic %}
+{% import "_ui.html" as ui %}
+{% import "omni/_tiles.html" as tiles %}
+
+{% block title %}Connections | {{ ws.name }} | {{ OMNI_BRAND }}{% endblock %}
+
+{% block body %}
+<div class="om-page">
+  <header class="om-page-head">
+    <h1>Connections</h1>
+    <p class="om-lede">Where leads come from. Some sources connect directly; the ones without an API email you, and you forward those emails to your intake address. In this demo, connecting a source brings in a few example conversations.</p>
+  </header>
+
+  <div class="om-tile-grid">
+    {% for s in sources %}
+    <article class="om-tile-card {{ 'is-connected' if s.status == 'connected' }}">
+      <div class="om-tile-card-top">
+        {{ tiles.chip(s.kind, s.meta) }}
+        <div class="om-tile-copy">
+          <b>{{ s.label or s.meta.label }}</b>
+          <small>{{ s.meta.feeds }}</small>
+        </div>
+        {% if s.status == 'connected' %}{{ ui.badge('Connected', 'ok') }}{% else %}{{ ui.badge('Not connected', 'neutral') }}{% endif %}
+      </div>
+      <p class="om-how">
+        {% if s.meta.mode == 'email_forward' %}Forward its emails to <code class="om-addr">{{ intake_address }}</code>.
+        {% else %}{{ s.meta.how }}{% endif %}
+        {% if s.count %}<span class="om-count">{{ s.count }} conversation{{ 's' if s.count != 1 }}</span>{% endif %}
+      </p>
+      {% if s.status == 'connected' %}
+      <form method="post" action="{{ url_for('om_disconnect_source', wid=ws.wid, key=s.key) }}">{{ ui.btn('Disconnect', 'ghost', 'sm', type='submit') }}</form>
+      {% else %}
+      <form method="post" action="{{ url_for('om_connect_source', wid=ws.wid, key=s.key) }}" class="js-pending-submit" data-pending-text="Connecting...">{{ ui.btn('Connect', 'primary', 'sm', type='submit') }}</form>
+      {% endif %}
+    </article>
+    {% endfor %}
+  </div>
+
+  <section class="om-section" id="bring">
+    <h2>Bring in a lead now</h2>
+    <p class="om-lede">Paste a lead email, a voicemail transcript or a message. {{ OMNI_BRAND }} turns it into a conversation, pulls out the fields and runs your rules. This works for real, no API needed.</p>
+    <form method="post" action="{{ url_for('om_ingest_paste', wid=ws.wid) }}" class="om-paste js-pending-submit" data-pending-text="Reading it..." enctype="multipart/form-data">
+      <div class="om-paste-tools">
+        {% for smp in samples %}
+        <button type="button" class="mh-quick-chip" data-sample-source="{{ smp.source }}" data-sample-text="{{ smp.text }}">{{ smp.label }}</button>
+        {% endfor %}
+      </div>
+      <label class="om-select">
+        <span>Came in through</span>
+        <select name="source" id="omPasteSource">
+          {% for s in sources %}<option value="{{ s.key }}">{{ s.label or s.meta.label }}</option>{% endfor %}
+        </select>
+      </label>
+      <textarea name="text" id="omPasteText" rows="7" placeholder="Paste the email or message here"></textarea>
+      <div class="om-paste-foot">
+        <label class="om-upload">{{ ic.icon('upload') }}<span>Or upload a file (.txt, .csv, .pdf)</span><input type="file" name="file" accept=".txt,.csv,.md,.pdf,text/plain"></label>
+        {{ ui.btn('Add it to the inbox', 'primary', type='submit') }}
+      </div>
+    </form>
+  </section>
+
+  {% if others %}
+  <details class="om-section om-more-sources">
+    <summary><b>Add another source</b><span class="mh-summary-chevron">{{ ic.icon('chevron-down') }}</span></summary>
+    <div class="om-tile-grid">
+      {% for o in others %}
+      <article class="om-tile-card">
+        <div class="om-tile-card-top">
+          {{ tiles.chip(o.kind, o) }}
+          <div class="om-tile-copy"><b>{{ o.label }}</b><small>{{ o.feeds }}</small></div>
+        </div>
+        <p class="om-how">{{ o.how }}</p>
+        <form method="post" action="{{ url_for('om_add_source', wid=ws.wid, kind=o.kind) }}">{{ ui.btn('Add', 'ghost', 'sm', type='submit') }}</form>
+      </article>
+      {% endfor %}
+    </div>
+  </details>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,84 @@
+{% import "_icons.html" as ic %}
+{% import "_ui.html" as ui %}
+
+{# The side panel is the spec made visible: one row per field, the value or an
+   honest "Unknown", and for every known value the message it came from. #}
+{% macro panel(ws, active, records, spec, stage_labels, stage_tones, personas) -%}
+<aside class="mh-applicant-panel om-panel" data-detail-panel="applicant" aria-label="Details" data-field-count="{{ records|length }}">
+  <header class="mh-applicant-panel-head">
+    <span>
+      <b>{{ active.contact.name or active.contact.handle or 'Contact' }}</b>
+      <span class="mh-read-tags">
+        <span class="mh-tag is-stage tone-{{ stage_tones.get(active.stage, 'neutral') }}">{{ stage_labels.get(active.stage, active.stage) }}</span>
+      </span>
+    </span>
+  </header>
+
+  {% set known = records|selectattr('known')|list|length %}
+  <details class="mh-clinical-card" open>
+    <summary>
+      <div><b>Details</b></div>
+      <span class="mh-tool-status">{{ known }} of {{ records|length }} known</span>
+      <span class="mh-summary-chevron">{{ ic.icon('chevron-down') }}</span>
+    </summary>
+    <div class="mh-clinical-content">
+      <dl class="om-fields">
+        {% for r in records %}
+        <div class="om-field {{ 'is-unknown' if not r.known }} {{ 'is-low' if r.known and r.confidence < 0.6 }}" data-field-key="{{ r.key }}">
+          <dt>{{ r.label }}</dt>
+          <dd>
+            <span class="om-field-value">{{ r.text }}</span>
+            {% if r.known and r.quote %}
+            <button type="button" class="om-src" data-om-src aria-expanded="false">Where</button>
+            <blockquote class="om-quote" hidden data-message-id="{{ r.message_id or '' }}">
+              <span>"{{ r.quote }}"</span>
+              <small>From their message{% if r.message_time %}, {{ r.message_time }}{% endif %}{% if r.confidence < 0.6 %} (not certain){% endif %}</small>
+            </blockquote>
+            {% elif not r.known %}
+            <button type="button" class="om-ask-for" data-ask-fill="Ask them for {{ r.label|lower }}">Ask</button>
+            {% endif %}
+          </dd>
+        </div>
+        {% endfor %}
+      </dl>
+    </div>
+  </details>
+
+  <details class="mh-clinical-card">
+    <summary>
+      <div><b>Assigned</b></div>
+      <span class="mh-tool-status">{{ active.assignee or 'Nobody' }}</span>
+      <span class="mh-summary-chevron">{{ ic.icon('chevron-down') }}</span>
+    </summary>
+    <div class="mh-clinical-content">
+      <form method="post" action="{{ url_for('om_assign', wid=ws.wid, cid=active.id) }}" class="om-inline-form">
+        <input type="hidden" name="view" value="{{ request.args.get('view', '') }}">
+        <label class="om-select">
+          <span>Owner</span>
+          <select name="assignee" data-autosubmit aria-label="Assign this conversation">
+            <option value="" {{ 'selected' if not active.assignee }}>Unassigned</option>
+            <option value="You" {{ 'selected' if active.assignee == 'You' }}>You</option>
+            {% for p in personas %}
+            <option value="{{ p }}" {{ 'selected' if active.assignee == p }}>{{ p }}</option>
+            {% endfor %}
+          </select>
+        </label>
+      </form>
+    </div>
+  </details>
+
+  <details class="mh-clinical-card">
+    <summary>
+      <div><b>Actions</b></div>
+      <span class="mh-tool-status">Needs your OK</span>
+      <span class="mh-summary-chevron">{{ ic.icon('chevron-down') }}</span>
+    </summary>
+    <div class="mh-clinical-content om-actions">
+      <button type="button" class="btn btn-ghost btn-sm" data-agent-action="booking">Send booking link</button>
+      <button type="button" class="btn btn-ghost btn-sm" data-agent-action="check_in">Follow up</button>
+      <button type="button" class="btn btn-ghost btn-sm" data-agent-action="decline">Mark not a fit</button>
+      <p class="om-hint">Each one writes a proposal into the conversation for you to edit and confirm.</p>
+    </div>
+  </details>
+</aside>
+{%- endmacro %}
