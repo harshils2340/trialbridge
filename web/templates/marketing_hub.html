@@ -797,6 +797,48 @@
     select.addEventListener('change', function () { select.form.submit(); });
   });
 
+  /* Search as you type: narrow the loaded list on every keystroke (name,
+     subject, preview, tags). Enter still submits the form, which searches
+     everything on the server, not just what is on screen. */
+  (function () {
+    var input = document.querySelector('.mh-search input[name="q"]');
+    var stack = document.querySelector('.mh-thread-stack');
+    if (!input || !stack) return;
+    var rows = Array.prototype.slice.call(stack.querySelectorAll('.mh-thread-row'));
+    // textContent, not innerText: rows are content-visibility:auto, so the
+    // ones off screen have no rendered text and innerText comes back empty.
+    var text = rows.map(function (r) {
+      return (r.textContent || '').replace(/\s+/g, ' ').toLowerCase();
+    });
+    var empty = null, timer = null;
+    function apply() {
+      var q = input.value.trim().toLowerCase();
+      var shown = 0;
+      rows.forEach(function (r, i) {
+        var hit = !q || text[i].indexOf(q) !== -1;
+        r.classList.toggle('is-filtered', !hit);
+        if (hit) shown++;
+      });
+      if (q && !shown) {
+        if (!empty) {
+          empty = document.createElement('div');
+          empty.className = 'mh-live-empty';
+          stack.appendChild(empty);
+        }
+        empty.innerHTML = 'Nothing here matches <b></b>. Press Enter to search everything.';
+        empty.querySelector('b').textContent = '“' + input.value.trim() + '”';
+        empty.hidden = false;
+      } else if (empty) {
+        empty.hidden = true;
+      }
+    }
+    input.addEventListener('input', function () {
+      clearTimeout(timer);
+      timer = setTimeout(apply, 50);
+    });
+    if (input.value) apply();
+  })();
+
   var composeTabs = document.querySelectorAll('[data-compose-tab]');
   var composePanels = document.querySelectorAll('[data-compose-panel]');
   composeTabs.forEach(function (tab) {

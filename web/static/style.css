@@ -439,6 +439,11 @@ textarea { resize: vertical; min-height: 150px; line-height: 1.6; }
 .mh-filter-opt em { font-style:normal; font-size:11.5px; font-weight:600; color:var(--faint); }
 .mh-filter-opt.is-on { color:var(--accent); }
 .mh-filter-opt.is-on em { color:var(--accent); }
+/* Search-as-you-type over the loaded list (Enter still runs the full search). */
+.mh-thread-row.is-filtered { display:none !important; }
+.mh-live-empty { padding:22px 16px; font-size:13px; line-height:1.5; color:var(--muted);
+  text-align:center; }
+.mh-live-empty b { color:var(--ink); font-weight:600; }
 .mh-filterbar .mh-owner-toggle { flex:0 0 auto; margin:0; border-bottom:0;
   padding:0; }
 .mh-filterbar .mh-stage-tabs { flex:1 1 auto; min-width:0; border-bottom:0;
