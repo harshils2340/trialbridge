@@ -23,6 +23,8 @@ Bridget drafts; a person edits and sends. Nothing here sends anything.
 
 import match_trials as mt
 
+from copy_sanitize import sanitize_copy
+
 INTENTS = ("reply", "applicant_reply", "check_in", "booking", "reschedule",
            "thanks", "blast", "note_summary")
 
@@ -43,6 +45,8 @@ SYSTEM_PROMPT = (
     "3. Keep it to 2-3 short sentences. No greeting line if the draft has one "
     "already, no signature, no subject line.\n"
     "4. Plain warm English. No marketing language, no pressure, no urgency.\n"
+    "5. Never use em dashes (the long dash character). Use commas, periods, "
+    "or hyphens instead.\n"
     "Return only the rewritten message."
 )
 
@@ -281,7 +285,8 @@ def draft(intent, ctx=None):
     if intent not in INTENTS:
         intent = "reply"
     base = _deterministic(intent, ctx)
-    return _polish(base, intent, ctx) or base
+    out = _polish(base, intent, ctx) or base
+    return sanitize_copy(out)
 
 
 def _polish(base, intent, ctx):
@@ -305,6 +310,6 @@ def _polish(base, intent, ctx):
         # sideways - fall back rather than surface it to a coordinator.
         if not out or len(out) > 1200:
             return None
-        return out
+        return sanitize_copy(out)
     except Exception:
         return None

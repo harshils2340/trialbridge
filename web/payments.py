@@ -1,4 +1,4 @@
-"""Participant payments — provider abstraction + compliance helpers.
+"""Participant payments, provider abstraction + compliance helpers.
 
 Scope (see COMPLIANCE.md §5): this pays STUDY SUBJECTS a reasonable, IRB/REB-
 approved stipend for their time and travel. It NEVER pays a referral source and
@@ -47,7 +47,7 @@ def payout_mode_label(mode):
 
 # Undue-inducement guardrail. Per-visit stipends above this get flagged for a
 # second look (IRBs scrutinize amounts large enough to be coercive). It is a
-# WARNING, not a hard block — the IRB-approved amount is the source of truth.
+# WARNING, not a hard block, the IRB-approved amount is the source of truth.
 UNDUE_INDUCEMENT_CENTS = int(os.environ.get("UNDUE_INDUCEMENT_CENTS", "20000"))
 
 # Active provider. `manual` = record-only (no external disbursement); it still

@@ -14,6 +14,12 @@ import json
 import os
 import urllib.parse
 import urllib.request
+try:
+    from copy_sanitize import sanitize_copy
+except ImportError:  # imported outside the app, without the repo root on sys.path
+    import pathlib as _pl, sys as _sys
+    _sys.path.insert(0, str(_pl.Path(__file__).resolve().parent.parent))
+    from copy_sanitize import sanitize_copy
 
 
 def _env_on(name: str, default: str = "0") -> bool:
@@ -69,6 +75,7 @@ def send_sms(to_phone: str, body: str) -> tuple[bool, str]:
         return False, "Invalid recipient phone number."
     if not body.strip():
         return False, "Empty SMS body."
+    body = sanitize_copy(body)
 
     sid = os.environ["TWILIO_ACCOUNT_SID"]
     token = os.environ["TWILIO_AUTH_TOKEN"]

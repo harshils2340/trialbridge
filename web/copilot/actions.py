@@ -114,7 +114,7 @@ def load_valid(user_id, token):
 
 
 def build_blast_proposal(user_id, nct="", stage="", tag="", idle_days=None,
-                         text=""):
+                         text="", active_nct="", query=""):
     """Propose messaging a filtered group inside one study.
 
     The audience is resolved by db.blast_audience - the same function the manual
@@ -122,7 +122,8 @@ def build_blast_proposal(user_id, nct="", stage="", tag="", idle_days=None,
     reach. The resolved lead ids are frozen into the proposal, so confirming
     later sends to exactly the people the coordinator was shown."""
     nct, mode, value, leads, err = tools.blast_targets(
-        user_id, nct=nct, stage=stage, tag=tag, idle_days=idle_days)
+        user_id, nct=nct, stage=stage, tag=tag, idle_days=idle_days,
+        active_nct=active_nct, query=query)
     if err:
         return {"blocked": err}
     if not leads:

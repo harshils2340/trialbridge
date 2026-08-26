@@ -1,4 +1,4 @@
-# BridgeMD — Legal & Compliance Reference (US + Canada)
+# BridgeMD, Legal & Compliance Reference (US + Canada)
 
 > **This is not legal advice.** It is an engineering/product reference so that every
 > feature we build stays inside well-established regulatory lines. Before launching
@@ -31,7 +31,7 @@ Everything else in this doc explains the boundaries around that rule and what we
 
 ## 1. United States
 
-### 1.1 Federal Anti-Kickback Statute (AKS) — 42 U.S.C. § 1320a-7b(b)
+### 1.1 Federal Anti-Kickback Statute (AKS), 42 U.S.C. § 1320a-7b(b)
 - **What it bans:** knowingly offering, paying, soliciting, or receiving *any*
   remuneration to induce referrals of, or to generate business for, items/services
   **reimbursable by a federal healthcare program** (Medicare, Medicaid, TRICARE, VA).
@@ -41,7 +41,7 @@ Everything else in this doc explains the boundaries around that rule and what we
 - **Product impact:** paying a referring physician per enrolled patient is a textbook
   violation whenever that patient's care touches federal programs.
 
-### 1.2 Stark Law (Physician Self-Referral) — 42 U.S.C. § 1395nn
+### 1.2 Stark Law (Physician Self-Referral), 42 U.S.C. § 1395nn
 - **What it bans:** a physician referring Medicare/Medicaid patients for "designated
   health services" to an entity the physician (or family) has a financial
   relationship with, unless an exception applies. Strict liability (intent not
@@ -49,7 +49,7 @@ Everything else in this doc explains the boundaries around that rule and what we
 - **Product impact:** relevant if physicians ever have equity/financial ties to sites
   or to us and refer within that web.
 
-### 1.3 EKRA — Eliminating Kickbacks in Recovery Act (18 U.S.C. § 220)
+### 1.3 EKRA, Eliminating Kickbacks in Recovery Act (18 U.S.C. § 220)
 - Broader than AKS: applies to **clinical treatment facilities, labs, and recovery
   homes regardless of payer** (including private insurance/cash-pay). Bans
   percentage-of-revenue and per-patient compensation to marketers/referral sources.
@@ -63,8 +63,7 @@ Everything else in this doc explains the boundaries around that rule and what we
   approval** before use (21 CFR 50 / 56, FDA guidance on recruiting study subjects).
   We cannot let sponsors "post" a trial with claims that haven't been IRB-cleared.
 - Payments to the **research site/institution** for the **actual work of conducting
-  the study** (per-subject study budgets, coordinator time, procedures) are normal —
-  but that is the site being paid for *work performed*, and it must be **fair market
+  the study** (per-subject study budgets, coordinator time, procedures) are normal, but that is the site being paid for *work performed*, and it must be **fair market
   value (FMV), set in advance, and not tied to the volume/value of outside
   referrals.** A referring physician who is not the enrolling investigator doing that
   work cannot be slotted into that budget as a workaround.
@@ -99,9 +98,9 @@ and privacy rules produce the same bottom line: **no paying for referrals, no
 fee-splitting.**
 
 ### 2.1 Criminal Code
-- **s. 426 — Secret commissions:** criminal to give/accept a reward as an inducement
+- **s. 426, Secret commissions:** criminal to give/accept a reward as an inducement
   for doing business-related acts without the principal's knowledge. Covers kickbacks.
-- **s. 121 — Frauds on the government** (relevant where public funds involved).
+- **s. 121, Frauds on the government** (relevant where public funds involved).
 
 ### 2.2 Canada Health Act + provincial health-insurance law
 - Public medicare framework; provincial statutes (e.g., Ontario's **Health Insurance
@@ -144,7 +143,7 @@ fee-splitting.**
   data-minimization.
 - **Consent to contact / refer.** A patient must consent before their (even
   de-identified) info is routed to a study site, and before any identifiable contact
-  details are shared. Our referral flow captures explicit consent — this is a legal
+  details are shared. Our referral flow captures explicit consent, this is a legal
   requirement, not a nicety.
 - **No sale of PHI.** Do not monetize patient data. Business logging of PHI (EHR pull)
   must be minimized, encrypted, access-controlled, and retained only as needed.
@@ -158,7 +157,7 @@ fee-splitting.**
 
 ### ❌ Do NOT
 - Pay referring physicians a commission, bonus, or finder's fee per patient / per
-  enrollment. **(This includes the current "commission" concept in the app — it must
+  enrollment. **(This includes the current "commission" concept in the app, it must
   be reframed or removed for physician users. See §6.)**
 - Tie *anyone's* compensation to the volume or value of referrals of
   federal/insured-program patients.
@@ -168,10 +167,10 @@ fee-splitting.**
 ### ✅ CAN do (compliant lanes)
 1. **Free tool for physicians = clinical decision support.** Giving physicians a free
    search/matching tool to help them find trials for their patients is a benefit to
-   *patients* and is generally fine — as long as the physician is **not paid for using
+   *patients* and is generally fine, as long as the physician is **not paid for using
    it or for referrals.** This is our safe entry point.
 2. **Charge the sponsor/CRO/site with a SaaS license.** Flat or seat-based software
-   fees for search, workflow, and analytics — **not** priced per referral or per
+   fees for search, workflow, and analytics, **not** priced per referral or per
    enrollment. This is selling software, not buying referrals.
 3. **Pay for bona fide services at FMV.** If we ever pay a site/coordinator, it must be
    for real work (data entry, coordination, advertising services we perform), set in
@@ -180,7 +179,7 @@ fee-splitting.**
    interest themselves. Sponsor-funded *recruitment advertising* is allowed if it is
    IRB/REB-approved, truthful, and non-coercive.
 5. **Sites/PIs receiving per-subject study budgets from sponsors** for conducting the
-   trial is normal and legal — but that is between sponsor and site for study conduct,
+   trial is normal and legal, but that is between sponsor and site for study conduct,
    and must not be repackaged as a referral payment to an outside physician.
 
 ### The clean framing
@@ -189,7 +188,7 @@ fee-splitting.**
 
 ---
 
-## 5. "Posting" trials & advertising — rules
+## 5. "Posting" trials & advertising, rules
 
 - **IRB/REB approval first.** Any sponsor-supplied recruitment content (eligibility
   blurbs, patient-facing descriptions, incentives) must be approved by the study's
@@ -200,7 +199,7 @@ fee-splitting.**
 - **Fair balance.** Recruitment materials shouldn't overstate benefits or minimize
   risks.
 - **Compensation to subjects** (if any) must be reasonable, non-coercive, and
-  IRB/REB-approved — never framed as a payment for enrolling.
+  IRB/REB-approved, never framed as a payment for enrolling.
 
 ---
 
@@ -208,35 +207,35 @@ fee-splitting.**
 
 > Tracked here so we don't ship something illegal. Update as we address them.
 
-- [ ] **"Commission" for referring physicians** — the current referral tracker frames
+- [ ] **"Commission" for referring physicians**: the current referral tracker frames
   earnings/commission to the referring doctor. This conflicts with §0/§1/§2. Reframe
   to one of:
   - remove physician-facing payment entirely (pure clinical tool), or
   - reframe the tracker as **outcome/status tracking only** (no $ to the physician), or
   - restrict any FMV service payments to **bona fide site/coordinator work**, clearly
     separated from referral volume, with counsel sign-off.
-- [ ] **Consent gating** — keep explicit patient consent required before any
-  identifiable info is shared with a site. (Already implemented — do not regress.)
-- [ ] **Advertising content** — if we ever let sponsors post custom recruitment copy,
+- [ ] **Consent gating**: keep explicit patient consent required before any
+  identifiable info is shared with a site. (Already implemented, do not regress.)
+- [ ] **Advertising content**: if we ever let sponsors post custom recruitment copy,
   add an IRB/REB-approval attestation gate before display.
-- [ ] **Auto-generated trial titles/descriptions (SEO surface)** — condition/study
+- [ ] **Auto-generated trial titles/descriptions (SEO surface)**: condition/study
   pages generate patient-facing titles and meta descriptions from ClinicalTrials.gov
   data at scale (indexed by Google). Two exposures found + mitigated in code:
   - `summarize.patient_card_title` previously emitted "New treatment option for X" /
-    "Compares treatment options for X" — implied an investigational drug is an
+    "Compares treatment options for X", implied an investigational drug is an
     approved treatment. Reworded to neutral "Clinical trial for X" / "Trial
     comparing treatments for X" (still SEO-keyworded, no efficacy claim).
   - `summarize.card_blurb` and the study page's on-page summary republished the raw
     sponsor-written brief summary, which can assert benefit/superiority/safety
-    ("offers superior clinical benefit"). Added `summarize.scrub_claims()` — a
+    ("offers superior clinical benefit"). Added `summarize.scrub_claims()`, a
     sentence-level scrubber that drops efficacy/safety/superiority ASSERTIONS while
-    keeping neutral study-aim language. **Imperfect (pattern-based) — counsel should
+    keeping neutral study-aim language. **Imperfect (pattern-based), counsel should
     review the approach and the claim patterns; consider an allowlist / LLM-hedged
     description if higher assurance is needed.** No unapproved efficacy claim may be
     republished as our own copy (FTC / §5).
-- [ ] **PHI handling** — keep de-identification mandatory; add BAAs/DPAs before any
+- [ ] **PHI handling**: keep de-identification mandatory; add BAAs/DPAs before any
   production PHI processing or EHR integration goes live.
-- [ ] **Participant payments — payout modes + live disbursement rail** — the payments
+- [ ] **Participant payments, payout modes + live disbursement rail**: the payments
   module supports per-visit stipends, completion lump sums (optionally prorated on
   early withdrawal), and travel/expense reimbursements. Guardrails implemented +
   required:
@@ -257,22 +256,22 @@ fee-splitting.**
   - **1099/W-9 gate stays.** Aggregate participant payments ≥ $600/yr require a W-9 on
     file before issue; this is unchanged across all payout modes and methods.
   - **Live rail is a key-swap and needs a BAA/DPA FIRST.** Vendor adapters
-    (Tremendous, Tango, ClinCard, Greenphire) ship **inert** — without the vendor API
+    (Tremendous, Tango, ClinCard, Greenphire) ship **inert**: without the vendor API
     key set in the environment they record-only and move no money. Before enabling any
     live disbursement vendor: sign a Business Associate Agreement / data-processing
     agreement (the rail handles participant contact info / payment data), confirm the
     site's IRB is aware of the payment method, and set `PAYMENTS_PROVIDER=<key>` plus
     the vendor API key. Never wire a live rail without the BAA/DPA (§3).
-- [ ] **REDCap patient intake/screening forms** — patients can complete a site's
+- [ ] **REDCap patient intake/screening forms**: patients can complete a site's
   own REDCap survey as the screening step (pre-filled link handoff). Guardrails
   implemented in code:
   - Live patient forms are gated behind an explicit per-site attestation checkbox
-    ("this instrument is IRB/REB-approved and patients consent") — `redcap_intake_enabled`.
+    ("this instrument is IRB/REB-approved and patients consent"), `redcap_intake_enabled`.
     Without it, BridgeMD only ever shows the **simulated** demo form.
   - REDCap API tokens are stored server-side only; never logged, never rendered
     back into HTML (write-only field, masked status).
   - Pre-fill is limited to data the patient already volunteered (name, email,
-    condition, NCT) — data minimization; we store only a REDCap record id +
+    condition, NCT), data minimization; we store only a REDCap record id +
     survey status on the lead, not form contents.
   - **Before a site enables live intake:** confirm the chosen instrument is
     IRB/REB-approved as recruitment/screening material, that patient consent is
@@ -280,13 +279,13 @@ fee-splitting.**
     Associate Agreement / data-processing agreement is in place with the site
     (the survey collects PHI directly into the site's project). Counsel/IRB
     sign-off required per §5 and §3 above.
-- [ ] **Public demo of the study-team side (`SITE_DEMO`, default ON)** — pre-launch,
+- [ ] **Public demo of the study-team side (`SITE_DEMO`, default ON)**: pre-launch,
   the study-team ATS is a public, always-on demo so prospects can click "See the
   demo" on the For-clinics page without an account. Scope + safety:
   - `SITE_DEMO` only impersonates a **dedicated demo account** and only on
     `/app/*` study-team paths. Real study-team accounts require login and are
     isolated by `user_id`, so an anonymous visitor only ever sees the demo
-    account's clearly-fake candidates — never a real site's applicants.
+    account's clearly-fake candidates, never a real site's applicants.
   - The **patient side stays gated** (normal login). `SITE_DEMO` never auto-signs-in
     a patient or seeds fake patients into patient auth; that only happens under the
     separate full `NO_LOGIN`/`PUBLIC_DEMO` demo.

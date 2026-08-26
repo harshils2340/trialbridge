@@ -117,9 +117,45 @@ def test_results_hide_probably_not_by_default():
     assert 'class="f-fit" value="no" checked' not in html, \
         "'Probably not a fit' must NOT be checked by default"
     assert 'class="f-fit" value="no"' in html, "the 'no' checkbox should exist"
+    assert 'id="prCondInput"' in html
+    assert 'value="Widgetitis"' in html, "results should prefill the current condition"
     assert "\n  apply();" in html or "apply();" in html, \
         "init should apply the default filter on load"
     print("PASS: results auto-hide 'Probably not a fit' by default")
+
+
+def test_find_trial_is_split_carousel():
+    """/find-trial must match production: two-panel split, not a stacked
+    marketing page. Regression for when the carousel CSS/JS was retired."""
+    client = app.app.test_client()
+    r = client.get("/find-trial")
+    assert r.status_code == 200, r.status_code
+    html = r.get_data(as_text=True)
+    assert 'id="fyCarousel"' in html
+    assert 'class="fy-grip"' in html
+    assert "For research sites" in html
+    assert "A real trial finder, directly on your website." in html
+    assert "Find a trial that fits." in html
+    assert "Horizontal focus carousel" in html
+    assert "Start split." in html
+    assert "Split carousel retired" not in html
+    assert "Find your next trial match." not in html
+    assert "We also have a trial finder" not in html
+    assert "home-screen" in html
+    assert "is-fy-split" in html
+    print("PASS: /find-trial is the production split carousel")
+
+
+def test_for_sites_legacy_url_redirects_home():
+    """The footer used to 404 on /for-sites. That path must 301 to the hub."""
+    from urllib.parse import urlparse
+    client = app.app.test_client()
+    r = client.get("/for-sites", follow_redirects=False)
+    assert r.status_code == 301, f"/for-sites returned {r.status_code}"
+    path = urlparse(r.headers.get("Location") or "").path
+    assert path in ("/", ""), (
+        f"/for-sites redirected to {r.headers.get('Location')}, expected /")
+    print("PASS: /for-sites 301s to the sites homepage")
 
 
 def main():
@@ -128,6 +164,8 @@ def main():
         test_label_us_includes_zip,
         test_label_canada_city_region,
         test_results_hide_probably_not_by_default,
+        test_find_trial_is_split_carousel,
+        test_for_sites_legacy_url_redirects_home,
     ]
     failed = 0
     for t in tests:

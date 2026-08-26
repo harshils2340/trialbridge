@@ -210,7 +210,7 @@ def test_marketing_hub_flow():
 def test_demo_seed_preserves_live_connections_and_fills_each_trial():
     with webapp.app.app_context():
         demo_id = db.create_user(
-            "dejosama@fieveclinical.com", "disabled", "Demo Owner",
+            db._MARKETING_DEMO_EMAIL, "disabled", "Demo Owner",
             verified=True)
         connected = db.connect_marketing_account(
             demo_id, provider="gmail", channel="email",
@@ -282,9 +282,43 @@ def test_demo_seed_preserves_live_connections_and_fills_each_trial():
     print("PASS: demo seed is distinct, idempotent, dense, and preserves live accounts")
 
 
+def test_demo_team_is_fictional():
+    banned = (
+        "Vanessa Fieve", "Paul Eder", "Margaret Henderson", "Sharita",
+        "Kara Walsh", "Josama", "Danny-Elle", "dejosama@", "vfieve@",
+        "peder@", "mhenderson@", "kwalsh@", "swomack@",
+    )
+    with webapp.app.app_context():
+        demo = db.get_user_by_email(db._MARKETING_DEMO_EMAIL)
+        demo_id = demo["id"] if demo else db.create_user(
+            db._MARKETING_DEMO_EMAIL, "disabled", "Demo Owner", verified=True)
+        db.seed_demo_team(demo_id)
+        roster = " ".join(
+            f"{m['name']} {m['email']}" for m in db.list_org_members(demo_id))
+        for needle in banned:
+            assert needle.lower() not in roster.lower(), needle
+        assert "Riley Patel" in roster
+        assert "David Chen" in roster
+        assert "Elena Vargas" in roster
+        conn = db.get_db()
+        conn.execute(
+            "INSERT INTO marketing_messages "
+            "(org_id, thread_id, kind, body, author_name, delivery_status, "
+            "created_at) VALUES (1, 1, 'note', ?, 'BridgeMD team', '', ?)",
+            ("@danny-elle @Vanessa @Margaret look", db.now()))
+        conn.commit()
+        db.migrate_demo_staff_identities()
+        leftover = conn.execute(
+            "SELECT body FROM marketing_messages WHERE "
+            "instr(body, 'danny-elle') OR instr(body, '@Vanessa') "
+            "OR instr(body, '@Margaret')").fetchall()
+        assert leftover == []
+    print("PASS: demo team roster is fictional")
+
+
 def test_demo_records_and_checklist():
     with webapp.app.app_context():
-        demo_id = db.get_user_by_email("dejosama@fieveclinical.com")["id"]
+        demo_id = db.get_user_by_email(db._MARKETING_DEMO_EMAIL)["id"]
         linked = next(
             row for row in db.list_marketing_threads(demo_id, status="all")
             if row["linked_lead_id"])
@@ -806,6 +840,44 @@ def test_empty_inbox_prompts_channel_connect():
     print("PASS: empty inbox prompts channel connect for day-0 orientation")
 
 
+def test_reply_sends_in_place_without_demo_toast():
+    """A reply must land in the thread without a full reload or a 'demo' toast."""
+    with webapp.app.app_context():
+        uid = db.create_user(
+            "ajax-reply@example.com", "disabled", "Ajax Reply", verified=True)
+    client = _client_for(uid)
+    assert _post(client, "/marketing-hub/sources", {
+        "channel": "email", "label": "Main", "identifier": "hi@example.com",
+    }).status_code == 302
+    with webapp.app.app_context():
+        source_id = db.list_marketing_sources(uid)[0]["id"]
+    assert _post(client, "/marketing-hub/threads", {
+        "source_id": str(source_id), "contact_name": "Jamie Cole",
+        "contact_handle": "jamie@example.com", "subject": "Visit times",
+        "body": "When is screening this week?",
+    }).status_code == 302
+    with webapp.app.app_context():
+        thread_id = db.list_marketing_threads(uid)[0]["id"]
+    page = client.get(f"/app/inbox?thread={thread_id}").get_data(as_text=True)
+    assert "data-ajax-quiet" in page
+    assert 'data-optimistic="#messageList"' in page
+    sent = client.post(
+        f"/marketing-hub/threads/{thread_id}/reply",
+        data={"_csrf_token": CSRF, "body": "Tuesday or Thursday both work."},
+        headers={"X-BridgeMD-Ajax": "1"},
+        follow_redirects=False)
+    assert sent.status_code == 200, sent.status_code
+    assert sent.content_type.startswith("application/json")
+    payload = sent.get_json()
+    assert payload["ok"] is True
+    assert "Demo reply" not in (payload.get("toast") or "")
+    assert not payload.get("toast")
+    with webapp.app.app_context():
+        bodies = [m["body"] for m in db.list_marketing_messages(uid, thread_id)]
+        assert "Tuesday or Thursday both work." in bodies
+    print("PASS: reply sends in place with no demo toast")
+
+
 def main():
     try:
         test_marketing_hub_flow()
@@ -817,8 +889,10 @@ def main():
         test_owed_reply_sorts_first()
         test_awaiting_reply_badge()
         test_empty_inbox_prompts_channel_connect()
+        test_reply_sends_in_place_without_demo_toast()
         test_marketing_seed_is_gated_to_demo_account()
         test_demo_seed_preserves_live_connections_and_fills_each_trial()
+        test_demo_team_is_fictional()
         test_demo_records_and_checklist()
         print("PASS: marketing hub tests")
     finally:

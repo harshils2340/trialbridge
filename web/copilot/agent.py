@@ -13,6 +13,8 @@ import re
 
 import match_trials as mt
 
+from copy_sanitize import sanitize_copy
+
 from . import actions, registry, tools
 
 SYSTEM_PROMPT = (
@@ -29,7 +31,8 @@ SYSTEM_PROMPT = (
     "4. Be concise: write a SINGLE short headline sentence stating the key number "
     "or takeaway. Do NOT list individual applicants, visits, or documents by name - "
     "the interface shows those to the user as a separate, scannable list beneath "
-    "your reply, so enumerating them is redundant."
+    "your reply, so enumerating them is redundant.\n"
+    "5. Never use em dashes. Use commas, periods, or hyphens instead."
 )
 
 
@@ -101,9 +104,9 @@ def _display_items(items):
 # Action-first starters shown in the empty rail - phrased as work to do, not
 # questions to ask (Bridget is an agent that acts, not a Q&A bot).
 STARTERS = [
+    "List my studies",
     "Draft replies to my inbox",
-    "Send booking reminders to everyone stuck",
-    "Find my biggest funnel leak",
+    "Send a blast to everyone accepted",
 ]
 
 # The trace ("what I actually did") now lives with each tool in registry.py.
@@ -125,19 +128,33 @@ _BULK_HINTS = ("everyone", "all of them", "each of", "each one", "stuck",
                "all applicants", "everybody")
 
 
-def _classify(query, has_lead=False):
+def _classify(query, ctx=None):
     """Return (intent, params) from keyword rules. Deterministic + cheap; the
     LLM is only used later to phrase the grounded answer, not to route.
 
     Order matters: ACTION intents (that write) are matched before READ intents,
     so 'send a booking reminder to everyone stuck' is a bulk action, not the
     'who is stuck' read."""
+    ctx = ctx or {}
+    has_lead = bool(ctx.get("has_lead"))
+    active_nct = (ctx.get("active_nct") or "").strip().upper()
     q = (query or "").lower().strip()
 
     m = re.search(r"(mention|about|said|talk\w*|contain\w*)\s+[\"']?([\w\- ]{2,40})",
                   q)
     if ("search" in q or "find" in q or "mention" in q) and m:
         return "search_messages", {"term": m.group(2).strip()}
+
+    # --- List claimed studies (before blast/send so "send me my studies" works) -
+    if ((("studies" in q or "trials" in q) and
+         any(w in q for w in ("list", "show", "what are", "which are", "do i have",
+                              "we have", "i have", "my studies", "my trials",
+                              "send me", "tell me", "give me")))
+            or any(w in q for w in ("my studies", "my trials", "studies i have",
+                                    "trials i have", "studies we run",
+                                    "what studies", "which studies",
+                                    "what trials", "which trials"))):
+        return "list_studies", {}
 
     # --- Inbox / new replies (read + a suggested draft per applicant) ----------
     # This is inbox triage, not a single-applicant send, so it must beat the
@@ -167,14 +184,21 @@ def _classify(query, has_lead=False):
 
     # --- Blast: messaging a described GROUP inside one study -------------------
     m_nct = re.search(r"(nct\d{6,10})", q)
-    if (any(w in q for w in ("blast", "message everyone", "message all",
-                             "send to everyone", "email everyone",
-                             "notify everyone", "message everybody"))
+    if (any(w in q for w in ("blast", "text blast", "mass text", "mass message",
+                             "message everyone", "message all", "email everyone",
+                             "text everyone", "notify everyone",
+                             "message everybody"))
             or (m_nct and any(w in q for w in ("message", "send", "notify",
-                                               "remind", "tell")))):
+                                               "remind", "tell", "text")))):
         p_blast = {}
         if m_nct:
             p_blast["nct"] = m_nct.group(1).upper()
+        elif active_nct and any(p in q for p in tools._DEICTIC):
+            p_blast["nct"] = active_nct
+        elif active_nct and any(w in q for w in ("all applicant", "every applicant",
+                                                 "everyone accepted", "whole trial",
+                                                 "whole study")):
+            p_blast["nct"] = active_nct
         for st in ("prescreen", "eligible", "screening", "enrolled"):
             if st in q:
                 p_blast["stage"] = st
@@ -291,13 +315,31 @@ _PROPOSAL_INTRO = {
 }
 
 
-def _help_payload():
+def _help_payload(ctx=None):
+    ctx = ctx or {}
+    n = len(ctx.get("studies") or [])
+    scope = ctx.get("scope_label") or "your studies"
+    if n:
+        summary = (f"You're on {scope}. I can list your studies, draft inbox "
+                   "replies, message a group, or check who's stuck. What do you "
+                   "want to do?")
+    else:
+        summary = ("Claim a study in Settings first. Then I can help with inbox "
+                   "replies, applicant blasts, and your review queue.")
     return {
-        "summary": ("I work across your studies \u2014 inbox, review queue, "
-                    "calendar, documents, and campaigns. Tell me what you want "
-                    "to do, or pick one below."),
+        "summary": summary,
         "items": [], "citations": [],
     }
+
+
+def _study_suggestions(ctx, limit=3):
+    """Quick prompts when Bridget needs a study picked."""
+    out = ["List my studies"]
+    for s in (ctx.get("studies") or [])[:limit]:
+        title = (s.get("title") or s.get("nct") or "")[:36]
+        if title:
+            out.append(f"Blast everyone in {title}")
+    return out[:4]
 
 
 _JSON_RE = re.compile(r"\{.*\}", re.DOTALL)
@@ -315,7 +357,12 @@ def _plan_llm(query, ctx):
     if not mt.LLM_API_KEY:
         return None
     try:
+        scope = ctx.get("scope_label") or "All studies"
+        active = ctx.get("active_nct") or "all"
+        n_studies = len(ctx.get("studies") or [])
         user = (f"TOOLS:\n{registry.catalog_for_prompt()}\n\n"
+                f"Active study scope: {scope} ({active})\n"
+                f"Claimed studies: {n_studies}\n"
                 f"An applicant record is currently open: {bool(ctx.get('has_lead'))}\n"
                 f"USER REQUEST: {query}\n\n"
                 "Pick the single best tool and its params. JSON only.")
@@ -331,7 +378,15 @@ def _plan_llm(query, ctx):
 
 def _plan(query, ctx):
     """Choose a tool: LLM planner first (if configured), keyword rules otherwise."""
-    return _plan_llm(query, ctx) or _classify(query, bool(ctx.get("has_lead")))
+    return _plan_llm(query, ctx) or _classify(query, ctx)
+
+
+def _enrich_params(params, ctx, query):
+    """Attach workspace scope for tools that need it."""
+    p = dict(params or {})
+    p["active_nct"] = ctx.get("active_nct") or ""
+    p["_query"] = query
+    return p
 
 
 def _ground_with_llm(query, payload):
@@ -345,54 +400,80 @@ def _ground_with_llm(query, payload):
                 f"Deterministic summary for reference: {payload.get('summary', '')}\n\n"
                 "Write the answer now, following your rules.")
         out = mt.llm_chat(SYSTEM_PROMPT, user)
-        return (out or "").strip() or None
+        return sanitize_copy((out or "").strip() or None)
     except Exception:
         return None
 
 
+def _sanitize_answer(res):
+    """Every user-visible string Bridget returns passes through here."""
+    if not isinstance(res, dict):
+        return res
+    if res.get("answer"):
+        res["answer"] = sanitize_copy(res["answer"])
+    prop = res.get("proposal")
+    if isinstance(prop, dict):
+        for key in ("text", "target", "confirm_label", "blocked"):
+            if prop.get(key):
+                prop[key] = sanitize_copy(prop[key])
+    for it in res.get("items") or []:
+        if isinstance(it, dict):
+            for key in ("title", "detail", "study"):
+                if it.get(key):
+                    it[key] = sanitize_copy(it[key])
+    res["suggestions"] = [sanitize_copy(s) for s in (res.get("suggestions") or [])
+                          if s]
+    return res
+
+
 def answer(user_id, query, context=None):
-    """Entry point. ``context`` may include {"lead_id": int} for the page the
-    user is on. Returns {answer, citations, action?, suggestions}.
+    """Entry point. ``context`` from ``context.build()``, study scope, lead, page.
+    Returns {answer, citations, action?, suggestions}.
 
     Flow: plan a tool (LLM planner or keyword rules) -> dispatch through the
     registry. Reads return a grounded answer; actions return a confirmable
     proposal. The safe confirm/send path is never bypassed here."""
-    context = context or {}
+    context = dict(context or {})
+    context["user_id"] = user_id
     lead_id = context.get("lead_id")
-    intent, params = _plan(query, {"has_lead": bool(lead_id)})
+    intent, params = _plan(query, context)
+    params = _enrich_params(params, context, query)
 
     tool = registry.get(intent)
     if tool is None:                       # "help" or an unknown name
-        p = _help_payload()
-        return {"answer": p["summary"], "citations": [], "trace": [],
-                "suggestions": STARTERS}
+        p = _help_payload(context)
+        return _sanitize_answer({"answer": p["summary"], "citations": [], "trace": [],
+                "suggestions": STARTERS})
 
     if tool.needs_lead and not lead_id:
-        return {
+        return _sanitize_answer({
             "answer": "Open an applicant first, then ask again - that lets me "
                       "pull their record.",
             "citations": [], "suggestions": STARTERS,
-        }
+        })
 
     # --- Action tools: build a confirmable proposal (never auto-send) ----------
     if tool.kind == "action":
-        res = _propose(intent, user_id, lead_id, params)
+        res = _propose(intent, user_id, lead_id, params, context, query)
         res.setdefault("trace", tool.trace)
-        return res
+        return _sanitize_answer(res)
 
     # --- Read tools: grounded answer ------------------------------------------
     payload = tool.run(user_id, lead_id, params)
     text = _ground_with_llm(query, payload) or payload.get("summary", "")
-    return {
+    suggestions = []
+    if intent == "list_studies" and context.get("studies"):
+        suggestions = [f"Blast everyone accepted in {(context['studies'][0]['title'] or '')[:30]}"]
+    return _sanitize_answer({
         "answer": text,
         "items": _display_items(payload.get("items")),
         "citations": payload.get("citations", []),
         "trace": tool.trace,
-        "suggestions": [],
-    }
+        "suggestions": suggestions,
+    })
 
 
-def _propose(intent, user_id, lead_id, params):
+def _propose(intent, user_id, lead_id, params, ctx, query):
     """Build a confirmable action proposal, or explain why it can't be done."""
     if intent == "send_message":
         prop = actions.build_message_proposal(user_id, lead_id, params.get("intent"))
@@ -403,7 +484,8 @@ def _propose(intent, user_id, lead_id, params):
     elif intent == "blast":
         prop = actions.build_blast_proposal(
             user_id, nct=params.get("nct", ""), stage=params.get("stage", ""),
-            tag=params.get("tag", ""), idle_days=params.get("idle_days"))
+            tag=params.get("tag", ""), idle_days=params.get("idle_days"),
+            active_nct=params.get("active_nct", ""), query=query)
     elif intent == "handoff_coverage":
         prop = actions.build_handoff_proposal(user_id, params.get("cover", ""))
     else:  # bulk_booking
@@ -411,9 +493,10 @@ def _propose(intent, user_id, lead_id, params):
 
     if prop is None:
         return {"answer": "I can't find that applicant in your studies.",
-                "citations": [], "suggestions": []}
+                "citations": [], "suggestions": STARTERS}
     if prop.get("blocked"):
-        return {"answer": prop["blocked"], "citations": [], "suggestions": []}
+        sug = _study_suggestions(ctx) if intent == "blast" else STARTERS
+        return {"answer": prop["blocked"], "citations": [], "suggestions": sug}
 
     intro = _PROPOSAL_INTRO.get(intent, "Confirm to continue:").format(
         target=prop.get("target", "this applicant"))

@@ -155,13 +155,14 @@ def test_landing_hero_embeds_product_demo():
     response = app.app.test_client().get("/")
     html = response.get_data(as_text=True)
     assert response.status_code == 200
-    assert 'class="landing-product-demo"' in html
-    assert 'title="BridgeMD product demo"' in html
-    assert "vid_cmt4v8b38002r09gccedm4nys/embed" in html
-    assert 'allow="autoplay; fullscreen"' in html
+    assert 'class="landing-product-demo is-live"' in html
+    assert 'src="/app/inbox?embed=1&owner=unassigned&thread=85' in html
+    assert 'title="BridgeMD live demo"' in html
+    assert "Open full size" in html
     assert not re.search(r'<img\b[^>]*alt="Hero Image"', html), \
         "the old hero screenshot is still rendered"
-    print("PASS: landing hero renders the responsive Tella product demo")
+    assert "tella.tv" not in html
+    print("PASS: landing hero embeds the live study-team inbox")
 
 
 def _fake_result(nct, verdict):

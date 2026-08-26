@@ -1730,6 +1730,44 @@ def _migrate(con):
     for row in con.execute("SELECT id FROM referrals WHERE token IS NULL").fetchall():
         con.execute("UPDATE referrals SET token = ? WHERE id = ?",
                     (gen_token(), row[0]))
+    _scrub_em_dashes(con)
+
+
+def _scrub_em_dashes(con):
+    """Rewrite em dashes out of every text cell in the database.
+
+    The no-em-dash rule is enforced on LLM output and on the seed strings, but
+    rows seeded BEFORE a string was fixed keep the old text forever, and demo
+    threads seeded that way kept surfacing an em-dashed "Period-migraine study,
+    still enrolling?" subject long after the source said otherwise. Runs on every
+    start; it is one LIKE per text column and a no-op once the data is clean.
+    Returns the number of cells rewritten.
+    """
+    try:
+        from copy_sanitize import sanitize_copy
+    except ImportError:  # run from a tool without the repo root on sys.path
+        import sys
+        sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
+        from copy_sanitize import sanitize_copy
+    fixed = 0
+    tables = [r[0] for r in con.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")]
+    for table in tables:
+        cols = [r[1] for r in con.execute(f'PRAGMA table_info("{table}")')
+                if not any(k in (r[2] or "").upper()
+                           for k in ("INT", "REAL", "BLOB", "NUM", "BOOL", "DATE"))]
+        for col in cols:
+            rows = con.execute(
+                f'SELECT rowid, "{col}" FROM "{table}" '
+                f'WHERE "{col}" LIKE ? OR "{col}" LIKE ? OR "{col}" LIKE ?',
+                ("%\u2014%", "%&mdash;%", "%&#8212;%")).fetchall()  # noqa: dash
+            for rowid, val in rows:
+                clean = sanitize_copy(val)
+                if clean != val:
+                    con.execute(f'UPDATE "{table}" SET "{col}" = ? WHERE rowid = ?',
+                                (clean, rowid))
+                    fixed += 1
+    return fixed
     # Normalize legacy lead status and backfill updated_at + an initial event.
     con.execute("UPDATE leads SET status = 'submitted' WHERE status = 'new'")
     for old, new in _LEAD_STATUS_REMAP.items():
@@ -3143,7 +3181,63 @@ def authorize_lead_records(lead_id):
 
 # The account the study-team demo runs as (see app._DEMO_EMAIL). The rich
 # marketing-hub demo is only ever seeded onto this throwaway account.
-_MARKETING_DEMO_EMAIL = "dejosama@fieveclinical.com"
+_DEMO_LOGIN_NAME = "Riley Patel"
+_MARKETING_DEMO_EMAIL = "rpatel@fieveclinical.com"
+# Fictional site roster. Emails stay on the demo domain so login keeps working;
+# display names are invented and must never match a real site's staff.
+_DEMO_TEAM = (
+    ("dchen@fieveclinical.com", "David Chen, MD", "pi",
+     "Principal Investigator", ("peder@fieveclinical.com",)),
+    ("mbrooks@fieveclinical.com", "Maya Brooks, PMHNP-BC", "pi",
+     "Sub-Investigator", ("swomack@fieveclinical.com",)),
+    ("evargas@fieveclinical.com", "Elena Vargas, JD, CCRC", "coordinator",
+     "Site Director / President", ("vfieve@fieveclinical.com",)),
+    ("pshah@fieveclinical.com", "Priya Shah, MD, CCRC", "coordinator",
+     "Director of Clinical Operations", ("mhenderson@fieveclinical.com",)),
+    ("rpatel@fieveclinical.com", "Riley Patel", "coordinator",
+     "Clinical Research Coordinator", ("dejosama@fieveclinical.com",)),
+    ("akim@fieveclinical.com", "Avery Kim, MPH", "student",
+     "Clinical Research Coordinator", ("kwalsh@fieveclinical.com",)),
+)
+# Longest strings first so "Paul Eder, MD" is rewritten before "Paul Eder".
+_DEMO_STAFF_REWRITES = (
+    ("Sharita D. Womack, PMHNP-BC", "Maya Brooks, PMHNP-BC"),
+    ("Vanessa Fieve, JD, CCRC", "Elena Vargas, JD, CCRC"),
+    ("Margaret Henderson, MD, CCRC", "Priya Shah, MD, CCRC"),
+    ("Danny-Elle Josama", "Riley Patel"),
+    ("Kara Walsh, MPH", "Avery Kim, MPH"),
+    ("Paul Eder, MD", "David Chen, MD"),
+    ("Margaret Henderson, MD", "Priya Shah, MD"),
+    ("Sharita D. Womack", "Maya Brooks"),
+    ("Vanessa Fieve", "Elena Vargas"),
+    ("Margaret Henderson", "Priya Shah"),
+    ("Danny Josama", "Riley Patel"),
+    ("Kara Walsh", "Avery Kim"),
+    ("Paul Eder", "David Chen"),
+    ("Dr. Eder", "Dr. Chen"),
+    ("@danny-elle", "@riley"),
+    ("@Danny-Elle", "@Riley"),
+    ("danny-elle", "riley"),
+    ("@Vanessa", "@Elena"),
+    ("@Margaret", "@Priya"),
+    ("@Kara", "@Avery"),
+    ("@Paul", "@David"),
+)
+_DEMO_STAFF_TEXT_COLUMNS = (
+    ("users", "name"),
+    ("site_profiles", "contact_name"),
+    ("lead_notes", "author"),
+    ("lead_notes", "body"),
+    ("team_messages", "sender_name"),
+    ("team_messages", "body"),
+    ("trial_documents", "party_name"),
+    ("document_events", "actor"),
+    ("irb_submissions", "pi_name"),
+    ("irb_submission_events", "actor"),
+    ("marketing_messages", "author_name"),
+    ("marketing_messages", "body"),
+    ("mentions", "excerpt"),
+)
 # Sentinel: presence of this source means the rich demo has already been seeded,
 # so we never re-seed (and never trample edits made live during a demo).
 _MARKETING_DEMO_SENTINEL = "recruit@fieveclinical.com"
@@ -3159,6 +3253,46 @@ _MARKETING_DEMO_STUDIES = {
     "NCT07674654": "Elismetrep (K-304) Long-Term Safety in Acute Migraine",
     "NCT06417775": "Ubrogepant for Menstrual Migraine",
 }
+
+
+def migrate_demo_staff_identities():
+    """Rewrite a previously seeded real roster to the fictional demo staff.
+
+    Existing local/demo DBs keep users, notes, and audit rows across restarts,
+    so changing seed strings alone would leave the old names on screen.
+    """
+    db = get_db()
+    for email, name, _role, _label, old_emails in _DEMO_TEAM:
+        email = email.lower().strip()
+        target = db.execute(
+            "SELECT id FROM users WHERE email = ?", (email,)).fetchone()
+        for old in old_emails:
+            old = (old or "").lower().strip()
+            if not old or old == email:
+                continue
+            row = db.execute(
+                "SELECT id FROM users WHERE email = ?", (old,)).fetchone()
+            if not row:
+                continue
+            if target and target["id"] != row["id"]:
+                db.execute("UPDATE users SET name = ? WHERE id = ?",
+                           (name, row["id"]))
+            else:
+                db.execute("UPDATE users SET email = ?, name = ? WHERE id = ?",
+                           (email, name, row["id"]))
+                target = {"id": row["id"]}
+        db.execute("UPDATE users SET name = ? WHERE email = ?", (name, email))
+    known = {r[0] for r in db.execute(
+        "SELECT name FROM sqlite_master WHERE type='table'")}
+    for table, column in _DEMO_STAFF_TEXT_COLUMNS:
+        if table not in known:
+            continue
+        for old, new in _DEMO_STAFF_REWRITES:
+            db.execute(
+                f"UPDATE {table} SET {column} = REPLACE({column}, ?, ?) "
+                f"WHERE instr({column}, ?) > 0",
+                (old, new, old))
+    db.commit()
 
 
 def _top_up_demo_marketing_workflows(conn, user_id, oid):
@@ -3758,7 +3892,7 @@ def seed_demo_marketing_hub(user_id):
     claims = list_team_studies(user_id)
     _by_nct = {c["nct"]: (c["nct"], c["title"] or c["nct"]) for c in claims}
     # Canonical titles (same as seed_demo_leads' _S). Always tag threads with
-    # these NCTs even if claims/leads haven't landed yet — otherwise the
+    # these NCTs even if claims/leads haven't landed yet, otherwise the
     # study switcher scopes to an empty inbox.
     _TITLES = {
         "NCT05711940": "COMP360 Psilocybin in Treatment-Resistant Depression",
@@ -3967,7 +4101,7 @@ def seed_demo_marketing_hub(user_id):
          "Something came up at work, can I move my Thursday K-304 screening "
          "to next week?", 215),
         ("outbound", jordan_id,
-         "No problem, Tomás. Tuesday 10:00am or Wednesday 2:00pm — which "
+         "No problem, Tomás. Tuesday 10:00am or Wednesday 2:00pm, which "
          "works better?", 205),
         ("inbound", "contact", "Tuesday 10am is perfect, thank you!", 150)],
        mig, "screening")
@@ -3985,14 +4119,14 @@ def seed_demo_marketing_hub(user_id):
 
     # ── Adjunctive Seltorexant in MDD with insomnia ──────────────────────
     helen_thread = _t(depression_id, "Helen Park", "helen.park@gmail.com",
-       "Still can't sleep on sertraline — is the add-on for me?", "me",
+       "Still can't sleep on sertraline, is the add-on for me?", "me",
        "open", True,
        [("inbound", "contact",
          "I'm on 100mg sertraline and my mood is a bit better, but I still "
          "lie awake most nights. Is the adjunctive seltorexant study an "
          "add-on to my current antidepressant?", 12)], mdd)
     _t(depression_id, "Omar Diallo", "omar.diallo@outlook.com",
-       "Insomnia score / ISI — what do you need?", "me", "open", True,
+       "Insomnia score / ISI, what do you need?", "me", "open", True,
        [("inbound", "contact",
          "My psychiatrist said I might fit the MDD + insomnia study. Do I "
          "need a formal ISI score before screening, or do you measure that "
@@ -4008,7 +4142,7 @@ def seed_demo_marketing_hub(user_id):
          "Clicked the insomnia depression ad. If I join, do I stay on my "
          "current SSRI the whole time?", 140),
         ("outbound", me,
-         "Yes — this arm is add-on seltorexant on top of a stable "
+         "Yes, this arm is add-on seltorexant on top of a stable "
          "antidepressant. I can send the pre-screen if you want to continue.",
          128)], mdd, "outreach")
     _t(depression_id, "Marcus Reed", "marcus.reed@outlook.com",
@@ -4038,7 +4172,7 @@ def seed_demo_marketing_hub(user_id):
        "How depressed do I need to be (MADRS)?", "me", "open", True,
        [("inbound", "contact",
          "My doctor mentioned a MADRS cutoff for Azetukalner. I'm having a "
-         "rough month but I don't know my score — can I still come in?",
+         "rough month but I don't know my score, can I still come in?",
          47)], aze, "prescreen")
     _t(dep_ads_id, "Amira Soltani", "amira.soltani@yahoo.com",
        "Failed two antidepressants this episode", "me", "open", False,
@@ -4052,7 +4186,7 @@ def seed_demo_marketing_hub(user_id):
     _t(depression_id, "Robert Klein", "rklein@protonmail.com",
        "Follow-up after Azetukalner phone screen", "jordan", "open", False,
        [("inbound", "contact",
-         "Following up on last week's X-NOVA3 phone screen — any update on "
+         "Following up on last week's X-NOVA3 phone screen, any update on "
          "an in-person screening date?", 260),
         ("outbound", jordan_id,
          "You're through the phone screen. Monday 9am or Wednesday 1pm?",
@@ -4063,7 +4197,7 @@ def seed_demo_marketing_hub(user_id):
          "saw the Azetukalner ad, do you need a referral from my "
          "psychiatrist or can i self refer to X-NOVA3?", 410)], aze)
     _t(dep_ads_id, "Chris Nguyen", "chris.nguyen@gmail.com",
-       "Saw the X-NOVA3 ad — still enrolling?", None, "open", True,
+       "Saw the X-NOVA3 ad, still enrolling?", None, "open", True,
        [("inbound", "contact",
          "Clicked your depression study ad. Is Azetukalner vs placebo still "
          "enrolling in New York?", 70)], aze)
@@ -4073,7 +4207,7 @@ def seed_demo_marketing_hub(user_id):
        "Eligible for the Azetukalner extension?", "me", "open", True,
        [("inbound", "contact",
          "I just finished the 12-week X-NOVA3 double-blind. My coordinator "
-         "mentioned the open-label extension — am I eligible, and when "
+         "mentioned the open-label extension, am I eligible, and when "
          "would it start?", 40),
         ("outbound", me,
          "Hi Grace, everyone who completes the double-blind period can roll "
@@ -4086,7 +4220,7 @@ def seed_demo_marketing_hub(user_id):
          "Last X-NOVA3 visit was Friday. Is there a washout before the "
          "open-label extension, or do I come straight back?", 55)], azeo)
     _t(ole_id, "Elena Cruz", "elena.cruz@outlook.com",
-       "I was on placebo — can I still get Azetukalner?", "me", "open",
+       "I was on placebo, can I still get Azetukalner?", "me", "open",
        False,
        [("inbound", "contact",
          "I think I was on placebo in the blinded study. Does the OLE still "
@@ -4096,7 +4230,7 @@ def seed_demo_marketing_hub(user_id):
          "people who were on placebo. I'll send the OLE consent.", 198)],
        azeo, "prescreen")
     _t(ole_id, "David Okonkwo", "d.okonkwo@yahoo.com",
-       "OLE consent — washout section", "casey", "resolved", False,
+       "OLE consent, washout section", "casey", "resolved", False,
        [("inbound", "contact",
          "Got the extension consent. Two questions on the washout section "
          "before I sign.", 1980),
@@ -4112,7 +4246,7 @@ def seed_demo_marketing_hub(user_id):
 
     # ── Seltorexant monotherapy in MDD ───────────────────────────────────
     wanda_thread = _t(depression_id, "Wanda Price", "wanda.price@yahoo.com",
-       "Not on an antidepressant — monotherapy still open?", "me", "open",
+       "Not on an antidepressant, monotherapy still open?", "me", "open",
        True,
        [("inbound", "contact",
          "I stopped my antidepressant a few months ago and haven't "
@@ -4123,7 +4257,7 @@ def seed_demo_marketing_hub(user_id):
        True,
        [("inbound", "contact",
          "There's an add-on seltorexant study and a monotherapy one. I'm "
-         "not on anything right now — which one is actually for me?", 42)],
+         "not on anything right now, which one is actually for me?", 42)],
        selm, "prescreen")
     _t(dep_ads_id, "Anika Bose", "anika.bose@icloud.com",
        "Off meds for 12 weeks, still eligible?", "me", "open", False,
@@ -4132,7 +4266,7 @@ def seed_demo_marketing_hub(user_id):
          "about 12 weeks. Is that long enough, or too long?", 190),
         ("outbound", me,
          "A recent washout like that is common for this arm. Screening "
-         "confirms timing — I can send the pre-screen.", 176)], selm,
+         "confirms timing, I can send the pre-screen.", 176)], selm,
        "outreach")
     _t(instagram_id, "@calm_and_c", "@calm_and_c",
        "How many weeks is monotherapy?", "jordan", "open", False,
@@ -4143,7 +4277,7 @@ def seed_demo_marketing_hub(user_id):
          "It's 8 weeks: 2 in-person (screening + baseline), the rest are "
          "short phone or video check-ins.", 305)], selm, "outreach")
     _t(dep_ads_id, "Riley Cho", "riley.cho@gmail.com",
-       "Monotherapy ad — still taking people?", None, "open", True,
+       "Monotherapy ad, still taking people?", None, "open", True,
        [("inbound", "contact",
          "Saw your ad for seltorexant alone, not add-on. Are you still "
          "enrolling people who aren't on an SSRI?", 80)], selm)
@@ -4159,7 +4293,7 @@ def seed_demo_marketing_hub(user_id):
          "You can apply directly, no referral needed. I'll send a link to "
          "check if the TRD criteria fit. 👍", 322)], psi, "outreach")
     _t(depression_id, "Mei Lin", "mei.lin@gmail.com",
-       "Failed three antidepressants — is this the mushroom study?", "me",
+       "Failed three antidepressants, is this the mushroom study?", "me",
        "open", True,
        [("inbound", "contact",
          "I've failed sertraline, bupropion, and vortioxetine this episode. "
@@ -4177,7 +4311,7 @@ def seed_demo_marketing_hub(user_id):
          "How long is the psilocybin dosing day, and do I need someone to "
          "take me home?", 200),
         ("outbound", me,
-         "Plan on a full supervised day, and yes — a support person needs "
+         "Plan on a full supervised day, and yes, a support person needs "
          "to pick you up. I can send the day-of schedule.", 188)], psi,
        "prescreen")
     _t(recruit_id, "Priya Anand", "priya.anand@gmail.com",
@@ -4202,7 +4336,7 @@ def seed_demo_marketing_hub(user_id):
          "the long-term safety study something I can join, or is it only "
          "for new patients?", 95)], migl, "screening")
     _t(ads_id, "Colin Deb", "colin.deb@icloud.com",
-       "Triptan reaction — excluded from long-term K-304?", "me", "open",
+       "Triptan reaction, excluded from long-term K-304?", "me", "open",
        False,
        [("inbound", "contact",
          "Saw the ad for the long-term Elismetrep safety study. I had a "
@@ -4221,7 +4355,7 @@ def seed_demo_marketing_hub(user_id):
          "During the long-term Elismetrep follow-up, am I allowed a rescue "
          "triptan if an attack doesn't respond?", 240)], migl, "outreach")
     _t(ads_id, "Nora Ellis", "nora.ellis@gmail.com",
-       "Long-term migraine ad — still open?", None, "open", True,
+       "Long-term migraine ad, still open?", None, "open", True,
        [("inbound", "contact",
          "I wasn't in the first Elismetrep study. Can new patients join "
          "the long-term safety trial?", 90)], migl)
@@ -4254,7 +4388,7 @@ def seed_demo_marketing_hub(user_id):
          "Is this one cycle of ubrogepant or several? I travel for work "
          "every other month.", 300)], umm)
     _t(instagram_id, "Jen K.", "@jen.tracks.cycles",
-       "Period-migraine study — still enrolling?", None, "open", True,
+       "Period-migraine study, still enrolling?", None, "open", True,
        [("inbound", "contact",
          "saw your ubrogepant ad. i get attacks the day before my period. "
          "is that enough to qualify?", 100)], umm)
@@ -9206,15 +9340,15 @@ def _demo_doc_specs():
          "Release to obtain outside records confirming the diagnosis before "
          "screening.", True),
         ("regulatory", "form_1572", "FDA Form 1572 - Statement of Investigator",
-         "investigator", "Paul Eder, MD", "v1.0", "pending", 1,
+         "investigator", "David Chen, MD", "v1.0", "pending", 1,
          "The PI's commitment to conduct the trial per the protocol and 21 CFR 312.",
          False),
         ("regulatory", "doa_log", "Delegation of Authority Log", "investigator",
-         "Paul Eder, MD", "v3", "in_review", 2,
+         "David Chen, MD", "v3", "in_review", 2,
          "Which team members are authorized for which trial tasks - the PI must "
          "review and sign.", False),
         ("regulatory", "fin_disclosure", "Financial Disclosure (FDA 3455)",
-         "investigator", "Paul Eder, MD", "v1.0", "pending", 3,
+         "investigator", "David Chen, MD", "v1.0", "pending", 3,
          "Investigator conflict-of-interest disclosure required by the sponsor.",
          False),
         ("regulatory", "irb_approval", "IRB Approval Letter + Approved ICF",
@@ -9222,13 +9356,13 @@ def _demo_doc_specs():
          "Ethics board approval of the protocol and the current consent version.",
          False),
         ("regulatory", "protocol_amend", "Protocol Amendment 3 - Signature Page",
-         "investigator", "Paul Eder, MD", "Amd 3", "pending", 1,
+         "investigator", "David Chen, MD", "Amd 3", "pending", 1,
          "PI acknowledgement and sign-off on the latest protocol amendment.", False),
         ("site", "ib_ack", "Investigator's Brochure - Acknowledgement",
-         "investigator", "Paul Eder, MD", "Ed 7", "in_review", 4,
+         "investigator", "David Chen, MD", "Ed 7", "in_review", 4,
          "Confirms the PI reviewed the current IB safety information.", False),
         ("site", "gcp_cert", "GCP Training Certificate", "coordinator",
-         "Kara Walsh, MPH", "2026", "approved", None,
+         "Avery Kim, MPH", "2026", "approved", None,
          "Good Clinical Practice training on file for the coordinator.", False),
         ("site", "lab_cert", "Lab Certification (CLIA/CAP) + Normal Ranges",
          "coordinator", "Central Lab", "2026", "approved", None,
@@ -9270,19 +9404,19 @@ def seed_demo_trial_documents(user_id):
                                  summary=summary)
         # Backfill a believable audit trail for non-pending docs.
         if status in ("in_review", "approved", "returned", "signed"):
-            add_document_event(doc_id, "sent", actor="Kara Walsh, MPH",
+            add_document_event(doc_id, "sent", actor="Avery Kim, MPH",
                                actor_role="Coordinator", note="Routed for review")
         if is_patient:
             add_document_event(doc_id, "received", actor=(pname or "Applicant"),
                                actor_role="Patient", note="Returned by participant")
         if status == "approved":
             add_document_event(
-                doc_id, "approved", meaning="Approval", actor="Paul Eder, MD",
+                doc_id, "approved", meaning="Approval", actor="David Chen, MD",
                 actor_role="Principal Investigator",
                 note="Reviewed and approved for the regulatory binder.")
         if status == "signed":
             add_document_event(
-                doc_id, "approved", meaning="Approval", actor="Paul Eder, MD",
+                doc_id, "approved", meaning="Approval", actor="David Chen, MD",
                 actor_role="Principal Investigator",
                 note="Signed via the validated e-signature vendor; approval "
                      "recorded here.")
@@ -9377,7 +9511,7 @@ def _demo_internal_match_specs():
          "summary": "MDD, prior MI (2019), coming in for a medication review.",
          "source_label": "Upcoming visit · Fri", "verdict": "possible", "score": 54,
          "met": ["Meets criteria for a current depressive episode"],
-         "unknown": ["Prior MI \u2014 confirm it's outside the exclusion window",
+         "unknown": ["Prior MI: confirm it's outside the exclusion window",
                      "Current cardiac status stable?"],
          "rationale": "Meets depression criteria; cardiac history needs review against exclusions."},
         {"patient_ref": "P.R.", "full_name": "Priya R.", "age": "50", "sex": "Female",
@@ -9390,7 +9524,7 @@ def _demo_internal_match_specs():
          "summary": "Depressive episode, but a note of possible past hypomania in the chart.",
          "source_label": "Upcoming visit · Mon", "verdict": "possible", "score": 57,
          "met": ["Current depressive episode documented"],
-         "unknown": ["Rule out Bipolar I/II (possible past hypomania) \u2014 exclusion",
+         "unknown": ["Rule out Bipolar I/II (possible past hypomania), an exclusion",
                      "Confirm with MINI at screening"],
          "rationale": "Meets depression criteria; bipolarity must be ruled out before enrolling."},
         {"patient_ref": "H.B.", "full_name": "Hannah B.", "age": "41", "sex": "Female",
@@ -9405,7 +9539,7 @@ def _demo_internal_match_specs():
          "met": ["MADRS 28 (moderate-to-severe)", "Two documented antidepressant failures",
                  "MDD without psychotic features"],
          "unknown": ["Confirm trials meet MGH-ATRQ adequacy", "Taper/washout plan"],
-         "rationale": "Clean TRD fit \u2014 severity and treatment history already documented."},
+         "rationale": "Clean TRD fit: severity and treatment history already documented."},
     ]
 
 
@@ -9544,7 +9678,7 @@ def seed_demo_irb_submissions(user_id):
     """Populate the IRB & approvals surface so the recruitment-compliance workflow
     reads as live: submissions across every review state (approved w/ expiry, under
     review, revisions requested, draft), each with a materials package, an audit
-    trail attributed to the site's real staff, and linked to the matching campaign
+    trail attributed to the fictional demo staff, and linked to the matching campaign
     so approval visibly unlocks that campaign's gate. No-op once any submission
     exists. Demo-only (see COMPLIANCE.md)."""
     if not user_id:
@@ -9606,14 +9740,14 @@ def seed_demo_irb_submissions(user_id):
         db.commit()
         return sid
 
-    KARA = ("Kara Walsh, MPH", "Clinical Research Coordinator")
-    DANNY = ("Danny-Elle Josama", "Clinical Research Coordinator")
-    MARG = ("Margaret Henderson, MD", "Director of Clinical Operations")
-    PAUL = ("Paul Eder, MD", "Principal Investigator")
+    KARA = ("Avery Kim, MPH", "Clinical Research Coordinator")
+    DANNY = ("Riley Patel", "Clinical Research Coordinator")
+    MARG = ("Priya Shah, MD", "Director of Clinical Operations")
+    PAUL = ("David Chen, MD", "Principal Investigator")
 
     # 1) COMP360 - APPROVED, with a live expiry (the happy path).
     n0 = ncts[0]
-    mk(n0, "Recruitment materials \u2013 initial review", "WCG IRB", "central",
+    mk(n0, "Recruitment materials: initial review", "WCG IRB", "central",
        "initial", "approved", PAUL[0], "v3.0", "WCG #20260142", "v2.0", -58,
        305,
        [("flyer", "Waiting-room flyer / poster", "v2.0",
@@ -9638,7 +9772,7 @@ def seed_demo_irb_submissions(user_id):
     # 2) Ubrogepant / migraine - UNDER REVIEW (a modification of existing materials).
     if len(ncts) > 1:
         n1 = ncts[1]
-        mk(n1, "Social media ad set \u2013 modification", "Advarra IRB", "central",
+        mk(n1, "Social media ad set: modification", "Advarra IRB", "central",
            "modification", "in_review", PAUL[0], "v2.0", "Advarra #PRO000451",
            "", None, None,
            [("social", "TikTok / Reels short-form ad", "v1.1",
@@ -9654,7 +9788,7 @@ def seed_demo_irb_submissions(user_id):
     # 3) MDD study - REVISIONS REQUESTED (the board sent modifications back).
     if len(ncts) > 2:
         n2 = ncts[2]
-        mk(n2, "Continuing review \u2013 recruitment package", "WCG IRB", "central",
+        mk(n2, "Continuing review: recruitment package", "WCG IRB", "central",
            "continuing", "revisions", PAUL[0], "v4.0", "WCG #20260233", "",
            None, None,
            [("flyer", "Updated waiting-room flyer", "v3.0",
@@ -9672,7 +9806,7 @@ def seed_demo_irb_submissions(user_id):
     # 4) A DRAFT still being assembled - shows the starting state.
     if len(ncts) > 3:
         n3 = ncts[3]
-        mk(n3, "Campus flyer \u2013 initial review", "Local / academic IRB", "local",
+        mk(n3, "Campus flyer: initial review", "Local / academic IRB", "local",
            "initial", "draft", PAUL[0], "v1.0", "", None, None, None,
            [("flyer", "NYU / Columbia community-board flyer", "v1.0",
              "Printed flyer for campus community boards - drafting.", False)],
@@ -9868,8 +10002,8 @@ def seed_demo_engagement(clinician_id):
             (clinician_id,)).fetchone()
         if not _prof or not ((_prof["org_name"] or "").strip()):
             upsert_site_profile(
-                clinician_id, "Fieve Clinical Research", "Vanessa Fieve",
-                "info@fieveclinical.com", "+1 212 772 3570")
+                clinician_id, "Fieve Clinical Research", "Elena Vargas",
+                "info@fieveclinical.com", "+1 212 555 0148")
 
     # Ensure at least one visible booking link exists in demo so "calendar invite"
     # UX can be tested immediately on both study-team and patient surfaces.
@@ -10007,41 +10141,29 @@ def seed_demo_engagement(clinician_id):
 
 
 def seed_demo_team(clinician_id):
-    """Seed the shared workspace's Team with the demo site's real staff so it
-    reads like their actual team is already set up. Idempotent by email, and it
+    """Seed the shared workspace's Team with a fictional demo roster so it
+    reads like a real site team is already set up. Idempotent by email, and it
     points each teammate at the shared org so signing in lands them here too.
     Demo-only (see COMPLIANCE.md); turn SITE_DEMO off before onboarding real
     sites."""
     if not clinician_id:
         return
+    migrate_demo_staff_identities()
     db = get_db()
     oid = user_org_id(clinician_id)
     # Name the shared workspace after the site.
     db.execute("UPDATE organizations SET name = ? WHERE id = ?",
                ("Fieve Clinical Research", oid))
-    # Fieve's real staff (from fieveclinical.com). Base role gates permissions:
+    # Fictional demo staff. Base role gates permissions:
     # pi = signs/approves docs; coordinator = admin (manages team + approves);
     # student = full day-to-day visibility, no sign-off/team management (fits the
-    # CRCs). role_label carries their actual title for display.
-    team = [
-        ("peder@fieveclinical.com", "Paul Eder, MD", "pi",
-         "Principal Investigator"),
-        ("swomack@fieveclinical.com", "Sharita D. Womack, PMHNP-BC", "pi",
-         "Sub-Investigator"),
-        ("vfieve@fieveclinical.com", "Vanessa Fieve, JD, CCRC", "coordinator",
-         "Site Director / President"),
-        ("mhenderson@fieveclinical.com", "Margaret Henderson, MD, CCRC",
-         "coordinator", "Director of Clinical Operations"),
-        ("dejosama@fieveclinical.com", "Danny-Elle Josama", "coordinator",
-         "Clinical Research Coordinator"),
-        ("kwalsh@fieveclinical.com", "Kara Walsh, MPH", "student",
-         "Clinical Research Coordinator"),
-    ]
-    for email, name, role, label in team:
+    # CRCs). role_label carries their title for display.
+    for email, name, role, label, _old in _DEMO_TEAM:
         email = email.lower().strip()
         row = db.execute("SELECT id FROM users WHERE email = ?", (email,)).fetchone()
         if row:
             uid = row["id"]
+            db.execute("UPDATE users SET name = ? WHERE id = ?", (name, uid))
         else:
             cur = db.execute(
                 "INSERT INTO users (email, password_hash, name, verified, "
@@ -10059,7 +10181,7 @@ def seed_demo_team(clinician_id):
 
 def seed_demo_case_notes(clinician_id=None):
     """Seed internal team notes on the first few candidates, attributed across the
-    site's real staff (CRCs, PI, Director of Ops) so each candidate chart reads
+    site's fictional staff (CRCs, PI, Director of Ops) so each candidate chart reads
     like the whole team is working the case together - not one anonymous
     "Coordinator". Runs unconditionally (unlike the calendar seeder, which bails
     once future visits exist), so this collaboration surface is never empty.
@@ -10074,22 +10196,22 @@ def seed_demo_case_notes(clinician_id=None):
     # short multi-author thread: logistics from a CRC, a clinical note from the
     # PI, and an ops/compliance reminder - so the chart shows people collaborating.
     threads = [
-        [("Kara Walsh, MPH", "Prefers morning visits - works afternoons. Booked "
+        [("Avery Kim, MPH", "Prefers morning visits - works afternoons. Booked "
           "screening for Thu 10:30 and sent visit-prep."),
-         ("Paul Eder, MD", "Reviewed pre-screen - looks eligible. Confirm washout "
+         ("David Chen, MD", "Reviewed pre-screen - looks eligible. Confirm washout "
           "on the SSRI before baseline; I'll sign consent at the visit."),
-         ("Danny Josama", "Daughter (caregiver) usually attends - added her to the "
+         ("Riley Patel", "Daughter (caregiver) usually attends - added her to the "
           "reminder list and shared parking info.")],
-        [("Danny Josama", "Reached out twice; prefers text. Confirmed for Friday "
+        [("Riley Patel", "Reached out twice; prefers text. Confirmed for Friday "
           "and sent the e-diary link."),
-         ("Kara Walsh, MPH", "Mild nausea reported week 1, resolved on its own. "
+         ("Avery Kim, MPH", "Mild nausea reported week 1, resolved on its own. "
           "Flagged to monitor at next dose."),
-         ("Margaret Henderson, MD", "Source is current through last visit. Keep "
+         ("Priya Shah, MD", "Source is current through last visit. Keep "
           "only IRB-approved materials in the patient thread, please.")],
-        [("Kara Walsh, MPH", "Insurance card on file, transport not needed - lives "
+        [("Avery Kim, MPH", "Insurance card on file, transport not needed - lives "
           "10 min from site."),
-         ("Paul Eder, MD", "No exclusionary meds. Cleared to proceed to baseline."),
-         ("Danny Josama", "Rebooked the missed follow-up; confirmed adherence back "
+         ("David Chen, MD", "No exclusionary meds. Cleared to proceed to baseline."),
+         ("Riley Patel", "Rebooked the missed follow-up; confirmed adherence back "
           "on track.")],
     ]
 
@@ -10137,7 +10259,7 @@ def seed_demo_collaboration(clinician_id=None):
                      ts(hours=-6) if status == "done" else ""))
 
     # Internal (staff-only) team channel per claimed trial. Seed a realistic
-    # multi-person thread attributed to the site's real staff so the channel
+    # multi-person thread attributed to the fictional demo staff so the channel
     # reads like the team actually working the study together - recruiter triage,
     # CRC scheduling, Director-of-Ops monitoring/compliance, and PI sign-off.
     if clinician_id:
@@ -10145,16 +10267,16 @@ def seed_demo_collaboration(clinician_id=None):
             "SELECT nct, title FROM study_claims WHERE user_id = ?",
             (clinician_id,)).fetchall()
         # Map the seeded staff to (user_id, chat display name) by email so each
-        # message links to the real member. Falls back to a name string if a
+        # message links to the matching member. Falls back to a name string if a
         # teammate isn't present.
         oid = user_org_id(clinician_id)
         who = {}
         for email, disp in (
-            ("vfieve@fieveclinical.com", "Vanessa Fieve"),
-            ("dejosama@fieveclinical.com", "Danny Josama"),
-            ("kwalsh@fieveclinical.com", "Kara Walsh"),
-            ("mhenderson@fieveclinical.com", "Margaret Henderson"),
-            ("peder@fieveclinical.com", "Dr. Eder"),
+            ("evargas@fieveclinical.com", "Elena Vargas"),
+            ("rpatel@fieveclinical.com", "Riley Patel"),
+            ("akim@fieveclinical.com", "Avery Kim"),
+            ("pshah@fieveclinical.com", "Priya Shah"),
+            ("dchen@fieveclinical.com", "Dr. Chen"),
         ):
             r = db.execute(
                 "SELECT u.id FROM users u JOIN memberships m ON m.user_id = u.id "
@@ -10177,25 +10299,25 @@ def seed_demo_collaboration(clinician_id=None):
                 continue
             rater = _rater(c["title"])
             thread = [
-                ("Vanessa Fieve",
+                ("Elena Vargas",
                  "Kicking this cohort off. Sponsor wants steady screening this "
                  "month - let's keep screen-fail tight and source current.",
                  -30),
-                ("Danny Josama",
+                ("Riley Patel",
                  "Three new pre-screens came in overnight. Two look strong - moved "
                  "them to review. Third has a washout question I flagged.", -27),
-                ("Kara Walsh",
+                ("Avery Kim",
                  f"Booked the two strong ones for screening Thu-Fri. Sent visit-prep "
                  f"+ consent and confirmed {rater} is set up.", -24),
-                ("Margaret Henderson",
+                ("Priya Shah",
                  "Monitor visit next Wed - please have source current by Tue EOD. "
                  "Reminder: only IRB-approved materials in patient threads; drafts "
                  "stay here.", -22),
-                ("Dr. Eder",
+                ("Dr. Chen",
                  "Reviewed the two flagged charts - both eligible, cleared to "
                  "screen. I'll sign consent at the visit.", -6),
-                ("Kara Walsh",
-                 "Thanks Dr. Eder - updating their status and prepping the rooms.",
+                ("Avery Kim",
+                 "Thanks Dr. Chen - updating their status and prepping the rooms.",
                  -5),
             ]
             for disp, body, hrs in thread:

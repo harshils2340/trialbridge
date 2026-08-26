@@ -3,9 +3,9 @@
 BridgeMD is an operating system for clinical trials. It has three parts that feed
 each other:
 
-1. **Find a trial (patient side)** — "Indeed for clinical trials."
-2. **Run a site (study-team side)** — the coordinator's workspace.
-3. **Outreach & growth** — how sites and patients discover BridgeMD.
+1. **Find a trial (patient side)**: "Indeed for clinical trials."
+2. **Run a site (study-team side)**: the coordinator's workspace.
+3. **Outreach & growth**: how sites and patients discover BridgeMD.
 
 The whole thing is one Flask app in [`web/`](web/). Everything else at the repo
 root is shared code or deploy config.
@@ -31,15 +31,15 @@ Core code: `match_trials.py` (fetch + eligibility matching), `web/summarize.py`
 The workspace coordinators live in. It takes the repetitive admin off their plate
 so they spend the day enrolling, not chasing. Everything lives under `/app`.
 
-- **Intake inbox** — applicants from every source in one place, pre-screened
+- **Intake inbox**: applicants from every source in one place, pre-screened
   against the protocol before anyone opens a chart.
-- **Matches** — ranked candidates per study.
-- **Calendar & scheduling** — book visits, protocol windows, `.ics`/Google sync.
-- **Protocol schedule (SoE)** — the master visit/procedure template per study.
-- **Documents & e-sign** — the paperwork back-and-forth, versioned.
-- **Payments** — participant stipends/reimbursement, FMV rules (see COMPLIANCE.md).
-- **Updates & reporting** — sponsor-facing funnel and status.
-- **Bridget** — the AI copilot that triages the queue, surfaces funnel leaks, and
+- **Matches**: ranked candidates per study.
+- **Calendar & scheduling**: book visits, protocol windows, `.ics`/Google sync.
+- **Protocol schedule (SoE)**: the master visit/procedure template per study.
+- **Documents & e-sign**: the paperwork back-and-forth, versioned.
+- **Payments**: participant stipends/reimbursement, FMV rules (see COMPLIANCE.md).
+- **Updates & reporting**: sponsor-facing funnel and status.
+- **Bridget**: the AI copilot that triages the queue, surfaces funnel leaks, and
   drafts messages/booking links. A human approves anything that goes out.
 
 Core code: `web/app.py` (routes), `web/db.py` (data), `web/copilot/` (Bridget),
@@ -49,12 +49,12 @@ Core code: `web/app.py` (routes), `web/db.py` (data), `web/copilot/` (Bridget),
 
 How patients and sites find BridgeMD, and how sites run recruitment.
 
-- **Blog / SEO** — plain-English articles and condition/city pages that pull
+- **Blog / SEO**: plain-English articles and condition/city pages that pull
   organic traffic. Content in `web/blog_posts.py`.
-- **Campaigns** — paste a trial, get a recommended ad, post it, and track spend
+- **Campaigns**: paste a trial, get a recommended ad, post it, and track spend
   and ROI to close the loop. Code in `web/campaigns.py`, `web/adrender.py`.
-- **Analytics** — visitor funnel and source attribution (`web/analytics.py`).
-- **Marketing site** — `/` explains the product to study teams (the patient trial
+- **Analytics**: visitor funnel and source attribution (`web/analytics.py`).
+- **Marketing site**: `/` explains the product to study teams (the patient trial
   search lives at `/find-trial`; `/for-sites` 301s to the root).
 
 ---

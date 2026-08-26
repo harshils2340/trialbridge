@@ -9,22 +9,21 @@ decisions, and a progress log. Update it at the end of every phase.
 BridgeMD is not a portal. It's an **enrollment optimization engine**. Safety/compliance is
 the hard gate first; within it, everything ladders up to a **two-tier KPI**.
 
-**Tier 1 — North Star (outcome): Enrollment Velocity**
+**Tier 1, North Star (outcome): Enrollment Velocity**
 > **Enrollment Velocity** = the rate at which patients move through the funnel over time:
 > **found → contacted → screened → enrolled → retained.**
 
 This is the outcome the PI/coordinator is graded on and what the license is worth.
 
-**Tier 2 — Efficiency KPI (the lever): Operational Efficiency**
-> **Operational Efficiency** = coordinator/PI **time & capacity per enrolled patient** —
-> (a) **cycle time** (decision → consent signed → enrolled; how long a doc/task sits
+**Tier 2, Efficiency KPI (the lever): Operational Efficiency**
+> **Operational Efficiency** = coordinator/PI **time & capacity per enrolled patient**, > (a) **cycle time** (decision → consent signed → enrolled; how long a doc/task sits
 > `pending` before done) and (b) **capacity** (applicants/studies one coordinator can run
 > without screen→enroll conversion dropping).
 
 The admin/operations work (Documents & approvals, ATS triage, the PI workspace) lives in
 Tier 2. **The link to Tier 1 is explicit and is the whole pitch: less time on admin = more
 time enrolling and retaining.** Efficiency only counts when it **shortens cycle time or
-raises capacity WITHOUT degrading downstream conversion** — otherwise it's busywork.
+raises capacity WITHOUT degrading downstream conversion**, otherwise it's busywork.
 
 Before building ANY feature, answer: *does it move a funnel stage directly (Tier 1), or cut
 coordinator/PI cycle time/capacity in a way that traces to a funnel stage (Tier 2)?* If it
@@ -36,7 +35,7 @@ moves neither, it probably shouldn't be built.
    Making admin faster/easier never trumps safety.
 2. **Net throughput, not vanity counts.** A feature must not inflate an upstream stage at
    the expense of a downstream one. Raising "contacted" by sending sites unqualified
-   applicants *lowers* screen→enroll conversion and burns trust — that's negative velocity.
+   applicants *lowers* screen→enroll conversion and burns trust, that's negative velocity.
    Optimize the whole funnel, or one stage without degrading the next.
 3. **Efficiency must trace to enrollment.** A Tier-2 feature must cut cycle time or raise
    capacity AND name the funnel stage the saved time is redirected into (usually
@@ -44,12 +43,11 @@ moves neither, it probably shouldn't be built.
 
 Note on wording: *retention* is the opposite vector of "velocity" (keeping people in, not
 pushing them through), but it lives under Tier 1 because a dropout is **negative net
-enrollment**. Think "throughput minus leakage." Tier 2 (efficiency) is not a competing goal
-— it's how a swamped site actually achieves Tier 1.
+enrollment**. Think "throughput minus leakage." Tier 2 (efficiency) is not a competing goal, it's how a swamped site actually achieves Tier 1.
 
-**Agent commitment:** for every proposed feature I will state which tier it moves — an
+**Agent commitment:** for every proposed feature I will state which tier it moves, an
 Enrollment Velocity stage (Tier 1) and/or Operational Efficiency (Tier 2, naming the funnel
-stage the saved time feeds) — and flag it explicitly if it moves neither, or risks any
+stage the saved time feeds), and flag it explicitly if it moves neither, or risks any
 guardrail. See `.cursor/rules/enrollment-velocity.mdc` (always on).
 
 ## Founder execution preference (shipping)
@@ -102,20 +100,20 @@ Raw themes from response:
 ### 2026-07-21 interview signal (coordinator/PI workflow debrief)
 Raw themes from response:
 - Channels, ranked by effectiveness:
-  - **physician referral (most effective)** — doctor refers on the patient's behalf;
+  - **physician referral (most effective)**, doctor refers on the patient's behalf;
     works because they already know the medical history, so screen->enroll is high.
-  - **hospital ads** — mainly yields *healthy controls*.
-  - **ClinicalTrials.gov (least effective)** — keep as free reach, don't over-invest.
+  - **hospital ads**, mainly yields *healthy controls*.
+  - **ClinicalTrials.gov (least effective)**, keep as free reach, don't over-invest.
 - Current intake path: doctor refers -> give the lab's email -> RedCap questionnaire
   to confirm eligibility. (Referral -> intake -> prescreen is the money path.)
 - Tooling reality: everything runs off a **master Excel sheet** today.
 
-Feature backlog from this debrief (triaged; not yet built — prioritized notes only):
+Feature backlog from this debrief (triaged; not yet built, prioritized notes only):
 - **Master Excel -> ATS (the wedge).** Import their master sheet AND export back so
   they trust us as the single source of truth. KPI: efficiency/capacity + all stages.
 - **Audit-ready export (CSV + PDF).** One button to hand an auditor recruitment
   activity, applicant paths, document reviews. KPI: efficiency + sales trust. Low risk.
-  *(Priority #1 — safe, high demo value.)*
+  *(Priority #1, safe, high demo value.)*
 - **Do-not-recruit / suppression list.** Never re-contact opt-outs / flagged people;
   checked on intake + apply. KPI: efficiency + protects screen->enroll. Compliance-positive.
   *(Priority #2.)*
@@ -128,8 +126,8 @@ Feature backlog from this debrief (triaged; not yet built — prioritized notes 
   account's own data, never send PHI to a model that trains on it (BAA / zero-retention
   endpoint), log every query. KPI: efficiency. Not a quick item.
 
-Compliance red flags from this debrief (hard gate — do not ship without IRB/counsel):
-- **"Add patients on behalf of consent w/ a family member" — do NOT build as stated.**
+Compliance red flags from this debrief (hard gate, do not ship without IRB/counsel):
+- **"Add patients on behalf of consent w/ a family member", do NOT build as stated.**
   A coordinator may *enter a record*, but consent cannot be manufactured. Surrogate/family
   consent is valid only for an incapacitated patient via a Legally Authorized Representative
   under the IRB-approved process (HIPAA + Common Rule). Reframe: data entry is fine; consent

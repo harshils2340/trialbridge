@@ -320,7 +320,8 @@
           <button type="button" data-compose-tab="note" role="tab" aria-selected="false">{{ ic.icon('users') }} Internal note</button>
         </div>
 
-        <form method="post" action="{{ url_for('marketing_thread_reply', thread_id=active.id) }}" class="mh-compose-panel" data-compose-panel="reply">
+        <form method="post" action="{{ url_for('marketing_thread_reply', thread_id=active.id) }}" class="mh-compose-panel" data-compose-panel="reply" data-ajax data-ajax-quiet data-optimistic="#messageList">
+          <template data-optimistic-tpl><article class="mh-message is-outbound" data-ts="{{'{{time}}'}}"><header><b>You</b><time>Just now</time></header><div class="mh-message-bubble">{{'{{body}}'}}</div><small class="mh-delivery is-sent">Sent</small></article></template>
           {{ ui.view_filter_fields(status_filter, channel_filter, search_query, stage_filter, source_filter) }}
           {# Writing the reply starts here, not at a button off to the side. Say
              what you want said - "offer a screening call next week" - and press
@@ -331,26 +332,33 @@
              steps and two surfaces for one sentence. Nothing sends itself; a
              person still reads and presses Send (COMPLIANCE.md). #}
           <div class="mh-ask-wrap">
+            {# Bridget is named on the line itself, not only in the placeholder:
+               a placeholder disappears the moment you type, which left the
+               composer with no sign a machine writes here the whole time you
+               were using it. #}
             <div class="mh-ask" data-bridget-draft="{{ url_for('marketing_thread_draft', thread_id=active.id) }}">
               <span class="mh-ask-mark" aria-hidden="true">{{ ic.icon('sparkle') }}</span>
+              <span class="mh-ask-name" aria-hidden="true">Bridget</span>
               <input type="text" class="mh-ask-input" data-ask-input autocomplete="off"
-                     placeholder="Tell Bridget what to say&hellip;"
+                     placeholder="Say what you want written&hellip;"
                      aria-label="Tell Bridget what to write, then press Enter">
               <button type="button" class="mh-ask-go" data-ask-go title="Write it (Enter)" aria-label="Write this reply">
                 {{ ic.icon('arrow-right') }}
               </button>
             </div>
-            <textarea name="body" id="replyBody" rows="4" required placeholder="Reply to {{ active.contact_name or active.contact_handle or 'this contact' }}&hellip;"></textarea>
-          </div>
-          {# Starting points, not canned text: each one writes an instruction on
-             the line above and runs it, so what lands in the box is written
-             against this conversation rather than pasted. They are the quietest
-             thing in the composer and they step aside once a reply is started. #}
-          <div class="mh-ask-suggest" data-ask-suggest>
-            <button type="button" data-ask-fill="Answer the question they just asked">Answer their question</button>
-            <button type="button" data-ask-fill="Offer a screening call and ask which times work">Offer a call</button>
-            <button type="button" data-ask-fill="Ask for the best time and number to reach them">Ask availability</button>
-            <button type="button" data-ask-fill="Check in and ask whether they are still interested">Check in</button>
+            {# Starting points, not canned text: each one writes an instruction on
+               the line above and runs it, so what lands in the box is written
+               against this conversation rather than pasted. They sit directly
+               under that line - below the reply box they read as canned snippets
+               for the field they are nowhere near. They step aside once a reply
+               is started. #}
+            <div class="mh-ask-suggest" data-ask-suggest>
+              <button type="button" data-ask-fill="Answer the question they just asked">Answer their question</button>
+              <button type="button" data-ask-fill="Offer a screening call and ask which times work">Offer a call</button>
+              <button type="button" data-ask-fill="Ask for the best time and number to reach them">Ask availability</button>
+              <button type="button" data-ask-fill="Check in and ask whether they are still interested">Check in</button>
+            </div>
+            <textarea name="body" id="replyBody" rows="4" required data-ajax-clear placeholder="Reply to {{ active.contact_name or active.contact_handle or 'this contact' }}&hellip;"></textarea>
           </div>
           <div class="mh-compose-foot">
             {% if gmail_delivery_ready %}
@@ -370,8 +378,9 @@
           </div>
         </form>
 
-        <form method="post" action="{{ url_for('marketing_thread_note', thread_id=active.id) }}" class="mh-compose-panel" data-compose-panel="note" hidden>
-          <textarea name="body" rows="4" required data-mentions placeholder="Leave context for your teammates, or @mention someone to pull them in..."></textarea>
+        <form method="post" action="{{ url_for('marketing_thread_note', thread_id=active.id) }}" class="mh-compose-panel" data-compose-panel="note" hidden data-ajax data-ajax-quiet data-optimistic="#messageList">
+          <template data-optimistic-tpl><article class="mh-internal-note"><div><header><b>Internal note</b><time>Just now</time></header><p>{{'{{body}}'}}</p></div></article></template>
+          <textarea name="body" rows="4" required data-mentions data-ajax-clear placeholder="Leave context for your teammates, or @mention someone to pull them in..."></textarea>
           <div class="mh-compose-foot">
             <span>{{ ic.icon('lock') }} Only your workspace team can see this note. Type @ to pull a teammate in.</span>
             {{ ui.btn('Add note', 'primary', icon='plus', type='submit') }}
@@ -405,7 +414,7 @@
           <div class="mh-clinical-content">
             {% if portal_reveal %}
             <div class="portal-issue">
-              <p class="portal-issue-lead">{{ ic.icon('check') }} Sent in their message thread. Copy these if you need to read them out — the password works once.</p>
+              <p class="portal-issue-lead">{{ ic.icon('check') }} Sent in their message thread. Copy these if you need to read them out, the password works once.</p>
               <label>Link</label>
               <div class="portal-copy">
                 <input type="text" readonly value="{{ portal_reveal.link }}" data-copy>
@@ -478,9 +487,9 @@
         {% endif %}
         <p class="mh-record-text">{{ records_profile.summary or applicant.record_summary }}</p>
         <div class="mh-record-grid">
-          <div><b>Conditions</b><span>{{ (records_data.conditions or [])|join(', ') or '—' }}</span></div>
-          <div><b>Medications</b><span>{{ (records_data.meds or [])|join(', ') or '—' }}</span></div>
-          <div><b>Labs</b><span>{{ (records_data.labs or [])|join(' · ') or '—' }}</span></div>
+          <div><b>Conditions</b><span>{{ (records_data.conditions or [])|join(', ') or '-' }}</span></div>
+          <div><b>Medications</b><span>{{ (records_data.meds or [])|join(', ') or '-' }}</span></div>
+          <div><b>Labs</b><span>{{ (records_data.labs or [])|join(' · ') or '-' }}</span></div>
         </div>
         {% else %}
         <form method="post" action="{{ url_for('marketing_thread_records', thread_id=active.id) }}" class="mh-record-action" data-record-pull>
@@ -1033,7 +1042,8 @@
     area.addEventListener('keydown', function (event) {
       if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
         event.preventDefault();
-        area.form.submit();
+        if (typeof area.form.requestSubmit === 'function') area.form.requestSubmit();
+        else area.form.dispatchEvent(new Event('submit', {cancelable: true, bubbles: true}));
       }
     });
   });

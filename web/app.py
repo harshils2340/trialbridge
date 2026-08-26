@@ -63,6 +63,7 @@ HERE = pathlib.Path(__file__).resolve().parent
 # process variables win, which preserves normal production configuration.
 load_dotenv(HERE.parent / ".env")
 sys.path.insert(0, str(HERE.parent))
+from copy_sanitize import sanitize_copy  # noqa: E402  (repo root, added above)
 import match_trials as mt  # noqa: E402
 import refer as rf  # noqa: E402
 
@@ -217,7 +218,7 @@ _STUDY_TEAM_DEMO_PREFIXES = (
     "/app/irb", "/app/scope", "/app/mentions", "/app/away", "/marketing-hub",
     "/files/lead", "/files/team")
 
-# Health-records / EHR sync (SMART Health IT) is hidden for now — the connector
+# Health-records / EHR sync (SMART Health IT) is hidden for now, the connector
 # is still a sandbox and not patient-ready. Flip RECORDS_UI=1 to re-enable the
 # "Connect records" / sync banners across the patient UI.
 RECORDS_UI = os.environ.get("RECORDS_UI", "0") == "1"
@@ -419,7 +420,7 @@ def ops_readiness():
 # --------------------------------------------------------------------------- #
 # NO_LOGIN (defined near the top with the production guard) enables the no-login
 # demo shell. It is forced off in production so the ATS is never anonymous.
-_DEMO_EMAIL = "dejosama@fieveclinical.com"
+_DEMO_EMAIL = db._MARKETING_DEMO_EMAIL
 _DEMO_PATIENT_EMAIL = "demo.patient@bridgemd.local"
 _DEMO_PATIENT_NAME = os.environ.get("DEMO_PATIENT_NAME", "Harshil Test User").strip() or "Harshil Test User"
 DEMO_SESSION_KEY = "demo_mode"
@@ -527,10 +528,17 @@ LEGAL_UPDATED = os.environ.get("LEGAL_UPDATED", "July 2026").strip()
 
 
 def _ensure_demo_user():
+    db.migrate_demo_staff_identities()
     u = db.get_user_by_email(_DEMO_EMAIL)
     if not u:
         pw = generate_password_hash("demo-no-login", method="pbkdf2:sha256")
-        db.create_user(_DEMO_EMAIL, pw, "Danny-Elle Josama", "", "")
+        db.create_user(_DEMO_EMAIL, pw, db._DEMO_LOGIN_NAME, "", "")
+        u = db.get_user_by_email(_DEMO_EMAIL)
+    elif (u["name"] or "").strip() != db._DEMO_LOGIN_NAME:
+        conn = db.get_db()
+        conn.execute("UPDATE users SET name = ? WHERE id = ?",
+                     (db._DEMO_LOGIN_NAME, u["id"]))
+        conn.commit()
         u = db.get_user_by_email(_DEMO_EMAIL)
     return u
 
@@ -757,8 +765,7 @@ OWNER_EMAILS = frozenset(
 
 # Analytics: don't count your own traffic. Set ANALYTICS_IGNORE_IPS to a
 # comma-separated list of IPs to drop from the visitor funnel (e.g. your home /
-# office IP). Events from these IPs — and from anyone signed in as OWNER_EMAIL —
-# are never logged. Find your current IP on the /app/analytics page.
+# office IP). Events from these IPs, and from anyone signed in as OWNER_EMAIL, # are never logged. Find your current IP on the /app/analytics page.
 ANALYTICS_IGNORE_IPS = frozenset(
     ip.strip() for ip in os.environ.get("ANALYTICS_IGNORE_IPS", "").split(",")
     if ip.strip())
@@ -1118,6 +1125,33 @@ def _web_analytics_cookies(resp):
         if (resp.headers.get("Content-Type", "").startswith("text/html")
                 and "no-store" not in resp.headers.get("Cache-Control", "")):
             resp.headers["Cache-Control"] = "no-cache, must-revalidate, max-age=0"
+    except Exception:
+        pass
+    return resp
+
+
+@app.after_request
+def _no_em_dashes(resp):
+    """Last line of defence for the no-em-dash rule.
+
+    Drafts, chat answers, seed strings and the database are all sanitised at
+    their source, and each of those sources has leaked at some point (a seed
+    fixed after its rows were written, a string written as a unicode escape
+    that a grep for the character never saw). Rewriting the rendered page catches whatever
+    the next gap is. HTML, JSON and plain-text bodies only; streamed and
+    passthrough responses (files, SSE) are left alone.
+    """
+    try:
+        if resp.direct_passthrough or resp.is_streamed:
+            return resp
+        ctype = resp.headers.get("Content-Type", "")
+        if not ctype.startswith(("text/html", "application/json", "text/plain")):
+            return resp
+        body = resp.get_data()
+        if (b"\xe2\x80\x94" not in body and b"&mdash;" not in body
+                and b"&#8212;" not in body and b"&#x2014;" not in body):  # noqa: dash
+            return resp
+        resp.set_data(sanitize_copy(body.decode("utf-8")))
     except Exception:
         pass
     return resp
@@ -4345,7 +4379,7 @@ def home():
 @app.route("/e/visit", methods=["POST"])
 def track_visit():
     """Client-side visit beacon. The landing page fires this on load, so only
-    real browsers that execute JavaScript are counted — most crawlers never run
+    real browsers that execute JavaScript are counted, most crawlers never run
     JS and so never reach here. Bot user-agents and owner traffic are dropped
     inside _log_event. Always returns 204 (best-effort, no body)."""
     _log_event("visit")
@@ -5304,15 +5338,175 @@ def for_clinicians():
 _LANDING_DIR = HERE / "landing"
 _LANDING_HERO_IMAGE_RE = re.compile(
     r'<img\b(?=[^>]*\balt="Hero Image")[^>]*>', re.IGNORECASE)
-_LANDING_DEMO_IFRAME = (
-    '<iframe class="landing-product-demo" '
-    'style="display:block;width:100%;height:100%;border:0;'
-    'border-radius:inherit" width="800" height="476" '
-    'src="https://www.tella.tv/video/vid_cmt4v8b38002r09gccedm4nys/'
-    'embed?b=1&amp;title=1&amp;a=1&amp;loop=1&amp;autoPlay=true&amp;t=0&amp;'
-    'muted=1&amp;wt=1&amp;o=1" title="BridgeMD product demo" '
-    'allow="autoplay; fullscreen" allowtransparency="true" allowfullscreen '
-    'loading="eager"></iframe>'
+# The hero slot IS the product: the study-team app in its public demo mode
+# (SITE_DEMO, see load_user) embedded live, instead of a recorded video.
+#
+# How it moves. The Framer hero keeps only a placeholder (.landing-demo-slot).
+# The real frame (.landing-demo) is a portal appended to <body>, so Framer's
+# transformed / overflow-hidden wrappers can never clip it, and the iframe is
+# never re-parented (moving an iframe reloads it). A scroll runway is inserted
+# after the hero section, and progress p across it drives the frame:
+#   p < .5     grows from the hero slot into a stage ~96% of the screen wide
+#   .5 - .8    holds there, fully interactive (pointer events on)
+#   .8 - 1     shrinks back toward the centre and fades; the next section is
+#              already rising underneath it, so no blank runway is left
+# p reaches 1 when the next section's top is 25% down the viewport.
+# Below the tablet breakpoint there is no runway and the frame just sits in
+# the slot (a desktop app scaled into 350px isn't usable anyway); the bar's
+# "Open full size" is the way in there.
+#
+# How it navigates. Every thread click is a full document load inside the
+# frame, and the blank between documents read as a flicker. So the frame is
+# double-buffered: an in-app link click is intercepted, loaded in a second
+# hidden iframe, and that one is swapped in only after it has loaded and
+# painted. The old page stays on screen the whole time.
+_LANDING_VIEW_W, _LANDING_VIEW_H = 1180, 626   # app viewport at the hero slot's aspect
+_LANDING_INBOX = "/app/inbox?embed=1&owner=unassigned&thread=85"
+_LANDING_DEMO_BAR = 36   # window bar height (px) above the app
+_LANDING_DEMO_SLOT = '<div class="landing-demo-slot" style="position:absolute;inset:0"></div>'
+_LANDING_DEMO_PORTAL = (
+    '<style>'
+    '.landing-demo{position:absolute;z-index:40;border-radius:16px;box-sizing:border-box;'
+    'background:#fff;border:1px solid rgba(18,87,176,.28);'
+    'box-shadow:0 0 0 5px rgba(18,87,176,.07),0 24px 60px rgba(2,2,18,.14)}'
+    # Clickable state: solid brand outline plus a one-time halo pulse to draw the eye.
+    '.landing-demo.is-live{border-color:#1257b0;'
+    'box-shadow:0 0 0 4px rgba(18,87,176,.18),0 24px 60px rgba(2,2,18,.14);'
+    'animation:landing-demo-pulse 1.4s ease-out 1}'
+    '@keyframes landing-demo-pulse{'
+    '0%{box-shadow:0 0 0 4px rgba(18,87,176,.18),0 24px 60px rgba(2,2,18,.14)}'
+    '45%{box-shadow:0 0 0 16px rgba(18,87,176,.10),0 24px 60px rgba(2,2,18,.14)}'
+    '100%{box-shadow:0 0 0 4px rgba(18,87,176,.18),0 24px 60px rgba(2,2,18,.14)}}'
+    # Window bar: says what this is and what to do with it, in the frame itself.
+    f'.landing-demo-bar{{position:absolute;left:0;right:0;top:0;height:{_LANDING_DEMO_BAR}px;'
+    'display:flex;align-items:center;gap:10px;padding:0 14px;'
+    'border-bottom:1px solid rgba(18,87,176,.14);border-radius:15px 15px 0 0;'
+    'background:#f5f7fb;font:500 13px/1 "Figtree",system-ui,sans-serif;color:#42506a;'
+    'white-space:nowrap;overflow:hidden}'
+    '.landing-demo-bar .dot{width:8px;height:8px;border-radius:50%;background:#22a06b;flex:0 0 auto}'
+    '.landing-demo-bar b{color:#12122b;font-weight:700}'
+    '.landing-demo-bar .hint{overflow:hidden;text-overflow:ellipsis}'
+    '.landing-demo-bar [data-live],.landing-demo.is-live .landing-demo-bar [data-idle]{display:none}'
+    '.landing-demo.is-live .landing-demo-bar [data-live]{display:inline}'
+    '.landing-demo-bar .demo-open{margin-left:auto;color:#1257b0;font-weight:600;'
+    'text-decoration:none;flex:0 0 auto}'
+    '.landing-demo-bar .demo-open:hover{text-decoration:underline}'
+    f'.landing-demo-clip{{position:absolute;left:0;right:0;top:{_LANDING_DEMO_BAR}px;bottom:0;'
+    'overflow:hidden;border-radius:0 0 15px 15px}'
+    '.landing-demo-scale{position:absolute;top:0;left:0;transform-origin:top left}'
+    '.landing-demo iframe{position:absolute;top:0;left:0;display:block;border:0;'
+    'background:#fff;pointer-events:none}'
+    '.landing-demo iframe[data-buffer]{visibility:hidden}'
+    '.landing-demo.is-live iframe{pointer-events:auto}'
+    '.landing-demo-runway{height:150vh}'
+    '@media(max-width:809px){.landing-demo-runway{display:none}'
+    '.landing-demo-bar .hint{display:none}}'
+    '</style>'
+    '<div class="landing-demo">'
+    '<div class="landing-demo-bar"><span class="dot"></span><b>Live demo</b>'
+    '<span class="hint"><span data-idle>Scroll down to expand it and try it yourself</span>'
+    '<span data-live>This is the real product. Click anything.</span></span>'
+    f'<a class="demo-open" href="{_LANDING_INBOX}" target="_blank" rel="noopener">'
+    'Open full size &#8599;</a></div>'
+    '<div class="landing-demo-clip"><div class="landing-demo-scale">'
+    f'<iframe data-src="{_LANDING_INBOX}" title="BridgeMD live demo" loading="eager" '
+    'tabindex="-1"></iframe>'
+    '<iframe data-buffer title="" tabindex="-1" aria-hidden="true"></iframe>'
+    '</div></div>'
+    '</div>'
+    '<script>(function(){'
+    'var demo=document.querySelector(".landing-demo"),'
+    'slot=document.querySelector(".landing-demo-slot");if(!demo||!slot)return;'
+    'var box=slot.closest("[data-framer-name=image]")||slot.parentElement;'
+    'var sc=demo.querySelector(".landing-demo-scale"),'
+    'f=demo.querySelector("iframe:not([data-buffer])"),g=demo.querySelector("iframe[data-buffer]");'
+    f'var VW0={_LANDING_VIEW_W},VW=VW0,VH={_LANDING_VIEW_H},AR=VW/VH,NAV=96,BAR={_LANDING_DEMO_BAR},'
+    'raf=0,x0=0,y0=0,w0=0,h0=0;'
+    'f.src=f.getAttribute("data-src");'
+    'var runway=document.createElement("div");runway.className="landing-demo-runway";'
+    '(slot.closest("section")||slot.parentElement).insertAdjacentElement("afterend",runway);'
+    'function clamp(v,a,b){return v<a?a:v>b?b:v}'
+    'function ease(t){return t<.5?2*t*t:1-Math.pow(-2*t+2,2)/2}'
+    'function size(){sc.style.width=f.style.width=g.style.width=VW+"px";'
+    'sc.style.height=f.style.height=g.style.height=VH+"px"}'
+    'function layout(){raf=0;'
+    'var vw=window.innerWidth,vh=window.innerHeight,sy=window.scrollY||0,sx=window.scrollX||0,'
+    'sr=box.getBoundingClientRect(),p=0;'
+    'if(vw>=810&&runway.offsetHeight>0){'
+    'var start=sr.top+sy-vh*.18,end=runway.getBoundingClientRect().bottom+sy-vh*.25;'
+    'p=clamp((sy-start)/Math.max(1,end-start),0,1)}'
+    'var x,y,w,h,fixed=p>0;'
+    'if(!fixed){x=sr.left+sx;y=sr.top+sy;w=sr.width;h=sr.height;'
+    # Remember where the stage starts from (the slot, with its top at .18vh) and
+    # size the app viewport to the slot's real aspect (minus the bar), so the
+    # frame never letterboxes and the expansion eases from a fixed start rect.
+    # Phones get the app's own mobile layout (390px viewport at ~.9x).
+    'x0=sr.left;y0=vh*.18;w0=sr.width;h0=sr.height;AR=w0/Math.max(1,h0-BAR);'
+    'VW=vw<810?390:VW0;VH=Math.round(VW/AR);size()}'
+    # Stage: nearly the full width of the screen, from under the nav to a small
+    # bottom margin. The frame's aspect is free to change on the way there.
+    'else{var tw=Math.min(vw*.96,1920),th=vh-NAV-24,'
+    'tx=(vw-tw)/2,ty=NAV,e=ease(clamp(p/.5,0,1));'
+    'x=x0+(tx-x0)*e;y=y0+(ty-y0)*e;w=w0+(tw-w0)*e;h=h0+(th-h0)*e;'
+    # The app's viewport widens with the frame so it lands at native 1:1 scale
+    # (largest, crispest, most room). Rounded to 8px to limit reflow churn.
+    'var vwp=Math.round((VW0+(tw-VW0)*e)/8)*8,vhp=Math.round((h-BAR)/(w/vwp));'
+    'if(vwp!==VW||vhp!==VH){VW=vwp;VH=vhp;size()}}'
+    # Exit mirrors the entrance: shrink toward the centre while fading.
+    'if(fixed&&p>.8){var q=ease(clamp((p-.8)/.2,0,1)),k=1-.4*q,w2=w*k,h2=h*k;'
+    'x+=(w-w2)/2;y+=(h-h2)/2;w=w2;h=h2}'
+    'demo.style.position=fixed?"fixed":"absolute";'
+    'demo.style.left=x+"px";demo.style.top=y+"px";demo.style.width=w+"px";demo.style.height=h+"px";'
+    'var ah=h-BAR,s=Math.min(w/VW,ah/VH);sc.style.transform="scale("+s+")";'
+    'sc.style.left=Math.round((w-VW*s)/2)+"px";sc.style.top=Math.round((ah-VH*s)/2)+"px";'
+    'demo.style.opacity=p>.8?String(1-(p-.8)/.2):"1";'
+    'demo.style.visibility=p>=1?"hidden":"visible";'
+    'demo.classList.toggle("is-live",p>=.45&&p<.85)}'
+    'function req(){if(!raf)raf=requestAnimationFrame(layout)}'
+    'window.addEventListener("scroll",req,{passive:true});'
+    'window.addEventListener("resize",req);'
+    'if(window.ResizeObserver)new ResizeObserver(req).observe(document.body);'
+    # Double-buffered navigation (see the note at the top of this block).
+    'var loading=null;'
+    'function embedUrl(href,base){try{var u=new URL(href,base);'
+    'if(u.origin!==location.origin||u.pathname.indexOf("/app/")!==0)return null;'
+    'u.searchParams.set("embed","1");u.hash="";return u.pathname+u.search}catch(e){return null}}'
+    'function wire(fr){var w=fr.contentWindow;if(!w)return;'
+    'w.addEventListener("click",function(e){'
+    'if(e.defaultPrevented||e.button||e.metaKey||e.ctrlKey||e.shiftKey)return;'
+    'var a=e.target&&e.target.closest&&e.target.closest("a[href]");'
+    'if(!a||a.target==="_blank"||a.hasAttribute("download"))return;'
+    'var raw=a.getAttribute("href");if(!raw||raw.charAt(0)==="#")return;'
+    'var next=embedUrl(raw,w.location.href);if(!next)return;'
+    'e.preventDefault();e.stopImmediatePropagation();'
+    'if(next!==w.location.pathname+w.location.search)swapTo(next)},true)}'
+    'function swapTo(url){var old=f,nu=g;loading=url;'
+    'var st=null;try{st=old.contentDocument.querySelector(".mh-thread-stack")}catch(e){}'
+    'nu.dataset.stackTop=st?String(st.scrollTop):"0";nu.src=url}'
+    'function finishSwap(nu){var url=loading,old=f;'
+    # Carry the thread list's scroll across so the clicked row doesn't jump.
+    'try{var s2=nu.contentDocument.querySelector(".mh-thread-stack");'
+    'if(s2)s2.scrollTop=parseInt(nu.dataset.stackTop,10)||0}catch(e){}'
+    'requestAnimationFrame(function(){requestAnimationFrame(function(){'
+    'if(loading!==url)return;'
+    'nu.removeAttribute("data-buffer");nu.removeAttribute("aria-hidden");'
+    'old.setAttribute("data-buffer","");old.setAttribute("aria-hidden","true");'
+    'f=nu;g=old;loading=null;wire(f);'
+    'try{g.contentWindow.location.replace("about:blank")}catch(e){g.src="about:blank"}})})}'
+    '[f,g].forEach(function(fr){fr.addEventListener("load",function(){'
+    'if(fr.hasAttribute("data-buffer")){if(loading&&fr.src!=="about:blank")finishSwap(fr)}'
+    'else wire(fr)})});'
+    # The app focuses an input as it loads, and a same-origin iframe's focus
+    # scrolls the PARENT to bring it into view: the landing would jump down to
+    # the hero frame on load. Put the page back where it was - but only on the
+    # first load, and only if the visitor hasn't started scrolling themselves.
+    'var moved=false,py0=sy0(),first=true;function sy0(){return window.scrollY||0}'
+    '["wheel","touchstart","keydown","pointerdown"].forEach(function(ev){'
+    'window.addEventListener(ev,function(){moved=true},{passive:true,capture:true})});'
+    'function unjump(){if(!moved&&Math.abs(sy0()-py0)>2)window.scrollTo(0,py0);req()}'
+    'f.addEventListener("load",function(){if(!first)return;first=false;'
+    'unjump();setTimeout(unjump,300)});'
+    'layout()})()</script>'
 )
 
 
@@ -5321,7 +5515,9 @@ def _serve_landing():
     html = (_LANDING_DIR / "index.html").read_text(encoding="utf-8")
     meta = f'<meta name="csrf-token" content="{_csrf_token()}">'
     html = html.replace("<head>", "<head>" + meta, 1)
-    html = _LANDING_HERO_IMAGE_RE.sub(_LANDING_DEMO_IFRAME, html, count=1)
+    html = _LANDING_HERO_IMAGE_RE.sub(_LANDING_DEMO_SLOT, html, count=1)
+    # The live frame is a body-level portal (see _LANDING_DEMO_PORTAL).
+    html = html.replace("</body>", _LANDING_DEMO_PORTAL + "</body>", 1)
     resp = Response(html, mimetype="text/html")
     # The shell is rebuilt out-of-band by clean_landing.py; without this the browser
     # serves a stale cached copy and edits look like they didn't apply.
@@ -5387,7 +5583,7 @@ _MARKETING_QUICK_REPLIES = [
      "What days and times generally work best to reach you? I'll make sure someone "
      "follows up then."),
     ("Still interested?",
-     "Just checking in \u2014 are you still interested in learning more about this "
+     "Just checking in. Are you still interested in learning more about this "
      "study? No pressure either way, just let me know."),
     ("What to expect",
      "Happy to walk you through what taking part involves and answer any questions "
@@ -6098,11 +6294,9 @@ def marketing_thread_reply(thread_id):
         return redirect(_marketing_thread_url(thread_id, "composer"))
 
     if thread["connection_mode"] == "demo":
-        if db.add_marketing_message(
+        if not db.add_marketing_message(
                 g.user["id"], thread_id, body, kind="outbound"):
-            flash("Demo reply saved to the shared thread.", "ok")
-        else:
-            flash("The reply could not be saved.", "error")
+            flash("The reply could not be sent.", "error")
         return redirect(_marketing_thread_url(thread_id, "composer"))
 
     blocked = _private_marketing_workspace_required()
@@ -6142,7 +6336,6 @@ def marketing_thread_reply(thread_id):
                   "saved. Do not resend it.", "error")
         else:
             _log_event("instagram_reply_sent")
-            flash("Reply sent through Instagram.", "ok")
         return redirect(_marketing_thread_url(thread_id, "composer"))
     if thread["provider"] != "gmail":
         flash("External delivery is not available for this account.", "error")
@@ -6166,8 +6359,6 @@ def marketing_thread_reply(thread_id):
     elif sent["thread_id"] and sent["thread_id"] != sent["expected_thread_id"]:
         flash("Reply sent through Gmail, but Gmail started a separate conversation.",
               "error")
-    else:
-        flash(f"Reply sent through Gmail to {sent['recipient']}.", "ok")
     return redirect(_marketing_thread_url(thread_id, "composer"))
 
 
@@ -6437,6 +6628,12 @@ def marketing_coverage():
     else:
         flash("Vacation coverage is off. The primary owner is back on duty.", "ok")
     return redirect(url_for("marketing_hub"))
+
+
+@app.route("/for-sites")
+def for_sites_legacy():
+    """Old URL for the site-side marketing page. The hub now lives at `/`."""
+    return redirect(url_for("for_sites"), code=301)
 
 
 @app.route("/for-sites/<slug>")
@@ -8171,7 +8368,7 @@ _SOURCE_LABELS = {
 
 
 def _initials(name):
-    # Drop trailing credentials ("Vanessa Fieve, JD, CCRC" -> "Vanessa Fieve") so
+    # Drop trailing credentials ("Elena Vargas, JD, CCRC" -> "Elena Vargas") so
     # avatars read as first+last initials, not the credential letters.
     base = (name or "").split(",")[0]
     parts = [p for p in base.replace("#", "").split() if p]
@@ -10221,12 +10418,12 @@ def _seed_demo_calendar_if_demo(items):
         (-7, "treatment", "missed",
          "No-show; reached by phone, rebooked. Watch adherence."),
     ]
-    # Team notes attributed to the real coordinators so the case chart shows the
+    # Team notes attributed to the demo coordinators so the case chart shows the
     # staff collaborating, not an anonymous "Coordinator".
     _notes = [
-        ("Kara Walsh", "Prefers morning visits; works afternoons."),
-        ("Danny Josama", "Daughter (caregiver) usually attends - add to reminders."),
-        ("Kara Walsh", "Mild nausea reported week 1; resolved. Monitor at next dose."),
+        ("Avery Kim", "Prefers morning visits; works afternoons."),
+        ("Riley Patel", "Daughter (caregiver) usually attends - add to reminders."),
+        ("Avery Kim", "Mild nausea reported week 1; resolved. Monitor at next dose."),
     ]
     for lead in cands[:3]:
         try:
@@ -11158,7 +11355,7 @@ def soe_page():
     active_title = next((t["title"] for t in trials if t["nct"] == active), active)
     # Only offer the on-page study picker as a fallback when the top-bar switcher is
     # on "All studies". If a specific trial is already selected there, assume it and
-    # don't show a redundant legend — switching happens from the top bar.
+    # don't show a redundant legend, switching happens from the top bar.
     show_picker = (not nct_filter) and len(trials) > 1
     visits = db.list_soe_visits(g.user["id"], active) if active else []
     # Enrolled/in-progress participants we can apply the schedule to.
@@ -11949,7 +12146,7 @@ def _seed_demo_visits_if_demo(items):
             have += 1
         else:
             candidates.append(l)
-    slots = [(1, 10), (2, 14), (4, 9), (6, 11)]  # (days ahead, hour) — varied
+    slots = [(1, 10), (2, 14), (4, 9), (6, 11)]  # (days ahead, hour), varied
     i = 0
     for l in candidates:
         if have >= 3:
@@ -12074,7 +12271,7 @@ def approve_match(match_id):
 def dismiss_match(match_id):
     if not db.set_patient_match_status(g.user["id"], match_id, "dismissed"):
         abort(404)
-    flash("Match dismissed \u2014 it won't show in your review queue.", "success")
+    flash("Match dismissed. It won't show in your review queue.", "success")
     return redirect(url_for("matching_page"))
 
 

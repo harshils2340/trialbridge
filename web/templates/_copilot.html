@@ -14,9 +14,13 @@
     </div>
   </header>
   <div class="dock-log" id="copilotLog"></div>
+  {# Bridget answers here, in the rail - ask() renders into #copilotLog and
+     never writes into a page's fields. So this line must not offer to "draft a
+     reply": on the inbox that put two prompt boxes on one screen making the
+     same promise, and only the one in the composer could keep it. #}
   <form class="dock-form" id="copilotForm">
     <div class="dock-composer">
-      <textarea id="copilotInput" rows="1" placeholder="Draft a reply, or ask a question" autocomplete="off" aria-label="Message Bridget"></textarea>
+      <textarea id="copilotInput" rows="1" placeholder="Ask about your studies" autocomplete="off" aria-label="Message Bridget"></textarea>
       <div class="dock-composer-bar">
         <button type="submit" aria-label="Send" disabled>{{ ic.icon('send') }}</button>
       </div>
@@ -104,7 +108,7 @@
     dock.setAttribute('data-empty', empty ? '1' : '0');
   }
 
-  // Empty chat: Cursor-style blank panel. No dashboard, no counts — just a
+  // Empty chat: Cursor-style blank panel. No dashboard, no counts, just a
   // quiet prompt so a recruiter types the way they would in Gmail.
   function renderIntro() {
     log.innerHTML = '';
@@ -114,7 +118,8 @@
     empty.innerHTML =
       '<div class="copilot-empty-mark">' + iconHtml('mark') + '</div>'
       + '<h2>Ask Bridget</h2>'
-      + '<p>Draft a reply, or ask a question about your studies.</p>';
+      + '<p>Ask about your studies, applicants or schedule. Replies are '
+      + 'written in the composer.</p>';
     log.appendChild(empty);
   }
 
@@ -403,7 +408,7 @@
       }
       if (!d.ok) {
         fail(d.error === 'csrf_failed'
-          ? 'Your session expired \u2014 refresh the page and try again.'
+          ? 'Your session expired. Refresh the page and try again.'
           : (d.error === 'auth_required'
               ? 'Please sign in again to use Bridget.'
               : (d.error || 'Something went wrong.')));
@@ -490,6 +495,7 @@
     }
   });
 
+  var embed = new URLSearchParams(location.search).get('embed') === '1';
   var saved = null;
   try { saved = localStorage.getItem('bm_bridget_pane'); } catch (e) {}
   // Bridget is a column of the workspace. It starts open on a desk; on a
@@ -499,12 +505,17 @@
   // workspace showing an empty prompt, which is the most expensive placeholder
   // in the product; the reading pane gets that width back and the top bar's
   // Bridget button (base.html) is the way in. An explicit user choice still
-  // wins - only the *default* is per-page.
+  // wins - only the *default* is per-page. The landing-page iframe (?embed=1)
+  // keeps Bridget open on the right so visitors see the Cursor-style rail.
   var onInbox = document.body.getAttribute('data-page') === 'marketing_hub';
-  var startOpen = saved === '0' ? false
+  var startOpen = embed ? true
+                : saved === '0' ? false
                 : saved === '1' ? true
                 : (!narrow && !onInbox);
   applyOpen(startOpen);
+  if (embed) {
+    try { localStorage.setItem('bm_bridget_pane', '1'); } catch (e) {}
+  }
 
   window.bridgetOpen = function () { setOpen(true); };
   window.bridgetAsk = function (q) { setOpen(true); if (q) { setTimeout(function () { ask(q); }, 60); } };

@@ -8,6 +8,7 @@ package. ``register(app)`` attaches the route. Auth/scoping ride on the existing
 from flask import g, jsonify, request
 
 from . import agent
+from . import context
 
 
 def register(app):
@@ -20,15 +21,9 @@ def register(app):
         query = (data.get("q") or "").strip()
         if not query:
             return jsonify({"ok": False, "error": "empty"}), 400
-        context = {}
-        lead_id = data.get("lead_id")
-        if lead_id:
-            try:
-                context["lead_id"] = int(lead_id)
-            except (TypeError, ValueError):
-                pass
+        ctx = context.build(user, data)
         try:
-            result = agent.answer(user["id"], query, context)
+            result = agent.answer(user["id"], query, ctx)
         except Exception:
             return jsonify({"ok": False,
                             "error": "I hit a problem answering that."}), 500

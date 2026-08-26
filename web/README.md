@@ -1,4 +1,4 @@
-# BridgeMD — technical reference
+# BridgeMD, technical reference
 
 Product overview lives in the [top-level README](../README.md). This file is the
 detailed reference: how to run it, the full environment-variable table,

@@ -333,7 +333,7 @@ textarea { resize: vertical; min-height: 150px; line-height: 1.6; }
   .toast-stack { left: 12px; right: 12px; width: auto; bottom: 12px; top: auto; }
 }
 
-/* Inbox participant workspace — ported from the Figma intake prototype while
+/* Inbox participant workspace, ported from the Figma intake prototype while
    retaining the shared BridgeMD shell, tokens, controls, and provider flows. */
 .appshell:has(.mh-page) > .appside-backdrop { display:none; }
 /* The inbox KEEPS the shared top bar. It used to hide it, which made the inbox
@@ -1104,7 +1104,7 @@ body.pub:not(.fs-page) {
 
 .pub-nav { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center;
   gap: 16px; padding: 20px 40px; }
-/* Bigger, more confident brand lockup — matches the scale of the /for-sites header. */
+/* Bigger, more confident brand lockup, matches the scale of the /for-sites header. */
 .pub-nav .brand { font-size: 23px; gap: 12px; }
 .pub-nav .brand .brand-glyph { width: 36px; height: 36px; }
 .pub-nav .brand { justify-self: start; }
@@ -3003,7 +3003,7 @@ h1, h2, h3 {
   transition: background .2s ease, border-color .2s ease, backdrop-filter .2s ease;
 }
 /* Transparent at the top so it melts into the page tint; frosts once you scroll
-   past the hero so text stays legible over content. No hard divider line — the
+   past the hero so text stays legible over content. No hard divider line, the
    glass + a soft shadow keep it blended into the page instead of a boxed header. */
 body.pub.is-scrolled .pub-nav {
   background: color-mix(in srgb, var(--surface) 76%, transparent);
@@ -3621,7 +3621,7 @@ main:focus { outline: none; }
 .theme-toggle-float { position: fixed; top: 16px; right: 16px; z-index: 30; box-shadow: var(--shadow); }
 
 /* ==========================================================================
-   Colorblind-safe status cues — never rely on hue alone. The match-quality
+   Colorblind-safe status cues, never rely on hue alone. The match-quality
    dots get distinct SHAPES, and fit badges carry distinct ICONS (set in the
    templates: check / sparkle / x) plus a defining border.
    ========================================================================== */
@@ -3863,7 +3863,7 @@ main:focus { outline: none; }
 [data-theme="dark"] .ats-row-item:hover { background: rgba(164, 166, 251, .06); }
 
 /* ==========================================================================
-   Lane 4 — EHR background matching (demo). Token-driven so it themes with dark
+   Lane 4, EHR background matching (demo). Token-driven so it themes with dark
    mode automatically; stacks cleanly on mobile.
    ========================================================================== */
 /* Compact, functional connection line (not a marketing banner) */
@@ -4173,7 +4173,7 @@ main:focus { outline: none; }
   font-size: 13px; font-weight: 500; color: var(--muted); }
 .b2b-note .ico { width: 15px; height: 15px; color: var(--green); }
 
-/* "Works with your tools" — real brand marks for an at-a-glance trust signal. */
+/* "Works with your tools", real brand marks for an at-a-glance trust signal. */
 .integrations { max-width: 1000px; margin: 20px auto 4px; padding: 0 24px; }
 .integrations-in { text-align: center; }
 .integrations-eyebrow { font-size: 12px; font-weight: 700; letter-spacing: .07em;
@@ -4273,7 +4273,7 @@ main:focus { outline: none; }
 }
 
 /* ================================================================= *
- * STUDY-TEAM APP ("BridgeMD for sites") — shell + screens.          *
+ * STUDY-TEAM APP ("BridgeMD for sites"), shell + screens.          *
  * Consumes the :root tokens only. Badges/buttons/chips/empty/modal  *
  * still come from _ui.html macros; this adds the shell + layout      *
  * primitives those screens share.                                    *
@@ -4921,7 +4921,7 @@ body.is-resizing { cursor: col-resize; user-select: none; }
 .dock-resize { display: none; }
 @media (min-width: 1440px) { .appdock[data-open="1"] .dock-resize { display: block; } }
 
-/* Panel toggle button in the top bar — collapses the rail on desktop, opens the
+/* Panel toggle button in the top bar, collapses the rail on desktop, opens the
    drawer on mobile. One discoverable control, like a workspace sidebar toggle. */
 .apptop-panel-toggle { flex: none; display: none; align-items: center;
   justify-content: center; width: 34px; height: 34px; padding: 0; margin-left: -6px;
@@ -5693,7 +5693,7 @@ a.rail-attn:hover { text-decoration: underline; }
 [data-theme="dark"] .appnav a.active { background: var(--accent); color: #fff; }
 
 /* --------------------------------------------------------------------------
-   Bridget dock — Cursor-style agent chat on the right of study-team pages
+   Bridget dock, Cursor-style agent chat on the right of study-team pages
    -------------------------------------------------------------------------- */
 .appdock {
   width: var(--appdock-w, 400px); flex-shrink: 0; background: var(--surface);
@@ -5735,7 +5735,7 @@ a.rail-attn:hover { text-decoration: underline; }
   flex-direction: column; gap: 18px; }
 .appdock[data-empty="1"] .dock-log { justify-content: center; }
 
-/* Empty chat — quiet, centered, no dashboard. */
+/* Empty chat, quiet, centered, no dashboard. */
 .copilot-empty { display: flex; flex-direction: column; align-items: center;
   text-align: center; gap: 8px; padding: 12px 20px 28px; }
 .copilot-empty-mark { width: 36px; height: 36px; border-radius: 10px;
@@ -5749,7 +5749,7 @@ a.rail-attn:hover { text-decoration: underline; }
   max-width: 240px; }
 
 /* Turns are full-width prose, not chat bubbles. User prompt sits in a card;
-   Bridget's answer is plain text underneath — the Cursor agent pattern. */
+   Bridget's answer is plain text underneath, the Cursor agent pattern. */
 .copilot-msg { width: 100%; max-width: 100%; display: flex; }
 .copilot-msg.bot, .copilot-msg.me { align-self: stretch; }
 .copilot-body { min-width: 0; width: 100%; display: flex; flex-direction: column; gap: 10px; }
@@ -5807,7 +5807,7 @@ a.rail-attn:hover { text-decoration: underline; }
 .copilot-lottie { width: 28px; height: 28px; flex: none; }
 .copilot-lottie svg { display: block; width: 100%; height: 100%; }
 
-/* Tool rows — quiet, like Cursor's "Read file" traces. */
+/* Tool rows, quiet, like Cursor's "Read file" traces. */
 .copilot-steps { display: flex; flex-direction: column; gap: 4px; }
 .copilot-step {
   display: flex; align-items: flex-start; gap: 7px;
@@ -5860,7 +5860,7 @@ a.rail-attn:hover { text-decoration: underline; }
   color: var(--ok, var(--green)); font: 600 13px/1.4 var(--sans); }
 .cc-done svg { width: 15px; height: 15px; }
 
-/* Composer — Cursor input: rounded box, textarea, send in the corner. */
+/* Composer, Cursor input: rounded box, textarea, send in the corner. */
 .dock-form { padding: 8px 12px 14px; flex-shrink: 0; border-top: 0; }
 .dock-composer {
   display: flex; flex-direction: column;
@@ -5871,7 +5871,8 @@ a.rail-attn:hover { text-decoration: underline; }
   transition: border-color .12s ease, box-shadow .12s ease;
 }
 .dock-composer:focus-within {
-  border-color: var(--border-strong, var(--accent));
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
   box-shadow: 0 0 0 3px var(--accent-soft);
 }
 .dock-composer textarea {
@@ -5891,7 +5892,13 @@ a.rail-attn:hover { text-decoration: underline; }
 }
 .dock-composer-bar button:hover:not(:disabled) { background: var(--btn-hover); }
 .dock-composer-bar button:active:not(:disabled) { transform: scale(.94); }
-.dock-composer-bar button:disabled { opacity: .28; cursor: default; background: var(--muted); }
+/* A send button at 28% opacity made the whole composer read as switched off -
+   people saw a dead panel and did not try to type. It IS disabled until there
+   is text (nothing to send), but "not yet" should look quieter than the active
+   state, not broken. Keep it legible and keep the text cursor over the field. */
+.dock-composer-bar button:disabled { opacity: 1; cursor: default;
+  background: var(--surface-2); color: var(--faint);
+  border: 1px solid var(--border); }
 .dock-composer-bar button svg { width: 13px; height: 13px; }
 
 @media (max-width: 1023px) {
@@ -6171,7 +6178,7 @@ a.rail-attn:hover { text-decoration: underline; }
 .role-custom input[type="text"] { min-width: 180px; }
 
 /* ============================================================= *
- * For-sites flagship marketing page (scoped .fs-* — token-based)
+ * For-sites flagship marketing page (scoped .fs-*, token-based)
  * ============================================================= */
 /* The hero tint is painted on the PAGE, not the hero, so it runs continuously
    behind the transparent sticky nav. Painting it on .fs-hero left a hard seam at
@@ -6190,7 +6197,7 @@ body.fs-page { background:
 .fs-eyebrow svg { width: 15px; height: 15px; }
 .fs-hero h1 { font-family: var(--sans); font-size: clamp(36px, 4.4vw, 56px); line-height: 1.04;
   letter-spacing: -.035em; margin: 18px 0 0; color: var(--ink); font-weight: 800; }
-/* Subtle ombré on the highlighted headline word — derived from each page's own
+/* Subtle ombré on the highlighted headline word, derived from each page's own
    tokens (accent -> its lighter mark tone), so it's green on /for-sites and blue
    on the patient site with one rule. */
 .fs-grad, .hero-grad {
@@ -6234,7 +6241,7 @@ body.fs-page { background:
   border-radius: var(--radius); box-shadow: var(--shadow); text-decoration: none;
   transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease; }
 .fs-seal-item:hover { border-color: var(--accent); box-shadow: var(--shadow-lift); transform: translateY(-1px); }
-/* Circular glyph medallion — reads as a trust badge without impersonating any
+/* Circular glyph medallion, reads as a trust badge without impersonating any
    trademarked certification seal (AICPA/SOC etc.). */
 .fs-seal-medal { display: grid; place-items: center; width: 36px; height: 36px; flex: none;
   border-radius: 50%; background: var(--accent-soft);
@@ -6510,7 +6517,7 @@ body.fs-page { background:
   color: var(--accent-ink); background: var(--accent); }
 .fs-ai-btn.ghost { color: var(--accent); background: var(--accent-soft); border: 1px solid var(--brand-border); }
 /* AI copilot scene: proactive triage (auto-drafted actions) + a command bar that
-   DOES things. No stat strip — the value is the actions, not the counts. */
+   DOES things. No stat strip, the value is the actions, not the counts. */
 .fs-ai-auto { margin-left: auto; display: inline-flex; align-items: center; gap: 5px;
   font-size: 10.5px; font-weight: 700; color: var(--green); background: var(--green-bg);
   border: 1px solid var(--ok-border);
@@ -6579,8 +6586,7 @@ body.fs-page { background:
 .fs-hv-panel[data-hv="ask"].is-active .fs-cop { animation: fs-hv-row .4s ease both; animation-delay: .52s; }
 
 /* Demo affordance: the mock UI inside the hero film looks interactive (pointer +
-   hover feedback) so it feels like the real product, but it's a walkthrough —
-   clicking performs no real action. */
+   hover feedback) so it feels like the real product, but it's a walkthrough, clicking performs no real action. */
 .fs-hv .fs-ai-btn,
 .fs-hv .fs-cop-ask,
 .fs-hv .fs-cop-ask-btn,
@@ -6652,7 +6658,7 @@ body.fs-page { background:
   .fs-hv-panel[data-hv="ask"].is-active .fs-ai-rail em { animation: none; }
 }
 
-/* Animated "ask the protocol" AI demo — SHOW the AI (compliant), don't describe it. */
+/* Animated "ask the protocol" AI demo, SHOW the AI (compliant), don't describe it. */
 /* Product window: the shared chrome for every preview inside a dark section
    (protocol Q&A, amendment diff, document vault). One primitive, three uses. */
 .fs-win { background: var(--surface); border: 1px solid var(--border);
@@ -6751,7 +6757,7 @@ body.fs-page { background:
 .fs-nav.is-stuck { background: color-mix(in srgb, var(--surface) 76%, transparent);
   backdrop-filter: saturate(180%) blur(14px); -webkit-backdrop-filter: saturate(180%) blur(14px);
   border-bottom-color: var(--border); box-shadow: 0 1px 14px rgba(0, 0, 0, .045); }
-/* Without backdrop blur, translucency turns to mud — fall back to near-opaque. */
+/* Without backdrop blur, translucency turns to mud, fall back to near-opaque. */
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .fs-nav.is-stuck { background: color-mix(in srgb, var(--surface) 97%, transparent); }
 }
@@ -6877,7 +6883,7 @@ body.fs-page { background:
   border-top: 1px solid var(--border); font-size: 12px; color: var(--faint); }
 
 /* ============================================================= *
- * Site-side feature detail pages (/for-sites/<slug>) — one layout
+ * Site-side feature detail pages (/for-sites/<slug>), one layout
  * shared by every pillar, so the honest sections are always there.
  * ============================================================= */
 .fp-hero { padding: 40px 24px 30px; }
@@ -6973,7 +6979,7 @@ body.fs-page { background:
 
 @media (max-width: 560px) {
   /* On a phone the bar only has room for the wordmark, the one action and the
-     menu — "for sites" is obvious from the page, sign-in moves into the sheet. */
+     menu, "for sites" is obvious from the page, sign-in moves into the sheet. */
   .fs-nav-brand span, .fs-nav-signin { display: none; }
   .fs-nav-cta { gap: 8px; }
   .fs-nav-cta .fs-btn { padding: 9px 13px; font-size: 13.5px; }
@@ -7122,7 +7128,7 @@ body.fs-page { background:
 .fs-demo-note { display: flex; align-items: center; justify-content: center; gap: 7px;
   font-size: 13px; color: var(--faint); margin: 16px 0 0; }
 .fs-demo-note svg { width: 14px; height: 14px; }
-/* Shown only where the screenshot pans (phones) — see the 620px block below. */
+/* Shown only where the screenshot pans (phones), see the 620px block below. */
 .fs-swipe { display: none; align-items: center; gap: 6px; margin: 10px 0 0;
   font-size: 12.5px; font-weight: 600; color: var(--faint); }
 .fs-swipe svg { width: 13px; height: 13px; }
@@ -7748,7 +7754,7 @@ body.fs-page { background:
 }
 
 /* ======================================================================
-   Calendar (study-team app) — trial-aware scheduling surface.
+   Calendar (study-team app), trial-aware scheduling surface.
    ====================================================================== */
 .cal-toolbar { display:flex; align-items:center; justify-content:space-between;
   gap:12px; flex-wrap:wrap; margin-bottom:14px; }
@@ -8481,6 +8487,54 @@ body.fs-page { background:
    inset card detached from the full-height dock next to it. */
 .mh-page { width: 100%; display: flex; flex-direction: column;
   height: calc(100dvh - var(--apptop-h)); padding: 0; }
+
+/* Landing hero iframe (?embed=1): hide chrome, keep inbox + Bridget open. */
+body[data-embed="1"] .skip-link,
+body[data-embed="1"] .toast-stack { display: none !important; }
+body[data-embed="1"] .appshell {
+  --appdock-w: 320px; --apptop-h: 0px; min-height: 100dvh;
+}
+body[data-embed="1"] .appside,
+body[data-embed="1"] .apptop { display: none !important; }
+body[data-embed="1"] .mh-page { height: 100dvh; max-height: 100dvh; }
+body[data-embed="1"] .mh-page .mh-workspace {
+  height: 100dvh; max-height: 100dvh;
+}
+/* Desktop only: on a phone the !important column would beat the single-column
+   mobile grid and leave the conversation 320px wide in a 390px frame. */
+@media (min-width: 810px) {
+  body[data-embed="1"] .mh-page .mh-workspace {
+    grid-template-columns: 320px minmax(0, 1fr) !important;
+  }
+}
+/* Keep the column's own grid (display:flex here laid the thread rows out
+   sideways as 63px slivers); only lift the height cap so it fills the frame. */
+body[data-embed="1"] .mh-thread-column { max-height: none; }
+/* Phone-width embed (the landing hero on a phone): a 320px dock would cover
+   most of a 390px viewport, so show the inbox itself and drop the dock. */
+@media (max-width: 809px) {
+  body[data-embed="1"] #copilot { display: none !important; }
+}
+body[data-embed="1"] #copilot {
+  width: var(--appdock-w, 320px) !important;
+  min-width: var(--appdock-w, 320px) !important;
+  flex-shrink: 0;
+}
+body[data-embed="1"] #copilot[data-open="0"] .dock-log,
+body[data-embed="1"] #copilot[data-open="0"] .dock-form,
+body[data-embed="1"] #copilot[data-open="0"] .dock-head-actions { display: revert; }
+body[data-embed="1"] #copilot[data-open="0"] .dock-head {
+  flex: unset; flex-direction: row; align-items: center;
+  padding: 10px 12px 10px 14px; border-bottom: 1px solid var(--border);
+  cursor: default;
+}
+body[data-embed="1"] #copilot[data-open="0"] .dock-title {
+  flex-direction: row; gap: 8px; margin: 0;
+}
+body[data-embed="1"] #copilot[data-open="0"] .dock-title b {
+  writing-mode: horizontal-tb; transform: none;
+  font-size: 13.5px; letter-spacing: -.01em;
+}
 .mh-eyebrow {
   display: flex;
   align-items: center;
@@ -8580,7 +8634,7 @@ body.fs-page { background:
 }
 .mh-channel-ic .ico,
 .mh-channel-ic .brand-ico { width: 18px; height: 18px; }
-/* Gmail + Instagram SVGs already include the official app tile — fill the chip. */
+/* Gmail + Instagram SVGs already include the official app tile, fill the chip. */
 .mh-channel-ic.is-email .brand-ico,
 .mh-channel-ic.is-instagram .brand-ico { width: 100%; height: 100%; }
 .mh-channel-ic.is-all,
@@ -9406,7 +9460,7 @@ body.fs-page { background:
 .fsx-list li { display:flex; align-items:center; gap:8px; font-size:14px; color:var(--ink-soft); font-weight:600; }
 .fsx-list svg { width:16px; height:16px; color:var(--ok); flex-shrink:0; }
 
-/* Closing CTA: one action on the page's last screen — book the demo. */
+/* Closing CTA: one action on the page's last screen, book the demo. */
 .fsx-close { max-width:720px; margin:0 auto; text-align:center; padding:46px 32px;
   background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-lg);
   box-shadow:var(--shadow-lift); }
@@ -9755,54 +9809,71 @@ html.fs-motion .fsx-proof-stat:nth-child(4) { transition-delay:.18s; }
   border:0; background:none; box-shadow:none; }
 .mh-read-contact .mh-channel-ic .brand-ico { width:13px; height:13px; }
 
-/* One composer box, two zones: an instruction line on top, the reply under it.
-   They were two separate bordered boxes stacked on each other, which read as a
-   field inside a field - the AI line is part of the composer, so it shares its
-   border. */
+/* One composer: Bridget line + reply in a single surface (no box-in-box). */
 .mh-ask-wrap { border:1px solid var(--border); border-radius:12px;
   background:var(--surface); overflow:hidden;
   transition:border-color .12s ease, box-shadow .12s ease; }
-.mh-ask-wrap:focus-within { border-color:var(--accent);
+.mh-ask-wrap:has(.mh-ask:focus-within),
+.mh-ask-wrap:has(#replyBody:focus),
+.mh-ask-wrap:has(.mh-ask-input:not(:placeholder-shown)) { border-color:var(--accent);
   box-shadow:0 0 0 3px var(--accent-soft); }
-.mh-ask { display:flex; align-items:center; gap:8px; padding:5px 5px 5px 11px;
-  border-bottom:1px solid var(--border); background:var(--surface-2); }
-.mh-ask-mark { display:inline-flex; flex:0 0 auto; color:var(--accent); }
-.mh-ask-mark .ico { width:14px; height:14px; }
-/* Beats the global input[type=text] rule (border, white fill, radius): inside
-   this box the field is the box, not another one drawn within it. */
-.mh-ask .mh-ask-input { flex:1; min-width:0; height:28px; padding:0; border:0;
+.mh-ask { display:flex; align-items:center; gap:8px;
+  margin:0; padding:0 10px 0 14px; min-height:44px;
+  border:0; border-bottom:1px solid var(--border); border-radius:0;
+  background:transparent; box-shadow:none;
+  transition:border-color .12s ease, opacity .12s ease; }
+html[data-theme="dark"] .mh-ask { background:transparent; }
+.mh-ask:hover { border-bottom-color:var(--border); }
+.mh-ask:focus-within { border-bottom-color:var(--border); box-shadow:none; }
+.mh-ask-mark { display:inline-flex; flex:0 0 auto; color:var(--accent);
+  opacity:.9; pointer-events:none; }
+.mh-ask-mark .ico { width:15px; height:15px; }
+/* The name stays on the line after the placeholder is typed over, so the
+   composer never loses the one thing that says a machine writes here. */
+.mh-ask-name { flex:0 0 auto; padding-right:9px; margin-right:1px;
+  border-right:1px solid var(--border);
+  color:var(--accent); font-size:12.5px; font-weight:700; line-height:1;
+  letter-spacing:-.01em; user-select:none; pointer-events:none; }
+/* Beat the global input[type=text] chrome: this field IS the box. */
+.mh-ask .mh-ask-input { flex:1; min-width:0; height:42px; padding:0; border:0;
   border-radius:0; outline:0; background:transparent; box-shadow:none;
-  color:var(--ink); font:inherit; font-size:var(--text-xs); }
-.mh-ask .mh-ask-input::placeholder { color:var(--faint); }
-.mh-ask-go { flex:0 0 auto; width:26px; height:26px; display:inline-flex;
+  color:var(--ink); font:inherit; font-size:14px; line-height:1.4;
+  caret-color:var(--accent); cursor:text; }
+.mh-ask .mh-ask-input::placeholder { color:var(--muted); font-weight:400;
+  opacity:.9; }
+.mh-ask-go { flex:0 0 auto; width:34px; height:34px; display:inline-flex;
   align-items:center; justify-content:center; border:0; border-radius:8px;
-  color:var(--faint); background:transparent; cursor:pointer;
-  transition:color .12s ease, background .12s ease; }
-.mh-ask-go .ico { width:14px; height:14px; }
-/* Solid only once there is something to send it - an empty line still works
-   ("answer their message") but should not shout. */
-.mh-ask .mh-ask-input:not(:placeholder-shown) ~ .mh-ask-go { color:#fff;
-  background:var(--accent); }
-.mh-ask-go:hover { color:var(--accent); background:var(--accent-soft); }
-.mh-ask .mh-ask-input:not(:placeholder-shown) ~ .mh-ask-go:hover { color:#fff;
-  background:var(--accent); opacity:.88; }
+  color:#fff; background:var(--btn); cursor:pointer;
+  transition:background .12s ease, transform .08s ease, opacity .12s ease; }
+.mh-ask-go .ico { width:15px; height:15px; }
+.mh-ask-go:hover { background:var(--btn-hover); }
+.mh-ask-go:active { transform:scale(.96); }
+.mh-ask .mh-ask-input:placeholder-shown ~ .mh-ask-go { opacity:.65; }
+.mh-ask .mh-ask-input:not(:placeholder-shown) ~ .mh-ask-go { opacity:1; }
 .mh-ask-go:disabled { opacity:.45; cursor:default; }
-/* While Bridget writes, the line it was typed into is the progress indicator -
-   nothing new appears, and the draft lands in the box under it. */
 .mh-ask.is-busy .mh-ask-mark { animation:mh-ask-pulse 1s ease-in-out infinite; }
 .mh-ask.is-error .mh-ask-mark { color:var(--red); }
 @keyframes mh-ask-pulse { 0%,100% { opacity:.3; } 50% { opacity:1; } }
 @media (prefers-reduced-motion: reduce) {
   .mh-ask.is-busy .mh-ask-mark { animation:none; opacity:.6; }
 }
-/* The reply field gives up its own chrome to the wrapper. */
+/* Reply field: no second border; room under the ask row. */
 .mh-dialogue .mh-compose-panel .mh-ask-wrap textarea { border:0; border-radius:0;
-  background:transparent; box-shadow:none; }
+  background:transparent; box-shadow:none; margin:0; padding:12px 14px 14px;
+  resize:vertical; }
 .mh-dialogue .mh-compose-panel .mh-ask-wrap textarea:focus { box-shadow:none; }
+/* While Bridget streams, one surface: hide the ask row so the draft is not a box
+   inside a box. */
+.mh-ask-wrap:has(#replyBody.is-bridget-writing) .mh-ask,
+.mh-ask-wrap:has(#replyBody.is-bridget-writing) .mh-ask-suggest { display:none; }
+.mh-ask-wrap:has(#replyBody.is-bridget-writing) textarea {
+  padding-top:14px; min-height:108px; }
 
 /* Suggestions, not buttons: the lightest thing in the composer, gone the moment
-   a reply is in progress. */
-.mh-ask-suggest { display:flex; flex-wrap:wrap; gap:2px 4px; margin-top:7px; }
+   a reply is in progress. They sit in the tray under the ask line because that
+   is the field they write into. */
+.mh-ask-suggest { display:flex; flex-wrap:wrap; gap:2px 4px;
+  margin:0; padding:8px 14px 0; border-bottom:1px solid var(--border); }
 .mh-ask-suggest[hidden] { display:none; }
 .mh-ask-suggest button { padding:4px 8px; border:0; border-radius:7px;
   background:transparent; color:var(--faint); font:inherit; font-size:10.5px;

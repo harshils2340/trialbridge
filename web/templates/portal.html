@@ -80,7 +80,7 @@
           {% endfor %}
         </ul>
         <p class="portal-fine">Your coordinator can take these over the phone or
-          by email &mdash; just reply below if you're not sure how to send one.</p>
+          by email , just reply below if you're not sure how to send one.</p>
         {% endif %}
       </div>
 
@@ -97,7 +97,7 @@
           </div>
           {% endif %}
           {% else %}
-          <p class="portal-empty">No messages yet. Ask anything &mdash; a real
+          <p class="portal-empty">No messages yet. Ask anything , a real
             person on the study team reads these.</p>
           {% endfor %}
         </div>
@@ -223,7 +223,7 @@
         <h2>{{ ic.icon('shield') }} Your choices</h2>
         <p>Taking part is completely voluntary. You can stop at any time, for any
           reason, and it won't affect your regular care. Your study team is the
-          right place for any medical question &mdash; message them above.</p>
+          right place for any medical question , message them above.</p>
         <form method="post" class="portal-pw-inline" id="changepw" action="{{ url_for('portal_change_password', token=token) }}">
           <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
           <details>

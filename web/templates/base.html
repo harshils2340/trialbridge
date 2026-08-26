@@ -53,7 +53,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ static_url('style.css') }}">
 </head>
-<body data-page="{{ request.endpoint or '' }}">
+<body data-page="{{ request.endpoint or '' }}"{% if request.args.get('embed') %} data-embed="1"{% endif %}>
 {% import "_icons.html" as ic %}
 {% import "_ui.html" as ui %}
 <a class="skip-link" href="#main">Skip to main content</a>
@@ -245,11 +245,11 @@
   </main>
 {% if pov == 'study' %}</div>{% endif %}
   {# Bridget is the right pane of the workspace (rail · inbox · Bridget),
-     the same way Cursor keeps chat in the layout — not a floating assistant. #}
+     the same way Cursor keeps chat in the layout, not a floating assistant. #}
   {% if pov == 'study' and user %}{% include "_copilot.html" %}{% endif %}
 </div>
 {% if pov == 'study' %}{% include "_omni.html" %}{% else %}{% include "_cmdk.html" %}{% endif %}
-{% if active_site_demo %}{% include "_demo_tour.html" %}{% endif %}
+{% if active_site_demo and not request.args.get('embed') %}{% include "_demo_tour.html" %}{% endif %}
 {% else %}
 <button type="button" class="theme-toggle theme-toggle-float" id="themeToggle" aria-label="Switch between light and dark theme" title="Toggle light / dark theme">
   {{ ic.icon('sun', 'ico icon-sun') }}{{ ic.icon('moon', 'ico icon-moon') }}
@@ -598,7 +598,7 @@ document.addEventListener('click', function (e) {
     // Paint + clear on submit, not on response, so the UI reacts instantly.
     var painted = optimistic(form, fd);
     if (painted) { form.querySelectorAll('[data-ajax-clear]').forEach(function (i) { i.value = ''; }); }
-    if (btn) btn.disabled = true;
+    if (btn && !painted) btn.disabled = true;
     fetch(action, {
       method: 'POST', body: fd, credentials: 'same-origin',
       headers: { 'X-BridgeMD-Ajax': '1', 'X-CSRF-Token': csrf }
@@ -609,16 +609,22 @@ document.addEventListener('click', function (e) {
     }).then(function (data) {
       if (!data) return;
       if (btn) btn.disabled = false;
-      if (data.ok === false) { toast(data.error || 'Something went wrong. Please retry.', 'error'); return; }
-      // Skip the toast when the in-place refresh IS the confirmation: forms inside
+      var failed = data.ok === false || data.category === 'error';
+      if (failed) {
+        toast(data.toast || data.error || 'Something went wrong. Please retry.', 'error');
+        refresh(form);
+        return;
+      }
+      // Skip the toast when the in-place paint IS the confirmation: forms inside
       // an open overlay/modal, or forms that opt out via data-ajax-quiet (chat,
-      // notes). Errors always toast.
+      // notes). Errors always toast. Skip a second HTML swap when we already
+      // painted the new item, so send does not flicker.
       var inModal = form.closest('.ui-modal');
       var quiet = form.hasAttribute('data-ajax-quiet');
       if (data.toast && !inModal && !quiet) toast(data.toast, data.category);
       form.querySelectorAll('[data-ajax-clear]').forEach(function (i) { i.value = ''; });
       if (!form.querySelector('[data-ajax-clear]')) { try { form.reset(); } catch (e) {} }
-      refresh(form);
+      if (!painted) refresh(form);
     }).catch(function () {
       if (btn) btn.disabled = false;
       toast('Something went wrong. Please retry.', 'error');
@@ -807,5 +813,85 @@ document.addEventListener('click', function (e) {
                      reduced: reduced };
 })();
 </script>
+{% if request.args.get('embed') %}
+<style>
+/* Landing-page iframe: every thread click is a full document load, which
+   flashed white between pages. Cross-document view transitions keep the old
+   page on screen and crossfade it into the new one (Chrome/Edge/Safari 18.2+;
+   others simply navigate as before). Short, so it reads as instant. */
+@view-transition { navigation: auto; }
+::view-transition-old(root), ::view-transition-new(root) { animation-duration: .12s; }
+</style>
+<script>
+/* Landing-page iframe (?embed=1): keep embed mode across in-app navigations
+   (thread clicks, filter tabs) so the chrome doesn't flash back in, and strip
+   #conversation / #portal hashes so the PARENT marketing page does not scroll
+   the iframe into view when a hash target is resolved. */
+(function () {
+  if (document.body.getAttribute('data-embed') !== '1') return;
+  /* Each thread click reloads the document, which put the thread list back at
+     the top - the row just clicked jumped away. Carry the list's scroll
+     position across the navigation. */
+  var STACK_KEY = 'bmd_embed_stack_scroll';
+  var stack = document.querySelector('.mh-thread-stack');
+  if (stack) {
+    try {
+      var saved = sessionStorage.getItem(STACK_KEY);
+      if (saved !== null) stack.scrollTop = parseInt(saved, 10) || 0;
+    } catch (e) {}
+    window.addEventListener('pagehide', function () {
+      try { sessionStorage.setItem(STACK_KEY, String(stack.scrollTop)); } catch (e) {}
+    });
+  }
+  if (location.hash) {
+    try {
+      history.replaceState(null, '', location.pathname + location.search);
+    } catch (e) {}
+  }
+  function rewriteAppUrl(href) {
+    try {
+      var u = new URL(href, location.href);
+      if (u.origin !== location.origin) return null;
+      if (u.pathname.indexOf('/app/') !== 0) return null;
+      var needs = u.searchParams.get('embed') !== '1' || !!u.hash;
+      if (!needs) return null;
+      u.searchParams.set('embed', '1');
+      u.hash = '';
+      return u.pathname + u.search;
+    } catch (e) { return null; }
+  }
+  document.addEventListener('click', function (e) {
+    var a = e.target && e.target.closest && e.target.closest('a[href]');
+    if (!a || a.target === '_blank' || a.hasAttribute('download')) return;
+    var raw = a.getAttribute('href');
+    if (!raw || raw.charAt(0) === '#' || /^mailto:|^tel:|^javascript:/i.test(raw)) return;
+    var next = rewriteAppUrl(raw);
+    if (!next) return;
+    e.preventDefault();
+    if (next !== location.pathname + location.search) location.assign(next);
+  }, true);
+  document.addEventListener('submit', function (e) {
+    var form = e.target;
+    if (!form) return;
+    if (!form.querySelector('input[name="embed"]')) {
+      var inp = document.createElement('input');
+      inp.type = 'hidden'; inp.name = 'embed'; inp.value = '1';
+      form.appendChild(inp);
+    }
+    var method = (form.getAttribute('method') || 'get').toLowerCase();
+    if (method === 'get' && form.action) {
+      try {
+        var u = new URL(form.action, location.href);
+        if (u.origin === location.origin && u.pathname.indexOf('/app/') === 0) {
+          u.searchParams.set('embed', '1');
+          u.hash = '';
+          form.action = u.pathname + u.search;
+        }
+      } catch (err) {}
+    }
+  }, true);
+})();
+</script>
+{% endif %}
 </body>
 </html>
