@@ -1,0 +1,9 @@
+{
+    "company": "NORTHWEST CLINICAL RESEARCH CENTER",
+    "trial_finder_url": "https://www.nwcrc.net/",
+    "trial_finder_weakness": 10,
+    "organization_type": "independent_site",
+    "site_size_fit": 10,
+    "reason": "The provided results identify a standalone, multi-specialty clinical research center in Bellevue and do not show evidence of a hospital network, academic medical center, CRO, sponsor, or broad site group. The homepage appears to be the main patient-facing entry point, but the search results provide no evidence of a searchable trial directory, condition or location filters, study cards, eligibility summaries, or a clear express-interest flow.",
+    "confidence": "low"
+}

@@ -1,0 +1,9 @@
+{
+    "company": "Clinical Research of West Florida, Inc",
+    "trial_finder_url": "https://www.crwf.com/",
+    "trial_finder_weakness": 4,
+    "organization_type": "independent_site",
+    "site_size_fit": 10,
+    "reason": "The company homepage appears to be the primary patient-facing page, titled \"CRWF: Clinical Trials in Tampa Bay,\" and presents clinical trials alongside patient-oriented testimonials. Its privacy policy also indicates that patients can be matched with suitable trials. However, the provided evidence does not show condition or location search, study filters, eligibility summaries, or a clear express-interest flow, so the discovery experience appears acceptable rather than excellent. The company is listed as a facility in Tampa and there is no evidence of a hospital network, academic affiliation, CRO, sponsor, or multi-location organization.",
+    "confidence": "low"
+}

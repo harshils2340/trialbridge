@@ -1,0 +1,9 @@
+{
+    "company": "DRUG TRIALS AMERICA, INC",
+    "trial_finder_url": "",
+    "trial_finder_weakness": 10,
+    "organization_type": "small_site_group",
+    "site_size_fit": 8,
+    "reason": "The provided results show Drug Trials America, Inc. listed as a clinical-trial site in at least Hartsdale and Williamsville, New York, suggesting a small multi-location research organization. However, no company website or patient-facing trial finder appears in the results; patients are exposed only to technical third-party registry pages with no clear discovery, eligibility, or interest flow.",
+    "confidence": "low"
+}

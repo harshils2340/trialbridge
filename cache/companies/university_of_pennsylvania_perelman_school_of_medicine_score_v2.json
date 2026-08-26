@@ -1,0 +1,9 @@
+{
+    "company": "University of Pennsylvania Perelman School of Medicine",
+    "trial_finder_url": "https://www.pennmedicine.org/research/clinical-trials",
+    "trial_finder_weakness": 4,
+    "organization_type": "large_organization",
+    "site_size_fit": 0,
+    "reason": "The Penn Medicine Clinical Trials page appears to be the primary patient-facing destination because it explicitly offers trial searching and research-registry enrollment. The available evidence does not show condition or location filters, eligibility summaries, study cards, or an easy express-interest flow, so the discovery experience is only rated acceptable rather than very good. The organization is an academic medical school with multiple departments and clinical research cores, which clearly places it outside the small independent-site ICP.",
+    "confidence": "medium"
+}

@@ -1,0 +1,9 @@
+{
+    "company": "Adams Clinical",
+    "trial_finder_url": "https://www.adamsclinical.com/",
+    "trial_finder_weakness": 4,
+    "organization_type": "small_site_group",
+    "site_size_fit": 8,
+    "reason": "The primary company result is an official patient-facing Adams Clinical page that says patients can learn more about clinical trials and apply to participate. However, the provided evidence does not show condition or location search, filters, study cards, eligibility summaries, or the quality of the application flow. Adams Clinical is explicitly described as an independent network of six clinical research sites, fitting a small site group rather than a single independent site.",
+    "confidence": "low"
+}

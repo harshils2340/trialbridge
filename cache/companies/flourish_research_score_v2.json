@@ -1,0 +1,9 @@
+{
+    "company": "Flourish Research",
+    "trial_finder_url": "https://flourishresearch.com/",
+    "trial_finder_weakness": 10,
+    "organization_type": "large_organization",
+    "site_size_fit": 2,
+    "reason": "The homepage is the only apparent company-owned patient-facing result, but its description is general and provides no evidence of condition or location search, study listings, eligibility information, filters, or an express-interest flow. Flourish Research is described as a multi-site clinical-trial network with a national footprint and has expanded through acquisitions and strategic investment, indicating a larger multi-site organization rather than a small independent site or small local group.",
+    "confidence": "medium"
+}

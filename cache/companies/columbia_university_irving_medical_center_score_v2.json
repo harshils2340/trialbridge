@@ -1,0 +1,9 @@
+{
+    "company": "Columbia University Irving Medical Center",
+    "trial_finder_url": "https://www.irvinginstitute.columbia.edu/join-a-research-study",
+    "trial_finder_weakness": 4,
+    "organization_type": "large_organization",
+    "site_size_fit": 0,
+    "reason": "The Join a Research Study page identifies RecruitMe, a free online study recruitment tool intended to connect prospective participants with research studies. This is evidence of a meaningful patient-facing discovery mechanism, although the provided results do not show its search, filtering, eligibility, or contact-flow details. Columbia University Irving Medical Center is an academic medical center affiliated with Columbia University, runs trials across many departments and health areas, and has multiple dedicated clinical-trial and research programs, making it a poor fit for BridgeMD's small independent-site ICP.",
+    "confidence": "high"
+}

@@ -3,57 +3,40 @@
         "title": "Study Participant Opportunities for Clinical Trials",
         "link": "https://www.medpace.com/study-participants/",
         "snippet": "Participating in clinical studies may not only benefit you, but could benefit millions through the development of life-changing treatments. At Medpace, our goal ...",
-        "sitelinks": [
-            {
-                "title": "Paid Clinical Trials",
-                "link": "https://www.medpace.com/study-participants/browse-studies/"
-            },
-            {
-                "title": "FAQs",
-                "link": "https://www.medpace.com/study-participants/faqs/"
-            },
-            {
-                "title": "About",
-                "link": "https://www.medpace.com/study-participants/about-medpace-phase-i-unit/"
-            }
-        ],
         "position": 1
     },
     {
-        "title": "Medpace: Global, Full-Service Contract Research Organization ...",
+        "title": "Medpace: Global, Full-Service Contract Research ...",
         "link": "https://www.medpace.com/",
         "snippet": "Medpace is a scientifically-driven, global, full-service contract research ... Clinical Trials. Read More. Whitepaper. Advances in Multimodality ...",
         "position": 2
     },
     {
-        "title": "Phase I Unit | Medpace",
+        "title": "Medpace clinical trials - Cincinnati",
+        "link": "https://www.reddit.com/r/cincinnati/comments/89q5sl/medpace_clinical_trials/",
+        "position": 3
+    },
+    {
+        "title": "Medpace? Thoughts?",
+        "link": "https://www.reddit.com/r/clinicalresearch/comments/148rek2/medpace_thoughts/",
+        "position": 4
+    },
+    {
+        "title": "Phase I Unit",
         "link": "https://www.medpace.com/phase-i-unit/",
         "snippet": "Medpace offers a wide variety of early phase clinical contract research organization (CRO) services, seamlessly implemented by cross-functional teams, ...",
-        "position": 3
+        "position": 5
     },
     {
         "title": "About Medpace Advancing health. It's what we do.",
         "link": "https://www.medpace.com/careers/about-medpace/",
         "snippet": "Medpace conducts clinical trials for Biotechnology, Pharmaceutical and Medical Device companies and provides the services that result in successful trials. Such ...",
-        "position": 4
-    },
-    {
-        "title": "Global Outcomes Studies - Medpace",
-        "link": "https://www.medpace.com/therapeutics/therapeutic-depth/cardiovascular/outcomes-studies/",
-        "snippet": "At Medpace, we recognize that outcomes studies are more than just clinical trials – they are essential for demonstrating real-world benefits, securing ...",
         "position": 6
     },
     {
-        "title": "Medpace clinical trials : r/cincinnati - Reddit",
-        "link": "https://www.reddit.com/r/cincinnati/comments/89q5sl/medpace_clinical_trials/",
-        "snippet": "Medpace clinical trials. So my roomate lost his job and is going to be low on money. In searching for a way to pay his rent this month he ...",
-        "date": "Apr 4, 2018",
-        "position": 7
-    },
-    {
-        "title": "Clinical Trial Management | Medpace CRO",
-        "link": "https://www.medpace.com/cro/clinical-trial-management/",
-        "snippet": "Medpace Clinical Trial Management leverages our unique partnering philosophy and team structure to deliver effective, end-to-end collaboration, training, and ...",
+        "title": "Global Outcomes Studies",
+        "link": "https://www.medpace.com/therapeutics/therapeutic-depth/cardiovascular/outcomes-studies/",
+        "snippet": "At Medpace, we recognize that outcomes studies are more than just clinical trials – they are essential for demonstrating real-world benefits, securing ...",
         "position": 8
     }
 ]

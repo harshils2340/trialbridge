@@ -1,0 +1,9 @@
+{
+    "company": "Fieve Clinical Research, Inc",
+    "trial_finder_url": "",
+    "trial_finder_weakness": 10,
+    "organization_type": "independent_site",
+    "site_size_fit": 10,
+    "reason": "The evidence identifies Fieve Clinical Research as a private research center at one New York address with three investigators, which strongly fits an independent small research site. The search results show a referral program for current trials and general trial information, but no dedicated patient-facing trial finder, condition or location search, study listings, eligibility summaries, or clear express-interest workflow.",
+    "confidence": "low"
+}

@@ -1,0 +1,9 @@
+{
+    "company": "Suburban Research Associates",
+    "trial_finder_url": "https://suburbanresearch.com/clinical-studies/",
+    "trial_finder_weakness": 6,
+    "organization_type": "small_site_group",
+    "site_size_fit": 8,
+    "reason": "The Clinical Studies page appears to be the primary patient-facing trial discovery page, but the search evidence does not show condition or location filters, structured study cards, eligibility summaries, or a clearly streamlined expression-of-interest flow. Suburban Research Associates is presented as a psychiatric research site and appears affiliated with the small Atlas Clinical Research site network rather than being a large academic, hospital, CRO, or sponsor organization.",
+    "confidence": "medium"
+}

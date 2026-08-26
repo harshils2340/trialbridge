@@ -1,0 +1,9 @@
+{
+    "company": "Continuum Clinical",
+    "trial_finder_url": "",
+    "trial_finder_weakness": 10,
+    "organization_type": "large_organization",
+    "site_size_fit": 0,
+    "reason": "The evidence describes Continuum Clinical as a global clinical trial solutions and patient recruitment provider, not as an independent research site or small site group. The available homepage and search results describe recruitment services but do not show a patient-facing trial finder with condition or location search, study listings, eligibility summaries, or an express-interest flow.",
+    "confidence": "medium"
+}

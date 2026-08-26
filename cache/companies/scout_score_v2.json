@@ -1,0 +1,9 @@
+{
+    "company": "Scout",
+    "trial_finder_url": "",
+    "trial_finder_weakness": 10,
+    "organization_type": "large_organization",
+    "site_size_fit": 0,
+    "reason": "The results describe Scout as a global clinical-trial services provider operating in more than 100 countries, supporting sites, sponsors, and participants. The Scout Clinical page appears to describe patient support, payments, and logistics rather than offering a patient-facing trial search or browsing experience. No condition/location finder, study listings, eligibility summaries, or express-interest flow is evidenced.",
+    "confidence": "medium"
+}

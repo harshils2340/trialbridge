@@ -1,0 +1,9 @@
+{
+    "company": "NYU Langone Health",
+    "trial_finder_url": "https://clinicaltrials.med.nyu.edu/",
+    "trial_finder_weakness": 4,
+    "organization_type": "large_organization",
+    "site_size_fit": 0,
+    "reason": "The dedicated Clinical Trials and Research Studies portal appears to be the primary patient-facing trial finder. Its existence is a positive signal, but the provided evidence does not show condition or location search, study filters, eligibility summaries, or an easy expression-of-interest flow. NYU Langone is an academic health system with extensive clinical research infrastructure and multiple centers, making it a poor fit for BridgeMD's small independent-site ICP.",
+    "confidence": "medium"
+}

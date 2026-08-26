@@ -1,0 +1,9 @@
+{
+    "company": "Thermo Fisher Scientific",
+    "trial_finder_url": "",
+    "trial_finder_weakness": 10,
+    "organization_type": "large_organization",
+    "site_size_fit": 0,
+    "reason": "The search results show Thermo Fisher's clinical-trial pages as service and CRO offerings, including the PPD clinical research business, rather than a patient-facing trial finder with condition or location search. Thermo Fisher is a large global CRO and clinical research services organization.",
+    "confidence": "high"
+}

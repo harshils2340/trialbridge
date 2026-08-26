@@ -1,0 +1,9 @@
+{
+    "company": "Massachusetts General Hospital",
+    "trial_finder_url": "https://massgeneral.trialstoday.org/",
+    "trial_finder_weakness": 4,
+    "organization_type": "large_organization",
+    "site_size_fit": 0,
+    "reason": "Massachusetts General Hospital is a major academic medical centre with extensive clinical research activity. Its Trialstoday page appears to be the primary broad patient-facing trial search, with condition, sex, and age filters, though the evidence does not show location filtering, eligibility summaries, study cards, or an easy express-interest flow.",
+    "confidence": "high"
+}

@@ -1,0 +1,9 @@
+{
+    "company": "Ora, Inc.",
+    "trial_finder_url": "",
+    "trial_finder_weakness": 10,
+    "organization_type": "unknown",
+    "site_size_fit": 5,
+    "reason": "The provided results do not show a patient-facing clinical-trial finder. The closest relevant page is an 'Become an Investigator' page, which is intended for research investigators rather than patients. Other results describe ophthalmic therapeutic development, clinical-trial services, and industry partnerships. The evidence does not clearly establish whether Ora is a small research site, a site group, or a larger CRO-like organization.",
+    "confidence": "low"
+}

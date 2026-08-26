@@ -1,0 +1,9 @@
+{
+    "company": "Private Practice",
+    "trial_finder_url": "",
+    "trial_finder_weakness": 10,
+    "organization_type": "independent_site",
+    "site_size_fit": 10,
+    "reason": "The results are generic articles and discussions about running clinical trials in private practice, not a company-specific website or patient-facing trial discovery page. No condition or location search, study listings, eligibility summaries, or express-interest flow is evidenced. The organization name indicates a private practice, but there is no additional evidence about its specific research operations or number of locations.",
+    "confidence": "low"
+}

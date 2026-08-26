@@ -1,0 +1,9 @@
+{
+    "company": "ProSciento",
+    "trial_finder_url": "https://myproscientostudy.com/",
+    "trial_finder_weakness": 4,
+    "organization_type": "large_organization",
+    "site_size_fit": 0,
+    "reason": "ProSciento has a dedicated patient-facing clinical-trial site for exploring studies, which is a meaningful positive signal. However, the provided evidence does not show condition or location search, filters, eligibility summaries, or an easy express-interest flow, so the experience appears only acceptable. ProSciento is described as a clinical research organization providing services across more than 425 completed metabolic trials and operating a clinical research unit, which is inconsistent with BridgeMD's small independent-site ICP.",
+    "confidence": "low"
+}

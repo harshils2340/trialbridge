@@ -1,0 +1,9 @@
+{
+    "company": "Seattle Institute for Biomedical",
+    "trial_finder_url": "",
+    "trial_finder_weakness": 10,
+    "organization_type": "unknown",
+    "site_size_fit": 5,
+    "reason": "The results show third-party trial listings and a University of Washington research reference, but no clear company-owned, patient-facing trial finder. The organization appears to sponsor or be associated with many studies, yet the evidence does not establish its number of locations, operating structure, or whether it is a small independent site.",
+    "confidence": "low"
+}

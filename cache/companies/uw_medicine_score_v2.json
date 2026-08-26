@@ -1,0 +1,9 @@
+{
+    "company": "UW Medicine",
+    "trial_finder_url": "https://www.uwmedicine.org/research",
+    "trial_finder_weakness": 8,
+    "organization_type": "large_organization",
+    "site_size_fit": 0,
+    "reason": "The UW Medicine Research page appears to be the closest patient-facing entry point for clinical trials, but the provided evidence does not show a dedicated trial finder with condition or location search, useful filters, eligibility summaries, study cards, or an express-interest flow. The separate UW Clinical Trials Office site is explicitly focused on centralized support for physician investigators and their teams, making it research-operations oriented rather than patient oriented. UW Medicine is affiliated with the University of Washington and has broad institutional research infrastructure, which clearly places it outside the small independent-site ICP.",
+    "confidence": "high"
+}

@@ -1,0 +1,9 @@
+{
+    "company": "University Health KC",
+    "trial_finder_url": "https://www.universityhealthkc.org/services/cancer-care/cancer-clinical-trials/",
+    "trial_finder_weakness": 8,
+    "organization_type": "large_organization",
+    "site_size_fit": 0,
+    "reason": "The cancer clinical trials page appears to be the primary patient-facing entry point, with additional specialty-specific trial pages. However, the provided evidence shows no condition or location search, meaningful filters, eligibility summaries, or clear express-interest flow. University Health's university affiliation, research administration infrastructure, and multiple specialty clinical-trial programs indicate a large academic health organization rather than a small independent site.",
+    "confidence": "medium"
+}

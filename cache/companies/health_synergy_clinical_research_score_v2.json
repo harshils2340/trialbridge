@@ -1,0 +1,9 @@
+{
+    "company": "Health Synergy Clinical Research",
+    "trial_finder_url": "https://healthsynergyclinicalresearch.com/",
+    "trial_finder_weakness": 4,
+    "organization_type": "small_site_group",
+    "site_size_fit": 8,
+    "reason": "The homepage and location pages appear to provide a patient-facing way to discover mental health clinical trials, including references to nearby trials and locations in West Palm Beach and Okeechobee. However, the provided evidence does not show condition filters, study cards, eligibility summaries, or a clear express-interest flow. The organization is described as a private clinical research organization with a few locations, indicating a small site group rather than a large healthcare or CRO organization.",
+    "confidence": "low"
+}

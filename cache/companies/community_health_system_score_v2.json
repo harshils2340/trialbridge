@@ -1,0 +1,9 @@
+{
+    "company": "Community Health System",
+    "trial_finder_url": "https://www.communitymedical.org/specialties-and-departments/neurosciences/clinical-trials",
+    "trial_finder_weakness": 8,
+    "organization_type": "large_organization",
+    "site_size_fit": 0,
+    "reason": "The search results show specialty-specific clinical-trial information pages for Community Medical Centers, but provide no evidence of condition or location search, filters, eligibility summaries, or an express-interest flow. Community Health System appears to be a health system with multiple departments and clinical programs, which is outside BridgeMD's small independent-site ICP.",
+    "confidence": "medium"
+}

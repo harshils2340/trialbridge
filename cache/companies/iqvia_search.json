@@ -1,0 +1,57 @@
+[
+    {
+        "title": "Patient Recruitment for Clinical Trials",
+        "link": "https://www.iqvia.com/solutions/research-and-development/patient-and-site-centric-solutions/patient-recruitment",
+        "snippet": "IQVIA's recruitment engine doesn't just find patients—it connects eligible patients with clinical trials that matter. Watch our latest Webinar.",
+        "position": 1
+    },
+    {
+        "title": "Early Phase Clinical Trials",
+        "link": "https://www.iqvia.com/solutions/research-and-development/early-phase-clinical-trials",
+        "snippet": "Find out how IQVIA can help you track the impact of new drugs and establish proof of concept faster with innovative early clinical development strategies.",
+        "position": 2
+    },
+    {
+        "title": "Clinical Research | IQVIA Clinical Trial Information",
+        "link": "https://www.clinicalresearch.com/",
+        "snippet": "IQVIA is a global leader in the field of clinical research. Our team ... Clinical trials utilize sets of criteria to determine if a person is a good ...",
+        "position": 3
+    },
+    {
+        "title": "Clinical Research & Development Solutions",
+        "link": "https://www.iqvia.com/solutions/research-and-development",
+        "snippet": "Clinical trials run more efficiently when data flows continuously across teams, systems, and stages of development. IQVIA connects data streams across the ...",
+        "position": 4
+    },
+    {
+        "title": "What makes IQVIA Site Enrollment and Engagement Leads ...",
+        "link": "https://www.iqvia.com/library/videos/what-makes-iqvia-site-enrollment-and-engagement-leads-different",
+        "snippet": "IQVIA Clinical Trial Educators (CTEs) are a bespoke resource unlike other roles you often see in clinical trials. Their clinical expertise and localized ...",
+        "position": 5
+    },
+    {
+        "title": "Orchestrated Clinical Trials",
+        "link": "https://www.iqvia.com/solutions/technologies/orchestrated-clinical-trials",
+        "snippet": "IQVIA Technologies Orchestrated Clinical Trials (OCT) application suites can transform your clinical trials by creating efficiencies, improving workflow, ...",
+        "position": 6
+    },
+    {
+        "title": "Expedite Your Early Phase Clinical Trial Decisions",
+        "link": "https://www.iqvia.com/library/fact-sheets/expedite-your-early-phase-clinical-trial-decisions",
+        "snippet": "IQVIA accelerates early phase clinical trials with global Phase I capabilities, advanced modeling, and seamless Phase I–IIa delivery.",
+        "date": "Jan 2, 2026",
+        "position": 7
+    },
+    {
+        "title": "Study for Change",
+        "link": "https://www.studyforchange.com/",
+        "snippet": "Learn more about other IQVIA Clinical Trials or the IQVIA Corporation. Call today at 913.894.5533 · Privacy Policy.",
+        "position": 8
+    },
+    {
+        "title": "Clinical Trial Financial Suite",
+        "link": "https://www.iqvia.com/solutions/technologies/clinical-trial-financial-suite",
+        "snippet": "IQVIA Clinical Trial Financial Suite (CTFS) streamlines every financial aspect of clinical trials by unifying budgeting, contracting, forecasting, ...",
+        "position": 9
+    }
+]

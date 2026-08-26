@@ -1,0 +1,9 @@
+{
+    "company": "IQVIA",
+    "trial_finder_url": "https://www.clinicalresearch.com/",
+    "trial_finder_weakness": 8,
+    "organization_type": "large_organization",
+    "site_size_fit": 0,
+    "reason": "The clinicalresearch.com result appears to be IQVIA's primary patient-facing clinical-trial information page, but the provided evidence does not show condition or location search, meaningful filters, understandable study cards, eligibility summaries, or a clear express-interest flow. IQVIA is identified as a global clinical-research leader with broad recruitment, technology, early-phase, and clinical-development offerings, indicating a large CRO rather than an independent research site or small site group.",
+    "confidence": "medium"
+}

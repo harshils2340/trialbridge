@@ -1,0 +1,9 @@
+{
+    "company": "Great Lakes Clinical Trials, A Flourish Research Site",
+    "trial_finder_url": "",
+    "trial_finder_weakness": 10,
+    "organization_type": "unknown",
+    "site_size_fit": 5,
+    "reason": "The provided results do not show a primary patient-facing trial discovery page. The visible trial-related pages are third-party listings for individual studies, and there is no evidence of condition or location search, filtering, eligibility summaries, or an interest-submission flow. The organization appears to be a research site with identifiable site staff and a Chicago headquarters, but the evidence does not establish whether it is an independent site or part of a larger multi-location organization.",
+    "confidence": "low"
+}

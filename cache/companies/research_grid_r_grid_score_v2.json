@@ -1,0 +1,9 @@
+{
+    "company": "Research Grid (R.grid)",
+    "trial_finder_url": "https://rgrid.tech/",
+    "trial_finder_weakness": 10,
+    "organization_type": "unknown",
+    "site_size_fit": 5,
+    "reason": "The available results describe Research Grid as a clinical-trial automation technology company, not as a patient-facing research site or site group. Its homepage appears focused on AI-native trial administration and automation, with no evidence of condition or location search, study listings, eligibility summaries, or an express-interest flow. The evidence does not support classifying it as an independent site, small site group, or large healthcare organization.",
+    "confidence": "low"
+}

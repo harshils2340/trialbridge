@@ -1,0 +1,9 @@
+{
+    "company": "University of Minnesota",
+    "trial_finder_url": "https://ctsi.umn.edu/studyfinder",
+    "trial_finder_weakness": 4,
+    "organization_type": "large_organization",
+    "site_size_fit": 0,
+    "reason": "The University of Minnesota appears to have a dedicated StudyFinder clinical-trial discovery tool, which is stronger than relying only on an informational clinical-trials page. However, the provided evidence does not show its patient-facing filters, eligibility summaries, or enrollment/contact flow. The university and medical school affiliation, broad research infrastructure, and large volume of studies clearly place it outside BridgeMD's small independent-site ICP.",
+    "confidence": "medium"
+}

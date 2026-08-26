@@ -1,0 +1,9 @@
+{
+    "company": "Clinical Trials",
+    "trial_finder_url": "",
+    "trial_finder_weakness": 10,
+    "organization_type": "unknown",
+    "site_size_fit": 5,
+    "reason": "The search results do not identify a company-specific patient-facing trial finder for an organization named Clinical Trials. They point instead to general educational pages, MUSC, Fortrea, Pfizer, Cleveland Clinic, and CenterWatch, so there is no evidence of condition or location search, study browsing, or an interest flow belonging to this company. The organization's size and structure are also not established.",
+    "confidence": "low"
+}

@@ -1,0 +1,9 @@
+{
+    "company": "Headlands Research",
+    "trial_finder_url": "https://headlandsresearch.com/clinical-trials/",
+    "trial_finder_weakness": 6,
+    "organization_type": "large_organization",
+    "site_size_fit": 2,
+    "reason": "The Clinical Trials page appears to be the primary patient-facing trial discovery page. However, the provided evidence does not show condition or location search, meaningful filters, understandable study summaries, eligibility guidance, or a clear express-interest flow. Headlands Research is described as a multinational, integrated clinical trial site network with many locations and hundreds of completed trials, making it a poor fit for BridgeMD's small independent-site ICP.",
+    "confidence": "medium"
+}

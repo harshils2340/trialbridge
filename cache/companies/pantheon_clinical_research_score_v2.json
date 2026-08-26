@@ -1,0 +1,9 @@
+{
+    "company": "Pantheon Clinical Research",
+    "trial_finder_url": "https://pantheonclinical.com/clinical-research-studies/",
+    "trial_finder_weakness": 6,
+    "organization_type": "independent_site",
+    "site_size_fit": 10,
+    "reason": "The clinical research studies page appears to be the primary patient-facing trial discovery page, but the available evidence only describes ongoing studies and provides no indication of condition search, location filtering, eligibility summaries, study cards, or an express-interest flow. Pantheon is presented as a dedicated research site in Bountiful, Utah, with no evidence of a larger network or institutional affiliation.",
+    "confidence": "low"
+}

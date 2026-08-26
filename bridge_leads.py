@@ -31,20 +31,120 @@ theOpenAiModel = "gpt-5.6-luna"
 
 # Keep these queries simple because Serper free accounts
 # can reject complicated OR expressions.
+#
+# Our ICP is the small independent clinical research
+# site: private practices, standalone research clinics
+# and small site groups. Those places have real trials
+# but no engineering team, so their trial finder is
+# usually weak or missing entirely.
+#
+# Large academic medical centres and hospital networks
+# are deliberately under-weighted here. They have long
+# procurement cycles and often an in-house portal, so
+# the queries lean on the vocabulary small sites use to
+# describe themselves.
 thePeopleSearchQueries = [
-    'site:linkedin.com/in "clinical research coordinator" Toronto',
-    'site:linkedin.com/in "clinical research coordinator" Mississauga',
-    'site:linkedin.com/in "clinical research coordinator" Brampton',
-    'site:linkedin.com/in "clinical trial coordinator" Toronto',
-    'site:linkedin.com/in "patient recruitment coordinator" Toronto',
-    'site:linkedin.com/in "senior clinical research coordinator" Toronto'
-    'site:linkedin.com/in "clinical research coordinator" New York City',
-    'site:linkedin.com/in "clinical research coordinator" New York City',
-    'site:linkedin.com/in "clinical research coordinator" New York City',
-    'site:linkedin.com/in "clinical trial coordinator" New York City',
-    'site:linkedin.com/in "patient recruitment coordinator" New York City',
-    'site:linkedin.com/in "senior clinical research coordinator" New York City'
+    'site:linkedin.com/in "clinical research coordinator" "research site" seattle',
+    'site:linkedin.com/in "clinical research coordinator" "private practice" seattle',
+    'site:linkedin.com/in "clinical trial coordinator" "research clinic" seattle',
+    'site:linkedin.com/in "patient recruitment coordinator" seattle',
+    'site:linkedin.com/in "site director" "clinical research" seattle'
 ]
+
+
+# Name fragments that almost always mean the employer is
+# far bigger than our ICP. These are cheap to check and
+# save an OpenAI call on obviously-too-large prospects.
+theLargeOrganizationKeywords = [
+    "university",
+    "universite",
+    "college",
+    "school of medicine",
+    "faculty of medicine",
+    "academic",
+    "health network",
+    "health system",
+    "health authority",
+    "hospital",
+    "hopital",
+    "medical center",
+    "medical centre",
+    "cancer centre",
+    "cancer center",
+    "children's",
+    "sunnybrook",
+    "mount sinai",
+    "kaiser",
+    "cleveland clinic",
+    "mayo clinic",
+    "pharmaceutical",
+    "pharmaceuticals",
+    "pharma",
+    "biopharma",
+    "therapeutics",
+    "laboratories",
+    "iqvia",
+    "parexel",
+    "icon plc",
+    "syneos",
+    "fortrea",
+    "medpace",
+    "ppd",
+    "labcorp",
+    "thermo fisher",
+    "pfizer",
+    "novartis",
+    "astrazeneca",
+    "johnson & johnson",
+    "merck",
+    "sanofi",
+    "gsk",
+    "roche",
+    "bayer",
+    "abbvie",
+    "amgen",
+    "eli lilly"
+]
+
+
+# Name fragments that suggest an independent site, which
+# is exactly who we want to reach.
+theSmallSiteKeywords = [
+    # "research" on its own is deliberately broad. The
+    # large-organization list is checked first and wins,
+    # so university and hospital research arms are still
+    # caught before this matches.
+    "research",
+    "clinical research",
+    "research site",
+    "research clinic",
+    "research center",
+    "research centre",
+    "research associates",
+    "research group",
+    "research partners",
+    "research solutions",
+    "trials",
+    "clinical studies",
+    "medical clinic",
+    "family practice",
+    "family medicine",
+    "private practice",
+    "physicians",
+    "medical group",
+    "wellness",
+    "dermatology",
+    "psychiatry",
+    "neurology",
+    "cardiology",
+    "rheumatology",
+    "endocrinology"
+]
+
+
+# Leads scoring below this on site-size fit are dropped
+# unless --include-large is passed.
+theDefaultMinSiteFit = 4.0
 
 
 theBlockedDomains = [
@@ -543,6 +643,20 @@ Relevant areas include:
 - clinical research site operations
 - clinical research management
 
+Our ideal customer works at a SMALL, INDEPENDENT
+clinical research site: a private practice, a
+standalone research clinic, or a small site group.
+
+Prefer people at those employers over people at
+hospital networks, academic medical centres, large
+CROs or pharmaceutical sponsors. Still extract the
+larger-employer people when they appear, since they
+are scored and filtered later.
+
+Record the employer exactly as written in the source,
+without expanding abbreviations or substituting a
+parent organization.
+
 Prefer Ontario / Greater Toronto Area.
 
 IMPORTANT:
@@ -810,6 +924,60 @@ def getCompanySearchResults(
 
 
 # =========================================================
+# ORGANIZATION SIZE HEURISTIC
+# =========================================================
+
+def getNameSizeHint(aCompany):
+    """
+    Cheap name-only read on how big an employer is.
+
+    Returns a hint dictionary the model prompt can lean
+    on, so obviously-large organizations are recognised
+    even when the search snippets are thin.
+    """
+
+    myCompany = (
+        aCompany
+        or ""
+    ).lower()
+
+    myLargeMatches = []
+    mySmallMatches = []
+
+    for myKeyword in theLargeOrganizationKeywords:
+        if myKeyword in myCompany:
+            myLargeMatches.append(
+                myKeyword
+            )
+
+    for myKeyword in theSmallSiteKeywords:
+        if myKeyword in myCompany:
+            mySmallMatches.append(
+                myKeyword
+            )
+
+    if myLargeMatches:
+        myHint = "likely_large"
+
+    elif mySmallMatches:
+        myHint = "likely_small"
+
+    else:
+        myHint = "unknown"
+
+    return {
+        "hint":
+            myHint,
+
+        "large_matches":
+            myLargeMatches,
+
+        "small_matches":
+            mySmallMatches
+    }
+
+
+# =========================================================
 # COMPANY TRIAL FINDER SCORE
 # =========================================================
 
@@ -817,7 +985,25 @@ def scoreCompanyTrialFinder(
     aCompany,
     aSearchResults
 ):
+    myNameHint = getNameSizeHint(
+        aCompany
+    )
+
     if not aSearchResults:
+        # No evidence either way on size, so fall back to
+        # the name hint rather than assuming a good fit.
+        if myNameHint["hint"] == "likely_large":
+            myFallbackFit = 2.0
+            myFallbackType = "large_organization"
+
+        elif myNameHint["hint"] == "likely_small":
+            myFallbackFit = 7.0
+            myFallbackType = "independent_site"
+
+        else:
+            myFallbackFit = 5.0
+            myFallbackType = "unknown"
+
         return {
             "company":
                 aCompany,
@@ -828,6 +1014,12 @@ def scoreCompanyTrialFinder(
             "trial_finder_weakness":
                 10,
 
+            "organization_type":
+                myFallbackType,
+
+            "site_size_fit":
+                myFallbackFit,
+
             "reason":
                 (
                     "No obvious patient-facing "
@@ -835,7 +1027,7 @@ def scoreCompanyTrialFinder(
                 ),
 
             "confidence":
-                "medium"
+                "low"
         }
 
     myPrompt = f"""
@@ -843,13 +1035,31 @@ We are evaluating whether this company is a strong
 sales prospect for BridgeMD, a patient-friendly
 clinical-trial discovery and recruitment platform.
 
+Our ideal customer is a SMALL, INDEPENDENT clinical
+research site: a private practice, a standalone
+research clinic, or a small site group running a
+handful of trials. They have real studies but no
+engineering team, so their trial discovery experience
+is usually weak.
+
+Large academic medical centres, hospital networks,
+big CROs and pharmaceutical sponsors are POOR fits.
+They move slowly and often already have an in-house
+portal.
+
 COMPANY:
 
 {aCompany}
 
+NAME-BASED SIZE HINT (heuristic, may be wrong):
+
+{json.dumps(myNameHint, ensure_ascii=False)}
+
 PUBLIC GOOGLE SEARCH RESULTS:
 
 {json.dumps(aSearchResults, ensure_ascii=False)}
+
+TASK ONE:
 
 Determine which result, if any, appears to be the
 company's primary patient-facing page for finding
@@ -892,9 +1102,60 @@ STRONG SIGNALS:
 - eligibility summaries
 - easy signup or express-interest flow
 
+TASK TWO:
+
+Classify the organization into exactly one
+organization_type:
+
+- "independent_site"
+    a private practice, standalone research clinic
+    or single-location research centre
+
+- "small_site_group"
+    a small network of a few research locations
+
+- "large_organization"
+    hospital network, academic medical centre,
+    health system, large CRO or pharmaceutical
+    sponsor
+
+- "unknown"
+    the evidence genuinely does not say
+
+Then score site_size_fit, how well the organization
+matches our small-site ICP:
+
+10 = clearly a small independent research site
+8  = small site group, a few locations
+5  = unclear from the evidence
+2  = large regional or multi-site organization
+0  = major hospital network, academic centre,
+     large CRO or pharmaceutical sponsor
+
+LARGE-ORGANIZATION SIGNALS:
+
+- affiliated with a university or medical school
+- described as a hospital or health network
+- many departments or many locations
+- a careers page with a large job board
+- press releases and investor relations pages
+- named as a trial sponsor rather than a site
+
+SMALL-SITE SIGNALS:
+
+- one or a few clinic locations
+- a named physician or small group of physicians
+- a simple brochure-style website
+- runs trials alongside regular patient care
+- described as a "research site" or "site network"
+- contact goes to a coordinator, not a department
+
 IMPORTANT:
 
 Only use the provided evidence.
+
+The name-based size hint is a weak prior. Prefer the
+search results when they disagree with it.
 
 If evidence is limited, use low confidence.
 
@@ -906,6 +1167,8 @@ Return:
     "company": "{aCompany}",
     "trial_finder_url": "",
     "trial_finder_weakness": 0,
+    "organization_type": "unknown",
+    "site_size_fit": 5,
     "reason": "",
     "confidence": "low"
 }}
@@ -947,6 +1210,20 @@ Return:
                 5
             ),
 
+        "organization_type":
+            (
+                myResult.get(
+                    "organization_type"
+                )
+                or "unknown"
+            ),
+
+        "site_size_fit":
+            myResult.get(
+                "site_size_fit",
+                5
+            ),
+
         "reason":
             (
                 myResult.get(
@@ -974,9 +1251,12 @@ def getCompanyScore(
         aCompany
     )
 
+    # Bumped to v2 when site-size scoring was added, so
+    # older cached scores without those fields are not
+    # silently reused.
     myCachePath = os.path.join(
         theCompanyCacheDirectory,
-        f"{mySafeCompany}_score.json"
+        f"{mySafeCompany}_score_v2.json"
     )
 
     if (
@@ -1019,6 +1299,12 @@ def getCompanyScore(
                 "",
 
             "trial_finder_weakness":
+                5,
+
+            "organization_type":
+                "unknown",
+
+            "site_size_fit":
                 5,
 
             "reason":
@@ -1631,10 +1917,12 @@ def safeFloat(
 
 def generateFinalLeads(
     aPeople,
-    aRefresh
+    aRefresh,
+    aMinSiteFit
 ):
     myCompanyMemory = {}
     myFinalLeads = []
+    myDroppedForSize = 0
 
     for myIndex, myPerson in enumerate(
         aPeople,
@@ -1764,14 +2052,73 @@ def generateFinalLeads(
             )
         )
 
+        mySiteSizeFit = safeFloat(
+            myCompanyScore.get(
+                "site_size_fit"
+            ),
+            5.0
+        )
+
+        mySiteSizeFit = max(
+            0.0,
+            min(
+                10.0,
+                mySiteSizeFit
+            )
+        )
+
+        myNameHint = getNameSizeHint(
+            myCompany
+        )
+
+        # The model only sees trial-page snippets, which
+        # often say nothing about headcount. When the
+        # employer name itself screams "hospital network"
+        # or "pharma", pull the fit down so those leads
+        # cannot survive on a weak trial finder alone.
+        if myNameHint["hint"] == "likely_large":
+            mySiteSizeFit = min(
+                mySiteSizeFit,
+                3.0
+            )
+
+        myOrganizationType = (
+            myCompanyScore.get(
+                "organization_type"
+            )
+            or "unknown"
+        )
+
+        if myOrganizationType == "large_organization":
+            mySiteSizeFit = min(
+                mySiteSizeFit,
+                2.0
+            )
+
+        if mySiteSizeFit < aMinSiteFit:
+            myDroppedForSize += 1
+
+            print(
+                f"    Dropping: site fit "
+                f"{mySiteSizeFit:.1f} is below "
+                f"{aMinSiteFit:.1f} "
+                f"({myOrganizationType})."
+            )
+
+            continue
+
         myRoleScore = getRoleScore(
             myTitle
         )
 
-        # Trial-finder weakness is the main sales signal.
+        # Site-size fit now carries real weight. A weak
+        # trial finder at a hospital network is not the
+        # same opportunity as a weak trial finder at a
+        # two-doctor research clinic.
         myBridgeMdScore = (
-            myFinderWeakness * 0.70
-            + myRoleScore * 0.30
+            myFinderWeakness * 0.45
+            + mySiteSizeFit * 0.35
+            + myRoleScore * 0.20
         )
 
         myFinalLeads.append({
@@ -1827,6 +2174,15 @@ def generateFinalLeads(
                     1
                 ),
 
+            "organization_type":
+                myOrganizationType,
+
+            "site_size_fit":
+                round(
+                    mySiteSizeFit,
+                    1
+                ),
+
             "role_score":
                 round(
                     myRoleScore,
@@ -1863,6 +2219,14 @@ def generateFinalLeads(
             ],
         reverse=True
     )
+
+    if myDroppedForSize:
+        print()
+
+        print(
+            f"Dropped {myDroppedForSize} lead(s) for "
+            f"being too large for the small-site ICP."
+        )
 
     return myFinalLeads
 
@@ -2008,6 +2372,8 @@ def saveFinalLeads(aLeads):
 
         "trial_finder_url",
         "trial_finder_weakness",
+        "organization_type",
+        "site_size_fit",
         "role_score",
         "bridgemd_score",
         "reason",
@@ -2075,6 +2441,27 @@ def parseArguments():
         action="store_true",
         help=(
             "Do not call Hunter."
+        )
+    )
+
+    myParser.add_argument(
+        "--min-site-fit",
+        type=float,
+        default=theDefaultMinSiteFit,
+        help=(
+            "Drop leads whose employer scores below "
+            "this on small-site fit (0-10). "
+            f"Default: {theDefaultMinSiteFit}."
+        )
+    )
+
+    myParser.add_argument(
+        "--include-large",
+        action="store_true",
+        help=(
+            "Keep hospital networks, academic centres, "
+            "CROs and pharma sponsors instead of "
+            "filtering them out."
         )
     )
 
@@ -2168,9 +2555,27 @@ def main():
     # 3. SCORE COMPANIES
     # -----------------------------------------------------
 
+    if myArgs.include_large:
+        myMinSiteFit = 0.0
+
+        print(
+            "ICP FILTER OFF: "
+            "keeping large organizations."
+        )
+
+    else:
+        myMinSiteFit = myArgs.min_site_fit
+
+        print(
+            f"ICP FILTER: small clinical research "
+            f"sites, minimum site fit "
+            f"{myMinSiteFit:.1f}."
+        )
+
     myFinalLeads = generateFinalLeads(
         myPeople,
-        myArgs.refresh
+        myArgs.refresh,
+        myMinSiteFit
     )
 
     # Save before Hunter too, so company research
@@ -2233,6 +2638,8 @@ def main():
 
         print(
             f"{myLead['bridgemd_score']:>4.1f} | "
+            f"fit {myLead['site_size_fit']:>4.1f} | "
+            f"{myLead['organization_type']:<20} | "
             f"{myLead['name']} | "
             f"{myLead['company']} | "
             f"{myEmail}"

@@ -1,0 +1,9 @@
+{
+    "company": "Weill Cornell Medicine",
+    "trial_finder_url": "https://jcto.weill.cornell.edu/open-clinical-trials",
+    "trial_finder_weakness": 4,
+    "organization_type": "large_organization",
+    "site_size_fit": 0,
+    "reason": "The Joint Clinical Trials Office's 'Search Clinical Trials' page appears to be the primary patient-facing trial finder, and the results indicate that patients can browse available trials. However, the provided evidence does not show condition or location filters, eligibility summaries, study cards, or an express-interest flow. Weill Cornell Medicine is an academic medical centre with a joint office, broad research portfolio, and affiliation with NewYork-Presbyterian, making it a poor fit for BridgeMD's small independent-site ICP.",
+    "confidence": "medium"
+}

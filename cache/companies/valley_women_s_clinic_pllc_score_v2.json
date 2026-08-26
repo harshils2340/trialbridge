@@ -1,0 +1,9 @@
+{
+    "company": "Valley Women's Clinic, PLLC",
+    "trial_finder_url": "",
+    "trial_finder_weakness": 10,
+    "organization_type": "independent_site",
+    "site_size_fit": 10,
+    "reason": "The search results only show MediFind directory listings for a single-location PLLC in Renton, not a company-owned clinical-trial finder. No patient-facing trial search, filters, eligibility summaries, or express-interest flow are evident. The single clinic address and PLLC structure suggest a small independent practice, though its trial operations are not directly confirmed.",
+    "confidence": "low"
+}

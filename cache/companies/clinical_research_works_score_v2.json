@@ -1,0 +1,9 @@
+{
+    "company": "Clinical Research Works",
+    "trial_finder_url": "",
+    "trial_finder_weakness": 10,
+    "organization_type": "unknown",
+    "site_size_fit": 5,
+    "reason": "The provided search results do not identify a page belonging to Clinical Research Works or show a patient-facing trial finder. The only potentially related result is for Rochester Clinical Research, which appears to be a different organization. There is insufficient evidence to determine the organization's size or structure.",
+    "confidence": "low"
+}

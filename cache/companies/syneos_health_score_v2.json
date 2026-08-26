@@ -1,0 +1,9 @@
+{
+    "company": "Syneos Health",
+    "trial_finder_url": "https://www.us-participants.syneoshealth.com/",
+    "trial_finder_weakness": 4,
+    "organization_type": "large_organization",
+    "site_size_fit": 0,
+    "reason": "The dedicated Syneos Health participant site appears to be the primary patient-facing trial discovery page, with available studies, trial browsing, and a how-it-works flow. However, the evidence does not show condition-based search, robust filtering, detailed eligibility summaries, or a clearly streamlined interest-submission process. Syneos Health is explicitly a global clinical-development and CRO organization, making it a poor fit for BridgeMD's small independent-site ICP.",
+    "confidence": "high"
+}

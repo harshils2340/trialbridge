@@ -1,0 +1,9 @@
+{
+    "company": "AGILE Clinical Research Trials",
+    "trial_finder_url": "https://agilecrt.com/current-studies/",
+    "trial_finder_weakness": 6,
+    "organization_type": "independent_site",
+    "site_size_fit": 10,
+    "reason": "The Current Studies page appears to be the primary patient-facing location for browsing available trials, supported by a separate Clinical Study Participants page stating that volunteers are actively being recruited. However, the provided evidence does not show condition or location search, meaningful filters, eligibility summaries, study cards, or a clear express-interest flow, so the discovery experience appears noticeably difficult. The organization is described as a multi-therapeutic clinical research site in Atlanta, and no evidence suggests a hospital network, academic centre, CRO, sponsor, or multi-location group.",
+    "confidence": "low"
+}

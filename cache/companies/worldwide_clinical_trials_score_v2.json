@@ -1,0 +1,9 @@
+{
+    "company": "Worldwide Clinical Trials",
+    "trial_finder_url": "https://www.worldwide.com/participate-in-a-study/",
+    "trial_finder_weakness": 8,
+    "organization_type": "large_organization",
+    "site_size_fit": 0,
+    "reason": "The Participate In A Study page appears to be the primary patient-facing entry point, but the evidence indicates a notification/signup flow rather than a searchable trial finder with condition, location, eligibility, or study filters. Worldwide Clinical Trials is explicitly described as a global, full-service CRO with more than 4,000 professionals, making it a poor fit for BridgeMD's small independent site ICP.",
+    "confidence": "high"
+}

@@ -1,0 +1,9 @@
+{
+    "company": "Henderson Clinical Trials",
+    "trial_finder_url": "https://hendersontrials.com/our-studies/",
+    "trial_finder_weakness": 6,
+    "organization_type": "small_site_group",
+    "site_size_fit": 8,
+    "reason": "The /our-studies/ page appears to be the primary patient-facing trial browsing page, but the available evidence only indicates a basic list of current or upcoming studies, with no sign of condition or location search, useful filtering, eligibility summaries, or a clear express-interest flow. Henderson Clinical Trials is described as a research hub with multiple doctors and as part of the Elite Clinical Network, suggesting a small research-site group rather than a large healthcare organization.",
+    "confidence": "low"
+}

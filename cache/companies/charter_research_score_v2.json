@@ -1,0 +1,9 @@
+{
+    "company": "Charter Research",
+    "trial_finder_url": "https://www.charterresearch.com/",
+    "trial_finder_weakness": 10,
+    "organization_type": "unknown",
+    "site_size_fit": 5,
+    "reason": "The Charter Research homepage appears to be the primary patient-facing clinical-trials page, but the provided evidence shows no condition search, location filtering, study listings, eligibility summaries, or clear express-interest flow. The evidence confirms that Charter Research conducts trials and mentions an Orlando office, but does not establish its total number of locations or whether it is an independent site or larger site group.",
+    "confidence": "low"
+}

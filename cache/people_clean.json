@@ -1,352 +1,289 @@
 [
     {
-        "name": "Ailya S.",
-        "title": "Clinical Research Coordinator II",
-        "company": "Toronto General Hospital",
-        "location": "Toronto, Ontario, Canada",
-        "linkedin_url": "https://ca.linkedin.com/in/ailya-s-2a9bb118"
-    },
-    {
-        "name": "Neha Gunaji",
-        "title": "Clinical Research Coordinator",
-        "company": "Pharma Medica Research Inc.",
-        "location": "Toronto, Ontario, Canada",
-        "linkedin_url": "https://ca.linkedin.com/in/nehagunaji"
-    },
-    {
-        "name": "Isabel W.",
-        "title": "Clinical Research Coordinator III",
-        "company": "University Health Network",
-        "location": "Canada",
-        "linkedin_url": "https://ca.linkedin.com/in/isawoz"
-    },
-    {
-        "name": "Charlotte Chin",
-        "title": "Clinical Research Coordinator",
-        "company": "Sunnybrook",
-        "location": "Markham, Ontario, Canada",
-        "linkedin_url": "https://ca.linkedin.com/in/charlotte-chin-1710a9251"
-    },
-    {
-        "name": "Jiayun Chen",
-        "title": "Clinical Research Coordinator, CCRP",
-        "company": "Toronto General Hospital, UHN",
-        "location": "Canada",
-        "linkedin_url": "https://ca.linkedin.com/in/jiayun-chen-1085a159"
-    },
-    {
-        "name": "Alyssa Schleifer",
-        "title": "Clinical Research Coordinator",
-        "company": "University Health Network",
-        "location": "Greater Toronto Area, Canada",
-        "linkedin_url": "https://ca.linkedin.com/in/alyssa-schleifer-2457881a3"
-    },
-    {
-        "name": "Jill Sellar",
-        "title": "Clinical Research Coordinator",
-        "company": "Centricity Research",
-        "location": "Mississauga, Ontario, Canada",
-        "linkedin_url": "https://ca.linkedin.com/in/jill-sellar-8a382114a"
-    },
-    {
-        "name": "Eisha A.",
-        "title": "Clinical Research Coordinator, Research Operations",
-        "company": "The Hospital for Sick Children",
-        "location": "Greater Toronto Area, Canada",
-        "linkedin_url": "https://ca.linkedin.com/in/eisha-a-0b1b33194"
-    },
-    {
-        "name": "Norberto Garcia MD",
-        "title": "Clinical Research Coordinator",
-        "company": "Sunnybrook Research Institute",
-        "location": "Toronto, Ontario, Canada",
-        "linkedin_url": "https://ca.linkedin.com/in/norbertogarcia"
-    },
-    {
-        "name": "Mishal A.",
-        "title": "Clinical Research Coordinator",
-        "company": "Unity Health Toronto",
-        "location": "Canada",
-        "linkedin_url": "https://ca.linkedin.com/in/mishalali00"
-    },
-    {
-        "name": "Kulpreet KAUR",
-        "title": "Clinical Research Coordinator",
-        "company": "North York Diagnostics and Cardiac Research Centre",
-        "location": "Mississauga, Ontario, Canada",
-        "linkedin_url": "https://ca.linkedin.com/in/kulpreet-kaur-999b7721a"
-    },
-    {
-        "name": "Saima Matloob",
-        "title": "M.D. Clinical Research Coordinator",
-        "company": "Cliantha Research Limited",
-        "location": "Mississauga, Ontario, Canada",
-        "linkedin_url": "https://ca.linkedin.com/in/saima-matloob-4289a818"
-    },
-    {
-        "name": "Ambrocio Tuason",
-        "title": "Clinical Research Coordinator",
-        "company": "Cliantha Research Limited",
-        "location": "Brampton, Ontario, Canada",
-        "linkedin_url": "https://ca.linkedin.com/in/ambrocio-tuason-a3a666205"
-    },
-    {
-        "name": "Joel Christopher",
-        "title": "Clinical Research Coordinator",
-        "company": "Inflamax Research",
-        "location": "Mississauga, Ontario, Canada",
-        "linkedin_url": "https://ca.linkedin.com/in/joel-manojchris"
-    },
-    {
-        "name": "Prabhu Loganathan, ACRP",
-        "title": "Lead Clinical Research Coordinator",
-        "company": "Cliantha Research Limited",
-        "location": "Mississauga, Ontario, Canada",
-        "linkedin_url": "https://ca.linkedin.com/in/prabhu-loganathan-acrp-9930a7207"
-    },
-    {
-        "name": "Alina Arshad",
-        "title": "Clinical Research Coordinator",
-        "company": "DermEdge",
-        "location": "Mississauga, Ontario, Canada",
-        "linkedin_url": "https://ca.linkedin.com/in/alina-arshad"
-    },
-    {
-        "name": "Victor Parise",
-        "title": "Clinical Research Coordinator",
-        "company": "Cliantha Research Limited",
-        "location": "Mississauga, Ontario, Canada",
-        "linkedin_url": "https://ca.linkedin.com/in/victor-parise-6b051a90"
-    },
-    {
-        "name": "Khrystyna Gomenyuk",
-        "title": "Clinical Research Coordinator",
-        "company": "ClinSurge Research",
-        "location": "Mississauga, Ontario, Canada",
-        "linkedin_url": "https://ca.linkedin.com/in/khrystynagomenyuk"
-    },
-    {
-        "name": "Nicole D'Souza",
-        "title": "Country Study Manager",
-        "company": "Roche",
-        "location": "Mississauga, Ontario, Canada",
-        "linkedin_url": "https://ca.linkedin.com/in/nicole-d-souza-6a61b246"
-    },
-    {
-        "name": "Sanjida Nishat",
-        "title": "Clinical Research Coordinator",
-        "company": "Centricity Research",
-        "location": "Brampton, Ontario, Canada",
-        "linkedin_url": "https://ca.linkedin.com/in/sanjida-nishat-74201a265"
-    },
-    {
-        "name": "Vinayak L.",
-        "title": "Clinical Research Coordinator - RN",
-        "company": "William Osler Health System",
-        "location": "Brampton, Ontario, Canada",
-        "linkedin_url": "https://ca.linkedin.com/in/vinayak-l-810804126"
-    },
-    {
-        "name": "Manvir Singh",
-        "title": "Clinical Research Coordinator (Oncology)",
-        "company": "Merck",
-        "location": "Brampton, Ontario, Canada",
-        "linkedin_url": "https://ca.linkedin.com/in/manvirsinghcrc"
-    },
-    {
-        "name": "Amarjot Kaur Bhatia",
-        "title": "Clinical Research Coordinator/Associate",
-        "company": "Cardio Health Inc.",
-        "location": "Brampton, Ontario, Canada",
-        "linkedin_url": "https://ca.linkedin.com/in/amarjot-kaur-bhatia"
-    },
-    {
-        "name": "Param Kailey",
-        "title": "Lead Clinical Research Coordinator",
-        "company": "Brampton Clinical Trials",
-        "location": "Canada",
-        "linkedin_url": "https://ca.linkedin.com/in/param-kailey-1469633a"
-    },
-    {
-        "name": "Collin Thompson",
-        "title": "Clinical Research Coordinator Intern",
-        "company": "Bertucci MedSpa",
-        "location": "Brampton, Ontario, Canada",
-        "linkedin_url": "https://ca.linkedin.com/in/collin-thompson-604329275"
-    },
-    {
-        "name": "Arunya Sithi",
-        "title": "Clinical Research Coordinator - Oncology",
-        "company": "William Osler Health System",
-        "location": "Greater Toronto Area, Canada",
-        "linkedin_url": "https://ca.linkedin.com/in/arunya-sithi-aa1629223"
-    },
-    {
-        "name": "Kaylee Spaeth",
-        "title": "Clinical Trial Coordinator",
-        "company": "Dermatology on Bloor",
-        "location": "Whitby, Ontario, Canada",
-        "linkedin_url": "https://ca.linkedin.com/in/kaylee-spaeth"
-    },
-    {
-        "name": "Sierra Birchard",
-        "title": "Clinical Trial Coordinator, Cancer Clinical Research",
-        "company": "Kingston Health Sciences Centre",
-        "location": "Kingston, Ontario, Canada",
-        "linkedin_url": "https://ca.linkedin.com/in/sierra-birchard-0931b91a3"
-    },
-    {
-        "name": "Stephanie Boyadjian",
-        "title": "Clinical Trials Coordinator",
-        "company": "York Dermatology Clinic & Research Centre",
-        "location": "Vaughan, Ontario, Canada",
-        "linkedin_url": "https://ca.linkedin.com/in/stephanie-boyadjian-43a246238"
-    },
-    {
-        "name": "Kathy Henry",
-        "title": "Clinical Trial Coordinator",
-        "company": "PHMPC",
-        "location": "Ottawa, Ontario, Canada",
-        "linkedin_url": "https://ca.linkedin.com/in/kathy-henry-102015a"
-    },
-    {
-        "name": "McKenna S.",
-        "title": "Patient Recruitment Coordinator",
-        "company": "Medpace",
-        "location": "Denver Metropolitan Area",
-        "linkedin_url": "https://www.linkedin.com/in/mckenna-s-501bb9174"
-    },
-    {
-        "name": "Julia Matsuzaka",
-        "title": "Patient Recruitment Coordinator III",
-        "company": "",
+        "name": "Leann Harris",
+        "title": "Certified Clinical Research Coordinator",
+        "company": "Valley Women's Clinic, PLLC",
         "location": "",
-        "linkedin_url": "https://www.linkedin.com/in/julia-matsuzaka-975982108"
+        "linkedin_url": "https://www.linkedin.com/in/leann-harris-5115a320"
     },
     {
-        "name": "Edna K.",
-        "title": "Clinical Operations, Leader | 20+ Years Global",
-        "company": "",
-        "location": "",
-        "linkedin_url": "https://www.linkedin.com/in/edna-k-5873902"
-    },
-    {
-        "name": "Bhavya. D, BDS",
-        "title": "Lead Clinical Research Associate",
-        "company": "",
-        "location": "",
-        "linkedin_url": "https://ca.linkedin.com/in/bhavya-d-bds-8b44a3253"
-    },
-    {
-        "name": "Annie St-Pere",
-        "title": "Project Manager",
-        "company": "Centre de recherche du CHUM (CRCHUM)",
-        "location": "Greater Montreal Metropolitan Area",
-        "linkedin_url": "https://ca.linkedin.com/in/anniestpere"
-    },
-    {
-        "name": "Sarah Mhowwala",
-        "title": "Senior Patient Recruitment Specialist",
-        "company": "Revival Research Institute, LLC",
-        "location": "Karāchi, Sindh, Pakistan",
-        "linkedin_url": "https://pk.linkedin.com/in/sarah-mhowwala-004290144"
-    },
-    {
-        "name": "Tracy Reed",
-        "title": "Senior Clinical Research Coordinator",
-        "company": "Hamilton Health Sciences",
-        "location": "Hamilton, Ontario, Canada",
-        "linkedin_url": "https://ca.linkedin.com/in/tracy-reed-42575040"
-    },
-    {
-        "name": "Nusrat Jahan",
-        "title": "Senior Clinical Research Coordinator",
-        "company": "Dynamic drug advancement",
-        "location": "Toronto, Ontario, Canada",
-        "linkedin_url": "https://ca.linkedin.com/in/nusrat-jahan-9b249817b"
-    },
-    {
-        "name": "Himal Ghimire",
-        "title": "Senior Clinical Research Coordinator",
-        "company": "The Hospital for Sick Children",
-        "location": "Greater Toronto Area, Canada",
-        "linkedin_url": "https://ca.linkedin.com/in/himal-ghimire-b9b918186"
-    },
-    {
-        "name": "Catherine Forrester",
-        "title": "Senior Clinical Research Coordinator",
-        "company": "Toronto General Hospital",
-        "location": "M9B 0A1",
-        "linkedin_url": "https://ca.linkedin.com/in/catherine-forrester-a35490397"
-    },
-    {
-        "name": "Mary Jane Bacolor",
-        "title": "Clinical Research Coordinator II",
-        "company": "Toronto Memory Program",
-        "location": "Markham, Ontario, Canada",
-        "linkedin_url": "https://ca.linkedin.com/in/mary-jane-bacolor-0b627870"
-    },
-    {
-        "name": "Melissa Cervantes",
-        "title": "Senior Clinical Research Coordinator",
-        "company": "Baycrest Health Sciences",
-        "location": "Canada",
-        "linkedin_url": "https://ca.linkedin.com/in/melissa-cervantes-83541b69"
-    },
-    {
-        "name": "Monica Vo",
-        "title": "Senior Clinical Research Manager, Strategy & Study Start Up",
-        "company": "Centre for Neurology Studies Biotechnology",
-        "location": "Burnaby, British Columbia, Canada",
-        "linkedin_url": "https://ca.linkedin.com/in/monica-vo-28a059167"
-    },
-    {
-        "name": "Paula M.",
-        "title": "Senior Clinical Research Coordinator",
-        "company": "Providence Health Care",
-        "location": "Vancouver, British Columbia, Canada",
-        "linkedin_url": "https://ca.linkedin.com/in/paula-m-6aaa5a104"
-    },
-    {
-        "name": "Reva Persaud MD",
+        "name": "Emily Carner",
         "title": "Senior Clinical Research Associate",
-        "company": "MedStar Washington Hospital Center",
-        "location": "Hyattsville, Maryland, United States",
-        "linkedin_url": "https://www.linkedin.com/in/reva-persaud-md-11a1bb200"
+        "company": "Novo Nordisk",
+        "location": "Seattle, Washington, United States",
+        "linkedin_url": "https://www.linkedin.com/in/emilytalbotagain"
     },
     {
-        "name": "Maria Christeena Fernando",
-        "title": "Clinical Trial Coordinator",
-        "company": "Bristol NHS Foundation Trust",
-        "location": "Bristol, England, United Kingdom",
-        "linkedin_url": "https://uk.linkedin.com/in/maria-christeena-fernando-7343221b7"
+        "name": "Phi Duong",
+        "title": "Clinical Research Supervisor, CCRP",
+        "company": "",
+        "location": "",
+        "linkedin_url": "https://www.linkedin.com/in/phiquyduong"
     },
     {
-        "name": "Anna Lysina",
-        "title": "Clinical Trial Coordinator - Regulatory",
-        "company": "Merck Canada",
-        "location": "Montreal, Quebec, Canada",
-        "linkedin_url": "https://ca.linkedin.com/in/anna-lysina-298ab3178"
+        "name": "Sya Magston",
+        "title": "Clinical Research Coordinator",
+        "company": "UW Medicine",
+        "location": "",
+        "linkedin_url": "https://www.linkedin.com/in/syamagee"
     },
     {
-        "name": "Lindsey Tashlin",
-        "title": "Clinical Trial Coordinator/Project Coordinator",
-        "company": "University of East Anglia/University Health Network",
-        "location": "United Kingdom",
-        "linkedin_url": "https://uk.linkedin.com/in/lindsey-tashlin-98186615"
+        "name": "Jacob Reusch",
+        "title": "Clinical Research Coordinator",
+        "company": "",
+        "location": "",
+        "linkedin_url": "https://www.linkedin.com/in/jacob-reusch"
     },
     {
-        "name": "Amanda Scanga",
-        "title": "Clinical Trial Coordinator - Regulatory",
-        "company": "Merck Canada",
-        "location": "Greater Montreal Metropolitan Area",
-        "linkedin_url": "https://ca.linkedin.com/in/amanda-scanga-51b61817a"
+        "name": "Sandra Howard",
+        "title": "Clinical Research Coordinator",
+        "company": "DM Clinical Research",
+        "location": "New Braunfels, Texas, United States",
+        "linkedin_url": "https://www.linkedin.com/in/sandra-howard-12b54451"
     },
     {
-        "name": "Alexandra Rutherford",
-        "title": "Clinical Trial Coordinator",
-        "company": "MSD in the UK",
-        "location": "London, England, United Kingdom",
-        "linkedin_url": "https://uk.linkedin.com/in/alexandra-rutherford-a26295217"
+        "name": "Lisa Miller",
+        "title": "Clinical Research Manager",
+        "company": "University of Washington",
+        "location": "Everett, Washington, United States",
+        "linkedin_url": "https://www.linkedin.com/in/lisa-miller-9a62942b8"
+    },
+    {
+        "name": "Diane Bowman",
+        "title": "Senior Clinical Research Associate",
+        "company": "Premier Research",
+        "location": "Ellensburg, Washington, United States",
+        "linkedin_url": "https://www.linkedin.com/in/diane-m-bowman"
+    },
+    {
+        "name": "Stephanie Powell",
+        "title": "Clinical Research Coordinator",
+        "company": "",
+        "location": "Seattle, Washington, United States",
+        "linkedin_url": "https://www.linkedin.com/in/stephanie-powell-984146250"
+    },
+    {
+        "name": "Erin Morones",
+        "title": "Clinical Trial Portfolio Lead",
+        "company": "City of Hope",
+        "location": "Dallas-Fort Worth Metroplex",
+        "linkedin_url": "https://www.linkedin.com/in/erin-morones-ccrc-4060691b6"
+    },
+    {
+        "name": "Jaime Gordon",
+        "title": "Clinical Research Coordinator",
+        "company": "Suburban Research Associates",
+        "location": "Lafayette Hill, Pennsylvania, United States",
+        "linkedin_url": "https://www.linkedin.com/in/jaime-gordon-55a4207"
+    },
+    {
+        "name": "Catherine Cricket Farr",
+        "title": "Clinical Research Coordinator",
+        "company": "Seattle Institute for Biomedical",
+        "location": "",
+        "linkedin_url": "https://www.linkedin.com/in/catherine-cricket-farr-1a5b6017"
+    },
+    {
+        "name": "Sharon Hwee",
+        "title": "Clinical Research Coordinator III",
+        "company": "University of Minnesota",
+        "location": "Greater Minneapolis-St. Paul Area",
+        "linkedin_url": "https://www.linkedin.com/in/sharonhwee"
+    },
+    {
+        "name": "Brittney Calivoso",
+        "title": "Clinical Research Coordinator",
+        "company": "One of a Kind Clinical Research Center",
+        "location": "",
+        "linkedin_url": "https://www.linkedin.com/in/brittney-calivoso-3a2b97194"
+    },
+    {
+        "name": "Donielle O'Connor",
+        "title": "Research Director",
+        "company": "",
+        "location": "",
+        "linkedin_url": "https://www.linkedin.com/in/donielleoconnor"
+    },
+    {
+        "name": "Patty Adams",
+        "title": "Senior Clinical Research Coordinator",
+        "company": "Clinical Research Works",
+        "location": "Bristol, CT",
+        "linkedin_url": "https://www.linkedin.com/in/patty-adams-b609ab9b"
+    },
+    {
+        "name": "Ren Ruivivar",
+        "title": "Clinical Research Coordinator I",
+        "company": "UChicago Medicine",
+        "location": "Chicago, Illinois, United States",
+        "linkedin_url": "https://www.linkedin.com/in/renruivivar"
+    },
+    {
+        "name": "Jessica Benton",
+        "title": "Clinical Research Coordinator II",
+        "company": "Seattle Children's Research",
+        "location": "Seattle, Washington, United States",
+        "linkedin_url": "https://www.linkedin.com/in/jessica-benton-462574157"
+    },
+    {
+        "name": "Regina Juarez",
+        "title": "Assistant Clinical Research Coordinator",
+        "company": "University of California, San Francisco",
+        "location": "San Francisco, California, United States",
+        "linkedin_url": "https://www.linkedin.com/in/regina-juarez9"
+    },
+    {
+        "name": "Randhara Kotuwelle",
+        "title": "Clinical Research Coordinator",
+        "company": "University of Washington",
+        "location": "Seattle, Washington, United States",
+        "linkedin_url": "https://www.linkedin.com/in/randhara-kotuwelle-0345231b8"
+    },
+    {
+        "name": "Starlene Cheeseman",
+        "title": "Clinical Research Associate",
+        "company": "IQVIA",
+        "location": "Melrose, Florida, United States",
+        "linkedin_url": "https://www.linkedin.com/in/starlene-cheeseman-43987b3b"
+    },
+    {
+        "name": "Elise Duvall",
+        "title": "Patient Recruitment Coordinator and Digital Specialist",
+        "company": "Medpace",
+        "location": "",
+        "linkedin_url": "https://www.linkedin.com/in/elise-duvall-mph-88b216143"
+    },
+    {
+        "name": "Dominique Barragan",
+        "title": "Executive Director",
+        "company": "Seattle Clinical Research Center",
+        "location": "Seattle, Washington, United States",
+        "linkedin_url": "https://www.linkedin.com/in/dominiquebarragan"
+    },
+    {
+        "name": "Brianna Bay",
+        "title": "Patient Recruitment Coordinator II",
+        "company": "Medpace",
+        "location": "Cincinnati, Ohio, United States",
+        "linkedin_url": "https://www.linkedin.com/in/briannabay"
+    },
+    {
+        "name": "Jordan Knighton",
+        "title": "Patient Recruitment coordinator",
+        "company": "",
+        "location": "",
+        "linkedin_url": "https://www.linkedin.com/in/jordankknighton"
+    },
+    {
+        "name": "Tracy Slutzky",
+        "title": "Director of Content",
+        "company": "Continuum Clinical",
+        "location": "",
+        "linkedin_url": "https://www.linkedin.com/in/tracy-slutzky-1a581722"
+    },
+    {
+        "name": "Jay Serna",
+        "title": "Recruitment Manager",
+        "company": "NORTHWEST CLINICAL RESEARCH CENTER",
+        "location": "United States",
+        "linkedin_url": "https://www.linkedin.com/in/jay-serna"
+    },
+    {
+        "name": "Odamesa Igbuya",
+        "title": "Patient Recruitment Coordinator",
+        "company": "Chase Medical Research, LLC",
+        "location": "Naugatuck, Connecticut, United States",
+        "linkedin_url": "https://www.linkedin.com/in/odamesa-igbuya-mha-18a123127"
+    },
+    {
+        "name": "Nicole Elphic",
+        "title": "Director of Project Management",
+        "company": "Scout",
+        "location": "Raleigh-Durham-Chapel Hill Area",
+        "linkedin_url": "https://www.linkedin.com/in/nicole-elphic-21b89750"
+    },
+    {
+        "name": "Amelia Kraft",
+        "title": "Director of Customer Success",
+        "company": "Ursa Health",
+        "location": "Seattle, Washington, United States",
+        "linkedin_url": "https://www.linkedin.com/in/amelia-kraft"
+    },
+    {
+        "name": "Tammy Jones",
+        "title": "Sr CRA",
+        "company": "Syneos Health Clinical Solutions",
+        "location": "Collierville, Tennessee, United States",
+        "linkedin_url": "https://www.linkedin.com/in/tammy-jones-396aa7109"
+    },
+    {
+        "name": "Brook Quist",
+        "title": "Site Director",
+        "company": "DM Clinical Research",
+        "location": "",
+        "linkedin_url": "https://www.linkedin.com/in/brook-quist-6857ab72"
+    },
+    {
+        "name": "Samir Zughni",
+        "title": "Director, North American Clinical Operations",
+        "company": "",
+        "location": "",
+        "linkedin_url": "https://www.linkedin.com/in/samir-zughni-351b4858"
+    },
+    {
+        "name": "M. Jazib Nadeem",
+        "title": "Site Director",
+        "company": "Velocity Clinical Research, Inc.",
+        "location": "Austin, Texas Metropolitan Area",
+        "linkedin_url": "https://www.linkedin.com/in/m-jazib-nadeem-45b238199"
+    },
+    {
+        "name": "Cynthia Minerva Ho",
+        "title": "Executive Director, Office of Research",
+        "company": "Community Health System",
+        "location": "Metropolitan Fresno",
+        "linkedin_url": "https://www.linkedin.com/in/cynthia-minerva-ho-970b1450"
+    },
+    {
+        "name": "Suellen Johnson",
+        "title": "Site Director",
+        "company": "Velocity Clinical Research",
+        "location": "Albuquerque, New Mexico, United States",
+        "linkedin_url": "https://www.linkedin.com/in/suellenjohnson"
+    },
+    {
+        "name": "Mari Livermore",
+        "title": "Site Director/CEO",
+        "company": "Pantheon Clinical Research",
+        "location": "",
+        "linkedin_url": "https://www.linkedin.com/in/marilivermore"
+    },
+    {
+        "name": "Brandon Catallini",
+        "title": "Site Director",
+        "company": "Henderson Clinical Trials",
+        "location": "",
+        "linkedin_url": "https://www.linkedin.com/in/bcatallini"
+    },
+    {
+        "name": "Michael Maresca.",
+        "title": "Site Director",
+        "company": "Health Synergy Clinical Research",
+        "location": "United States",
+        "linkedin_url": "https://www.linkedin.com/in/michael-maresca-m-s-9362531b0"
+    },
+    {
+        "name": "Erica Coleman",
+        "title": "Site Director",
+        "company": "Velocity Clinical Research, Inc.",
+        "location": "Fontana, California, United States",
+        "linkedin_url": "https://www.linkedin.com/in/erica-coleman-012ba7118"
+    },
+    {
+        "name": "Neepa Patel",
+        "title": "Site Director",
+        "company": "Velocity Clinical Research, Inc.",
+        "location": "Greater",
+        "linkedin_url": "https://www.linkedin.com/in/neepa-patel-31059733"
     }
 ]

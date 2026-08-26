@@ -1,0 +1,9 @@
+{
+    "company": "Accellacare",
+    "trial_finder_url": "https://www.accellacare.com/join-a-study",
+    "trial_finder_weakness": 4,
+    "organization_type": "large_organization",
+    "site_size_fit": 0,
+    "reason": "The primary patient-facing trial page appears to be Accellacare's Join a Study page, supported by a clear patient participation and interest-registration flow. However, the provided evidence does not show condition, location, or other meaningful search filters. Accellacare is explicitly part of ICON plc and is described as ICON's global clinical research network, making it a large organization and a poor fit for BridgeMD's small independent-site ICP.",
+    "confidence": "high"
+}

@@ -1,0 +1,9 @@
+{
+    "company": "UChicago Medicine",
+    "trial_finder_url": "https://www.uchicagomedicine.org/find-a-clinical-trial",
+    "trial_finder_weakness": 4,
+    "organization_type": "large_organization",
+    "site_size_fit": 0,
+    "reason": "The primary patient-facing trial discovery page appears to be UChicago Medicine's dedicated Find a Clinical Trial page. The search evidence indicates a patient-oriented finder, but does not show whether it supports condition, location, eligibility, or interest filters, so the experience is rated acceptable with low confidence. UChicago Medicine is affiliated with the University of Chicago and is described as conducting more clinical trials than any other hospital in Illinois, indicating a major academic medical center rather than a small independent site.",
+    "confidence": "low"
+}

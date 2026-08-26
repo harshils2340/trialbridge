@@ -1,0 +1,9 @@
+{
+    "company": "The Mount Sinai Hospital",
+    "trial_finder_url": "https://www.mountsinai.org/clinical-trials",
+    "trial_finder_weakness": 6,
+    "organization_type": "large_organization",
+    "site_size_fit": 0,
+    "reason": "The Mount Sinai clinical trials page appears to be the primary patient-facing entry point, with a separate current-studies page showing open studies. However, the provided evidence does not show condition or location filtering, understandable study summaries, eligibility guidance, or a clear express-interest flow. Mount Sinai is identified as a hospital and is associated with multiple locations and an academic medical school, making it a major academic health system rather than a small independent research site.",
+    "confidence": "medium"
+}

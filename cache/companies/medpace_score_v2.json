@@ -1,0 +1,9 @@
+{
+    "company": "Medpace",
+    "trial_finder_url": "https://www.medpace.com/study-participants/",
+    "trial_finder_weakness": 8,
+    "organization_type": "large_organization",
+    "site_size_fit": 0,
+    "reason": "The Study Participant Opportunities page appears to be Medpace's primary patient-facing clinical-trial entry point, but the provided evidence does not show condition or location search, meaningful filters, study cards, eligibility summaries, or a clear express-interest flow. Medpace is explicitly described as a global, full-service CRO conducting trials for biotechnology, pharmaceutical, and medical-device companies, making it a poor fit for BridgeMD's small independent-site ICP.",
+    "confidence": "medium"
+}

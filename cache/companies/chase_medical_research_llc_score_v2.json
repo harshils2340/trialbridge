@@ -1,0 +1,9 @@
+{
+    "company": "Chase Medical Research, LLC",
+    "trial_finder_url": "https://www.chasemr.com/participant-info/resources",
+    "trial_finder_weakness": 10,
+    "organization_type": "independent_site",
+    "site_size_fit": 10,
+    "reason": "The participant-facing resources page appears to direct people to ClinicalTrials.gov and other external resources rather than providing an on-site trial finder with condition, location, eligibility, filtering, or an express-interest flow. The evidence identifies Chase Medical Research as a clinical research site in Waterbury, Connecticut, with no indication of a hospital network, academic center, CRO, or multi-location organization.",
+    "confidence": "medium"
+}

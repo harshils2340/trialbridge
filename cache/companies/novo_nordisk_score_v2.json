@@ -1,0 +1,9 @@
+{
+    "company": "Novo Nordisk",
+    "trial_finder_url": "https://www.novonordisk-trials.com/search.html",
+    "trial_finder_weakness": 4,
+    "organization_type": "large_organization",
+    "site_size_fit": 0,
+    "reason": "Novo Nordisk has a dedicated patient-facing clinical-trial search site, including a search page and trial information pages. The provided evidence does not reveal the quality of filtering, eligibility summaries, or signup flow, so the discovery experience appears acceptable but cannot be assessed as excellent. Novo Nordisk is a major pharmaceutical sponsor conducting studies across more than 5,000 trial sites, making it a poor fit for BridgeMD's small independent research-site ICP.",
+    "confidence": "medium"
+}

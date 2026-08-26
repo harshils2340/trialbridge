@@ -1,0 +1,9 @@
+{
+    "company": "U.S. Department of Veterans Affairs",
+    "trial_finder_url": "https://www.research.va.gov/for_veterans/find_studies.cfm",
+    "trial_finder_weakness": 4,
+    "organization_type": "large_organization",
+    "site_size_fit": 0,
+    "reason": "The VA has a dedicated patient-facing page for finding VA-sponsored clinical trials, including location-oriented discovery and links to clinical trials and facilities. The evidence does not show strong condition filtering, study-card usability, eligibility summaries, or an easy express-interest flow, so the experience appears acceptable but potentially limited. The organization is a large national government healthcare and research system, not a small independent research site.",
+    "confidence": "high"
+}

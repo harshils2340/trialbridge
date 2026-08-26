@@ -1,0 +1,9 @@
+{
+    "company": "Tribe Clinical Research",
+    "trial_finder_url": "https://tribeclinicalresearch.com/clinical-trials/",
+    "trial_finder_weakness": 6,
+    "organization_type": "small_site_group",
+    "site_size_fit": 8,
+    "reason": "The Clinical Trials page appears to be the primary patient-facing location for browsing current and upcoming studies. The search result does not show condition or location filters, eligibility summaries, study cards, or a clear express-interest flow, so discovery appears noticeably difficult. The site says it conducts trials at several locations and partner offices, indicating a small multi-location research group rather than a single independent site.",
+    "confidence": "low"
+}

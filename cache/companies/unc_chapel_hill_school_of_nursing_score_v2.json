@@ -1,0 +1,9 @@
+{
+    "company": "UNC Chapel Hill School of Nursing",
+    "trial_finder_url": "",
+    "trial_finder_weakness": 10,
+    "organization_type": "large_organization",
+    "site_size_fit": 0,
+    "reason": "The evidence identifies this organization as a school within UNC-Chapel Hill, an academic institution, and does not show a dedicated patient-facing clinical-trial finder. Search results reference research assistants, clinical trials, and teleconsent research, but no condition or location search, study listings, eligibility summaries, or patient interest flow.",
+    "confidence": "high"
+}

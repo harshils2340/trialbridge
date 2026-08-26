@@ -1,0 +1,9 @@
+{
+    "company": "Ursa Health",
+    "trial_finder_url": "",
+    "trial_finder_weakness": 10,
+    "organization_type": "unknown",
+    "site_size_fit": 5,
+    "reason": "The results describe Ursa Health as a healthcare data analytics and software company, not as a patient-facing clinical research site. No clinical-trial finder, condition or location search, study listings, or patient enrollment flow is evident.",
+    "confidence": "low"
+}

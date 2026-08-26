@@ -1,0 +1,9 @@
+{
+    "company": "Artemis Institute for Clinical Research",
+    "trial_finder_url": "https://www.artemis-research.com/",
+    "trial_finder_weakness": 6,
+    "organization_type": "small_site_group",
+    "site_size_fit": 8,
+    "reason": "The company homepage is explicitly patient-facing and promotes signing up for clinical trials, with study-area and phase pages plus a refer-a-friend flow. However, the evidence does not show condition or location search, useful filters, eligibility summaries, or a clear study-level express-interest workflow, so discovery appears noticeably difficult. Artemis is described as a multi-site Southern California research organization and was acquired by Headlands Research, indicating a small site group rather than an independent single site, although it is now affiliated with a larger network.",
+    "confidence": "medium"
+}

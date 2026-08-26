@@ -1,0 +1,9 @@
+{
+    "company": "Clinical Study Finder",
+    "trial_finder_url": "",
+    "trial_finder_weakness": 10,
+    "organization_type": "unknown",
+    "site_size_fit": 5,
+    "reason": "The provided search results do not identify a primary patient-facing trial finder operated by Clinical Study Finder. They mainly reference unrelated sponsor, hospital, nonprofit, and resource pages, with one result mentioning a platform associated with Know Rare. There is no reliable evidence about the organization's ownership, locations, study portfolio, or size.",
+    "confidence": "low"
+}

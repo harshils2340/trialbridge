@@ -1,0 +1,9 @@
+{
+    "company": "University of Washington",
+    "trial_finder_url": "https://clinicaltrials.uwmedicine.org/",
+    "trial_finder_weakness": 4,
+    "organization_type": "large_organization",
+    "site_size_fit": 0,
+    "reason": "The UW Clinical Trials Office homepage appears to be the primary patient-facing trial discovery portal, covering studies across the University of Washington, Fred Hutch Cancer Center, and Seattle Children's Hospital. Its dedicated centralized portal is a positive signal, but the provided evidence does not show condition or location search, eligibility summaries, filters, or an easy express-interest flow. The university affiliation and multi-institution scope clearly indicate a large academic organization rather than an independent research site.",
+    "confidence": "medium"
+}

@@ -1,0 +1,9 @@
+{
+    "company": "Northwestern University",
+    "trial_finder_url": "https://www.feinberg.northwestern.edu/research/clinical-trials/index.html",
+    "trial_finder_weakness": 4,
+    "organization_type": "large_organization",
+    "site_size_fit": 0,
+    "reason": "The Feinberg School of Medicine page appears to be the primary patient-facing trial finder, offering searches by department, condition, or treatment. This is a meaningful discovery experience, though the evidence does not show location filtering, eligibility summaries, study cards, or an easy express-interest flow. Northwestern is a university-affiliated academic medical centre with hundreds of studies and multiple clinical research departments, making it a poor fit for BridgeMD's small independent-site ICP.",
+    "confidence": "high"
+}

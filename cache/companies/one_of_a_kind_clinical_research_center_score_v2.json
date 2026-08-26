@@ -1,0 +1,9 @@
+{
+    "company": "One of a Kind Clinical Research Center",
+    "trial_finder_url": "https://1-oak.net/",
+    "trial_finder_weakness": 10,
+    "organization_type": "independent_site",
+    "site_size_fit": 10,
+    "reason": "The company website appears to be the primary patient-facing page, but the provided search evidence does not show a condition or location search, study filters, understandable trial listings, eligibility summaries, or an express-interest flow. The organization is identified as an LLC and a clinical research center, with no evidence of university, hospital-system, CRO, sponsor, or large multi-site affiliation, supporting classification as an independent research site.",
+    "confidence": "medium"
+}

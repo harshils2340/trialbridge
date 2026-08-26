@@ -1,0 +1,9 @@
+{
+    "company": "Southcoast Health",
+    "trial_finder_url": "https://www.southcoasthealth.com/clinicaltrialresearchstudies",
+    "trial_finder_weakness": 8,
+    "organization_type": "large_organization",
+    "site_size_fit": 0,
+    "reason": "The primary apparent patient-facing page is a general clinical-trials information page, while separate cancer and heart-and-vascular pages mention open trials. The evidence does not show condition or location search, meaningful filters, eligibility summaries, or a clear express-interest flow, suggesting a weak discovery experience. Southcoast Health appears to be a hospital-based health system with multiple specialties, locations, and dedicated clinical research roles, making it a poor fit for BridgeMD's small independent-site ICP.",
+    "confidence": "medium"
+}

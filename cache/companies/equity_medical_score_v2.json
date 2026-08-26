@@ -1,0 +1,9 @@
+{
+    "company": "Equity Medical",
+    "trial_finder_url": "https://equity-med.com/",
+    "trial_finder_weakness": 4,
+    "organization_type": "small_site_group",
+    "site_size_fit": 8,
+    "reason": "The company website appears to be the primary patient-facing destination, explicitly promoting clinical trials and providing condition-focused and location-focused pages, including a Manhattan location. This suggests an accessible discovery experience, but the provided evidence does not confirm robust filtering, eligibility summaries, study cards, or a clear express-interest flow. References to presence in both urban and rural areas suggest a small multi-location research site group rather than a single independent clinic.",
+    "confidence": "low"
+}

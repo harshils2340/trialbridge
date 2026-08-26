@@ -1,0 +1,9 @@
+{
+    "company": "Alliance Clinical Network",
+    "trial_finder_url": "https://allianceclinicalnetwork.com/",
+    "trial_finder_weakness": 10,
+    "organization_type": "small_site_group",
+    "site_size_fit": 8,
+    "reason": "The homepage appears to be the primary public-facing entry point, but the provided results show no condition or location search, study cards, eligibility summaries, filters, or clear patient express-interest flow. Alliance Clinical Network is described as a clinical research site network with several flagship locations, making it a small multi-location site group rather than an independent single site.",
+    "confidence": "low"
+}

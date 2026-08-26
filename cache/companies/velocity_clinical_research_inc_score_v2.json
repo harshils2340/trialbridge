@@ -1,0 +1,9 @@
+{
+    "company": "Velocity Clinical Research, Inc.",
+    "trial_finder_url": "https://apps.apple.com/us/app/vision-engage/id6443581547",
+    "trial_finder_weakness": 6,
+    "organization_type": "large_organization",
+    "site_size_fit": 2,
+    "reason": "The Vision Engage App Store listing appears to be the primary patient-facing trial-discovery experience, stating that it helps current and prospective participants access clinical trials. However, the evidence does not show condition or location search, filters, eligibility summaries, or a clear express-interest flow. Velocity is described as operating clinical trials across the U.S. and Europe, indicating a substantial multi-site organization rather than a small independent research site.",
+    "confidence": "medium"
+}

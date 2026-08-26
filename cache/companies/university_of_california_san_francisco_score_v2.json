@@ -1,0 +1,9 @@
+{
+    "company": "University of California, San Francisco",
+    "trial_finder_url": "https://clinicaltrials.ucsf.edu/",
+    "trial_finder_weakness": 4,
+    "organization_type": "large_organization",
+    "site_size_fit": 0,
+    "reason": "The UCSF Clinical Trials page appears to be the primary patient-facing trial discovery page, with search and browse functionality. However, the provided evidence does not show condition or location filters, eligibility summaries, or an easy express-interest flow. UCSF is explicitly a university and is associated with UCSF Medical Center, indicating a major academic medical centre rather than a small independent research site.",
+    "confidence": "high"
+}

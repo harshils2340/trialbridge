@@ -1,0 +1,9 @@
+{
+    "company": "ICON plc",
+    "trial_finder_url": "https://www.iconclinicaltrials.com/trials",
+    "trial_finder_weakness": 4,
+    "organization_type": "large_organization",
+    "site_size_fit": 0,
+    "reason": "ICON appears to operate a dedicated patient-facing clinical-trial site with a current-trials page and an option to register interest. However, the provided evidence does not show condition or location filtering, eligibility summaries, or a clearly streamlined express-interest flow. ICON is identified as a global clinical research organization with extensive corporate, careers, solutions, laboratory, and investor-style materials, making it a poor fit for BridgeMD's small independent research-site ICP.",
+    "confidence": "medium"
+}

@@ -1,0 +1,9 @@
+{
+    "company": "Medzown",
+    "trial_finder_url": "https://medzown.com/individuals-new/",
+    "trial_finder_weakness": 4,
+    "organization_type": "unknown",
+    "site_size_fit": 5,
+    "reason": "Medzown's Individuals page appears to be the primary patient-facing entry point, and the company describes an AI- and scientist-supported service for matching patients with treatments and clinical trials. However, the provided evidence does not show condition or location search, study cards, eligibility summaries, or an express-interest flow. Medzown appears to be a precision-medicine technology and matching company rather than an independent clinical research site or clearly defined site group, so its organization type and ICP fit are unclear.",
+    "confidence": "low"
+}

@@ -1,0 +1,9 @@
+{
+    "company": "MONROE BIOMEDICAL RESEARCH LLC",
+    "trial_finder_url": "https://monroeresearch.com/find-a-study/",
+    "trial_finder_weakness": 4,
+    "organization_type": "small_site_group",
+    "site_size_fit": 8,
+    "reason": "The 'Find a Study at MBR' page is the apparent primary patient-facing trial discovery page and indicates that MBR is seeking participants for studies across Monroe, Charleston, and Louisville. The evidence confirms a dedicated finder and multiple locations, but does not show condition search, meaningful filters, eligibility summaries, or an express-interest workflow. MBR appears to be a small research-site network rather than a hospital, academic centre, CRO, or sponsor; its acquisition of L-MARC and three named locations support the small-site-group classification.",
+    "confidence": "medium"
+}

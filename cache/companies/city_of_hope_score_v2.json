@@ -1,0 +1,9 @@
+{
+    "company": "City of Hope",
+    "trial_finder_url": "https://www.cityofhope.org/patients/clinical-trials/search",
+    "trial_finder_weakness": 4,
+    "organization_type": "large_organization",
+    "site_size_fit": 0,
+    "reason": "The patient-facing trial search page supports browsing trials by location and shows descriptions and statuses, but the evidence does not indicate condition filters, eligibility summaries, or a clear express-interest flow. City of Hope is clearly a large multi-site cancer and research organization, with locations across multiple states and an integrated clinical-trial system spanning 39 sites.",
+    "confidence": "high"
+}

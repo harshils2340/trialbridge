@@ -1,0 +1,9 @@
+{
+    "company": "Civia Health",
+    "trial_finder_url": "https://jointhrive.civiahealth.com/clinical-studies",
+    "trial_finder_weakness": 6,
+    "organization_type": "small_site_group",
+    "site_size_fit": 8,
+    "reason": "The clinical-studies page appears to be Civia Health's primary patient-facing destination for finding research opportunities. However, the available evidence does not demonstrate condition or location search, useful filters, eligibility summaries, study cards, or a clear express-interest flow, so the discovery experience is difficult to assess and may be noticeably weak. Civia Health is described as a clinical study network with sites across the US and UK, which fits a small site group better than an independent single site, although the number and scale of locations are not clear.",
+    "confidence": "low"
+}

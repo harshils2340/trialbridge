@@ -1,0 +1,9 @@
+{
+    "company": "Sanguine Biosciences",
+    "trial_finder_url": "",
+    "trial_finder_weakness": 10,
+    "organization_type": "unknown",
+    "site_size_fit": 5,
+    "reason": "The results describe Sanguine Biosciences as a biospecimen and clinical-research services company. One page references a patient community search tool and another discusses matching patients with trials, but no dedicated patient-facing trial finder, searchable study listings, filters, eligibility summaries, or express-interest flow is evident. The evidence also does not establish whether the organization is a small research site, site group, or large organization.",
+    "confidence": "low"
+}

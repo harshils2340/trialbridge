@@ -1,0 +1,9 @@
+{
+    "company": "Circuit Clinical",
+    "trial_finder_url": "https://circuitclinical.com/",
+    "trial_finder_weakness": 10,
+    "organization_type": "unknown",
+    "site_size_fit": 5,
+    "reason": "The company homepage appears to be the primary patient-facing entry point, but the provided evidence does not show a condition or location search, study listings, filters, eligibility summaries, or an express-interest flow. Circuit Clinical is described as an integrated research organization serving physicians and diverse patient populations, but the evidence does not establish whether it is a small site group or a large organization.",
+    "confidence": "low"
+}

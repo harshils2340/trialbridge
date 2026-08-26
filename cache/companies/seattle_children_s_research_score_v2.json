@@ -1,0 +1,9 @@
+{
+    "company": "Seattle Children's Research",
+    "trial_finder_url": "https://www.seattlechildrens.org/research/research-studies-clinical-trials/",
+    "trial_finder_weakness": 4,
+    "organization_type": "large_organization",
+    "site_size_fit": 0,
+    "reason": "The primary patient-facing result appears to be Seattle Children's 'Pediatric Clinical Trials and Research Studies' page. It includes condition-related filtering parameters and is clearly intended for browsing studies, but the provided evidence does not show location filtering, eligibility summaries, study cards, or an easy express-interest flow. Seattle Children's Research Institute is part of a major children's hospital and research organization, making it a poor fit for the small independent-site ICP.",
+    "confidence": "medium"
+}

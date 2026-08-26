@@ -1,0 +1,9 @@
+{
+    "company": "Seattle Clinical Research Center",
+    "trial_finder_url": "https://www.seattlecrc.com/",
+    "trial_finder_weakness": 8,
+    "organization_type": "independent_site",
+    "site_size_fit": 10,
+    "reason": "The Seattle Clinical Research Center homepage appears to be the primary patient-facing destination, based on its 'Participate Today' positioning. However, the available evidence does not show condition or location search, meaningful filters, study cards, eligibility summaries, or a clear express-interest flow, so the apparent trial discovery experience is noticeably difficult. The organization is described as a dedicated clinical trial investigative site with a single Seattle address and no evidence of a hospital network, university affiliation, CRO, or multi-site structure.",
+    "confidence": "low"
+}

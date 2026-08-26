@@ -1,0 +1,9 @@
+{
+    "company": "American Health Research",
+    "trial_finder_url": "",
+    "trial_finder_weakness": 10,
+    "organization_type": "independent_site",
+    "site_size_fit": 10,
+    "reason": "The search results show a simple company profile and FAQ, but no patient-facing trial finder, condition or location search, study listings, eligibility summaries, or clear express-interest flow. The company is described as a private clinical research company in Charlotte founded by a physician, with subjects generated from its pulmonary practice, which is consistent with a standalone physician-led research site.",
+    "confidence": "low"
+}

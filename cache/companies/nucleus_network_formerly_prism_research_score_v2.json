@@ -1,0 +1,9 @@
+{
+    "company": "Nucleus Network (Formerly Prism Research)",
+    "trial_finder_url": "",
+    "trial_finder_weakness": 10,
+    "organization_type": "unknown",
+    "site_size_fit": 5,
+    "reason": "The provided results are directory, employee, and publication pages; none appears to be a primary patient-facing clinical-trial finder, and there is no evidence of condition or location search, study browsing, eligibility summaries, or an express-interest flow. The evidence confirms clinical-trial activity and Phase I work but does not establish whether the organization is an independent site, small site group, or larger network.",
+    "confidence": "low"
+}

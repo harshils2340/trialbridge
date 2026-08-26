@@ -1,0 +1,9 @@
+{
+    "company": "Children's Health",
+    "trial_finder_url": "",
+    "trial_finder_weakness": 10,
+    "organization_type": "large_organization",
+    "site_size_fit": 0,
+    "reason": "The provided results do not show a clear patient-facing clinical-trial finder for Children's Health. The relevant result describes it as a top children's hospital with a network of pediatric specialists throughout North Texas, indicating a large healthcare organization rather than a small independent research site.",
+    "confidence": "medium"
+}

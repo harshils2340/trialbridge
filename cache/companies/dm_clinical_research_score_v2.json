@@ -1,0 +1,9 @@
+{
+    "company": "DM Clinical Research",
+    "trial_finder_url": "https://www.dmclinicalresearch.com/participate/",
+    "trial_finder_weakness": 8,
+    "organization_type": "large_organization",
+    "site_size_fit": 2,
+    "reason": "The Participate page appears to be the primary patient-facing entry point, but the available evidence only describes broad volunteer recruitment and does not show condition or location search, study cards, eligibility summaries, filters, or a clear study-specific interest flow. DM Clinical Research is described in the results as an integrated national clinical research network, making it a poor fit for the small independent-site ICP.",
+    "confidence": "medium"
+}
