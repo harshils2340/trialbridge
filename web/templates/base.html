@@ -159,6 +159,10 @@
       </details>
       </div>
       <div class="apptop-right">
+      {# Phone only: Bridget's collapsed rail is gone at phone width (it sat over
+         the avatar and the composer's send arrow), so this is the way in. #}
+      <button type="button" class="apptop-bridget" id="apptopBridget" aria-label="Open Bridget" title="Bridget"
+              onclick="if(window.bridgetOpen)window.bridgetOpen()">{{ ic.icon('mark', 'brand-glyph') }}</button>
       {% set notif_total = (site_unread or 0) + (matches_new or 0) + (mentions_new or 0) %}
       <details class="appmenu" id="notifMenu">
         <summary class="appbell" aria-label="Notifications" title="Notifications">

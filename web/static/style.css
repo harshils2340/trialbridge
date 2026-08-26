@@ -11417,3 +11417,22 @@ textarea.is-bridget-writing, input.is-bridget-writing {
     min-width: 0; max-height: 70vh; }
   .appmenu-panel { max-width: calc(100vw - 24px); }
 }
+
+/* ---- Phone Bridget -------------------------------------------------------
+   The collapsed dock was a 48px full-height rail on the right edge: it covered
+   the top bar's avatar (the user menu could not be tapped) and clipped the
+   composer's send arrow. On phones the rail is gone; a button in the top bar
+   opens the full-screen Bridget sheet, and the sheet's ">" closes it again. */
+.apptop-bridget { display: none; }
+@media (max-width: 780px) {
+  .appdock[data-open="0"] { display: none; }
+  .appdock[data-open="1"] { width: 100vw; }
+  .apptop-bridget { display: inline-flex; align-items: center; justify-content: center;
+    width: 36px; height: 36px; padding: 0; border: 0; border-radius: 50%;
+    background: var(--accent-soft); color: var(--accent); cursor: pointer;
+    --mark-a: var(--accent); --mark-b: var(--accent-soft); }
+  .apptop-bridget:hover { background: var(--accent); --mark-a: #fff; --mark-b: rgba(255,255,255,.55); }
+  .apptop-bridget svg { width: 18px; height: 18px; }
+  /* The landing-page frame hides Bridget at phone width altogether. */
+  body[data-embed="1"] .apptop-bridget { display: none; }
+}
