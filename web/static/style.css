@@ -1188,6 +1188,10 @@ body.pub:not(.fs-page) {
   .pill-nav { grid-template-columns: auto 1fr; padding: 9px 10px 9px 18px; max-width: none;
     margin: max(10px, env(safe-area-inset-top)) 12px 0; }
   .pill-nav.is-condensed { max-width: none; }
+  /* Open sheet: the header becomes a tall panel, and a 999px pill radius on a tall
+     box gets scaled into an ellipse. Pin the corner to what the closed 64px pill
+     already renders (half its height) so the top corners don't move on open. */
+  .pill-nav.is-menu { border-radius: 32px; }
   .pill-nav-center { display: none; }
   .pill-nav-signin { display: none; }
   /* The desktop CTA is too wide to sit next to the burger on a phone; move it into
@@ -11378,4 +11382,38 @@ textarea.is-bridget-writing, input.is-bridget-writing {
   textarea.is-bridget-writing,
   input.is-bridget-writing { animation: none; }
   .bridget-stream .bg-caret { display: none; }
+}
+
+/* ---- Phone top bar -------------------------------------------------------
+   At phone width the three-zone grid ran the search pill into the study
+   switcher (they overlapped by ~22px) and the switcher's menu hung off the
+   right edge. App pattern instead: [menu] [search icon] · [study] · [bell] [me].
+   The search is an icon until tapped, then it takes the whole bar. */
+@media (max-width: 640px) {
+  .apptop { grid-template-columns: auto 1fr auto; gap: 8px; padding: 0 10px; }
+  .apptop-left { gap: 4px; }
+  .apptop-mid { justify-self: center; min-width: 0; }
+  .appswitch { max-width: min(58vw, 260px); padding: 7px 12px; font-size: 13px; }
+  .appsearch-kbd { display: none; }
+  .apptop-left .appsearch-wrap { flex: 0 0 40px; width: 40px; margin: 0; }
+  .apptop-left .appsearch-wrap .appsearch-input {
+    width: 40px; height: 40px; padding: 0; border-radius: 50%;
+    color: transparent; caret-color: transparent; background: transparent;
+    border-color: transparent; }
+  .apptop-left .appsearch-wrap .appsearch-input::placeholder { color: transparent; }
+  .apptop-left .appsearch-wrap .appsearch-ico { left: 50%; transform: translate(-50%, -50%); }
+  /* Expanded: overlays the bar edge to edge; the results panel already hangs
+     from the wrap, so it lines up underneath. */
+  .apptop-left .appsearch-wrap:focus-within {
+    position: absolute; left: 10px; right: 10px; top: 8px; width: auto; flex: none;
+    z-index: 30; }
+  .apptop-left .appsearch-wrap:focus-within .appsearch-input {
+    width: 100%; height: 40px; padding: 0 14px 0 42px; border-radius: var(--radius-pill);
+    color: var(--ink); caret-color: auto; background: var(--surface);
+    border-color: var(--accent); }
+  .apptop-left .appsearch-wrap:focus-within .appsearch-input::placeholder { color: var(--faint); }
+  .apptop-left .appsearch-wrap:focus-within .appsearch-ico { left: 14px; transform: translateY(-50%); }
+  .appswitch-menu { position: fixed; left: 12px; right: 12px; top: calc(var(--apptop-h) + 4px);
+    min-width: 0; max-height: 70vh; }
+  .appmenu-panel { max-width: calc(100vw - 24px); }
 }
