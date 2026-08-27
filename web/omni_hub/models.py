@@ -8,6 +8,7 @@ Conventions:
 """
 import datetime as dt
 import json
+import re
 import secrets
 
 import db
@@ -335,9 +336,20 @@ def _dconv(row):
                     "handle": c.get("contact_handle") or "",
                     "email": c.get("contact_email") or "",
                     "phone": c.get("contact_phone") or ""}
-    body = (c.get("last_body") or "").strip().replace("\n", " ")
-    c["snippet"] = body[:120] + ("..." if len(body) > 120 else "")
+    c["snippet"] = snippet_of(c.get("last_body"))
     return c
+
+
+def snippet_of(body, limit=120):
+    """One line of what the person actually said. Form-dump bodies ("Lead
+    form: ... Name: ... Zip: 60563 Message: actual words") repeat what a row
+    already shows as fields, so when a Message: part exists, prefer it over
+    the boilerplate. Used by the inbox rows and the builder preview alike."""
+    body = (body or "").strip().replace("\n", " ")
+    m = re.search(r"\bmessage\s*:\s*(.+)", body, re.IGNORECASE)
+    if m and len(m.group(1).strip()) >= 12:
+        body = m.group(1).strip()
+    return body[:limit] + ("..." if len(body) > limit else "")
 
 
 def list_conversations(ws_id, include_hidden_sources=False):

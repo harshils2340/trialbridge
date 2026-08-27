@@ -25,7 +25,8 @@ def time_label(ts):
         return "Yesterday"
     if delta.days < 7:
         return d.strftime("%a")
-    return d.strftime("%b %-d")
+    # %-d is glibc-only (Windows raises ValueError); format the day ourselves.
+    return f"{d.strftime('%b')} {d.day}"
 
 
 def load(ws_id, include_hidden_sources=False):
@@ -80,7 +81,7 @@ def narrow(convs, stage=None, status="open", source=None, assignee=None, q=None)
     return out
 
 
-def facts_line(conv, fields, limit=3):
+def facts_line(conv, fields, limit=2):
     """Up to ``limit`` list-worthy fields as (label, text, known) tuples; never
     three unknowns, because a row full of "unknown" says nothing."""
     out = []
@@ -113,7 +114,7 @@ def display_value(field, val):
     if t == "date":
         try:
             d = dt.datetime.strptime(str(val)[:10], "%Y-%m-%d")
-            return d.strftime("%b %-d, %Y")
+            return f"{d.strftime('%b')} {d.day}, {d.year}"
         except ValueError:
             return str(val)
     if t == "list":

@@ -2,7 +2,9 @@
 {% import "_ui.html" as ui %}
 
 {# The side panel is the spec made visible: one row per field, the value or an
-   honest "Unknown", and for every known value the message it came from. #}
+   honest "Unknown", and for every known value the message it came from. Rows
+   read label-over-value; the receipt ("Where") is a quiet pill on the label
+   line and the quote folds out under the value when tapped. #}
 {% macro panel(ws, active, records, spec, stage_labels, stage_tones, personas) -%}
 <aside class="mh-applicant-panel om-panel" data-detail-panel="applicant" aria-label="Details" data-field-count="{{ records|length }}">
   <header class="mh-applicant-panel-head">
@@ -15,7 +17,7 @@
   </header>
 
   {% set known = records|selectattr('known')|list|length %}
-  <details class="mh-clinical-card" open>
+  <details class="mh-clinical-card {{ 'is-complete' if known == records|length and records }}" open>
     <summary>
       <div><b>Details</b></div>
       <span class="mh-tool-status">{{ known }} of {{ records|length }} known</span>
@@ -25,17 +27,21 @@
       <dl class="om-fields">
         {% for r in records %}
         <div class="om-field {{ 'is-unknown' if not r.known }} {{ 'is-low' if r.known and r.confidence < 0.6 }}" data-field-key="{{ r.key }}">
-          <dt>{{ r.label }}</dt>
+          <div class="om-field-top">
+            <dt>{{ r.label }}</dt>
+            {% if r.known and r.quote %}
+            <button type="button" class="om-src" data-om-src aria-expanded="false">Where</button>
+            {% elif not r.known %}
+            <button type="button" class="om-ask-for" data-ask-fill="Ask them for {{ r.label|lower }}">Ask</button>
+            {% endif %}
+          </div>
           <dd>
             <span class="om-field-value">{{ r.text }}</span>
             {% if r.known and r.quote %}
-            <button type="button" class="om-src" data-om-src aria-expanded="false">Where</button>
             <blockquote class="om-quote" hidden data-message-id="{{ r.message_id or '' }}">
               <span>"{{ r.quote }}"</span>
               <small>From their message{% if r.message_time %}, {{ r.message_time }}{% endif %}{% if r.confidence < 0.6 %} (not certain){% endif %}</small>
             </blockquote>
-            {% elif not r.known %}
-            <button type="button" class="om-ask-for" data-ask-fill="Ask them for {{ r.label|lower }}">Ask</button>
             {% endif %}
           </dd>
         </div>

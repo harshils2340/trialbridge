@@ -17,12 +17,6 @@
   </div>
   <div class="om-preview-body">
     <div class="om-preview-list">
-      <div class="mh-filterbar om-filterbar">
-        <nav class="mh-scope-seg om-views" aria-label="Views">
-          {% for v in spec.views if v.pinned %}<span class="mh-seg {{ 'is-active' if loop.first }}">{{ v.name }}</span>{% endfor %}
-        </nav>
-        <span class="mh-filter-btn">{{ ic.icon('list') }}<span>Filter</span></span>
-      </div>
       <div class="om-preview-rows">
         {% for r in p.rows %}
         <div class="mh-thread-row {{ 'is-unread' if r.awaiting }}" data-preview-row>

@@ -1,0 +1,161 @@
+{# A simplified duplicate of the product inbox at /app/inbox, for the landing
+   page only. Same three-column shape and the same .mh-* classes, so it is
+   visibly the same product - but with the parts that need a signed-in team
+   stripped out: no owner scope, no away/coverage banners, no applicant record,
+   no portal, no source management, no send.
+
+   Everything is fixed copy from omni_hub/demo.py. Rows and views switch in the
+   browser (static/omni.js, the om-demo block); nothing posts anywhere. This is
+   deliberately NOT templates/marketing_hub.html - that page stays exactly as it
+   is, and this one is free to stay small. #}
+{% import "_icons.html" as ic %}
+
+{% macro src_chip(s, extra='') -%}
+  {% if s.icon in ('gmail', 'instagram') %}
+  <span class="mh-channel-ic is-{{ 'email' if s.icon == 'gmail' else s.icon }} {{ extra }}" title="{{ s.label }}" aria-label="{{ s.label }}">{{ ic.icon(s.icon, 'brand-ico') }}</span>
+  {% elif s.icon %}
+  <span class="mh-channel-ic om-ic {{ extra }}" title="{{ s.label }}" aria-label="{{ s.label }}">{{ ic.icon(s.icon) }}</span>
+  {% else %}
+  <span class="mh-channel-ic om-ic is-mono {{ extra }}" title="{{ s.label }}" aria-label="{{ s.label }}">{{ s.mono }}</span>
+  {% endif %}
+{%- endmacro %}
+
+{% macro inbox(d) -%}
+{% set by_kind = {} %}{% for s in d.sources %}{% set _ = by_kind.update({s.kind: s}) %}{% endfor %}
+<div class="om-demo" data-om-demo aria-label="{{ OMNI_BRAND }} inbox, example">
+
+  {# Window chrome, so the mock reads as an app and not as part of the page. #}
+  <div class="om-demo-chrome">
+    <span class="om-demo-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+    <span class="om-demo-url">{{ ic.icon('lock') }}{{ d.brand|lower|replace(' ', '') }}.{{ OMNI_BRAND|lower }}.app<em>/inbox</em></span>
+    <span class="om-demo-live">Live example</span>
+  </div>
+
+  <div class="om-demo-body">
+
+    {# ---- Column 1: the list ------------------------------------------- #}
+    <section class="mh-thread-column om-demo-list" aria-label="Conversations">
+      <div class="mh-thread-toolbar om-demo-toolbar">
+        <h3 class="mh-list-title">{{ d.study }}<span>{{ d.threads|selectattr('awaiting')|list|length }}</span></h3>
+        <span class="mh-search om-demo-search">{{ ic.icon('search') }}<em>Search conversations</em></span>
+      </div>
+
+      <div class="mh-filterbar om-demo-filterbar">
+        <nav class="mh-scope-seg om-views" aria-label="Views">
+          {% for v in d.views %}
+          <button type="button" class="mh-seg {{ 'is-active' if loop.first }}" data-demo-view="{{ v.key }}">{{ v.name }}</button>
+          {% endfor %}
+        </nav>
+      </div>
+
+      <div class="mh-thread-stack om-demo-stack">
+        {% for t in d.threads %}
+        <button type="button" class="mh-thread-row om-demo-row {{ 'is-active' if loop.first }} {{ 'is-unread' if t.awaiting }}"
+                data-demo-row="{{ t.id }}" data-demo-views="{{ t.views|join(' ') }}">
+          <div class="mh-thread-row-top">
+            <span class="mh-contact-avatar-wrap">
+              <span class="mh-contact-avatar">{{ t.name[:1]|upper }}</span>
+              {{ src_chip(by_kind[t.source], 'is-row-channel') }}
+            </span>
+            <span class="mh-thread-person"><b>{{ t.name }}</b></span>
+            <time>{{ t.time }}</time>
+            {% if t.awaiting %}<span class="mh-unread-dot" aria-label="Unread"></span>{% endif %}
+          </div>
+          <h3>{{ t.subject }}</h3>
+          <p>{{ t.snippet }}</p>
+          {# The line that is not in the real inbox yet: the facts the prompt
+             asked for, pulled out of the message and shown on the row. #}
+          <div class="om-facts">
+            {% for label, text, known in t.facts[:2] %}
+            <span class="{{ '' if known else 'is-unknown' }}"><i>{{ label }}</i> {{ text }}</span>
+            {% endfor %}
+          </div>
+          <div class="mh-thread-row-foot">
+            <span class="mh-tag is-stage tone-{{ t.tone }}">{{ t.stage }}</span>
+            {% if t.awaiting %}<span class="mh-thread-state is-waiting">Needs reply</span>{% endif %}
+          </div>
+        </button>
+        {% endfor %}
+        <div class="mh-thread-empty om-demo-empty" hidden>
+          <span>{{ ic.icon('inbox') }}</span>
+          <h3>Nothing in this view</h3>
+          <p>Pick another view to see the rest of the queue.</p>
+        </div>
+      </div>
+    </section>
+
+    {# ---- Column 2 + 3: the open conversation and its fields ------------ #}
+    {% for t in d.threads %}
+    <section class="mh-conversation om-demo-convo {{ 'is-active' if loop.first }}" data-demo-pane="{{ t.id }}" aria-label="Conversation with {{ t.name }}">
+      <header class="mh-conversation-head om-demo-head">
+        <button type="button" class="mh-mobile-back om-demo-back" data-demo-back>{{ ic.icon('arrow-left') }} Inbox</button>
+        <div class="mh-read-top">
+          <h3 class="mh-read-subject">{{ t.subject }}</h3>
+          <div class="mh-read-actions">
+            <span class="mh-resolve-btn">{{ ic.icon('check') }} Resolve</span>
+          </div>
+        </div>
+        <div class="mh-read-from">
+          <span class="mh-contact-avatar-wrap"><span class="mh-contact-avatar">{{ t.name[:1]|upper }}</span></span>
+          <span class="mh-read-from-copy">
+            <b>{{ t.name }}</b>
+            <span class="mh-read-contact"><span>{{ src_chip(by_kind[t.source]) }}{{ by_kind[t.source].label }}</span></span>
+          </span>
+          <span class="mh-read-tags">
+            <span class="mh-tag is-stage tone-{{ t.tone }}">{{ t.stage }}</span>
+            <span class="mh-tag is-study">{{ ic.icon('award') }}<span class="mh-tag-label">{{ d.study }}</span></span>
+          </span>
+        </div>
+      </header>
+
+      <div class="mh-detail-layout om-demo-detail">
+        <main class="mh-dialogue is-active">
+          <div class="mh-message-list om-demo-messages">
+            {% for m in t.messages %}
+            {% if m.who == 'note' %}
+            <article class="mh-internal-note">
+              <span class="mh-note-icon">{{ ic.icon('sparkle') }}</span>
+              <div>
+                <header><b>{{ m.author }}</b><time>{{ m.time }}</time></header>
+                <p>{{ m.body }}</p>
+              </div>
+            </article>
+            {% else %}
+            <article class="mh-message {{ 'is-outbound' if m.who == 'you' else 'is-inbound' }}">
+              <header><b>{{ m.author }}</b><time>{{ m.time }}</time></header>
+              <div class="mh-message-bubble">{{ m.body }}</div>
+            </article>
+            {% endif %}
+            {% endfor %}
+          </div>
+
+          {# The composer, pre-loaded with the draft. Read-only on purpose: the
+             point of the demo is that a draft is waiting, not that you can send
+             from a marketing page. #}
+          <div class="mh-composer om-demo-composer">
+            <div class="om-demo-draft-label">{{ ic.icon('sparkle') }} Bridget drafted this reply. Nothing sends until you press Send.</div>
+            <p class="om-demo-draft">{{ t.draft }}</p>
+            <div class="mh-compose-foot">
+              <span>{{ ic.icon('lock') }} Example only</span>
+              <span class="btn btn-primary btn-sm om-demo-send">{{ ic.icon('send') }} Send reply</span>
+            </div>
+          </div>
+        </main>
+
+        <aside class="mh-applicant-panel om-demo-panel" aria-label="What was pulled out">
+          <div class="om-demo-panel-head"><b>Pulled out of the message</b></div>
+          <dl class="om-fields">
+            {% for label, text, known in t.facts %}
+            <div class="om-field {{ '' if known else 'is-unknown' }}">
+              <dt>{{ label }}</dt>
+              <dd><span class="om-field-value">{{ text }}</span></dd>
+            </div>
+            {% endfor %}
+          </dl>
+        </aside>
+      </div>
+    </section>
+    {% endfor %}
+  </div>
+</div>
+{%- endmacro %}

@@ -65,6 +65,57 @@
     });
   }
 
+  // ---- Landing: the example inbox ---------------------------------------
+  // A mock, so all of this is local: no fetch, no state to persist. Clicking a
+  // row swaps which conversation pane is shown; clicking a view hides the rows
+  // that do not belong to it. Markup is templates/omni/_demo_inbox.html.
+  var demoEl = document.querySelector('[data-om-demo]');
+  if (demoEl) {
+    var demoRows = demoEl.querySelectorAll('[data-demo-row]');
+    var demoPanes = demoEl.querySelectorAll('[data-demo-pane]');
+    var demoEmpty = demoEl.querySelector('.om-demo-empty');
+
+    function openRow(id, scroll) {
+      demoRows.forEach(function (r) { r.classList.toggle('is-active', r.getAttribute('data-demo-row') === id); });
+      demoPanes.forEach(function (p) { p.classList.toggle('is-active', p.getAttribute('data-demo-pane') === id); });
+      if (scroll) demoEl.classList.add('is-open');
+    }
+
+    demoRows.forEach(function (row) {
+      row.addEventListener('click', function () {
+        openRow(row.getAttribute('data-demo-row'), true);
+      });
+    });
+
+    var back = demoEl.querySelectorAll('[data-demo-back]');
+    back.forEach(function (b) {
+      b.addEventListener('click', function () { demoEl.classList.remove('is-open'); });
+    });
+
+    demoEl.querySelectorAll('[data-demo-view]').forEach(function (seg) {
+      seg.addEventListener('click', function () {
+        var view = seg.getAttribute('data-demo-view');
+        demoEl.querySelectorAll('[data-demo-view]').forEach(function (s) {
+          s.classList.toggle('is-active', s === seg);
+        });
+        var firstVisible = null;
+        demoRows.forEach(function (row) {
+          var views = (row.getAttribute('data-demo-views') || '').split(' ');
+          var show = views.indexOf(view) !== -1;
+          row.hidden = !show;
+          if (show && !firstVisible) firstVisible = row;
+        });
+        if (demoEmpty) demoEmpty.hidden = !!firstVisible;
+        // Keep an open conversation that is still in view; otherwise fall to the
+        // top row, so the right pane is never showing a row you cannot see.
+        var active = demoEl.querySelector('[data-demo-row].is-active');
+        if (firstVisible && (!active || active.hidden)) {
+          openRow(firstVisible.getAttribute('data-demo-row'), false);
+        }
+      });
+    });
+  }
+
   // ---- Inbox: composer prompt line --------------------------------------
   var askBox = document.querySelector('.mh-ask[data-draft-url]');
   var askInput = document.querySelector('[data-ask-input]');
@@ -95,7 +146,7 @@
         if (askInput) askInput.value = '';
         setAskStatus('');
         if (policyLine && data.policy) {
-          policyLine.innerHTML = policyLine.innerHTML.replace(/[^<]*$/, '') +
+          policyLine.innerHTML = policyLine.innerHTML.replace(/[^>]*$/, '') +
             (data.policy === 'review'
               ? ' ' + name + ' read this as ' + data.category_words + '. Nothing sends without you.'
               : ' Routine reply. You still press Send.');
@@ -187,7 +238,9 @@
   document.addEventListener('click', function (e) {
     var src = e.target.closest('[data-om-src]');
     if (src) {
-      var q = src.parentNode.querySelector('.om-quote');
+      // The button sits on the label line; the quote folds out under the value.
+      var field = src.closest('.om-field') || src.parentNode;
+      var q = field.querySelector('.om-quote');
       if (!q) return;
       q.hidden = !q.hidden;
       src.setAttribute('aria-expanded', q.hidden ? 'false' : 'true');

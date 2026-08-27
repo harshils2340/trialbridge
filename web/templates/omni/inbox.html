@@ -25,52 +25,6 @@
         {% if source_filter %}<input type="hidden" name="source" value="{{ source_filter }}">{% endif %}
       </form>
     </div>
-    {# Views are the front of the inbox: saved filters in the person's own words. #}
-    <div class="mh-filterbar om-filterbar">
-      <nav class="mh-scope-seg om-views" aria-label="Views">
-        {% for v in pinned_views %}
-        <a class="mh-seg {{ 'is-active' if v.key == view_key }}"
-           href="{{ url_for('om_inbox', wid=ws.wid, view=v.key, q=q or None) }}">{{ v.name }}<span class="mh-tab-count">{{ view_counts.get(v.key, 0) }}</span></a>
-        {% endfor %}
-      </nav>
-      {% set filter_on = stage_filter or status_filter != 'open' or source_filter or (view and not view.pinned) %}
-      <details class="appmenu mh-filter">
-        <summary class="mh-filter-btn {{ 'is-on' if filter_on }}" aria-label="Filter conversations">
-          {{ ic.icon('list') }}<span>{% if view and not view.pinned %}{{ view.name }}{% elif stage_filter %}{{ stage_labels.get(stage_filter, stage_filter) }}{% else %}Filter{% endif %}{% if status_filter == 'resolved' %} · Resolved{% elif status_filter == 'all' %} · Everything{% endif %}</span>
-        </summary>
-        <div class="appmenu-panel" role="menu">
-          {% if more_views %}
-          <div class="appmenu-h">More views</div>
-          {% for v in more_views %}
-          <a class="appmenu-item simple mh-filter-opt {{ 'is-on' if v.key == view_key }}" role="menuitemradio" aria-checked="{{ 'true' if v.key == view_key else 'false' }}"
-             href="{{ url_for('om_inbox', wid=ws.wid, view=v.key) }}"><span>{{ v.name }}</span><span class="mh-tab-count">{{ view_counts.get(v.key, 0) }}</span></a>
-          {% endfor %}
-          {% endif %}
-          <div class="appmenu-h">Stage</div>
-          <a class="appmenu-item simple mh-filter-opt {{ 'is-on' if not stage_filter }}" role="menuitemradio" aria-checked="{{ 'true' if not stage_filter else 'false' }}"
-             href="{{ url_for('om_inbox', wid=ws.wid, view=view_key, status=(status_filter if status_filter != 'open' else None), source=source_filter or None) }}"><span>Any stage</span></a>
-          {% for s in spec.stages %}
-          <a class="appmenu-item simple mh-filter-opt {{ 'is-on' if stage_filter == s.key }}" role="menuitemradio" aria-checked="{{ 'true' if stage_filter == s.key else 'false' }}"
-             href="{{ url_for('om_inbox', wid=ws.wid, view=view_key, stage=s.key, status=(status_filter if status_filter != 'open' else None), source=source_filter or None) }}"><span>{{ s.label }}</span><span class="mh-tab-count">{{ stage_counts.get(s.key, 0) }}</span></a>
-          {% endfor %}
-          <div class="appmenu-h">Show</div>
-          {% for key, lbl in [('open', 'Open'), ('resolved', 'Resolved'), ('all', 'Everything')] %}
-          <a class="appmenu-item simple mh-filter-opt {{ 'is-on' if status_filter == key }}" role="menuitemradio" aria-checked="{{ 'true' if status_filter == key else 'false' }}"
-             href="{{ url_for('om_inbox', wid=ws.wid, view=view_key, stage=stage_filter or None, status=(key if key != 'open' else None), source=source_filter or None) }}"><span>{{ lbl }}</span></a>
-          {% endfor %}
-          {% if sources|length > 1 %}
-          <div class="appmenu-h">Source</div>
-          <a class="appmenu-item simple mh-filter-opt {{ 'is-on' if not source_filter }}" role="menuitemradio" aria-checked="{{ 'true' if not source_filter else 'false' }}"
-             href="{{ url_for('om_inbox', wid=ws.wid, view=view_key, stage=stage_filter or None, status=(status_filter if status_filter != 'open' else None)) }}"><span>Every source</span></a>
-          {% for s in sources if s.status == 'connected' %}
-          <a class="appmenu-item simple mh-filter-opt {{ 'is-on' if source_filter == s.key }}" role="menuitemradio" aria-checked="{{ 'true' if source_filter == s.key else 'false' }}"
-             href="{{ url_for('om_inbox', wid=ws.wid, view=view_key, stage=stage_filter or None, status=(status_filter if status_filter != 'open' else None), source=s.key) }}"><span>{{ s.label or s.meta.label }}</span></a>
-          {% endfor %}
-          {% endif %}
-        </div>
-      </details>
-    </div>
-
     <div class="mh-thread-stack" data-thread-stack>
       {% for t in threads %}
       {{ rows.row(t, thread_href(t), stage_labels, stage_tones, source_meta, active=(active and active.id == t.id)) }}

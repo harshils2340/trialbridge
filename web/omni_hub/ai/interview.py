@@ -15,13 +15,37 @@ from .. import spec as spec_mod
 PREFILL_SYSTEM = """You read one sentence a business owner wrote about their business and where leads come from.
 Return JSON: {"business_name": "" or the name if they gave one, "connectors": [kinds from this list that they
 mentioned: %s], "extra_fields": [up to 3 {"label","type" (text|number|enum|bool|date|list),"hint"} for things
-they clearly want tracked that a generic template would miss], "summary": "one plain sentence about the business"}.
+they clearly want tracked that a generic template would miss - facts ABOUT a lead, never the channels
+themselves (no "ClinicalTrials.gov ID", "form submissions", "referring doctors" style fields)],
+"summary": "one plain sentence about the business"}.
 Never invent a name. Never include fields about race, religion, national origin, familial status, disability,
 age or immigration status. Never use em dashes. Respond with ONLY the JSON object."""
 
 SAY_SYSTEM = """You are the setup assistant for an intake inbox. Rewrite the line below so it sounds like a
 helpful person who just read what the user wrote, in one or two short sentences, plain and warm, no
 marketing language, no em dashes. Keep every fact. Return only the rewritten line."""
+
+
+# Words that describe where leads COME FROM rather than facts about a lead.
+# The model sometimes turns "leads come from ClinicalTrials.gov and our trial
+# finder" into fields like "ClinicalTrials.gov ID" or "Trial Finder Form
+# Submissions"; a field whose meaningful words are all channel words is an echo
+# of the sources, not something to extract, and is dropped.
+_SOURCE_WORDS = {
+    "clinicaltrials", "gov", "clinicaltrialsgov", "trial", "finder", "form",
+    "forms", "submission", "submissions", "facebook", "meta", "instagram",
+    "ads", "ad", "lead", "leads", "referring", "referral", "referrals",
+    "doctor", "doctors", "physician", "physicians", "email", "emails", "inbox",
+    "sms", "text", "texts", "voicemail", "phone", "website", "web", "site",
+    "id", "ids", "count", "counts", "number", "source", "sources", "channel",
+    "channels", "listing", "listings", "page", "portal",
+}
+
+
+def _source_echo(label):
+    toks = [t for t in re.split(r"[^a-z0-9]+", (label or "").lower()) if t]
+    toks = [t for t in toks if t not in spec_mod._FIELD_FILLER]
+    return bool(toks) and all(t in _SOURCE_WORDS for t in toks)
 
 
 def connectors_in_prompt(prompt):
@@ -78,6 +102,8 @@ def prefill(prompt, template):
                     out["connectors"].append(k)
             for f in (data.get("extra_fields") or [])[:3]:
                 if isinstance(f, dict) and f.get("label"):
+                    if _source_echo(str(f["label"])):
+                        continue
                     out["extra_fields"].append({"label": str(f["label"])[:60],
                                                 "type": str(f.get("type") or "text"),
                                                 "hint": str(f.get("hint") or "")[:200]})

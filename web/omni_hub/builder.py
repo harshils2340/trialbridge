@@ -371,7 +371,7 @@ def preview_data(ws):
                 if len(facts) >= 3:
                     break
             rows.append({"name": sc["contact"]["name"], "subject": sc["subject"],
-                         "snippet": sc["messages"][-1]["body"][:110], "source_kind": sc["source"],
+                         "snippet": models.snippet_of(sc["messages"][-1]["body"], 110), "source_kind": sc["source"],
                          "stage": sc.get("stage") or (norm["stages"][0]["key"] if norm["stages"] else ""),
                          "facts": facts, "awaiting": sc["messages"][-1]["kind"] == "inbound"})
     return {"spec": norm, "rows": rows,

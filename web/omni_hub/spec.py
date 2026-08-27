@@ -115,6 +115,55 @@ def _dedupe(items, key="key"):
     return out
 
 
+# Words that add no meaning to a field name. "Current medications" and
+# "medications" are the same ask; so are "their age" and "age".
+_FIELD_FILLER = {"current", "primary", "main", "their", "your", "the", "a", "an",
+                 "of", "any", "known", "existing", "list"}
+
+
+def _field_essence(field):
+    """The meaning-bearing tokens of a field name, for near-duplicate checks."""
+    toks = set()
+    for t in re.split(r"[^a-z0-9]+", (field.get("label") or field.get("key") or "").lower()):
+        if not t or t in _FIELD_FILLER:
+            continue
+        toks.add(t[:-1] if len(t) > 3 and t.endswith("s") else t)
+    return frozenset(toks)
+
+
+def _dedupe_fields(fields, keep_keys=frozenset()):
+    """Exact-key dedupe plus near-duplicate collapse: a later field whose
+    meaningful tokens match an earlier one is the same field asked twice.
+    Template fields come first, so the richer label ("Current medications")
+    survives and the prompt's echo ("medications") is dropped. A field whose
+    key appears in keep_keys - some view or rule filters on it - is never
+    dropped: collapsing it would silently strip those filters too."""
+    fields = _dedupe(fields)
+    seen, out = {}, []
+    for f in fields:
+        ess = _field_essence(f)
+        if ess and ess in seen and f.get("key") not in keep_keys:
+            continue
+        if ess and ess not in seen:
+            seen[ess] = f
+        out.append(f)
+    return out
+
+
+def _expr_field_keys(expr, out):
+    """Collect every field key an expression tree references (f. prefix or bare)."""
+    if not isinstance(expr, dict):
+        return
+    for group in ("all", "any"):
+        if group in expr:
+            for c in expr[group] or []:
+                _expr_field_keys(c, out)
+            return
+    field = expr.get("field") or ""
+    if isinstance(field, str) and field:
+        out.add(field[2:] if field.startswith("f.") else field)
+
+
 def protected_reason(text, guardrails=None):
     """Return the reason a field label/key/hint is off limits, or ''."""
     low = (text or "").lower()
@@ -306,7 +355,14 @@ def normalize(spec, template=None):
     fields = [f for f in (_norm_field(f, out["guardrails"]) for f in spec.get("fields") or []) if f]
     stripped = [f for f in fields if f["protected"]]
     fields = [f for f in fields if not f["protected"]]
-    out["fields"] = _dedupe(fields)[:LIMITS["fields"]]
+    referenced = set()
+    for v in spec.get("views") or []:
+        if isinstance(v, dict):
+            _expr_field_keys(v.get("filter") or {}, referenced)
+    for r in spec.get("rules") or []:
+        if isinstance(r, dict):
+            _expr_field_keys(r.get("when") or {}, referenced)
+    out["fields"] = _dedupe_fields(fields, keep_keys=referenced)[:LIMITS["fields"]]
     out["_stripped"] = [{"label": f["label"], "reason": f["protected_reason"]}
                         for f in stripped]
     field_keys = {f["key"] for f in out["fields"]}
@@ -425,6 +481,11 @@ def apply_patch(spec, ops, template=None):
                     continue
                 if any(x["key"] == f["key"] for x in spec["fields"]):
                     refused.append({"op": op, "reason": f"There is already a field called {f['label']}."})
+                    continue
+                ess = _field_essence(f)
+                clash = next((x for x in spec["fields"] if ess and _field_essence(x) == ess), None)
+                if clash:
+                    refused.append({"op": op, "reason": f"That looks like the existing field {clash['label']}."})
                     continue
                 if len(spec["fields"]) >= LIMITS["fields"]:
                     refused.append({"op": op, "reason": "That is the most fields an inbox can track."})

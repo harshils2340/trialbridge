@@ -10,6 +10,7 @@ from copy_sanitize import sanitize_copy
 
 from . import actions as actions_mod
 from . import builder
+from . import demo as demo_mod
 from . import extract
 from . import inbox
 from . import ingest as ingest_mod
@@ -146,7 +147,8 @@ def register(app):
         if variant and variant.isalnum() and app.debug or (variant and variant.isalnum() and os.environ.get("OMNI_VARIANTS") == "1"):
             tpl = f"omni/_cand_{variant}.html"
         return render_template(tpl, templates=seeds.list_templates(),
-                               current=workspace.current_workspace())
+                               current=workspace.current_workspace(),
+                               demo_data=demo_mod.landing_demo())
 
     @app.route("/omni/start", methods=["POST"], endpoint="om_start")
     def om_start():
