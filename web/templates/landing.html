@@ -5,1021 +5,15 @@
 {# /find (GET) renders this same landing, so point both at one canonical URL
    instead of splitting the signal between two paths. #}
 {% block canonical %}<link rel="canonical" href="{{ url_for('home', _external=True) }}">{% endblock %}
-
 {% block head_extra %}
 <style>
-/* ============================================================================
-   Finder page redesign. Clean, modern marketing rhythm with ONE brand blue.
-   The hero search form + all its inner classes / JS hooks are untouched; this
-   only restyles the shell and the below-fold sections. Loads after style.css,
-   so equal-specificity rules here win.
-   ========================================================================== */
-/* Figtree - the same typeface the Framer marketing site uses. Self-hosted from
-   the already-shipped landing assets so there's no Google Fonts / CSP dependency. */
-@font-face{ font-family:"Figtree"; font-style:normal; font-weight:400; font-display:swap;
-  src:url("/landing/assets/8221d5aa15__Xmz-HUzqDCFdgfMsYiV_F7wfS-Bs_d_QF5bwkEU4HTy.woff2") format("woff2"); }
-@font-face{ font-family:"Figtree"; font-style:normal; font-weight:500; font-display:swap;
-  src:url("/landing/assets/22a0ab5a22__Xmz-HUzqDCFdgfMsYiV_F7wfS-Bs_dNQF5bwkEU4HTy.woff2") format("woff2"); }
-@font-face{ font-family:"Figtree"; font-style:normal; font-weight:600; font-display:swap;
-  src:url("/landing/assets/7bde881678__Xmz-HUzqDCFdgfMsYiV_F7wfS-Bs_ehR15bwkEU4HTy.woff2") format("woff2"); }
-@font-face{ font-family:"Figtree"; font-style:normal; font-weight:700; font-display:swap;
-  src:url("/landing/assets/acab8c9edc__Xmz-HUzqDCFdgfMsYiV_F7wfS-Bs_eYR15bwkEU4HTy.woff2") format("woff2"); }
-
-/* Apply Figtree across the whole finder page (this style block only loads here). */
-body.home-screen, body.home-screen h1, body.home-screen h2, body.home-screen h3,
-body.home-screen h4, body.home-screen h5, body.home-screen h6, body.home-screen p,
-body.home-screen a, body.home-screen span, body.home-screen li, body.home-screen label,
-body.home-screen button, body.home-screen input, body.home-screen select,
-body.home-screen textarea, body.home-screen summary, body.home-screen .brand{
-  font-family:"Figtree", var(--sans), system-ui, -apple-system, "Segoe UI", sans-serif;
-  /* Framer renders Figtree with these stylistic sets on (single-storey a/g, etc).
-     Without them the same font family still draws different glyphs, which is the
-     giveaway that a page was bolted on rather than designed with the site. */
-  font-feature-settings:"cv09" 1,"cv03" 1,"cv04" 1,"cv11" 1,"blwf" 1; }
-
-/* Design tokens are NOT invented here. They are the same values the Framer
-   marketing site uses, mirrored from `EMBED_CSS` in marketing/clean_landing.py
-   (the section that was itself tuned to match Framer's native cards). Keep the
-   two in sync - a finder page on its own palette reads as a different product. */
-/* Scoped to the page, not to .landing-extra: the hero and the embed band sit
-   OUTSIDE that element, so tokens declared on .fx alone never resolved there. */
-body.home-screen{ --fx-ink:#12122b; --fx-mut:#516079; --fx-faint:#64748b;
-  --fx-accent:#1257b0;
-  --fx-band:#f5f7fb; --fx-card:#fff;
-  --fx-line:rgba(18,87,176,.10); --fx-line-soft:#dce6f5;
-  --fx-radius:20px; --fx-shadow:0 2px 10px rgba(16,16,40,.04);
-  --fx-shadow-lift:0 34px 80px -34px rgba(18,40,90,.4);
-  --fx-grad:linear-gradient(180deg,#3f7fce,#1257b0); }
-
-/* The finder used to be a single-viewport search screen with nothing below, so
-   the shell locked the hero to fill the viewport. It now has rich marketing
-   sections underneath, so undo that lock and let the page scroll normally with a
-   natural-height hero (otherwise the hero balloons on tall screens and hides the
-   fact that there's more below). */
-body.home-screen{ display:block; min-height:0; }
-body.home-screen .pub-main{ display:block; }
-body.home-screen .hero{ flex:none; display:block; min-height:0; padding:76px 24px 52px;
-  background:radial-gradient(1100px 480px at 50% -80px, rgba(59,110,242,.10), transparent 70%); }
-body.home-screen .hero-in{ max-width:1220px; margin:0 auto; }
-body.home-screen .hero h1{ white-space:normal; font-size:clamp(34px,5vw,52px);
-  line-height:1.04; letter-spacing:-.032em; }
-body.home-screen .hero-sub{ max-width:600px; font-size:18px; }
-body.home-screen .landing-legal{ position:static; }
-
-/* ---- Hero search card cleanup ----
-   Cohesive spacing, a full-width segmented control (was hugging left), and a
-   blue active pill (the base style had a leftover TEAL glow on a blue button).
-   Softer container + radii to sit with the Figtree/Framer look. Scoped to the
-   finder so no other search surface changes. */
-body.home-screen .hero-card{ max-width:820px; padding:18px; border-radius:20px;
-  border-color:rgba(18,40,80,.10);
-  box-shadow:0 26px 60px -36px rgba(15,26,46,.5), 0 2px 8px rgba(15,26,46,.05); }
-body.home-screen .hero-card-head{ margin:0 4px 12px; color:#5a6a86;
-  font-size:11.5px; letter-spacing:.08em; }
-body.home-screen .hero-card-head small{ color:#0a7d43; font-weight:700; font-size:11.5px; }
-body.home-screen .hero-card .search-modes{ display:flex; width:100%; gap:4px; margin:0 0 10px;
-  padding:4px; background:#eef1f7; border-color:transparent; border-radius:14px; }
-body.home-screen .hero-card .search-mode{ flex:1 1 0; text-align:center; padding:9px 12px;
-  border-radius:10px; font-size:14px; }
-body.home-screen .hero-card .search-mode.is-active{
-  background:linear-gradient(135deg,#3b6ef2,#1257b0); color:#fff;
-  box-shadow:0 6px 14px -6px rgba(18,87,176,.6); }
-body.home-screen .hero-card .hero-search{ padding:6px; border-radius:14px;
-  border-color:rgba(18,40,80,.12); }
-body.home-screen .hero-card .hero-go{ border-radius:11px; }
-body.home-screen .hero-card .hero-loc-actions{ margin-top:10px; }
-body.home-screen .hero-reassurance{ margin-top:16px; font-size:12.5px; }
-
-/* The floating pill header must match `/` exactly. Fixed overlay + top padding
-   for the hero live in _public_chrome.html for all pub-marketing pages. */
-
-/* Full-width scroll container so section bands can run edge to edge. Legacy
-   children (.near-wrap, .trust-strip) and .fx-sec all self-center, so widening
-   the wrapper is safe. */
-/* Plain white: the embed band above is already #f5f7fb, and the old
-   white-to-grey gradient here made the page read grey / white / grey with a
-   visible seam right under the band. */
-.landing-extra.fx{ max-width:none; width:100%; padding:0; background:#fff; }
-.fx-sec{ max-width:1120px; margin:0 auto; padding:110px 24px; }
-.fx-sec-tight{ padding-top:24px; }
-/* Framer alternates white and #f5f7fb bands down the page. This paints a
-   full-bleed band behind a max-width section without wrapping it in another
-   element: the shadow spreads past the viewport, the clip trims the overflow. */
-.fx-sec-band{ background:var(--fx-band); box-shadow:0 0 0 100vmax var(--fx-band);
-  clip-path:inset(0 -100vmax); border-top:1px solid #e8edf5;
-  border-bottom:1px solid #e8edf5; }
-.fx-head{ max-width:660px; }
-.fx-head.fx-center{ margin:0 auto; text-align:center; }
-/* Framer's eyebrow is a white pill with a hairline border, not a tinted uppercase
-   label. Same component as `#bmd-embed .pill`. */
-.fx-eyebrow{ display:inline-block; font-size:13px; font-weight:700; letter-spacing:0;
-  text-transform:none; color:var(--fx-accent); background:#fff;
-  border:1px solid var(--fx-line-soft); padding:7px 15px; border-radius:999px; }
-.fx-h2{ font-size:clamp(30px,3.6vw,46px); line-height:1.08; font-weight:800;
-  letter-spacing:-.03em; color:var(--fx-ink); margin:18px 0 16px; }
-.fx-lead{ font-size:18px; line-height:1.55; color:var(--fx-mut); margin:0; }
-.fx-lead strong{ color:var(--fx-accent); font-weight:800; white-space:nowrap; }
-.fx-center .fx-lead{ margin-left:auto; margin-right:auto; }
-
-/* ---- Hero: patient-first, single column -------------------------------------
-   This used to be a 50/50 split - a working search on the left, an embed demo
-   crammed into the ~557px right half. A 940px product mock squeezed into half a
-   column is exactly what made the page read as filler: nothing had room, so the
-   mock had to be shrunk to a few label-less grey rows with no study IDs, phases
-   or eligibility, and it stopped looking like real software.
-   Above the fold the finder has one job - let a patient search. The
-   research-site half of the value gets its own full-width band directly below
-   (.bmd-embed-sec), which is how the marketing site tells the same
-   two-audience story. ---- */
-/* clip horizontal overflow only (vertical stays visible so the search autocomplete
-   dropdown isn't cut); guards against any intrinsic-width child widening the page
-   on small screens. overflow-x:clip does not create a scroll container, so the
-   sticky pill nav keeps sticking to the viewport. */
-body.home-screen{ overflow-x:clip; }
-body.home-screen .hero-in{ min-width:0; }
-
-.fh-head{ max-width:760px; margin:0 auto 30px; text-align:center; }
-body.home-screen .fh-head h1{ margin:0 0 14px; }
-body.home-screen .fh-head .hero-sub{ margin:0 auto; max-width:620px; }
-/* Same white hairline pill the Framer sections use for eyebrows. */
-.fh-eyebrow{ display:inline-flex; align-items:center; gap:8px; margin-bottom:20px;
-  font-size:13px; font-weight:700; color:var(--fx-accent); background:#fff;
-  border:1px solid var(--fx-line-soft); border-radius:999px; padding:7px 15px; }
-.fh-eyebrow svg{ width:14px; height:14px; }
-
-/* Framer's control language: hairline fields and a vertical-gradient primary
-   carrying a tinted drop shadow (not a flat blue block). */
-body.home-screen .hero-card{ margin:0 auto; }
-body.home-screen .hero-card .hero-go{ border-radius:12px; background:var(--fx-grad);
-  box-shadow:0 12px 24px -10px rgba(18,87,176,.6); }
-body.home-screen .hero-reassurance{ justify-content:center; }
-
-/* ---- Embed band: the research-site half of the value ------------------------
-   Mirrors the marketing site's `#bmd-embed` section (EMBED_CSS in
-   marketing/clean_landing.py) one-for-one: #f5f7fb band, centred pill + heading
-   + lead, a 940px browser window showing a partner site with the finder embedded,
-   a floating shared-inbox card, then a 3-up card grid. Same palette, same radii,
-   same shadows - keep the two in sync.
-   What's live here on top of the static marketing version: a tenant switcher that
-   re-skins the mock, a Widget/Embed-code toggle, and accent swatches.
-   --bx is the tenant accent; JS swaps it (plus --bxs2, a shadow variant of the
-   same hue) so one click re-skins the whole mock smoothly. */
-.bmd-embed-sec{ --ez:cubic-bezier(.22,1,.36,1);
-  --bx:#1257b0; --bxs2:rgba(18,87,176,.45);
-  background:var(--fx-band); border-top:1px solid #e8edf5;
-  border-bottom:1px solid #e8edf5; padding:104px 24px 118px; }
-.bmd-embed-wrap{ max-width:1120px; margin:0 auto; }
-.bmd-embed-head{ text-align:center; max-width:720px; margin:0 auto 54px; }
-
-/* Brand controls. A field the visitor types their OWN name into makes the
-   "branded as yours" point better than a row of invented hospital names did -
-   and it does not fabricate customers. */
-.bmd-brandbar{ display:flex; flex-wrap:wrap; align-items:center;
-  justify-content:center; gap:10px 14px; margin:0 auto 24px; }
-.bmd-brandbar .l{ font-size:13px; font-weight:700; color:var(--fx-mut); }
-.bmd-orgin{ font:inherit; font-size:13.5px; font-weight:700; color:var(--fx-ink);
-  background:#fff; border:1px solid var(--fx-line-soft); border-radius:10px;
-  padding:9px 14px; width:200px; max-width:100%;
-  transition:border-color .25s var(--ez), box-shadow .25s var(--ez); }
-.bmd-orgin::placeholder{ color:#94a3b8; font-weight:600; }
-.bmd-orgin:focus{ outline:0; border-color:var(--bx);
-  box-shadow:0 0 0 3px rgba(18,87,176,.14); }
-.bmd-swatches{ display:inline-flex; align-items:center; gap:8px; }
-
-.bmd-tabwrap{ display:flex; justify-content:center; margin-bottom:26px; }
-.bmd-tabs{ display:inline-flex; gap:3px; padding:3px; background:#eef2f8;
-  border:1px solid #e2e8f2; border-radius:999px; }
-.bmd-tab{ border:0; background:transparent; font:inherit; font-size:13px;
-  font-weight:700; color:var(--fx-faint); padding:7px 18px; border-radius:999px;
-  cursor:pointer; transition:background .3s var(--ez), color .3s var(--ez),
-    box-shadow .3s var(--ez); }
-.bmd-tab:hover{ color:var(--fx-ink); }
-.bmd-tab.is-on{ background:#fff; color:var(--fx-ink);
-  box-shadow:0 2px 8px -4px rgba(18,40,90,.35); }
-
-.bmd-panel[hidden]{ display:none; }
-.bmd-panel{ animation:bmdRise .45s var(--ez) both; }
-@keyframes bmdRise{ from{ opacity:0; transform:translateY(12px); }
-  to{ opacity:1; transform:none; } }
-
-/* Stage: browser mockup + the floating "it landed on a person's desk" card. */
-.bmd-embed-stage{ position:relative; max-width:1000px; margin:0 auto; }
-.bmd-embed-frame{ max-width:940px; margin:0 auto; background:#fff;
-  border:1px solid rgba(18,87,176,.14); border-radius:16px;
-  box-shadow:var(--fx-shadow-lift); overflow:hidden; }
-.bmd-bw-bar{ display:flex; align-items:center; gap:14px; padding:11px 16px;
-  background:#eef2f8; border-bottom:1px solid #e2e8f2; }
-.bmd-bw-dots{ display:inline-flex; gap:7px; flex:0 0 auto; }
-.bmd-bw-dots i{ width:11px; height:11px; border-radius:50%; background:#cdd6e4; }
-.bmd-bw-url{ flex:1; min-width:0; display:inline-flex; align-items:center; gap:7px;
-  background:#fff; border:1px solid #e2e8f2; border-radius:8px; padding:6px 12px;
-  font-size:12.5px; color:var(--fx-faint); }
-.bmd-bw-url svg{ width:13px; height:13px; color:#94a3b8; flex:0 0 auto; }
-.bmd-bw-url b{ font-weight:600; overflow:hidden; text-overflow:ellipsis;
-  white-space:nowrap; transition:opacity .35s var(--ez); }
-
-/* The partner site's own chrome, which the widget sits inside. */
-.bmd-host-nav{ display:flex; align-items:center; justify-content:space-between;
-  gap:16px; padding:16px 26px; border-bottom:1px solid #eef2f6; }
-.bmd-host-brand{ display:inline-flex; align-items:center; gap:9px; min-width:0;
-  border:0; padding:0; background:none; cursor:pointer; font:inherit;
-  font-weight:800; color:#0f2a3a; font-size:16px; letter-spacing:-.01em; }
-.bmd-host-mark{ width:22px; height:22px; border-radius:7px; flex:0 0 auto;
-  background:var(--bx); transition:background .55s var(--ez); }
-.bmd-host-links{ display:inline-flex; gap:20px; font-size:14px; font-weight:600; }
-.bmd-host-links button{ border:0; padding:3px 0; background:none; cursor:pointer;
-  color:var(--fx-faint); font:inherit; font-weight:600; }
-.bmd-host-links button:hover{ color:#102a43; }
-.bmd-host-links button.on{ color:var(--bx); transition:color .55s var(--ez); }
-.bmd-host-hero{ padding:26px 26px 4px; }
-.bmd-host-hero h4{ margin:0 0 6px; font-size:22px; font-weight:800;
-  color:var(--fx-ink); letter-spacing:-.02em; }
-.bmd-host-hero p{ margin:0; color:var(--fx-faint); font-size:14px; }
-
-/* The BridgeMD widget as it appears on the partner page. */
-.bmd-widget{ position:relative; margin:20px 26px 30px;
-  border:1px solid #e6edf5; border-radius:14px; padding:20px 18px 16px;
-  background:#fff; }
-.bmd-widget-foot{ display:flex; align-items:center; margin:12px 0 0;
-  padding-top:10px; border-top:1px solid #eef2f6; }
-.bmd-widget-tag{ display:inline-flex; align-items:center; gap:5px;
-  margin:0; padding:0; background:none; border:0;
-  color:#94a3b8; font-size:11px; font-weight:600; }
-.bmd-widget-tag svg{ width:12px; height:12px; color:#94a3b8; }
-/* Stacked, not a wrapping row. The right-hand pane is too narrow for two
-   180px fields plus a button, and `width:100%` on the condition input made it
-   as wide as its parent label - so it painted over the location field. That is
-   the white box sitting on top of "Condition". */
-.bmd-finder-search{ display:flex; flex-direction:row; flex-wrap:wrap; gap:10px;
-  margin-bottom:14px; }
-.bmd-finder-search .fld{ display:flex; align-items:center; gap:8px;
-  min-width:0; flex:1 1 180px; box-sizing:border-box; overflow:hidden;
-  background:#fff; border:1px solid #dbe4f0; border-radius:10px;
-  padding:10px 12px; font-size:13px; color:var(--fx-faint); }
-.bmd-finder-search .fld svg{ width:15px; height:15px; color:var(--bx);
-  flex:0 0 auto; transition:color .55s var(--ez); }
-.bmd-finder-search .fld > span{ flex:0 0 auto; }
-.bmd-finder-search .fld input{ flex:1 1 auto; min-width:0; width:auto;
-  border:0; outline:0; padding:0; color:var(--fx-ink);
-  background:transparent; font:inherit; font-weight:700;
-  text-overflow:ellipsis; }
-.bmd-finder-search .fld:focus-within{ border-color:var(--bx);
-  box-shadow:0 0 0 3px rgba(18,87,176,.1); }
-.bmd-finder-search .fbtn{ display:inline-flex; align-items:center;
-  justify-content:center; width:auto; flex:0 0 auto; border:0; font:inherit; color:#fff;
-  font-weight:700; font-size:13.5px; padding:10px 22px; border-radius:10px;
-  cursor:pointer; background:var(--bx);
-  box-shadow:0 12px 22px -12px var(--bxs2);
-  transition:background .55s var(--ez), filter .15s ease, transform .15s ease,
-    box-shadow .35s var(--ez); }
-.bmd-finder-search .fbtn:hover{ filter:brightness(1.06); }
-.bmd-finder-search .fbtn:active{ transform:translateY(1px); }
-.bmd-finder-meta{ font-size:12.5px; color:var(--fx-faint); margin:0 2px 12px;
-  font-weight:600; }
-
-/* Result rows. Real registry metadata - NCT id, phase, recruiting status,
-   distance, and WHY it matched - is the difference between a mock that reads as
-   working software and one that reads as grey placeholder bars. */
-.bmd-tcard{ display:flex; gap:14px; justify-content:space-between;
-  align-items:flex-start; background:#fff; border:1px solid #e6ecf5;
-  border-radius:12px; padding:14px 16px; margin-bottom:10px;
-  animation:bmdRise .5s var(--ez) both; }
-.bmd-tcard:nth-child(2){ animation-delay:.06s; }
-.bmd-tcard:nth-child(3){ animation-delay:.12s; }
-.bmd-tcard:last-child{ margin-bottom:0; }
-.bmd-tc-main{ min-width:0; }
-.bmd-tc-title{ font-weight:700; color:var(--fx-ink); font-size:14.5px;
-  line-height:1.3; margin-bottom:5px; }
-.bmd-tc-meta{ font-size:12px; color:var(--fx-faint); display:flex; flex-wrap:wrap;
-  gap:6px; align-items:center; margin-bottom:6px; }
-.bmd-tc-meta .mono{ font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
-  color:var(--fx-mut); }
-.bmd-tc-why{ font-size:12.5px; color:var(--fx-mut); line-height:1.45; }
-.bmd-tc-side{ display:flex; flex-direction:column; align-items:flex-end; gap:8px;
-  flex:0 0 auto; }
-.bmd-badge{ display:inline-flex; align-items:center; font-size:11px;
-  font-weight:700; padding:3px 9px; border-radius:999px; white-space:nowrap; }
-.bmd-badge.ok{ background:#e7f6ee; color:#15803d; }
-.bmd-badge.info{ background:#eaf1fb; color:#1257b0; }
-/* A screener that never says no is not a screener, so rejections get a real
-   (neutral, not alarming) badge rather than being hidden. */
-.bmd-badge.off{ background:#f1f5f9; color:#64748b; }
-.bmd-tcard.is-off{ background:#fcfdfe; }
-.bmd-tcard.is-off .bmd-tc-title{ color:var(--fx-mut); }
-.bmd-tcard.is-off .bmd-tc-apply{ display:none; }
-.bmd-tc-apply{ display:inline-flex; border:0; font:inherit; background:var(--bx);
-  color:#fff; font-weight:700; font-size:12.5px; padding:7px 16px;
-  border-radius:9px; cursor:pointer; text-decoration:none;
-  transition:background .55s var(--ez), filter .15s ease, transform .15s ease; }
-.bmd-tc-apply:hover{ filter:brightness(1.08); }
-.bmd-tc-apply:active{ transform:translateY(1px); }
-
-/* Floating card: what happens the moment a patient hits Apply. */
-.bmd-route-card{ position:absolute; right:-6px; bottom:-52px; width:322px;
-  background:#fff; border:1px solid rgba(18,87,176,.16); border-radius:16px;
-  box-shadow:0 26px 64px -24px rgba(18,40,90,.55); padding:15px 16px 14px; }
-.bmd-rc-head{ display:flex; align-items:center; gap:8px; margin-bottom:11px; }
-.bmd-rc-mark svg{ width:20px; height:20px; display:block; }
-.bmd-rc-title{ font-weight:800; color:var(--fx-ink); font-size:14px;
-  letter-spacing:-.01em; }
-.bmd-rc-count{ margin-left:auto; background:#eaf1fb; color:#1257b0;
-  font-size:11px; font-weight:700; padding:2px 9px; border-radius:999px; }
-.bmd-rc-row{ display:flex; gap:10px; align-items:flex-start; padding:11px 12px;
-  background:#f7faff; border:1px solid #e6ecf5; border-radius:11px; }
-.bmd-rc-dot{ width:8px; height:8px; border-radius:50%; background:var(--bx);
-  margin-top:5px; flex:0 0 auto; transition:background .55s var(--ez); }
-.bmd-rc-name{ font-weight:700; color:var(--fx-ink); font-size:13px;
-  line-height:1.3; }
-.bmd-rc-sub{ color:var(--fx-faint); font-size:11.5px; margin-top:2px; }
-.bmd-rc-route{ display:flex; gap:9px; align-items:flex-start; margin:12px 4px 0;
-  font-size:12.5px; color:var(--fx-mut); line-height:1.4; }
-.bmd-rc-route svg{ width:17px; height:17px; color:#15803d; flex:0 0 auto;
-  margin-top:1px; }
-.bmd-rc-route b{ color:var(--fx-ink); font-weight:700; }
-.bmd-rc-note{ margin:10px 4px 0; font-size:11.5px; color:#94a3b8;
-  line-height:1.45; }
-
-/* ---- "How it works today" panel ----
-   The registry record a patient actually lands on, then the email that follows.
-   Amber marks the friction and is used sparingly: ClinicalTrials.gov is the
-   source of truth this product reads FROM, so the honest claim is not "the
-   registry is bad", it is "a registry is written for investigators, and nobody
-   turned it into a patient experience". */
-.bmd-today{ max-width:940px; margin:0 auto; }
-.bmd-reg{ padding:24px 26px 26px; }
-.bmd-reg-eyebrow{ display:flex; flex-wrap:wrap; align-items:center; gap:8px;
-  font-size:12px; font-weight:700; color:var(--fx-faint); margin-bottom:11px; }
-.bmd-reg-eyebrow .mono{
-  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
-  color:var(--fx-mut); font-weight:600; }
-.bmd-reg h4{ margin:0 0 11px; font-size:19px; line-height:1.32; font-weight:800;
-  color:var(--fx-ink); letter-spacing:-.015em; }
-.bmd-reg-meta{ display:flex; flex-wrap:wrap; gap:6px; align-items:center;
-  font-size:12px; color:var(--fx-faint); }
-.bmd-reg-block{ border-top:1px solid #eef2f6; padding-top:15px; margin-top:17px; }
-.bmd-reg-h{ display:flex; align-items:center; justify-content:space-between;
-  gap:10px; flex-wrap:wrap; font-size:13px; font-weight:800; color:var(--fx-ink);
-  margin-bottom:9px; }
-/* Deliberately dense and unstyled-looking: this is the point being made. */
-.bmd-crit{ margin:0 0 8px; font-size:12.5px; line-height:1.62; color:#5b6b85; }
-.bmd-crit:last-child{ margin-bottom:0; }
-.bmd-crit b{ color:var(--fx-mut); font-weight:700; }
-.bmd-flag{ display:inline-flex; align-items:center; gap:5px; font-size:11px;
-  font-weight:700; padding:3px 10px; border-radius:999px; background:#fdf3e7;
-  color:#b4530a; white-space:nowrap; }
-.bmd-flag svg{ width:12px; height:12px; flex:0 0 auto; }
-.bmd-contact{ font-size:12.5px; line-height:1.7; color:var(--fx-mut); }
-.bmd-contact b{ color:var(--fx-ink); font-weight:700; }
-.bmd-contact .mono{
-  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:12px; }
-
-/* The email that follows, and the silence after it. */
-.bmd-mail{ max-width:520px; margin:20px auto 0; background:#fff;
-  border:1px solid #e6ecf5; border-radius:14px; padding:15px 17px 14px;
-  box-shadow:0 18px 44px -28px rgba(18,40,90,.5); }
-.bmd-mail-h{ display:flex; align-items:center; gap:8px; margin-bottom:11px;
-  font-size:12.5px; font-weight:800; color:var(--fx-ink); }
-.bmd-mail-h svg{ width:16px; height:16px; color:#94a3b8; flex:0 0 auto; }
-.bmd-mail-h .t{ margin-left:auto; font-weight:600; color:#94a3b8; font-size:11.5px; }
-.bmd-mail-row{ font-size:12.5px; color:var(--fx-mut); line-height:1.65; }
-.bmd-mail-row .k{ color:#94a3b8; }
-.bmd-mail-body{ margin:9px 0 0; font-size:12.5px; line-height:1.55;
-  color:#5b6b85; font-style:italic; }
-.bmd-mail-foot{ display:flex; align-items:center; gap:7px; margin-top:12px;
-  padding-top:11px; border-top:1px solid #eef2f6; font-size:12px; font-weight:700;
-  color:#b4530a; }
-.bmd-mail-foot svg{ width:14px; height:14px; flex:0 0 auto; }
-
-/* Embed-code panel. The marketing site has no dark surfaces anywhere, so the
-   navy terminal card that used to sit here read as lifted from another product.
-   Same white card + hairline as every other panel, with the brand blue doing the
-   syntax highlighting. */
-.bmd-code{ max-width:940px; margin:0 auto; background:#fff;
-  border:1px solid rgba(18,87,176,.14); border-radius:16px;
-  box-shadow:var(--fx-shadow-lift); overflow:hidden; }
-.bmd-code-head{ display:flex; align-items:center; justify-content:space-between;
-  gap:12px; padding:11px 16px; background:#eef2f8;
-  border-bottom:1px solid #e2e8f2; }
-.bmd-code-file{ display:inline-flex; align-items:center; gap:7px; font-size:12.5px;
-  font-weight:700; color:var(--fx-faint); }
-.bmd-code-file svg{ width:13px; height:13px; color:#94a3b8; flex:0 0 auto; }
-.bmd-copy{ display:inline-flex; align-items:center; gap:6px; font:inherit;
-  font-size:12px; font-weight:700; color:var(--fx-accent); background:#fff;
-  border:1px solid var(--fx-line-soft); border-radius:8px; padding:5px 12px;
-  cursor:pointer; transition:background .25s var(--ez), color .25s var(--ez),
-    border-color .25s var(--ez); }
-.bmd-copy svg{ width:13px; height:13px; }
-.bmd-copy:hover{ background:#f7faff; }
-.bmd-copy.is-done{ color:#15803d; border-color:rgba(21,128,61,.3);
-  background:#e7f6ee; }
-.bmd-code pre{ margin:0; padding:22px; overflow-x:auto; color:var(--fx-mut);
-  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
-  font-size:13px; line-height:1.8; }
-.bmd-code .k{ color:#1257b0; font-weight:600; }
-.bmd-code .a{ color:#0e7c86; }
-.bmd-code .v{ color:#b4530a; }
-.bmd-sw{ width:22px; height:22px; padding:0; border-radius:7px; cursor:pointer;
-  border:1px solid rgba(18,40,80,.14);
-  transition:transform .25s var(--ez), box-shadow .25s var(--ez); }
-.bmd-sw:hover{ transform:scale(1.12); }
-.bmd-sw.is-on{ box-shadow:0 0 0 2px #fff, 0 0 0 4px var(--bx); }
-
-/* 3-up cards + CTA, same components as the marketing section. */
-.bmd-embed-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:24px;
-  margin-top:96px; }
-.bmd-embed-card{ background:#fff; border:1px solid rgba(18,87,176,.10);
-  border-radius:20px; padding:32px 28px; box-shadow:0 2px 10px rgba(16,16,40,.04); }
-.bmd-embed-card .ic{ display:inline-flex; align-items:center; justify-content:center;
-  width:52px; height:52px; border-radius:50%; background:rgba(18,87,176,.08);
-  color:#1257b0; margin-bottom:20px; }
-.bmd-embed-card .ic svg{ width:24px; height:24px; }
-.bmd-embed-card h3{ margin:0 0 10px; font-size:20px; font-weight:700;
-  letter-spacing:-.01em; color:var(--fx-ink); }
-.bmd-embed-card p{ margin:0; color:var(--fx-mut); font-size:15.5px; line-height:1.6; }
-.bmd-embed-cta{ display:flex; justify-content:center; gap:14px; margin-top:44px;
-  flex-wrap:wrap; }
-.bmd-btn-primary{ display:inline-flex; align-items:center; gap:8px; border:0;
-  cursor:pointer; font:inherit; color:#fff; font-weight:700; font-size:16px;
-  padding:15px 28px; border-radius:14px; text-decoration:none;
-  background:var(--fx-grad); box-shadow:0 12px 24px -10px rgba(18,87,176,.6); }
-.bmd-btn-ghost{ display:inline-flex; align-items:center; gap:8px; background:#fff;
-  color:var(--fx-accent); text-decoration:none;
-  border:1px solid var(--fx-line-soft); font-weight:700; font-size:16px;
-  padding:15px 28px; border-radius:14px; }
-.bmd-btn-primary svg, .bmd-btn-ghost svg{ width:17px; height:17px; }
-.bmd-embed-note{ text-align:center; font-size:12.5px; color:#94a3b8;
-  margin:22px auto 0; max-width:640px; line-height:1.5; }
-.bmd-embed-note code{ font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
-  font-size:11.5px; background:#fff; border:1px solid var(--fx-line-soft);
-  border-radius:5px; padding:1px 5px; color:var(--fx-accent); }
-
-@media (max-width:980px){
-  .bmd-route-card{ position:static; width:auto; max-width:420px; right:auto;
-    bottom:auto; margin:18px auto 0; }
-  .bmd-embed-grid{ margin-top:56px; }
-}
-@media (max-width:860px){ .bmd-embed-grid{ grid-template-columns:1fr; } }
-@media (max-width:640px){
-  .bmd-embed-sec{ padding:72px 16px 84px; }
-  .bmd-host-links{ display:none; }
-  .bmd-host-nav{ padding:14px 18px; }
-  .bmd-host-hero{ padding:20px 18px 4px; }
-  .bmd-widget{ margin:20px 18px 24px; }
-  .bmd-tcard{ flex-direction:column; }
-  .bmd-tc-side{ flex-direction:row; align-items:center;
-    justify-content:space-between; width:100%; }
-  .bmd-code pre{ padding:16px; font-size:12px; }
-}
-@media (prefers-reduced-motion:reduce){
-  .bmd-panel, .bmd-tcard{ animation:none; }
-  .bmd-sw:hover{ transform:none; }
-}
-
-/* Thin centered strip under the hero search. */
-body.home-screen .hero-strip{ max-width:900px; margin:44px auto 0; text-align:center; }
-body.home-screen .hero-strip .hero-stats{ margin:0 auto; }
-body.home-screen .hero-strip .chips-block{ margin-top:18px; }
-body.home-screen .hero-strip .hero-trust{ margin-top:16px; }
-
-/* Belt-and-suspenders so nothing on the finder can exceed the phone viewport
-   (a wide flex child - stats row, segmented control - would otherwise widen the
-   whole page and right-crop the nav + hero). */
-@media (max-width:820px){
-  body.home-screen .hero{ padding:20px 16px 40px; }
-  body.home-screen .fh-head{ margin-bottom:26px; }
-  body.home-screen .hero-in,
-  body.home-screen .hero-card,
-  body.home-screen .bmd-embed-frame,
-  body.home-screen .bmd-code,
-  body.home-screen .hero-strip{ max-width:100%; width:100%; min-width:0; }
-  body.home-screen .hero-strip .hero-stats{ display:flex; width:100%; }
-  body.home-screen .hero-strip .hero-stat{ flex:1 1 0; min-width:0; padding:8px 6px; }
-  body.home-screen .hero-card .search-modes{ flex-wrap:wrap; }
-  body.home-screen .hero-card .search-mode{ flex:1 1 30%; }
-}
-
-/* ---- How it works: white cards with soft circular icon badges ---- */
-.fx-flow{ display:grid; grid-template-columns:repeat(3,1fr); gap:24px; margin-top:54px; }
-.fx-card{ background:var(--fx-card); border:1px solid var(--fx-line);
-  border-radius:var(--fx-radius); padding:32px 28px; box-shadow:var(--fx-shadow); }
-.fx-badge{ display:inline-flex; align-items:center; justify-content:center;
-  width:52px; height:52px; border-radius:50%; color:var(--fx-accent);
-  background:rgba(18,87,176,.08); }
-.fx-badge svg{ width:24px; height:24px; }
-.fx-card h3{ font-size:20px; font-weight:700; letter-spacing:-.01em;
-  color:var(--fx-ink); margin:20px 0 10px; }
-.fx-card p{ font-size:15.5px; line-height:1.6; color:var(--fx-mut); margin:0; }
-
-/* ---- FAQ ---- */
-.fx-faq{ max-width:820px; margin:0 auto; }
-.fx-faq details{ border:1px solid var(--fx-line); border-radius:16px; background:#fff;
-  margin-bottom:12px; box-shadow:var(--fx-shadow); overflow:hidden; }
-.fx-faq summary{ list-style:none; cursor:pointer; padding:20px 22px; font-size:16.5px;
-  font-weight:700; color:var(--fx-ink); display:flex; justify-content:space-between;
-  align-items:center; gap:18px; }
-.fx-faq summary::-webkit-details-marker{ display:none; }
-.fx-faq summary::after{ content:"+"; font-size:26px; line-height:1; color:var(--fx-accent);
-  flex:0 0 auto; }
-.fx-faq details[open] summary{ color:var(--fx-accent); }
-.fx-faq details[open] summary::after{ content:"\2212"; }
-.fx-faq .fx-a{ padding:0 22px 20px; color:var(--fx-mut); font-size:15.5px; line-height:1.62; }
-.fx-faq .fx-a em{ color:var(--fx-ink); font-style:normal; font-weight:600; }
-.fx-cta{ text-align:center; margin-top:40px; }
-
-/* ---- Footer cleanup ----
-   The old footer was a hard white bar with a crisp top border, plus a trust row
-   chopped up by vertical divider bars. Blend both into the page: transparent
-   backgrounds, one soft hairline, aligned to the content width, no dividers. */
-body.home-screen .trust-strip{ max-width:1080px; margin:0 auto; padding:44px 24px 0;
-  gap:12px 30px; }
-body.home-screen .trust-pill{ color:#5a6a86; font-weight:600; font-size:13px; padding:0; }
-body.home-screen .trust-pill .ico{ color:#0a7d43; }
-body.home-screen .trust-strip .trust-pill + .trust-pill::before{ display:none; }
-
-body.home-screen .landing-legal{ width:auto; max-width:1080px; margin:28px auto 0;
-  padding:20px 24px 44px; background:transparent; border-top:1px solid rgba(18,40,80,.08);
-  align-items:flex-start; }
-body.home-screen .landing-legal-disc{ color:#8a94a8; font-size:12.5px; line-height:1.6; }
-body.home-screen .landing-legal-links{ font-size:12.5px; }
-body.home-screen .landing-legal-links a{ color:#5a6a86; }
-body.home-screen .landing-legal-links a:hover{ color:var(--fx-accent); }
-
-@media (max-width:900px){
-  .fx-flow{ grid-template-columns:1fr; }
-  .fx-sec{ padding:64px 20px; }
-}
-
-/* ============================================================================
-   Horizontal focus carousel: one viewport, two panels.
-   Split = both visible. Click/swipe/arrows to focus left or right; the other
-   collapses to a slim peek strip (MJSTK-style, BridgeMD palette).
-   ========================================================================== */
-body.home-screen{
-  height:100vh !important; max-height:100vh; overflow:hidden !important;
-  display:block !important; background:#0b2340 !important; }
-body.home-screen .pub-main{
-  height:100%; min-height:0 !important; display:block !important; padding:0; }
-body.home-screen .landing-extra,
-body.home-screen .landing-legal{ display:none !important; }
-body.home-screen .pill-nav{
-  position:fixed; top:20px; left:75%; transform:translateX(-50%); z-index:80;
-  width:auto; max-width:none; margin:0; padding:0;
-  display:flex; justify-content:center; background:transparent; border:none;
-  box-shadow:none; -webkit-backdrop-filter:none; backdrop-filter:none;
-  transition:left var(--fy-dur, .8s) var(--fy-ez, cubic-bezier(.22,1,.36,1)); }
-body.home-screen.is-fy-right .pill-nav{ left:55%; }
-body.home-screen .pill-nav .brand{ display:none; }
-body.home-screen .pill-nav-center{ display:none; }
-body.home-screen .pill-nav-auth{ justify-self:center; }
-body.home-screen .pill-nav-cta{
-  background:rgba(255,255,255,.92); color:#153554; border:1px solid rgba(255,255,255,.75);
-  -webkit-backdrop-filter:blur(14px); backdrop-filter:blur(14px); box-shadow:none; }
-body.home-screen .pill-nav-cta:hover{ transform:none; background:#fff; }
-/* Hidden until the research side expands. Default-hide so the button
-   never flashes on first paint before JS adds is-fy-split. */
-body.home-screen .pill-nav-cta,
-body.home-screen .pill-sheet-cta{ display:none !important; }
-body.home-screen.is-fy-right .pill-nav-cta{ display:inline-flex !important; }
-body.home-screen.is-fy-right .pill-sheet-cta{ display:block !important; }
-
-.fy{ --fy-ez:cubic-bezier(.22,1,.36,1); --fy-dur:.8s;
-  display:flex; height:100vh; min-height:0; position:relative; overflow:hidden;
-  touch-action:pan-y pinch-zoom; }
-body.home-screen:not(.is-fy-ready) .fy-panel,
-body.home-screen:not(.is-fy-ready) .fy-body,
-body.home-screen:not(.is-fy-ready) .pill-nav,
-body.home-screen:not(.is-fy-ready) .bmd-site-extra{ transition:none !important; }
-.fy-panel{ flex:0 0 50%; min-width:0; min-height:0; position:relative;
-  overflow:hidden; transition:flex-basis var(--fy-dur) var(--fy-ez); }
-.fy.is-left .fy-left{ flex-basis:90%; }
-.fy.is-left .fy-right{ flex-basis:10%; cursor:pointer; }
-.fy.is-split .fy-left, .fy.is-split .fy-right{ flex-basis:50%; }
-.fy.is-right .fy-left{ flex-basis:10%; cursor:pointer; }
-.fy.is-right .fy-right{ flex-basis:90%; }
-.fy.is-split.is-hover-left .fy-left{ flex-basis:90%; }
-.fy.is-split.is-hover-left .fy-right{ flex-basis:10%; }
-.fy.is-split.is-hover-right .fy-left{ flex-basis:10%; }
-.fy.is-split.is-hover-right .fy-right{ flex-basis:90%; }
-
-body.home-screen .fy-left.hero{
-  background:#f2f7fc !important; color:#102a43; }
-.fy-right.bmd-embed-sec{
-  --bx:#1257b0; --bxs2:rgba(18,87,176,.45); --ez:var(--fy-ez);
-  background:#0b2340; color:#f7fbff; padding:0; border:0;
-  display:flex; flex-direction:column; }
-
-.fy-body{ height:100%; opacity:1; transform:none; pointer-events:auto;
-  transition:opacity .38s var(--fy-ez), transform .58s var(--fy-ez); }
-.fy.is-left .fy-right .fy-body,
-.fy.is-right .fy-left .fy-body,
-.fy.is-split.is-hover-left .fy-right .fy-body,
-.fy.is-split.is-hover-right .fy-left .fy-body{
-  opacity:0; pointer-events:none; transform:scale(.97); }
-.fy-peek{ display:none; position:absolute; inset:0; align-items:center;
-  justify-content:center; flex-direction:column; padding:24px 8px;
-  text-align:center; pointer-events:none; }
-.fy.is-left .fy-right .fy-peek,
-.fy.is-right .fy-left .fy-peek,
-.fy.is-split.is-hover-left .fy-right .fy-peek,
-.fy.is-split.is-hover-right .fy-left .fy-peek{
-  display:flex; pointer-events:auto; }
-.fy-peek-label{ writing-mode:vertical-rl; transform:rotate(180deg);
-  font-size:10px; font-weight:800; letter-spacing:.18em; text-transform:uppercase; }
-.fy-left .fy-peek-label{ color:rgba(16,42,67,.62); }
-.fy-right .fy-peek-label{ color:rgba(232,242,252,.68); }
-
-.fy-left.hero{ max-width:none; margin:0; padding:0; text-align:left; }
-.fy-left.hero::before{ display:none; }
-body.home-screen .fy-left-in.hero-in{
-  height:100%; width:100%; max-width:760px; margin:0 auto;
-  display:flex; flex-direction:column;
-  justify-content:center; padding:88px 48px 52px; box-sizing:border-box; }
-body.home-screen .fy-left .fy-who,
-body.home-screen .fy-right .fy-who{
-  margin:0 0 10px; max-width:none; text-align:left;
-  font-size:clamp(42px,5.4vw,76px); font-weight:800;
-  letter-spacing:-.045em; line-height:.94; color:#102a43; }
-body.home-screen .fy-right .fy-who{ color:#f7fbff; }
-body.home-screen .fy-left h1,
-body.home-screen .fy-right .fy-lead{
-  margin:0 0 18px; max-width:none; text-align:left !important;
-  font-size:clamp(20px,2.2vw,28px); line-height:1.15; letter-spacing:-.03em;
-  font-weight:800; color:#153554; white-space:normal !important; }
-body.home-screen .fy-right .fy-lead{
-  color:rgba(232,242,252,.82); }
-body.home-screen .fy-left .fy-sub,
-body.home-screen .fy-left .hero-sub{
-  margin:0 0 20px; max-width:46ch; text-align:left;
-  font-size:15px;
-  line-height:1.45; color:#526b82; }
-
-body.home-screen .fy-left .hero-card{ margin:0; width:100%;
-  background:rgba(255,255,255,.88); border:1px solid #d8e4ef;
-  border-radius:18px; padding:16px;
-  box-shadow:0 20px 50px -30px rgba(15,58,96,.25); }
-body.home-screen .fy-left .hero-card .hero-search{ flex-direction:column; gap:8px;
-  padding:0; background:transparent; border:0; box-shadow:none; }
-body.home-screen .fy-left .hero-search-loc::before{ display:none; }
-body.home-screen .fy-left .hero-search .hero-field{
-  border:1px solid #d8e4ef; border-radius:12px;
-  background:#fff; padding:10px 12px; }
-body.home-screen .fy-left .hero-card .hero-go,
-body.home-screen .fy-left .hero-card .hero-go.btn-primary{
-  width:100%; justify-content:center; border-radius:12px;
-  background:#1257b0 !important; box-shadow:none; }
-body.home-screen .fy-left .hero-card .search-mode.is-active{
-  background:#1257b0 !important; color:#fff; box-shadow:none; }
-body.home-screen .fy-left .hero-card-head,
-body.home-screen .fy-left .hero-hint{ display:none !important; }
-body.home-screen .fy-left .hero-card .search-modes{
-  background:#e8f0f8; border:1px solid #d8e4ef; }
-.fy-left .hero-reassurance{ justify-content:flex-start; margin:14px 0 0; color:#526b82; }
-.fy-left .hero-strip{ display:none; }
-.fy-legal{ width:100%; margin-top:auto; padding-top:20px;
-  text-align:center; font-size:11.5px; line-height:1.45; color:#7890a5; }
-.fy-legal a{ color:#526b82; }
-
-.fy-right-in{ height:100%; display:flex; flex-direction:column;
-  padding:88px 40px 36px; box-sizing:border-box; }
-.fy-right .fy-who, .fy-right .fy-lead{
-  width:min(100%,1180px); margin-left:auto; margin-right:auto; }
-.fy-right .fy-lead{ max-width:1180px; }
-.fy-stage{ flex:1; min-height:0; display:flex; flex-direction:column; }
-.fy-right .bmd-embed-frame{
-  flex:1; min-height:0; width:100%; max-width:1180px; margin:0 auto;
-  position:relative; display:flex; flex-direction:column;
-  background:#fff; border:1px solid rgba(255,255,255,.3);
-  border-radius:16px; overflow:hidden;
-  box-shadow:0 32px 64px -28px rgba(0,0,0,.55); }
-.bmd-site-scroll{ flex:1; min-height:0; overflow-y:auto; overflow-x:hidden;
-  overscroll-behavior:contain; scrollbar-width:thin; scrollbar-color:#b8c8d8 #f3f7fa; }
-.bmd-site-scroll::-webkit-scrollbar{ width:8px; }
-.bmd-site-scroll::-webkit-scrollbar-track{ background:#f3f7fa; }
-.bmd-site-scroll::-webkit-scrollbar-thumb{ background:#b8c8d8; border-radius:999px;
-  border:2px solid #f3f7fa; }
-.bmd-host-utility{ display:flex; justify-content:flex-end; gap:18px;
-  padding:7px 22px; background:#f5f8fb; border-bottom:1px solid #e6edf4;
-  color:#60758a; font-size:10.5px; font-weight:600; }
-.bmd-host-utility button{ border:0; padding:0; color:inherit; background:none;
-  cursor:pointer; font:inherit; font-weight:600; }
-.bmd-host-utility button:hover{ color:#1257b0; }
-.bmd-host-kicker{ margin:0 0 5px; color:var(--bx); font-size:10px;
-  font-weight:800; letter-spacing:.1em; text-transform:uppercase; }
-.fy-right .bmd-host-nav{ position:sticky; top:0; z-index:5; background:#fff; }
-.fy-right .bmd-widget{ flex:0 0 auto; min-height:0; overflow:hidden; }
-/* One compact row on the wide mock. Labels sit above values so the fields
-   stay readable without icon+label+value crowding a single line. */
-.fy-right .bmd-finder-search{ flex-direction:row; flex-wrap:nowrap; gap:10px;
-  align-items:stretch; margin-bottom:14px; }
-.fy-right .bmd-finder-search .fld{ flex:1 1 0; width:auto;
-  flex-direction:column; align-items:flex-start; gap:3px; padding:8px 12px; }
-.fy-right .bmd-finder-search .fld svg{ display:none; }
-.fy-right .bmd-finder-search .fld > span{ font-size:10.5px; font-weight:600;
-  letter-spacing:.04em; text-transform:uppercase; color:#94a3b8; }
-.fy-right .bmd-finder-search .fld input{ font-weight:600; width:100%; }
-.fy-right .bmd-finder-search .fbtn{ width:auto; flex:0 0 auto; align-self:stretch;
-  padding:10px 18px; box-shadow:none; }
-.fy-right .bmd-finder-meta{ margin-bottom:10px; font-weight:500; }
-.fy-right .bmd-tc-why{ display:none; }
-.fy-right .bmd-tcard:nth-child(n+3){ display:none; }
-
-/* 50/50: the left hero has padding:76px 24px 52px (body.home-screen .hero).
-   Mirror that on the right so "For research sites" starts on the same
-   baseline, then let the mock fill the leftover navy without changing
-   the widget's internal sizes. */
-@media (min-width:981px){
-  body.home-screen .fy-right.bmd-embed-sec{ padding:76px 24px 52px; }
-  body.home-screen .fy-right-in{ justify-content:flex-start; padding:70px 40px 0; }
-  body.home-screen.is-fy-right .fy-right.bmd-embed-sec{ padding:0; }
-  body.home-screen.is-fy-right .fy-right-in{ padding:88px 40px 36px; }
-}
-
-/* Split (and the collapsed left-focus peek): a quiet product preview.
-   Extra hospital chrome stays in the DOM and fades in when the research
-   side locks open, so the panel grow does not pop a second website in. */
-@media (min-width:981px){
-  /* Preview is the default first-paint state. Extra hospital chrome only
-     appears after is-fy-right, so reload never flashes a full site then
-     collapses it. */
-  .bmd-site-extra{ overflow:hidden; max-height:0; opacity:0;
-    pointer-events:none;
-    transition:opacity .4s ease, max-height .65s var(--fy-ez); }
-  body.home-screen .bmd-nav-more,
-  body.home-screen .bmd-tcard:nth-child(n+2),
-  body.home-screen .bmd-host-kicker,
-  body.home-screen .bmd-host-hero p,
-  body.home-screen .bmd-site-scroll.is-finder .bmd-host-hero{ display:none; }
-  body.home-screen.is-fy-right .bmd-nav-more{ display:inline; }
-  body.home-screen.is-fy-right .bmd-tcard:nth-child(n+2){ display:flex; }
-  body.home-screen.is-fy-right .bmd-host-kicker,
-  body.home-screen.is-fy-right .bmd-host-hero p{ display:block; }
-
-  body.home-screen.is-fy-split .bmd-host-nav,
-  body.home-screen.is-fy-left .bmd-host-nav{ padding:12px 20px; }
-  body.home-screen.is-fy-split .bmd-host-links,
-  body.home-screen.is-fy-left .bmd-host-links{ gap:16px; font-size:13px; }
-  body.home-screen.is-fy-split .bmd-host-hero,
-  body.home-screen.is-fy-left .bmd-host-hero{ padding:22px 20px 0; }
-  body.home-screen.is-fy-split .bmd-host-hero h4,
-  body.home-screen.is-fy-left .bmd-host-hero h4{ font-size:18px; margin-bottom:0; }
-  body.home-screen.is-fy-split .bmd-widget,
-  body.home-screen.is-fy-left .bmd-widget{ margin:18px 20px 28px;
-    padding:16px 16px 12px; border-color:#e6edf5; background:#fff; }
-  body.home-screen.is-fy-split .bmd-tcard,
-  body.home-screen.is-fy-left .bmd-tcard{ padding:14px; border-color:#eef2f6; }
-  body.home-screen.is-fy-split .bmd-badge,
-  body.home-screen.is-fy-left .bmd-badge{ background:transparent; padding:0;
-    font-size:10.5px; letter-spacing:.03em; text-transform:uppercase; }
-  body.home-screen.is-fy-split .bmd-badge.ok,
-  body.home-screen.is-fy-left .bmd-badge.ok{ color:#15803d; }
-  body.home-screen.is-fy-split .bmd-badge.info,
-  body.home-screen.is-fy-left .bmd-badge.info{ color:#1257b0; }
-
-  /* Expanded research side: a full hospital page, finder as a native module. */
-  body.home-screen.is-fy-right .bmd-host-utility{ max-height:40px; }
-  body.home-screen.is-fy-right .bmd-site-extra{
-    max-height:none; opacity:1; overflow:visible; pointer-events:auto; }
-  body.home-screen.is-fy-right .bmd-host-nav{ padding:15px 36px; }
-  body.home-screen.is-fy-right .bmd-host-links{ gap:22px; font-size:14px; }
-  body.home-screen.is-fy-right .bmd-host-hero{ padding:32px 36px 4px; }
-  body.home-screen.is-fy-right .bmd-host-hero h4{ font-size:26px; margin-bottom:10px; }
-  body.home-screen.is-fy-right .bmd-host-hero p{ display:block; max-width:560px;
-    line-height:1.55; font-size:14.5px; }
-  body.home-screen.is-fy-right .bmd-widget{ margin:24px 36px 32px;
-    padding:20px 20px 16px; border:1px solid rgba(18,87,176,.14);
-    background:linear-gradient(180deg,#f7faff,#fff); border-radius:16px; }
-  body.home-screen.is-fy-right .bmd-tcard{ padding:16px 18px; margin-bottom:12px; }
-  body.home-screen.is-fy-right .bmd-host-section{ padding:36px; }
-  body.home-screen.is-fy-right .bmd-host-cta,
-  body.home-screen.is-fy-right .bmd-host-footer{ padding-left:36px; padding-right:36px; }
-}
-.bmd-host-section{ padding:30px 28px; border-top:1px solid #e8eef4; }
-.bmd-host-section.is-tint{ background:#f4f8fb; }
-.bmd-host-eyebrow{ margin:0 0 7px; color:#1257b0; font-size:10px;
-  font-weight:800; letter-spacing:.11em; text-transform:uppercase; }
-.bmd-host-section h5{ margin:0 0 8px; color:#102a43; font-size:22px;
-  line-height:1.1; letter-spacing:-.025em; }
-.bmd-host-section > p{ margin:0; max-width:650px; color:#60758a;
-  font-size:13px; line-height:1.55; }
-.bmd-host-stats{ display:grid; grid-template-columns:repeat(3,1fr); gap:12px;
-  margin-top:20px; }
-.bmd-host-stat{ padding:16px; background:#fff; border:1px solid #e0e9f1;
-  border-radius:12px; }
-.bmd-host-stat strong{ display:block; color:#102a43; font-size:24px;
-  line-height:1; letter-spacing:-.035em; }
-.bmd-host-stat span{ display:block; margin-top:6px; color:#60758a;
-  font-size:11px; line-height:1.35; }
-.bmd-programs{ display:grid; grid-template-columns:repeat(3,1fr); gap:12px;
-  margin-top:18px; }
-.bmd-program{ min-height:112px; padding:17px; border:1px solid #e0e9f1;
-  border-radius:12px; background:#fff; }
-.bmd-program b{ display:block; margin-bottom:7px; color:#102a43; font-size:14px; }
-.bmd-program span{ color:#60758a; font-size:11.5px; line-height:1.45; }
-.bmd-host-cta{ display:flex; align-items:center; justify-content:space-between;
-  gap:18px; padding:24px 28px; color:#fff; background:#1257b0; }
-.bmd-host-cta strong{ display:block; font-size:18px; letter-spacing:-.02em; }
-.bmd-host-cta span{ display:block; margin-top:4px; color:rgba(255,255,255,.75);
-  font-size:11.5px; }
-.bmd-host-cta button{ flex:0 0 auto; border:0; border-radius:9px; padding:10px 15px;
-  color:#1257b0; background:#fff; font:inherit; font-size:12px; font-weight:800; }
-.bmd-host-footer{ display:flex; justify-content:space-between; gap:20px;
-  padding:22px 28px; color:#71869a; background:#0c263d; font-size:10.5px; }
-.bmd-apply-flow{ position:absolute; z-index:30; inset:39px 0 0;
-  display:grid; place-items:center; padding:20px;
-  background:rgba(6,25,43,.64); -webkit-backdrop-filter:blur(5px);
-  backdrop-filter:blur(5px); animation:bmdFade .22s ease both; }
-.bmd-apply-flow[hidden]{ display:none; }
-@keyframes bmdFade{ from{ opacity:0; } to{ opacity:1; } }
-.bmd-flow-card{ width:min(520px,94%); max-height:94%; overflow-y:auto;
-  border:1px solid #dce6ef; border-radius:16px; background:#fff;
-  box-shadow:0 30px 70px -24px rgba(3,20,36,.7); }
-.bmd-flow-head{ display:flex; align-items:flex-start; gap:14px;
-  padding:18px 20px 15px; border-bottom:1px solid #e7edf3; }
-.bmd-flow-mark{ width:34px; height:34px; display:grid; place-items:center;
-  flex:0 0 auto; border-radius:10px; color:#fff; background:#1257b0; }
-.bmd-flow-mark svg{ width:17px; height:17px; }
-.bmd-flow-head b{ display:block; color:#102a43; font-size:16px; }
-.bmd-flow-head span{ display:block; margin-top:3px; color:#6b7f92; font-size:11px; }
-.bmd-flow-close{ width:30px; height:30px; margin-left:auto; border:0;
-  border-radius:50%; color:#60758a; background:#edf3f7; cursor:pointer;
-  font:inherit; font-size:20px; line-height:1; }
-.bmd-flow-progress{ display:grid; grid-template-columns:repeat(3,1fr);
-  gap:6px; padding:14px 20px 0; }
-.bmd-flow-progress span{ padding:7px 8px; border-radius:8px;
-  color:#71869a; background:#f1f5f8; font-size:10px; font-weight:800;
-  text-align:center; }
-.bmd-flow-progress span.is-done{ color:#1257b0; background:#e8f1fb; }
-.bmd-flow-body{ padding:17px 20px 20px; }
-.bmd-flow-body[hidden], .bmd-flow-success[hidden]{ display:none; }
-.bmd-flow-study{ padding:11px 12px; margin-bottom:14px; border-radius:10px;
-  color:#36526b; background:#f5f8fb; border:1px solid #e2eaf1;
-  font-size:11px; line-height:1.4; }
-.bmd-flow-study b{ display:block; margin-bottom:2px; color:#102a43; font-size:12px; }
-.bmd-flow-grid{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
-.bmd-flow-field{ display:block; color:#536b80; font-size:10px; font-weight:700; }
-.bmd-flow-field:first-child{ grid-column:1/-1; }
-.bmd-flow-field input{ width:100%; margin-top:5px; padding:9px 10px;
-  border:1px solid #d9e3ec; border-radius:9px; color:#102a43; background:#fff;
-  font:inherit; font-size:12px; box-sizing:border-box; }
-.bmd-flow-consent{ display:flex; gap:8px; align-items:flex-start; margin:13px 0;
-  color:#60758a; font-size:10.5px; line-height:1.4; }
-.bmd-flow-consent input{ margin-top:2px; accent-color:#1257b0; }
-.bmd-flow-submit{ width:100%; border:0; border-radius:10px; padding:11px 15px;
-  color:#fff; background:#1257b0; cursor:pointer; font:inherit;
-  font-size:12.5px; font-weight:800; }
-.bmd-flow-note{ margin:8px 0 0; color:#8a9aaa; font-size:9.5px; text-align:center; }
-.bmd-flow-success{ padding:26px 24px 24px; text-align:center; }
-.bmd-success-check{ width:48px; height:48px; display:grid; place-items:center;
-  margin:0 auto 12px; border-radius:50%; color:#fff; background:#159455; }
-.bmd-success-check svg{ width:24px; height:24px; }
-.bmd-flow-success h5{ margin:0 0 6px; color:#102a43; font-size:21px; }
-.bmd-flow-success > p{ margin:0 auto 17px; max-width:380px; color:#60758a;
-  font-size:11.5px; line-height:1.5; }
-.bmd-route{ display:grid; grid-template-columns:1fr auto 1fr; align-items:center;
-  gap:10px; padding:13px; border:1px solid #dfe8ef; border-radius:12px;
-  background:#f7fafc; text-align:left; }
-.bmd-route-box{ min-width:0; }
-.bmd-route-box small{ display:block; color:#8091a1; font-size:9px;
-  font-weight:800; letter-spacing:.08em; text-transform:uppercase; }
-.bmd-route-box b{ display:block; margin-top:3px; color:#102a43; font-size:11px; }
-.bmd-route-arrow{ color:#1257b0; font-size:18px; font-weight:800; }
-.bmd-next-steps{ display:flex; justify-content:center; gap:14px; margin:16px 0;
-  color:#536b80; font-size:10px; font-weight:700; }
-.bmd-flow-done{ border:0; border-radius:9px; padding:10px 24px; color:#fff;
-  background:#1257b0; cursor:pointer; font:inherit; font-size:12px; font-weight:800; }
-.bmd-site-toast{ position:absolute; z-index:24; left:50%; bottom:16px;
-  transform:translate(-50%,10px); max-width:calc(100% - 32px); padding:9px 13px;
-  border-radius:999px; color:#fff; background:#102a43; box-shadow:0 12px 28px -14px rgba(0,0,0,.65);
-  font-size:10.5px; font-weight:700; white-space:nowrap; opacity:0;
-  pointer-events:none; transition:opacity .2s ease, transform .2s ease; }
-.bmd-site-toast.is-show{ opacity:1; transform:translate(-50%,0); }
-
-.fy-grip{ position:absolute; z-index:65; left:50%; top:50%;
-  transform:translate(-50%,-50%); width:32px; height:26px;
-  display:flex; align-items:center; justify-content:center; gap:0;
-  background:linear-gradient(90deg,#f2f7fc 0 50%,#0b2340 50% 100%);
-  border:1px solid rgba(145,170,194,.5); border-radius:10px;
-  box-shadow:0 5px 14px -10px rgba(5,35,64,.8);
-  pointer-events:none;
-  transition:left var(--fy-dur) var(--fy-ez), opacity .25s ease; }
-.fy-grip svg{ width:8px; height:8px; stroke-width:2.35; }
-.fy-grip svg:first-child{ color:#1257b0; }
-.fy-grip svg:last-child{ color:#f2f7fc; }
-.fy.is-left .fy-grip, .fy.is-split.is-hover-left .fy-grip{ left:90%; }
-.fy.is-right .fy-grip, .fy.is-split.is-hover-right .fy-grip{ left:10%; }
-
-.fy-rail{ position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
-  z-index:60; display:flex; align-items:center; gap:6px; pointer-events:none;
-  transition:opacity .3s var(--fy-ez); }
-.fy.is-left .fy-rail, .fy.is-right .fy-rail{ opacity:0; pointer-events:none; }
-.fy-go{ pointer-events:auto; width:42px; height:42px; border-radius:50%;
-  border:1px solid rgba(255,255,255,.35); background:rgba(255,255,255,.12);
-  color:#fff; display:inline-flex; align-items:center; justify-content:center;
-  cursor:pointer; padding:0;
-  -webkit-backdrop-filter:blur(12px); backdrop-filter:blur(12px);
-  transition:background .25s var(--fy-ez), transform .25s var(--fy-ez); }
-.fy-go svg{ width:16px; height:16px; }
-.fy-go:hover{ background:rgba(255,255,255,.22); transform:scale(1.06); }
-
-.fy-pager{ position:fixed; right:28px; bottom:24px; z-index:70;
-  display:flex; align-items:center; gap:10px; font-size:13px; font-weight:700;
-  color:rgba(246,241,232,.75); letter-spacing:.06em; }
-.fy-pager-dash{ opacity:.35; font-weight:400; }
-.fy-pager-go{ width:36px; height:36px; border-radius:50%; border:1px solid rgba(246,241,232,.25);
-  background:transparent; color:rgba(246,241,232,.85); display:inline-flex;
-  align-items:center; justify-content:center; cursor:pointer; padding:0; }
-.fy-pager-go svg{ width:14px; height:14px; }
-.fy-pager-go:hover{ background:rgba(255,255,255,.08); }
-.fy-skip{ position:fixed; left:28px; bottom:24px; z-index:70;
-  font-size:13px; font-weight:700; color:rgba(22,22,22,.45); letter-spacing:.04em;
-  background:none; border:0; cursor:pointer; padding:0; }
-body.home-screen.is-fy-right .fy-skip,
-body.home-screen.is-fy-split .fy-skip{ color:rgba(246,241,232,.45); }
-.fy-skip:hover{ color:#161616; }
-body.home-screen.is-fy-right .fy-skip:hover,
-body.home-screen.is-fy-split .fy-skip:hover{ color:#f6f1e8; }
-.fy-snip{ display:none; }
-.fy-brand{ position:fixed; top:22px; left:28px; z-index:80; display:flex;
-  align-items:center; gap:10px; font-weight:700; font-size:20px; color:#153554;
-  text-decoration:none; letter-spacing:-.02em;
-  transition:left var(--fy-dur) var(--fy-ez), color .35s ease; }
-body.home-screen.is-fy-right .fy-brand{
-  left:calc(10% + 28px); color:#f7fbff; }
-body.home-screen.is-fy-left .fy-brand,
-body.home-screen.is-fy-split .fy-brand{ left:28px; color:#153554; }
-
-
-/* Stacked-layout extras (cards, inbox overlay, embed CTA) stay in the DOM
-   for the below-fold page, but they are not part of the split mock. */
-.fy .bmd-embed-grid, .fy .bmd-embed-cta, .fy .bmd-route-card,
-.fy .fy-embed-sub{ display:none; }
-
-@media (max-height:820px){
-  .fy-left-in.hero-in, .fy-right-in{ padding-top:72px; padding-bottom:28px; }
-  .fy-who{ font-size:clamp(30px,4vw,44px); }
-}
-@media (max-width:980px){
-  body.home-screen{
-    height:auto !important; max-height:none; overflow:auto !important;
-    background:#f2f7fc !important; }
-  body.home-screen .landing-extra,
-  body.home-screen .landing-legal{ display:block !important; }
-  body.home-screen .pill-nav{
-    position:sticky; top:max(10px, env(safe-area-inset-top)); left:12px; right:12px;
-    transform:none; width:auto; z-index:90;
-    display:grid; grid-template-columns:auto 1fr; justify-content:stretch;
-    margin:max(10px, env(safe-area-inset-top)) 12px 0;
-    padding:9px 10px 9px 16px;
-    background:rgba(255,255,255,.94); border:1px solid rgba(18,40,80,.08);
-    border-radius:22px; box-shadow:0 12px 34px -20px rgba(15,26,46,.45); }
-  body.home-screen .pill-nav .brand{ display:flex; }
-  body.home-screen .pill-nav-auth{ justify-self:end; }
-  body.home-screen .fy-brand{ display:none; }
-  .fy{ flex-direction:column; height:auto; overflow:visible; touch-action:auto; }
-  .fy-panel, .fy.is-left .fy-left, .fy.is-left .fy-right,
-  .fy.is-right .fy-left, .fy.is-right .fy-right{
-    flex-basis:auto !important; cursor:default; overflow:visible; }
-  .fy-peek{ display:none !important; }
-  .fy-body{ opacity:1 !important; pointer-events:auto !important; transform:none !important; }
-  .fy-grip, .fy-rail, .fy-pager, .fy-skip{ display:none; }
-  body.home-screen .fy-left-in.hero-in{
-    height:auto; max-width:none; padding:28px 18px 36px; }
-  body.home-screen .fy-left .fy-who,
-  body.home-screen .fy-right .fy-who{ font-size:clamp(34px,10vw,48px); }
-  body.home-screen .fy-left h1,
-  body.home-screen .fy-right .fy-lead{ max-width:none; font-size:clamp(20px,6vw,26px); }
-  .fy-left .hero-reassurance{ display:flex; flex-wrap:wrap; gap:10px 16px; justify-content:flex-start; }
-  .fy-right-in{ padding:28px 16px 36px; }
-  .fy-right .fy-who, .fy-right .fy-lead{ width:100%; }
-  .fy-right .bmd-embed-frame{ min-height:min(78vh,720px); max-width:none; border-radius:14px; }
-  .bmd-host-utility{ flex-wrap:wrap; gap:10px 14px; }
-  .bmd-host-links{ flex-wrap:wrap; gap:10px 14px; }
-  .bmd-finder-search{ flex-direction:column; }
-  .bmd-finder-search .fld{ flex-basis:auto; }
-  .bmd-finder-search .fbtn{ width:100%; justify-content:center; min-height:48px; }
-  .bmd-finder-search .fld input{ font-size:16px; }
-  .bmd-host-stats, .bmd-programs{ grid-template-columns:1fr; }
-  .bmd-host-cta{ flex-direction:column; align-items:stretch; }
-  .bmd-host-cta button{ width:100%; min-height:44px; }
-  .bmd-host-footer{ flex-direction:column; }
-  .bmd-tcard{ flex-direction:column; }
-  .bmd-tc-side{ align-items:stretch; width:100%; }
-  .bmd-tc-apply{ width:100%; justify-content:center; min-height:44px; }
-  .bmd-apply-flow{
-    position:fixed; inset:0; z-index:220; padding:max(12px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom)); }
-  .bmd-flow-card{ width:100%; max-height:100%; }
-  .bmd-flow-grid{ grid-template-columns:1fr; }
-  .bmd-flow-submit, .bmd-flow-done{ min-height:48px; }
-  .bmd-site-toast{ white-space:normal; text-align:center; }
-  .hero-card .btn, .hero-card input{ min-height:48px; }
-}
-@media (prefers-reduced-motion:reduce){
-  .fy-panel, .fy-body, .fy-rail, .bmd-site-extra{ transition:none; }
+/* The shared pill nav is fixed; give the hero room so the headline is not under it. */
+body.home-screen .hero{ padding-top:max(88px, calc(env(safe-area-inset-top) + 76px)); }
+@media (max-width:760px){
+  body.home-screen .hero{ align-items:flex-start; padding-top:max(96px, calc(env(safe-area-inset-top) + 84px)); }
 }
 </style>
 {% endblock %}
-
-{# Same pill header as `/`; default lives in public_base via _public_chrome.html #}
 
 {% block pub_nav_extra %}
 {% if patient_user and records_ui %}
@@ -1037,53 +31,24 @@ body.home-screen.is-fy-split .fy-brand{ left:28px; color:#153554; }
 {% endblock %}
 
 {% block body %}
-{# ONE demo scenario, shown twice: the same patient (type 2 diabetes, Columbus)
-   looking for the same study, first the way it works today and then with the
-   finder embedded. A single scenario is the whole point - a before/after only
-   lands if both sides are apples to apples.
-   There are deliberately no invented hospital names here. The "after" panel is
-   branded from a placeholder the visitor can type over, so nothing pretends to
-   be a real customer or a real recruitment listing, and the NCT numbers are
-   masked.
-   `studies` carries the metadata someone actually judges a match on - registry
-   id, phase, distance, and the reason. The third row is intentionally a
-   rejection: a screener that never says no is not a screener. #}
-{% set demo = {
-  'cond': 'Type 2 diabetes',
-  'loc': 'Columbus, OH',
-  'nct': 'NCT04XXXXXX',
-  'title': 'A Study of a Once-Weekly Add-On Therapy in Adults With Type 2 Diabetes',
-  'count': '14 recruiting studies within 25 miles',
-  'org': 'Your Hospital',
-  'domain': 'yourhospital.org',
-  'coord': 'the diabetes study coordinator',
-  'studies': [
-    {'t': 'A Study of a Once-Weekly Add-On Therapy in Adults With Type 2 Diabetes',
-     'nct': 'NCT04XXXXXX', 'phase': 'Phase 3', 'dist': '2.4 mi away',
-     'why': 'Your A1c range and 3+ months on metformin both fit. Kidney function is above the cut-off.',
-     'fit': 'Likely eligible', 'cls': 'ok'},
-    {'t': 'Continuous Glucose Monitoring in Adults With Type 2 Diabetes',
-     'nct': 'NCT05XXXXXX', 'phase': 'Device study', 'dist': '3.1 mi away',
-     'why': 'Open to your diagnosis. One thing to confirm with the team: current insulin use.',
-     'fit': 'Worth asking', 'cls': 'info'},
-    {'t': 'An Investigational Therapy in Type 2 Diabetes With Chronic Kidney Disease',
-     'nct': 'NCT03XXXXXX', 'phase': 'Phase 2', 'dist': '5.8 mi away',
-     'why': 'Ruled out for you: this one needs kidney function below a threshold yours is above.',
-     'fit': 'Not a fit', 'cls': 'off'}]
-} %}
-<div class="fy is-split" id="fyCarousel" data-slide="1">
-<a class="fy-brand" href="{{ url_for('for_sites') }}">{{ ic.icon('mark', 'brand-glyph') }}BridgeMD</a>
-<section class="fy-panel fy-left hero" data-panel="patients">
-  <div class="fy-peek" aria-hidden="true">
-    <span class="fy-peek-label">For patients</span>
-  </div>
-  <div class="fy-body">
-  <div class="fy-left-in hero-in">
-    <p class="fy-who">For patients</p>
-    <h1>Find a trial that fits.</h1>
-    <p class="hero-sub fy-sub">Tell us what you are dealing with. We will show recruiting studies near you that you could actually join.</p>
+<section class="hero">
+  <div class="hero-in">
+    {% if patient_user %}
+    <h1>Find your next <span class="hero-grad">trial match.</span></h1>
+    {% else %}
+    <h1>Find a clinical trial <span class="hero-grad">that fits your life.</span></h1>
+    {% endif %}
+    <p class="hero-sub">{{ 'Search again with your saved context and keep applications moving.' if patient_user else 'Tell us what you are dealing with. We surface recruiting studies nearby and help you understand what could fit.' }}</p>
 
-   <div class="hero-card">
+    {% if not patient_user %}
+    <div class="hero-stats" aria-label="Why BridgeMD">
+      <div class="hero-stat"><span class="hero-stat-v">{{ home_stats.recruiting if home_stats else '65,000+' }}</span><span class="hero-stat-l">recruiting trials, live now</span></div>
+      <div class="hero-stat"><span class="hero-stat-v">Free</span><span class="hero-stat-l">no account needed to search</span></div>
+      <div class="hero-stat"><span class="hero-stat-v hero-stat-green">{{ home_stats.paid if home_stats else 'Thousands' }}</span><span class="hero-stat-l">pay for your time &amp; travel</span></div>
+    </div>
+    {% endif %}
+
+    <div class="hero-card">
     <form id="heroForm" method="post" action="{{ url_for('find') }}" autocomplete="off">
       <div class="hero-card-head">
         <span>Start your search</span>
@@ -1172,221 +137,40 @@ body.home-screen.is-fy-split .fy-brand{ left:28px; color:#153554; }
     </div>
     </div>{# .hero-card #}
 
+    {% if not patient_user %}
     <div class="hero-reassurance" aria-label="What to expect">
       <span>{{ ic.icon('check') }} No referral needed</span>
       <span>{{ ic.icon('check') }} Takes about 2 minutes</span>
-      <span>{{ ic.icon('lock') }} No account required</span>
+      <span>{{ ic.icon('lock') }} You choose what to share</span>
     </div>
-    <p class="fy-legal">Free. Trials from ClinicalTrials.gov. Not medical advice.
-      <a href="{{ url_for('privacy') }}">Privacy</a> ·
-      <a href="{{ url_for('terms') }}">Terms</a></p>
-  </div>
+    {% endif %}
+
+    {% if not pov_demo %}
+    <div class="chips-block">
+      <div class="chip-row">
+        <span class="chip-label">Trending</span>
+        <div class="chip-cluster">
+          {% for d in drugs[:3] %}
+          <a class="chip drug-chip" href="{{ url_for('condition_page', slug=slugify(d)) }}" data-drug="{{ d }}">{{ d }}</a>
+          {% endfor %}
+          {% for c in conditions[:1] %}
+          <a class="chip cond-chip" href="{{ url_for('condition_page', slug=slugify(c)) }}" data-cond="{{ c }}">{{ c }}</a>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if not patient_user %}
+    <p class="hero-trust">Free. No account needed. Trials from
+      <a href="https://clinicaltrials.gov" target="_blank" rel="noopener">ClinicalTrials.gov</a>.
+      Not medical advice.</p>
+    {% endif %}
+
   </div>
 </section>
 
-<div class="fy-grip" aria-hidden="true">
-  {{ ic.icon('chevron-left') }}{{ ic.icon('chevron-right') }}
-</div>
-
-<aside class="fy-panel fy-right bmd-embed-sec" id="embed" data-panel="sites" aria-label="Embeddable finder on a research site">
-  <div class="fy-peek" aria-hidden="true">
-    <span class="fy-peek-label">For research sites</span>
-  </div>
-  <div class="fy-body">
-  <div class="fy-right-in">
-    <p class="fy-who">For research sites</p>
-    <p class="fy-lead">A real trial finder, directly on your website.</p>
-
-    <div class="fy-stage">
-      <div class="bmd-embed-frame">
-        <div class="bmd-bw-bar">
-          <span class="bmd-bw-dots"><i></i><i></i><i></i></span>
-            <span class="bmd-bw-url">{{ ic.icon('lock') }}<b id="bxUrl">{{ demo.domain }}</b></span>
-        </div>
-        <div class="bmd-site-scroll" aria-label="Example research center website">
-        <div class="bmd-host-utility bmd-site-extra">
-          <button type="button" data-bmd-host-link>Patient portal</button>
-          <button type="button" data-bmd-host-link>Locations</button>
-          <button type="button" data-bmd-host-link>Contact us</button>
-        </div>
-        <div class="bmd-host-nav">
-          <button type="button" class="bmd-host-brand" data-bmd-host-link><span class="bmd-host-mark"></span><span id="bxName">{{ demo.org }}</span></button>
-          <span class="bmd-host-links">
-            <button type="button" class="bmd-nav-more" data-bmd-host-link>Doctors</button>
-            <button type="button" class="bmd-nav-more" data-bmd-host-link>Services</button>
-            <button type="button" data-bmd-host-link>Research</button>
-            <button type="button" class="on" data-bmd-find-trial>Find a trial</button>
-          </span>
-        </div>
-        <div class="bmd-host-hero">
-          <div class="bmd-host-kicker">Research &amp; clinical trials</div>
-          <h4 id="bxTitle">Find a clinical trial at {{ demo.org }}</h4>
-          <p>Search studies currently recruiting at our locations. Answer a few
-            questions to see which opportunities may fit.</p>
-        </div>
-        <div class="bmd-widget">
-          <form class="bmd-finder-search" id="bmdFinderForm">
-            <label class="fld">{{ ic.icon('search') }}<span>Condition</span>
-              <input id="bxCondition" value="{{ demo.cond }}" aria-label="Trial condition">
-            </label>
-            <label class="fld">{{ ic.icon('pin') }}<span>Near</span>
-              <input id="bxLocation" value="{{ demo.loc }}" aria-label="Trial location">
-            </label>
-            <button type="submit" class="fbtn" id="bxGo">Search</button>
-          </form>
-          <div class="bmd-finder-meta" id="bxFinderMeta">{{ demo.count }} &middot; ranked by fit</div>
-          <div id="bxResults" aria-live="polite">
-            {% for s in demo.studies %}
-            <div class="bmd-tcard{{ ' is-off' if s.cls == 'off' }}">
-              <div class="bmd-tc-main">
-                <div class="bmd-tc-title">{{ s.t }}</div>
-                <div class="bmd-tc-meta"><span class="mono">{{ s.nct }}</span> &middot;
-                  {{ s.phase }} &middot; <span class="bmd-badge ok">Recruiting</span>
-                  &middot; {{ s.dist }}</div>
-                <div class="bmd-tc-why">{{ s.why }}</div>
-              </div>
-              <div class="bmd-tc-side">
-                <span class="bmd-badge {{ s.cls }}">{{ s.fit }}</span>
-                <button type="button" class="bmd-tc-apply" data-bmd-apply>Apply</button>
-              </div>
-            </div>
-            {% endfor %}
-          </div>
-          <div class="bmd-widget-foot">
-            <span class="bmd-widget-tag">{{ ic.icon('mark') }} Powered by BridgeMD</span>
-          </div>
-        </div>
-        <section class="bmd-host-section is-tint bmd-site-extra">
-          <p class="bmd-host-eyebrow">Research at Your Hospital</p>
-          <h5>Advancing care through discovery</h5>
-          <p>Our patients have access to studies across every stage of care, supported
-            by dedicated research nurses and experienced clinical teams.</p>
-          <div class="bmd-host-stats">
-            <div class="bmd-host-stat"><strong>120+</strong><span>active clinical studies</span></div>
-            <div class="bmd-host-stat"><strong>18</strong><span>specialty research programs</span></div>
-            <div class="bmd-host-stat"><strong>9</strong><span>research locations</span></div>
-          </div>
-        </section>
-        <section class="bmd-host-section bmd-site-extra">
-          <p class="bmd-host-eyebrow">Featured programs</p>
-          <h5>Research built around patients</h5>
-          <div class="bmd-programs">
-            <div class="bmd-program"><b>Cancer research</b><span>New therapies, prevention studies, and supportive care.</span></div>
-            <div class="bmd-program"><b>Heart &amp; vascular</b><span>Studies focused on prevention, devices, and recovery.</span></div>
-            <div class="bmd-program"><b>Diabetes &amp; metabolism</b><span>Treatment and technology studies for better daily care.</span></div>
-          </div>
-        </section>
-        <div class="bmd-host-cta bmd-site-extra">
-          <div><strong>Not sure which study is right?</strong><span>Our research team can help you understand your options.</span></div>
-          <button type="button" data-bmd-host-link>Contact research</button>
-        </div>
-        <footer class="bmd-host-footer bmd-site-extra">
-          <span>© Your Hospital Research Center</span>
-          <span>Privacy &nbsp; Accessibility &nbsp; Patient rights</span>
-        </footer>
-        </div>
-        <div class="bmd-apply-flow" id="bmdApplyFlow" hidden>
-          <div class="bmd-flow-card" role="dialog" aria-modal="true" aria-labelledby="bmdFlowTitle">
-            <div class="bmd-flow-head">
-              <span class="bmd-flow-mark">{{ ic.icon('mark') }}</span>
-              <div><b id="bmdFlowTitle">Express interest</b><span>Sample application · about 10 seconds</span></div>
-              <button type="button" class="bmd-flow-close" data-bmd-flow-close aria-label="Close application">×</button>
-            </div>
-            <div class="bmd-flow-progress" aria-label="Application progress">
-              <span class="is-done">1&nbsp; Match</span><span class="is-done">2&nbsp; Apply</span><span>3&nbsp; Sent</span>
-            </div>
-            <form class="bmd-flow-body" id="bmdApplyForm">
-              <div class="bmd-flow-study">
-                <b id="bmdFlowStudy">{{ demo.title }}</b>
-                {{ demo.nct }} · {{ demo.org }}
-              </div>
-              <div class="bmd-flow-grid">
-                <label class="bmd-flow-field">Name
-                  <input name="name" value="Alex Morgan" autocomplete="off">
-                </label>
-                <label class="bmd-flow-field">Email
-                  <input name="email" type="email" value="alex@example.com" autocomplete="off">
-                </label>
-                <label class="bmd-flow-field">Phone
-                  <input name="phone" value="(614) 555-0142" autocomplete="off">
-                </label>
-              </div>
-              <label class="bmd-flow-consent">
-                <input type="checkbox" checked>
-                <span>I agree to share these sample details with the study team so they can contact me about eligibility.</span>
-              </label>
-              <button class="bmd-flow-submit" type="submit">Send interest to the research team →</button>
-              <p class="bmd-flow-note">Demo only, no information is actually submitted.</p>
-            </form>
-            <div class="bmd-flow-success" id="bmdApplySuccess" hidden>
-              <span class="bmd-success-check">{{ ic.icon('check') }}</span>
-              <h5>Interest sent</h5>
-              <p>Your details and selected study are now routed directly to the team responsible for this trial.</p>
-              <div class="bmd-route">
-                <div class="bmd-route-box"><small>Patient</small><b>Alex Morgan</b></div>
-                <span class="bmd-route-arrow">→</span>
-                <div class="bmd-route-box"><small>Recipient</small><b>Your Hospital diabetes research team</b></div>
-              </div>
-              <div class="bmd-next-steps">
-                <span>✓ Coordinator notified</span><span>✓ Follow-up in 1–2 business days</span>
-              </div>
-              <button type="button" class="bmd-flow-done" data-bmd-flow-close>Done</button>
-            </div>
-          </div>
-        </div>
-        <div class="bmd-site-toast" id="bmdSiteToast" role="status" aria-live="polite"></div>
-      </div>
-      <div class="bmd-route-card" aria-hidden="true">
-        <div class="bmd-rc-head">
-          <span class="bmd-rc-mark">{{ ic.icon('mark') }}</span>
-          <span class="bmd-rc-title">Shared inbox</span>
-          <span class="bmd-rc-count">1 new</span>
-        </div>
-        <div class="bmd-rc-row">
-          <span class="bmd-rc-dot"></span>
-          <div class="bmd-rc-main">
-            <div class="bmd-rc-name">New inquiry &middot; Type 2 diabetes</div>
-            <div class="bmd-rc-sub">via Your Hospital finder &middot; just now</div>
-          </div>
-        </div>
-        <div class="bmd-rc-route">
-          {{ ic.icon('arrow-right') }}
-          <span>Auto-routed to <b>the diabetes study coordinator</b></span>
-        </div>
-        <div class="bmd-rc-note">On the right person&rsquo;s desk in seconds. No email, no forwarding.</div>
-      </div>
-    </div>
-    <div class="bmd-embed-grid">
-      <div class="bmd-embed-card">
-        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 8l-4 4 4 4"/><path d="M16 8l4 4-4 4"/></svg></span>
-        <h3>One snippet to embed</h3>
-        <p>Drop it into your site. No developer project, no new login.</p>
-      </div>
-      <div class="bmd-embed-card">
-        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="4.5" width="17" height="4" rx="1.2"/><rect x="3.5" y="10.5" width="17" height="4" rx="1.2"/><rect x="3.5" y="16.5" width="11" height="3" rx="1.2"/></svg></span>
-        <h3>Your studies first</h3>
-        <p>Shows your active studies first, then relevant recruiting trials nearby.</p>
-      </div>
-      <div class="bmd-embed-card">
-        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 12.5V6a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2v6.5"/><path d="M3.5 12.5H8l1.5 2.5h5L16 12.5h4.5V18a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/></svg></span>
-        <h3>Every search is a lead</h3>
-        <p>Each search becomes an inquiry in your shared inbox, sorted and routed.</p>
-      </div>
-    </div>
-    <div class="bmd-embed-cta">
-      <a class="bmd-btn-primary" href="#main">Open the trial finder</a>
-      <a class="bmd-btn-ghost" href="{{ cal_link }}" target="_blank" rel="noopener">Add this finder to your website</a>
-    </div>
-
-    <span class="fy-snip" id="bxSnipSite">your-hospital</span>
-    <span class="fy-snip" id="bxSnipAccent">#1257b0</span>
-  </div>
-  </div>
-</aside>
-
-</div>
-
-<div class="landing-extra fx">
+<div class="landing-extra">
 
   {# Trials near you: hydrated client-side ONLY once we know the visitor's
      coords (saved patient location or "use my location"), so the homepage never
@@ -1404,87 +188,140 @@ body.home-screen.is-fy-split .fy-brand{ left:28px; color:#153554; }
 
   {# How it works: kills the "what even is this / what happens after I apply"
      uncertainty that stalls patients before they apply. #}
-  <section class="fx-sec" id="how" aria-label="How it works">
-    <div class="fx-head fx-center">
-      <h2 class="fx-h2">The trials exist. Most people never find them.</h2>
-      <p class="fx-lead">Clinical trials are how new treatments reach people, and
-        thousands get care through one every year. Still, <strong>fewer than 1 in 20</strong>
-        people who could take part ever do, usually because no one ever tells them a
-        trial exists. The listings are public, but they sit in government databases
-        built for researchers. We read those same listings and put them in plain
-        language, for any condition, anywhere you live.</p>
-    </div>
-    <div class="fx-flow">
-      <div class="fx-card">
-        <span class="fx-badge">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
-        </span>
+  <section class="lx-section hiw-section" aria-label="How it works">
+    <h2 class="lx-h2 lx-center">How it works</h2>
+    <div class="hiw-grid">
+      <div class="hiw-step">
+        <span class="hiw-num">1</span>
         <h3>Search or describe</h3>
-        <p>Type a condition, or describe your situation in your own words. Either
-          way gets you to the same matches.</p>
+        <p>Enter your condition, or just describe your situation in plain English. No medical jargon needed.</p>
       </div>
-      <div class="fx-card">
-        <span class="fx-badge">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
-        </span>
-        <h3>See your matches</h3>
-        <p>We scan recruiting studies near you and flag the ones you likely fit, so you
-          skip the ones you don't.</p>
+      <div class="hiw-step">
+        <span class="hiw-num">2</span>
+        <h3>We match &amp; pre-check</h3>
+        <p>We scan recruiting studies near you and flag the ones you likely fit, so you skip the ones you don't.</p>
       </div>
-      <div class="fx-card">
-        <span class="fx-badge">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-        </span>
-        <h3>The team reaches out</h3>
-        <p>Send your interest and the study team contacts you. Applying is not enrolling,
-          so you are never locked in.</p>
+      <div class="hiw-step">
+        <span class="hiw-num">3</span>
+        <h3>Apply in minutes</h3>
+        <p>Send your interest and the study team reaches out. Free, private, and no doctor's referral needed.</p>
       </div>
+    </div>
+  </section>
+
+  {# For research sites: this finder doubles as the live demo sites embed, so the
+     pitch gets real estate here. Two ways to run it + a 3-step "how embedding
+     works". Different audience from the patient flow above, kept clearly labeled. #}
+  <section class="lx-section embed-pitch" aria-label="For research sites">
+    <div class="embed-pitch-head">
+      <span class="eyebrow-mini">BridgeMD Inside</span>
+      <h2 class="lx-h2 lx-center">Run a study? Put this trial finder on your own site.</h2>
+      <p class="embed-lead">Use BridgeMD as a standalone finder like this one, or embed it
+        into your hospital or clinic website, tailored to the studies you run. Either way,
+        every inquiry lands in your team&rsquo;s shared inbox.</p>
+    </div>
+
+    <div class="embed-ways">
+      <div class="embed-way">
+        <span class="embed-way-ic">{{ ic.icon('external') }}</span>
+        <h3>Standalone finder</h3>
+        <p>Send patients to a hosted finder like this page, branded to your program.
+          Nothing to build or maintain.</p>
+      </div>
+      <div class="embed-way">
+        <span class="embed-way-ic">{{ ic.icon('grid') }}</span>
+        <h3>Embedded on your site</h3>
+        <p>Drop the finder straight into your hospital or clinic website, scoped to the
+          exact studies you are recruiting for.</p>
+      </div>
+    </div>
+
+    <div class="embed-steps">
+      <span class="embed-steps-label">How embedding works</span>
+      <div class="embed-steps-grid">
+        <div class="embed-step">
+          <span class="embed-step-n">01</span>
+          <h4>Pick your studies</h4>
+          <p>Choose which trials show and tailor the pre-screen questions to your protocols.</p>
+        </div>
+        <div class="embed-step">
+          <span class="embed-step-n">02</span>
+          <h4>Add one snippet</h4>
+          <p>Paste a single embed snippet into your site, or link out to a hosted page.
+            No engineering project.</p>
+        </div>
+        <div class="embed-step">
+          <span class="embed-step-n">03</span>
+          <h4>Inquiries hit your inbox</h4>
+          <p>Every interested patient lands in your team&rsquo;s shared inbox, ready to
+            triage and respond.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="lx-cta">
+      <a class="btn btn-primary btn-lg" href="{{ url_for('for_sites') }}#bmd-embed">See how embedding works {{ ic.icon('arrow-right') }}</a>
+    </div>
+  </section>
+
+  <section class="lx-section home-learn" aria-label="Clinical trial guides">
+    <div class="home-learn-head">
+      <div>
+        <span class="eyebrow-mini">Learn before you apply</span>
+        <h2 class="lx-h2">Simple guides, no enrollment promises.</h2>
+        <p>Understand eligibility, safety, privacy, payment, and what happens after
+          you apply. The study team still makes the final decision.</p>
+      </div>
+      <a class="link-btn home-learn-all" href="{{ url_for('blog_index') }}">See all guides {{ ic.icon('arrow-right') }}</a>
+    </div>
+    <div class="home-learn-grid">
+      {% for p in learn_posts %}
+      <a class="home-learn-card" href="{{ url_for('blog_post', slug=p.slug) }}">
+        <span>{{ p.tag }}</span>
+        <h3>{{ p.title }}</h3>
+        <p>{{ p.dek }}</p>
+        <b>BridgeMD guide · {{ p.date_h }} · {{ p.read }} min read</b>
+      </a>
+      {% endfor %}
     </div>
   </section>
 
   {# Objection-busting FAQ: answers the real fears people post before applying
      (scam? paid? safe? what happens next?). Truthful, neutral framing only - no
      sponsor recruitment claims, no inflated pay promises. Kept at the very end. #}
-  <section class="fx-sec fx-sec-band" id="faq" aria-label="Common questions">
-    <div class="fx-head fx-center">
-      <span class="fx-eyebrow">Your questions, answered</span>
-      <h2 class="fx-h2">Questions people ask before applying</h2>
-    </div>
-    <div class="fx-faq">
-      <details>
+  <section class="lx-section" aria-label="Common questions">
+    <h2 class="lx-h2 lx-center">Questions people ask before applying</h2>
+    <div class="faq-list">
+      <details class="faq-item">
         <summary>Is BridgeMD really free?</summary>
-        <div class="fx-a">Yes, searching and applying are 100% free for patients. We're a matching tool, not the study sponsor, and we never charge you.</div>
+        <p>Yes - searching and applying are 100% free for patients. We're a matching tool, not the study sponsor, and we never charge you.</p>
       </details>
-      <details>
+      <details class="faq-item">
         <summary>Will I get paid?</summary>
-        <div class="fx-a">Many trials reimburse your time and travel, and some pay a stipend. The amount is set by each study, not by us. We show what the study lists. Never treat compensation as the only reason to join.</div>
+        <p>Many trials reimburse your time and travel, and some pay a stipend. The amount is set by each study, not by us - we show what the study lists. Never treat compensation as the only reason to join.</p>
       </details>
-      <details>
+      <details class="faq-item">
         <summary>Is it safe? Am I just a guinea pig?</summary>
-        <div class="fx-a">Every trial follows a protocol reviewed by an independent ethics board (IRB/REB). The study team walks you through the risks and what to expect <em>before</em> you agree to anything, and taking part is always voluntary. You can leave at any time.</div>
+        <p>Every trial follows a protocol reviewed by an independent ethics board (IRB/REB). The study team walks you through the risks and what to expect <em>before</em> you agree to anything, and taking part is always voluntary - you can leave at any time.</p>
       </details>
-      <details>
+      <details class="faq-item">
         <summary>What happens after I apply?</summary>
-        <div class="fx-a">Your interest goes straight to that study's team. They contact you to confirm details and check whether you're eligible. Applying is not enrolling, so you're never obligated to continue.</div>
+        <p>Your interest goes straight to that study's team. They contact you to confirm details and check whether you're eligible. Applying is not enrolling - you're never obligated to continue.</p>
       </details>
-      <details>
+      <details class="faq-item">
         <summary>Do I need a doctor's referral or insurance?</summary>
-        <div class="fx-a">No referral is needed to apply. Trials don't bill your insurance for study procedures, and the study team will tell you exactly what's covered.</div>
+        <p>No referral is needed to apply. Trials don't bill your insurance for study procedures, and the study team will tell you exactly what's covered.</p>
       </details>
-      <details>
+      <details class="faq-item">
         <summary>Will I get a placebo instead of real treatment?</summary>
-        <div class="fx-a">Not all trials use a placebo. When one does, the study team explains it upfront, and participants are usually still monitored closely and continue receiving standard care.</div>
+        <p>Not all trials use a placebo. When one does, the study team explains it upfront - and participants are usually still monitored closely and continue receiving standard care.</p>
       </details>
-      <details>
+      <details class="faq-item">
         <summary>Is my information private? Will I get spammed?</summary>
-        <div class="fx-a">You control what you share. We don't sell your data. We only pass what you submit to the specific study team you choose to apply to.</div>
-      </details>
-      <details>
-        <summary>Do you list focus groups or interview studies?</summary>
-        <div class="fx-a">The finder lists recruiting clinical trials, including observational studies on ClinicalTrials.gov. Focus groups and qualitative interviews are not listed yet.</div>
+        <p>You control what you share. We don't sell your data - we only pass what you submit to the specific study team you choose to apply to.</p>
       </details>
     </div>
-    <div class="fx-cta">
+    <div class="lx-cta">
       <button type="button" class="btn btn-primary btn-lg" id="faqCta">Find trials near you {{ ic.icon('arrow-right') }}</button>
     </div>
   </section>
@@ -1500,10 +337,9 @@ body.home-screen.is-fy-split .fy-brand{ left:28px; color:#153554; }
 </div>
 
 <footer class="landing-legal">
-  <p class="landing-legal-disc">BridgeMD is an information and trial-matching tool. It is not medical
-    advice and not the study sponsor. Trial details come from ClinicalTrials.gov, and the study team
-    decides who is eligible.</p>
-  <p class="landing-legal-links"><a href="{{ url_for('privacy') }}">Privacy</a> · <a href="{{ url_for('terms') }}">Terms</a> · <a href="{{ url_for('how_it_works') }}">How it works</a></p>
+  <p class="landing-legal-disc">BridgeMD is an information and trial-matching tool - not medical advice,
+    and not the study sponsor. Trial details come from ClinicalTrials.gov; the study team decides eligibility.</p>
+  <p class="landing-legal-links"><a href="{{ url_for('blog_index') }}">Learn</a> · <a href="{{ url_for('privacy') }}">Privacy</a> · <a href="{{ url_for('terms') }}">Terms</a> · <a href="{{ url_for('how_it_works') }}">How it works</a></p>
 </footer>
 
 <div class="loading-overlay" id="loadingOverlay" aria-hidden="true">
@@ -1525,8 +361,6 @@ body.home-screen.is-fy-split .fy-brand{ left:28px; color:#153554; }
   var heroFreeform = document.getElementById('heroFreeform');
   var steps = ['Fetching recruiting studies', 'Checking which are near you',
                'Reading eligibility for each', 'Ranking your best matches'];
-  var overlayStepTimer = null;
-  var overlayProgressTimer = null;
 
   // Two explicit search modes so it's clear what you're entering:
   //   "condition" -> a specific term (with autocomplete), freeform=0
@@ -1604,26 +438,11 @@ body.home-screen.is-fy-split .fy-brand{ left:28px; color:#153554; }
     if (!ov || ov.classList.contains('show')) return;  // guard against double-start
     ov.classList.add('show'); ov.setAttribute('aria-hidden', 'false');
     var pct = 0, i = 0;
-    overlayStepTimer = setInterval(function () {
-      i++; if (i < steps.length) sub.textContent = steps[i];
-    }, 4200);
-    overlayProgressTimer = setInterval(function () {
+    setInterval(function () { i++; if (i < steps.length) sub.textContent = steps[i]; }, 4200);
+    setInterval(function () {
       pct += Math.max(0.4, (92 - pct) * 0.05); if (pct > 92) pct = 92;
       bar.style.width = pct.toFixed(1) + '%';
     }, 220);
-  }
-
-  function resetOverlay() {
-    if (overlayStepTimer) clearInterval(overlayStepTimer);
-    if (overlayProgressTimer) clearInterval(overlayProgressTimer);
-    overlayStepTimer = null;
-    overlayProgressTimer = null;
-    if (ov) {
-      ov.classList.remove('show');
-      ov.setAttribute('aria-hidden', 'true');
-    }
-    if (bar) bar.style.width = '0%';
-    if (sub) sub.textContent = steps[0];
   }
 
   var intakeDone = false;
@@ -1671,9 +490,6 @@ body.home-screen.is-fy-split .fy-brand{ left:28px; color:#153554; }
   if (preGo) preGo.addEventListener('click', submitWithIntake);
   if (preSkip) preSkip.addEventListener('click', submitWithIntake);
   window.addEventListener('pagehide', function () { if (bar) bar.style.width = '100%'; });
-  // Back/forward cache restores the exact previous DOM state. Without resetting,
-  // returning from results revives the overlay with its old `show` class.
-  window.addEventListener('pageshow', resetOverlay);
 
   // Chips prefill the search box instead of navigating away. We do NOT auto-run
   // search on chip click; search only runs when user presses the button.
@@ -2113,414 +929,6 @@ body.home-screen.is-fy-split .fy-brand{ left:28px; color:#153554; }
       useLoc.disabled = false; useLoc.innerHTML = orig;
     }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 });
   });
-})();
-</script>
-<script>
-/* Start split. The first hovered panel locks open; later switches require a click. */
-(function () {
-  var root = document.getElementById('fyCarousel');
-  if (!root) return;
-  var body = document.body;
-  var prev = document.getElementById('fyPrev');
-  var next = document.getElementById('fyNext');
-  var pagerPrev = document.getElementById('fyPagerPrev');
-  var pagerNext = document.getElementById('fyPagerNext');
-  var splitBtn = document.getElementById('fySplit');
-  var numEl = document.getElementById('fyNum');
-  var slide = 1;
-  var hasChosenSide = false;
-
-  function desktopSplit() {
-    return window.matchMedia('(min-width: 981px) and (hover: hover)').matches;
-  }
-
-  function apply(n) {
-    var next = Math.max(0, Math.min(2, n));
-    var bodyState = next === 0 ? 'is-fy-left' : next === 2 ? 'is-fy-right' : 'is-fy-split';
-    var rootState = next === 0 ? 'is-left' : next === 2 ? 'is-right' : 'is-split';
-    var already = slide === next
-      && body.classList.contains(bodyState)
-      && root.classList.contains(rootState);
-    slide = next;
-    if (!already) {
-      root.classList.remove(
-        'is-left', 'is-split', 'is-right', 'is-hover-left', 'is-hover-right');
-      body.classList.remove('is-fy-left', 'is-fy-split', 'is-fy-right');
-      root.classList.add(rootState);
-      body.classList.add(bodyState);
-    }
-    root.setAttribute('data-slide', String(slide));
-    if (numEl) numEl.textContent = slide === 2 ? '02' : '01';
-    if (splitBtn) splitBtn.hidden = slide === 1;
-    root.querySelectorAll('.fy-peek').forEach(function (p) {
-      p.setAttribute('aria-hidden', slide === 1 ? 'true' : 'false');
-    });
-  }
-
-  function go(delta) { apply(slide + delta); }
-
-  if (prev) prev.addEventListener('click', function (e) { e.stopPropagation(); go(-1); });
-  if (next) next.addEventListener('click', function (e) { e.stopPropagation(); go(1); });
-  if (pagerPrev) pagerPrev.addEventListener('click', function () { go(-1); });
-  if (pagerNext) pagerNext.addEventListener('click', function () { go(1); });
-  if (splitBtn) splitBtn.addEventListener('click', function () { apply(1); });
-
-  root.querySelectorAll('[data-fy-go]').forEach(function (btn) {
-    btn.addEventListener('click', function (e) {
-      e.stopPropagation();
-      apply(parseInt(btn.getAttribute('data-fy-go'), 10));
-    });
-  });
-
-  var SEARCH_KEEP = 'input, textarea, select, button, a, label, .hero-card, .bmd-widget, .bmd-finder-search, .search-modes';
-
-  root.querySelectorAll('.fy-panel').forEach(function (panel) {
-    panel.addEventListener('mouseenter', function () {
-      if (!desktopSplit() || hasChosenSide || slide !== 1) return;
-      hasChosenSide = true;
-      apply(panel.classList.contains('fy-left') ? 0 : 2);
-    });
-    panel.addEventListener('click', function (e) {
-      if (e.target.closest(SEARCH_KEEP)) return;
-      if (panel.classList.contains('fy-left') && slide === 2) {
-        e.preventDefault();
-        apply(0);
-      } else if (panel.classList.contains('fy-right') && slide === 0) {
-        e.preventDefault();
-        apply(2);
-      }
-    });
-  });
-
-  document.addEventListener('keydown', function (e) {
-    if (!desktopSplit()) return;
-    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
-    if (e.target && e.target.closest('input, textarea, select, [contenteditable="true"]')) return;
-    e.preventDefault();
-    hasChosenSide = true;
-    apply(e.key === 'ArrowLeft' ? 0 : 2);
-  });
-
-  apply(1);
-  requestAnimationFrame(function () {
-    requestAnimationFrame(function () { body.classList.add('is-fy-ready'); });
-  });
-})();
-</script>
-<script>
-/* Embed explorer. Two things are live: the visitor's own organisation name (typed
-   into the brand field, echoed through the mock and the snippet) and the accent,
-   which repaints one CSS custom property chain (--bx / --bxs2) so a re-brand is a
-   single smooth transition rather than a re-render. */
-(function () {
-  var root = document.querySelector('.bmd-embed-sec');
-  if (!root) return;
-  var STUDIES = {{ demo.studies|tojson }};
-  var DEFAULT_ORG = {{ demo.org|tojson }};
-  var DEFAULT_CONDITION = {{ demo.cond|tojson }};
-  var DEFAULT_LOCATION = {{ demo.loc|tojson }};
-
-  var el = {};
-  ['bxOrg', 'bxUrl', 'bxName', 'bxTitle', 'bxResults', 'bxRcSite',
-   'bxSnipSite', 'bxSnipAccent', 'bxCopy', 'bxCondition', 'bxLocation',
-   'bxFinderMeta', 'bmdSiteToast'
-  ].forEach(function (id) { el[id] = document.getElementById(id); });
-
-  var accent = '#1257b0';
-  var EMBED_SRC = 'https://bridgemd.health/embed.js';
-
-  function hexToRgb(hex) {
-    var h = String(hex || '').replace('#', '');
-    if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
-    var n = parseInt(h, 16);
-    if (isNaN(n)) return '18,87,176';
-    return [(n >> 16) & 255, (n >> 8) & 255, n & 255].join(',');
-  }
-  function paint(hex) {
-    root.style.setProperty('--bx', hex);
-    root.style.setProperty('--bxs2', 'rgba(' + hexToRgb(hex) + ',.45)');
-  }
-  function txt(node, s) { if (node) node.textContent = s; }
-
-  function orgName() {
-    var v = el.bxOrg ? (el.bxOrg.value || '').trim() : '';
-    return v || DEFAULT_ORG;
-  }
-  function slug(s) {
-    var out = String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '');
-    return out || 'your-hospital';
-  }
-  // One typed name drives the site chrome, the page heading, the URL, the inbox
-  // card and the snippet's data-site - which is the actual claim being made.
-  function applyOrg() {
-    var name = orgName();
-    txt(el.bxName, name);
-    txt(el.bxTitle, 'Find a clinical trial at ' + name);
-    txt(el.bxUrl, slug(name) + '.org');
-    txt(el.bxRcSite, name);
-    txt(el.bxSnipSite, slug(name));
-  }
-
-  // The snippet is the product pitch, so the two values a site actually changes
-  // are patched in place rather than re-writing the highlighted markup.
-  function snippetText() {
-    return '<script src="' + EMBED_SRC + '" data-site="' + slug(orgName()) +
-           '" data-accent="' + accent + '"><\/script>';
-  }
-  function syncSwatches() {
-    root.querySelectorAll('.bmd-sw').forEach(function (s) {
-      var on = (s.getAttribute('data-sw') || '').toLowerCase() === String(accent).toLowerCase();
-      s.classList.toggle('is-on', on);
-    });
-  }
-
-  // Result rows carry the metadata someone would actually judge a match on -
-  // registry id, phase, recruiting status, distance and the reason it matched.
-  function renderResults() {
-    if (!el.bxResults) return;
-    var condition = el.bxCondition ? el.bxCondition.value.trim() : DEFAULT_CONDITION;
-    condition = condition || DEFAULT_CONDITION;
-    var location = el.bxLocation ? el.bxLocation.value.trim() : DEFAULT_LOCATION;
-    location = location || DEFAULT_LOCATION;
-    var isDefault = condition.toLowerCase() === DEFAULT_CONDITION.toLowerCase();
-    var studies = (STUDIES || []).map(function (study, index) {
-      var copy = Object.assign({}, study);
-      if (!isDefault) {
-        copy.t = index === 0
-          ? condition + ' Treatment Study at ' + DEFAULT_ORG
-          : 'Observational Research Study for ' + condition;
-        copy.why = 'This preview result matches the condition and location entered above.';
-      }
-      return copy;
-    });
-    if (el.bxFinderMeta) {
-      el.bxFinderMeta.textContent = (isDefault ? '14' : '8') +
-        ' recruiting studies near ' + location + ' · ranked by fit';
-    }
-    el.bxResults.textContent = '';
-    studies.forEach(function (s) {
-      var card = document.createElement('div');
-      card.className = 'bmd-tcard' + (s.cls === 'off' ? ' is-off' : '');
-
-      var main = document.createElement('div');
-      main.className = 'bmd-tc-main';
-      var title = document.createElement('div');
-      title.className = 'bmd-tc-title';
-      title.textContent = s.t;
-      var meta = document.createElement('div');
-      meta.className = 'bmd-tc-meta';
-      var nct = document.createElement('span');
-      nct.className = 'mono';
-      nct.textContent = s.nct;
-      var rec = document.createElement('span');
-      rec.className = 'bmd-badge ok';
-      rec.textContent = 'Recruiting';
-      meta.appendChild(nct);
-      meta.appendChild(document.createTextNode('· ' + s.phase + ' ·'));
-      meta.appendChild(rec);
-      meta.appendChild(document.createTextNode('· ' + s.dist));
-      var why = document.createElement('div');
-      why.className = 'bmd-tc-why';
-      why.textContent = s.why;
-      main.appendChild(title);
-      main.appendChild(meta);
-      main.appendChild(why);
-
-      var side = document.createElement('div');
-      side.className = 'bmd-tc-side';
-      var fit = document.createElement('span');
-      fit.className = 'bmd-badge ' + (s.cls || 'info');
-      fit.textContent = s.fit;
-      var apply = document.createElement('button');
-      apply.type = 'button';
-      apply.className = 'bmd-tc-apply';
-      apply.setAttribute('data-bmd-apply', '');
-      apply.textContent = 'Apply';
-      side.appendChild(fit);
-      side.appendChild(apply);
-
-      card.appendChild(main);
-      card.appendChild(side);
-      el.bxResults.appendChild(card);
-    });
-  }
-
-  if (el.bxOrg) {
-    el.bxOrg.addEventListener('input', applyOrg);
-    el.bxOrg.addEventListener('change', applyOrg);
-    // An empty field should show the placeholder org rather than a blank mock.
-    el.bxOrg.addEventListener('blur', function () {
-      if (!(el.bxOrg.value || '').trim()) { el.bxOrg.value = DEFAULT_ORG; applyOrg(); }
-    });
-  }
-  root.querySelectorAll('.bmd-sw').forEach(function (sw) {
-    sw.addEventListener('click', function () {
-      accent = sw.getAttribute('data-sw');
-      paint(accent);
-      txt(el.bxSnipAccent, accent);
-      syncSwatches();
-    });
-  });
-  root.querySelectorAll('.bmd-tab').forEach(function (tab) {
-    tab.addEventListener('click', function () {
-      var name = tab.getAttribute('data-tab');
-      root.querySelectorAll('.bmd-tab').forEach(function (o) {
-        var on = o === tab;
-        o.classList.toggle('is-on', on);
-        o.setAttribute('aria-selected', on ? 'true' : 'false');
-      });
-      root.querySelectorAll('.bmd-panel').forEach(function (p) {
-        var on = p.getAttribute('data-panel') === name;
-        p.hidden = !on;
-        // Replay the rise-in so switching tabs animates every time, not just once.
-        if (on) { p.style.animation = 'none'; void p.offsetWidth; p.style.animation = ''; }
-      });
-    });
-  });
-
-  function showSiteToast(message) {
-    if (!el.bmdSiteToast) return;
-    el.bmdSiteToast.textContent = message;
-    el.bmdSiteToast.classList.remove('is-show');
-    void el.bmdSiteToast.offsetWidth;
-    el.bmdSiteToast.classList.add('is-show');
-    clearTimeout(showSiteToast.timer);
-    showSiteToast.timer = setTimeout(function () {
-      el.bmdSiteToast.classList.remove('is-show');
-    }, 1800);
-  }
-
-  // The embedded finder is live: inputs are editable, Enter/Search refreshes
-  // the trial rows, and Find a trial jumps directly to the widget.
-  var goBtn = document.getElementById('bxGo');
-  var finderForm = document.getElementById('bmdFinderForm');
-  if (finderForm) finderForm.addEventListener('submit', function (ev) {
-    ev.preventDefault();
-    if (goBtn) {
-      goBtn.disabled = true;
-      goBtn.textContent = 'Searching…';
-    }
-    setTimeout(function () {
-      renderResults();
-      if (goBtn) {
-        goBtn.disabled = false;
-        goBtn.textContent = 'Search';
-      }
-    }, 320);
-  });
-  root.querySelectorAll('[data-bmd-find-trial]').forEach(function (btn) {
-    btn.addEventListener('click', function () {
-      var scroller = root.querySelector('.bmd-site-scroll');
-      var widget = root.querySelector('.bmd-widget');
-      if (scroller) scroller.classList.add('is-finder');
-      if (scroller && widget) {
-        requestAnimationFrame(function () {
-          var next = widget.getBoundingClientRect().top
-            - scroller.getBoundingClientRect().top
-            + scroller.scrollTop - 4;
-          scroller.scrollTo({ top:Math.max(0, next), behavior:'smooth' });
-        });
-      }
-      if (el.bxLocation) el.bxLocation.focus({ preventScroll:true });
-    });
-  });
-  root.querySelectorAll('[data-bmd-host-link]').forEach(function (btn) {
-    btn.addEventListener('click', function () {
-      var scroller = root.querySelector('.bmd-site-scroll');
-      if (scroller) {
-        scroller.classList.remove('is-finder');
-        scroller.scrollTo({ top:0, behavior:'smooth' });
-      }
-      showSiteToast(btn.textContent.trim() + ' is simulated in this website preview.');
-    });
-  });
-
-  // Apply opens a compact end-to-end demo: sample contact form, explicit routing,
-  // and the exact next step. Delegated because search re-creates the result rows.
-  var applyFlow = document.getElementById('bmdApplyFlow');
-  var applyForm = document.getElementById('bmdApplyForm');
-  var applySuccess = document.getElementById('bmdApplySuccess');
-  var flowStudy = document.getElementById('bmdFlowStudy');
-  var flowProgress = applyFlow ? applyFlow.querySelectorAll('.bmd-flow-progress span') : [];
-
-  function closeApplyFlow() {
-    if (!applyFlow) return;
-    applyFlow.hidden = true;
-  }
-
-  if (el.bxResults) el.bxResults.addEventListener('click', function (ev) {
-    var btn = ev.target.closest('[data-bmd-apply]');
-    if (!btn) return;
-    var card = btn.closest('.bmd-tcard');
-    var title = card ? card.querySelector('.bmd-tc-title') : null;
-    if (flowStudy && title) flowStudy.textContent = title.textContent;
-    if (!applyFlow || !applyForm || !applySuccess) return;
-    applyForm.hidden = false;
-    applySuccess.hidden = true;
-    if (flowProgress[2]) flowProgress[2].classList.remove('is-done');
-    applyFlow.hidden = false;
-    var send = applyForm.querySelector('.bmd-flow-submit');
-    if (send) setTimeout(function () { send.focus({ preventScroll: true }); }, 30);
-  });
-
-  if (applyForm) applyForm.addEventListener('submit', function (ev) {
-    ev.preventDefault();
-    applyForm.hidden = true;
-    applySuccess.hidden = false;
-    if (flowProgress[2]) flowProgress[2].classList.add('is-done');
-    var done = applySuccess.querySelector('.bmd-flow-done');
-    if (done) done.focus({ preventScroll: true });
-  });
-  if (applyFlow) {
-    applyFlow.querySelectorAll('[data-bmd-flow-close]').forEach(function (btn) {
-      btn.addEventListener('click', closeApplyFlow);
-    });
-    applyFlow.addEventListener('click', function (ev) {
-      if (ev.target === applyFlow) closeApplyFlow();
-    });
-  }
-
-  if (el.bxCopy) el.bxCopy.addEventListener('click', function () {
-    var label = el.bxCopy.querySelector('span');
-    var text = snippetText();
-    function done() {
-      el.bxCopy.classList.add('is-done');
-      if (label) label.textContent = 'Copied';
-      setTimeout(function () {
-        el.bxCopy.classList.remove('is-done');
-        if (label) label.textContent = 'Copy';
-      }, 1800);
-    }
-    function fallback() {
-      try {
-        var ta = document.createElement('textarea');
-        ta.value = text;
-        ta.setAttribute('readonly', '');
-        ta.style.position = 'fixed';
-        ta.style.top = '-1000px';
-        ta.style.opacity = '0';
-        document.body.appendChild(ta);
-        ta.select();
-        document.execCommand('copy');
-        document.body.removeChild(ta);
-        done();
-      } catch (e) { /* clipboard unavailable - the tag is still readable on screen */ }
-    }
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(text).then(done, fallback);
-    } else {
-      fallback();
-    }
-  });
-
-  // Deliberately NOT mirroring whatever the visitor typed in the hero search
-  // into this widget: the result rows are matched to this demo's own condition,
-  // so echoing an unrelated query would show (say) a Crohn's search returning
-  // diabetes studies - which undermines the credibility the registry metadata
-  // and the ruled-out row are there to build.
-  applyOrg();
-  syncSwatches();
 })();
 </script>
 <script>

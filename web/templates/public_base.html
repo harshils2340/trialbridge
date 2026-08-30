@@ -85,11 +85,9 @@
 {% import "_icons.html" as ic %}
 {% import "_ui.html" as ui %}
 {% set demo_home = (request.endpoint == 'home' and pov_demo) %}
-{# Split-carousel CSS is scoped to body.home-screen. That class used to be
-   withheld whenever NO_LOGIN set pov_demo, so local demo rendered the stacked
-   marketing page instead of production's two-panel finder. #}
+{# home-screen locks the patient finder to one viewport of search. #}
 {% set home_screen = landing_page|default(false) %}
-<body class="pub{{ ' pub-marketing' if request.endpoint not in ('for_sites', 'for_sites_feature') else '' }}{{ ' demo-home' if demo_home else '' }}{{ ' home-screen' if home_screen else '' }}{{ ' is-fy-split' if home_screen else '' }}{{ ' fs-page' if request.endpoint in ('for_sites', 'for_sites_feature') else '' }}{% block body_class %}{% endblock %}">
+<body class="pub{{ ' pub-marketing' if request.endpoint not in ('for_sites', 'for_sites_feature') else '' }}{{ ' demo-home' if demo_home else '' }}{{ ' home-screen' if home_screen else '' }}{{ ' fs-page' if request.endpoint in ('for_sites', 'for_sites_feature') else '' }}{% block body_class %}{% endblock %}">
 <a class="skip-link" href="#main">Skip to main content</a>
 {% block site_header %}{{ pub_chrome.header(cal_link) }}{% endblock %}
 <div class="toast-stack">
