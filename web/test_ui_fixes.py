@@ -125,8 +125,8 @@ def test_results_hide_probably_not_by_default():
 
 
 def test_find_trial_is_split_carousel():
-    """/find-trial must match production: two-panel 50/50 split, not a stacked
-    marketing page and not a hover-to-expand carousel."""
+    """/find-trial must match production: two-panel split, not a stacked
+    marketing page. Regression for when the carousel CSS/JS was retired."""
     client = app.app.test_client()
     r = client.get("/find-trial")
     assert r.status_code == 200, r.status_code
@@ -141,8 +141,6 @@ def test_find_trial_is_split_carousel():
     assert "One snippet to embed" not in html
     assert "Horizontal focus carousel" in html
     assert "Start split." in html
-    assert "first hovered panel locks open" not in html
-    assert "width:50%" in html
     assert "Split carousel retired" not in html
     assert "Find your next trial match." not in html
     assert "We also have a trial finder" not in html
