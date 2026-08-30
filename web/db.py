@@ -10754,6 +10754,76 @@ def log_web_event(name, visitor="", path="", source="", medium="",
         pass
 
 
+def _event_detail(raw):
+    try:
+        v = json.loads(raw or "")
+        return v if isinstance(v, dict) else {}
+    except (ValueError, TypeError):
+        return {}
+
+
+def found_via_label(source="", referrer=""):
+    """Friendly name for the engine or site that sent someone here.
+    Google does not pass the search phrase; empty source is a direct open."""
+    raw = (source or referrer or "").strip().lower()
+    host = raw.split("/")[0]
+    if host.startswith("www."):
+        host = host[4:]
+    if "duckduckgo" in host:
+        return "DuckDuckGo"
+    if host in ("bing.com", "bing") or host.endswith(".bing.com"):
+        return "Bing"
+    if "google" in host:
+        return "Google"
+    if host:
+        return host
+    return "Direct"
+
+
+def live_apply_index():
+    """Browser apply events keyed by (NCT, timestamp-to-the-minute).
+
+    Seeded leads never write a web_events apply row, so this is the live set.
+    Each value includes where they arrived from and what they typed on /find.
+    """
+    d = get_db()
+    applies = d.execute(
+        "SELECT ts, visitor, source, medium, campaign, referrer, city, detail "
+        "FROM web_events WHERE name = 'apply'").fetchall()
+    visitors = {a["visitor"] for a in applies if a["visitor"]}
+    searches = {}
+    if visitors:
+        marks = ",".join("?" * len(visitors))
+        for row in d.execute(
+            f"SELECT visitor, detail FROM web_events WHERE name = 'search' "
+            f"AND visitor IN ({marks}) ORDER BY ts", tuple(visitors)):
+            q = (_event_detail(row["detail"]).get("q") or "").strip()
+            if q and row["visitor"] not in searches:
+                searches[row["visitor"]] = q
+    out = {}
+    for a in applies:
+        nct = (_event_detail(a["detail"]).get("nct") or "").strip().upper()
+        ts = (a["ts"] or "")[:16]
+        if not nct or not ts:
+            continue
+        out[(nct, ts)] = {
+            "found_via": found_via_label(a["source"], a["referrer"]),
+            "search_q": searches.get(a["visitor"] or "", ""),
+            "city": a["city"] or "",
+            "source": a["source"] or "",
+            "referrer": a["referrer"] or "",
+        }
+    return out
+
+
+def apply_attribution_for(nct, created_at):
+    """Attribution for one lead, or empty if it was not a live browser apply."""
+    key = ((nct or "").strip().upper(), (created_at or "")[:16])
+    if not key[0] or not key[1]:
+        return {}
+    return live_apply_index().get(key) or {}
+
+
 def _web_since(days):
     return (dt.datetime.now() - dt.timedelta(days=max(1, days))).strftime(
         "%Y-%m-%d %H:%M")

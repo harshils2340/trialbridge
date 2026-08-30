@@ -8693,6 +8693,7 @@ def _operator_inbox_row(r):
         "readiness": readiness.get("score") or readiness.get("label") or "",
         "records": bool(g_("records_connected", 0)),
         "referred_by": g_("referred_by"),
+        "registry_opt_in": bool(g_("registry_opt_in", 0)),
     }
 
 
@@ -8703,13 +8704,14 @@ def _operator_inbox_row(r):
 # contact to forward), and manual imports (intake/csv) - is excluded from the
 # concierge inbox.
 _INBOUND_SOURCES = {"web", "referral"}
+_SEED_TOKEN_PREFIXES = ("demo-", "inbox-", "seeded-", "demo-inbox-")
 
 
 def _is_inbound_application(r):
     """True only for real inbound applications. Allowlisting the inbound sources
     is more robust and future-proof than blocklisting each demo seeder: seeded
     demo leads, EMR internal matches, and imports all fall outside the allowlist
-    automatically. Placeholder email domains are a final safety net."""
+    automatically. Placeholder email domains and seed tokens are a safety net."""
     keys = set(r.keys())
 
     def g_(k):
@@ -8720,7 +8722,41 @@ def _is_inbound_application(r):
     email = str(g_("email")).strip().lower()
     if email.endswith("@example.com") or email.endswith("@bridgemd.local"):
         return False
+    tok = str(g_("applicant_token")).strip().lower()
+    if tok.startswith(_SEED_TOKEN_PREFIXES):
+        return False
     return True
+
+
+def _live_apply_key(r):
+    keys = set(r.keys())
+    nct = ((r["nct"] if "nct" in keys else "") or "").strip().upper()
+    ts = ((r["created_at"] if "created_at" in keys else "") or "")[:16]
+    return (nct, ts)
+
+
+def _is_live_application(r, live_index=None):
+    """A live apply is a form submit that also logged a browser apply event.
+    Seeds never write that event, so this is the list you can act on."""
+    if not _is_inbound_application(r):
+        return False
+    idx = live_index if live_index is not None else db.live_apply_index()
+    return _live_apply_key(r) in idx
+
+
+def _live_operator_apps():
+    """Live applications for the owner inbox and internal counts."""
+    live = db.live_apply_index()
+    rows = [r for r in db.list_leads() if _is_live_application(r, live)]
+    apps = [_operator_inbox_row(r) for r in rows]
+    for a in apps:
+        att = live.get(((a.get("nct") or "").upper(), (a.get("created_at") or "")[:16]), {})
+        a["found_via"] = att.get("found_via") or "Direct"
+        a["search_q"] = att.get("search_q") or ""
+        a["is_live"] = True
+        a["is_new"] = _is_recent_apply(a.get("created_at"))
+    apps.sort(key=lambda a: a.get("created_at") or "", reverse=True)
+    return apps
 
 
 @app.route("/internal")
@@ -8730,11 +8766,10 @@ def internal_hub():
     to the operator inbox (everyone who applied) and visitor analytics (searches,
     locations, funnel, applications over time). Access is limited to OWNER_EMAILS;
     any other signed-in user gets a 404 (see owner_required)."""
-    rows = [r for r in db.list_leads() if _is_inbound_application(r)]
-    apps = [_operator_inbox_row(r) for r in rows]
+    apps = _live_operator_apps()
     stats = {
         "total": len(apps),
-        "new": sum(1 for a in apps if _is_recent_apply(a.get("created_at"))),
+        "new": sum(1 for a in apps if a.get("is_new")),
         "with_flags": sum(1 for a in apps if a["flags"]),
         "records": sum(1 for a in apps if a["records"]),
     }
@@ -9042,19 +9077,13 @@ def operator_inbox():
     runs on - the study-team dashboard (/app/leads) is scoped to claimed
     studies, so web applications to unclaimed public trials only show here.
     Owner-only, and only real patient-initiated applications are shown."""
-    rows = [r for r in db.list_leads() if _is_inbound_application(r)]
-    apps = [_operator_inbox_row(r) for r in rows]
-    # Most recent applications first, so fresh leads surface at the top.
-    apps.sort(key=lambda a: a.get("created_at") or "", reverse=True)
-    # Flag applications from the last 48h so brand-new applicants are easy to spot
-    # (badge + one-click "New" filter in the inbox).
-    for a in apps:
-        a["is_new"] = _is_recent_apply(a.get("created_at"))
+    apps = _live_operator_apps()
     stats = {
         "total": len(apps),
         "with_flags": sum(1 for a in apps if a["flags"]),
         "records": sum(1 for a in apps if a["records"]),
         "eligible": sum(1 for a in apps if a["verdict"] == "eligible"),
+        "pool": sum(1 for a in apps if a.get("registry_opt_in")),
     }
     return render_template("internal_inbox.html", apps=apps, stats=stats)
 
@@ -12306,13 +12335,16 @@ def applicant_detail(lead_id):
     portal_url = ""
     if portal and portal["status"] == "active":
         portal_url = url_for("portal", token=portal["token"], _external=True)
+    live_attr = {}
+    if _is_owner():
+        live_attr = db.apply_attribution_for(lead["nct"], lead["created_at"])
     return render_template("applicant_detail.html", it=it, l=lead, view=view,
                            statuses=db.LEAD_STATUSES, labels=db.LEAD_LABELS,
                            screener_labels=SCREENER_LABELS,
                            screener_flags=SCREENER_FLAGS, notes=notes,
                            default_schedule=default_schedule, fwd=fwd,
                            portal=portal, portal_reveal=reveal,
-                           portal_url=portal_url)
+                           portal_url=portal_url, live_attr=live_attr)
 
 
 @app.route("/app/dashboard")

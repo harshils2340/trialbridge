@@ -23,7 +23,11 @@
         {{ ui.badge(view.verdict.label, view.verdict.tone) }}
         <span class="score-pill {{ 'hi' if view.verdict.score >= 70 else ('mid' if view.verdict.score >= 40 else 'lo') }}">{{ view.verdict.score }}/100</span>
         <span class="pt-sep"></span>
+        {% if live_attr %}<span class="live-badge">Live</span>
+        <span>{{ ic.icon('search') }} {{ live_attr.found_via }}{% if live_attr.search_q %} · “{{ live_attr.search_q }}”{% endif %}</span>
+        {% else %}
         <span>{{ ic.icon('activity') }} {{ view.source }}</span>
+        {% endif %}
         <span>{{ ic.icon('calendar') }} Applied {{ view.last_activity }}</span>
         {% if not view.revealed and not is_owner %}<span>{{ ic.icon('lock') }} Contact hidden until accepted</span>{% endif %}
       </div>

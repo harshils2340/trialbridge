@@ -138,7 +138,7 @@
 
       <div class="mh-thread-stack">
         {% for thread in threads %}
-        <a class="mh-thread-row {{ 'is-active' if active and active.id == thread.id else '' }} {{ 'is-unread' if thread.unread else '' }}"
+        <a class="mh-thread-row {{ 'is-active' if active and active.id == thread.id and request.args.get('thread') else '' }} {{ 'is-unread' if thread.unread else '' }}"
            href="{{ url_for('marketing_hub', thread=thread.id, stage=stage_filter, status=status_filter, source=source_filter, channel=channel_filter, q=search_query) }}#conversation">
           <div class="mh-thread-row-top">
             <span class="mh-contact-avatar-wrap">
@@ -999,7 +999,21 @@
   var activeRow = rows.find(function (row) {
     return row.classList.contains('is-active');
   });
-  if (activeRow) activeRow.scrollIntoView({block: 'center'});
+  if (activeRow) {
+    // Never scrollIntoView: it walks ancestors and, in the landing demo iframe,
+    // yanks the parent page down then back up. In embed, do not scroll at all.
+    var inEmbed = window !== window.top
+      || document.body.getAttribute('data-embed') === '1';
+    var stackEl = activeRow.closest('.mh-thread-stack');
+    if (stackEl && !inEmbed) {
+      var allRows = Array.prototype.slice.call(stackEl.querySelectorAll('.mh-thread-row'));
+      allRows.forEach(function (r) { r.style.contentVisibility = 'visible'; });
+      var delta = activeRow.getBoundingClientRect().top - stackEl.getBoundingClientRect().top
+        - (stackEl.clientHeight - activeRow.offsetHeight) / 2;
+      stackEl.scrollTop += delta;
+      allRows.forEach(function (r) { r.style.contentVisibility = ''; });
+    }
+  }
   function isTypingTarget(el) {
     return el && (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT' || el.isContentEditable);
   }

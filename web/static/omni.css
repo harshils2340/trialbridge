@@ -195,9 +195,12 @@ body.om .mh-thread-row p { color: var(--muted); }
 .om-ic { color: var(--ink-soft); }
 .om-ic.is-mono { font-size: 9.5px; font-weight: 800; letter-spacing: .02em;
   color: var(--muted); background: var(--surface-2); }
+.mh-channel-ic.is-brand { padding: 0; background: #fff; overflow: hidden; }
+.mh-channel-ic.is-brand .brand-ico { width: 100%; height: 100%; display: block; }
 .mh-channel-ic.is-row-channel { position: absolute; right: -6px; bottom: -6px; width: 18px; height: 18px;
   border-radius: 6px; box-shadow: 0 0 0 2px var(--surface); }
 .mh-channel-ic.is-row-channel .ico, .mh-channel-ic.is-row-channel .brand-ico { width: 12px; height: 12px; }
+.mh-channel-ic.is-row-channel.is-brand .brand-ico { width: 100%; height: 100%; }
 .mh-channel-ic.is-row-channel.is-mono { font-size: 7px; }
 .mh-contact-avatar-wrap { position: relative; }
 
@@ -373,11 +376,6 @@ body.om-land .pill-nav-cta {
   background-size: 22px 22px;
   -webkit-mask-image: radial-gradient(80% 70% at 50% 38%, #000 0%, transparent 100%);
   mask-image: radial-gradient(80% 70% at 50% 38%, #000 0%, transparent 100%); }
-.om-hero-badge { display: inline-flex; align-items: center; gap: 7px; margin: 0 0 18px;
-  padding: 7px 14px; border-radius: var(--radius-pill);
-  background: var(--surface); color: var(--ink-soft); font-size: 13px; font-weight: 600;
-  text-decoration: none; box-shadow: var(--ring); }
-.om-hero-badge .ico { width: 14px; height: 14px; color: var(--accent); }
 .om-h1 { margin: 0 0 14px; font-size: clamp(40px, 6.6vw, 72px); line-height: 1.0;
   letter-spacing: -.03em; font-weight: 600; color: var(--ink); }
 .om-sub { margin: 0 auto 26px; max-width: 560px; font-size: 17px; font-weight: 500;
@@ -658,13 +656,11 @@ body.om-land .pub-foot-links .brand-glyph-sm { width: 15px; height: 15px; }
   .om-demo-composer { padding: 10px 12px 12px; }
 
   /* Hero: give the pre-filled prompt room to show itself rather than opening
-     on a scrollbar, and let the badge and hint wrap without looking broken. */
+     on a scrollbar, and let the hint wrap without looking broken. */
   .om-ask-input { min-height: 148px; font-size: 16px; }
   .om-ask-foot { flex-wrap: wrap; row-gap: 8px; }
   .om-ask-hint { font-size: 12px; }
   .om-ask-tools { margin-left: auto; }
-  .om-hero-badge { max-width: 100%; font-size: 12.5px; padding-left: 10px; }
-  .om-hero-badge em { white-space: nowrap; }
   .om-examples { gap: 6px; }
   .om-example { font-size: 12.5px; padding: 6px 12px; }
 }
@@ -683,6 +679,7 @@ body.om-land .pub-foot-links .brand-glyph-sm { width: 15px; height: 15px; }
   .om-app { height: calc(100dvh - var(--om-top-h) - var(--om-ask-h)); }
   .om-app .mh-workspace { display: grid; grid-template-columns: minmax(0, 1fr); overflow: hidden; }
   .om-app .mh-workspace.is-list-only .mh-conversation { display: none; }
+  .om-app .mh-workspace:not(.is-thread-selected) .mh-conversation { display: none; }
   .om-app .mh-workspace.is-thread-selected .mh-thread-column { display: none; }
   .om-app .mh-thread-column, .om-app .mh-conversation { height: 100%; min-height: 0; max-height: none; }
   .om-app .mh-thread-column { border-right: 0; }
@@ -764,6 +761,7 @@ body.om-building .om-app { height: calc(100dvh - var(--om-top-h)); }
 .om-why { display: block; margin-top: 4px; color: var(--muted); font-size: var(--text-xs); }
 .om-msg.is-you .om-why { color: rgba(255, 255, 255, .7); }
 .om-tiles { margin-top: 10px; grid-template-columns: repeat(3, 1fr); }
+.om-tiles .mh-channel-ic { width: 32px; height: 32px; border-radius: 9px; margin-bottom: 2px; }
 .om-tiles .om-tile input { position: absolute; opacity: 0; pointer-events: none; }
 .om-tiles .om-tile > span { min-height: 78px; display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 3px; padding: 8px 6px; border: 1px solid var(--border); border-radius: 13px; background: var(--surface); text-align: center;

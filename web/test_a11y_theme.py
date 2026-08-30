@@ -147,6 +147,8 @@ def test_inbox_detail_is_focused_and_responsive():
     assert 'data-detail-tab="conversation"' in inbox
     assert '<details class="mh-clinical-card" id="records"' in inbox
     assert ".mh-workspace:not(.is-thread-selected) .mh-conversation" in css
+    assert css.count(".mh-workspace:not(.is-thread-selected) .mh-conversation") >= 2, \
+        "phones wider than 720px still stack a preview conversation on the list"
     assert "@container mh-conv (max-width:900px)" in css
     print("PASS: inbox detail separates conversation, applicant tools, and mobile state")
 

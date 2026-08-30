@@ -7,8 +7,8 @@
 <div class="app-head">
   <div>
     <h1>Internal</h1>
-    <p>Owner-only. Everything that lands on BridgeMD in one place: who applied, and
-       how visitors search, move through the funnel, and convert over time.</p>
+    <p>Owner-only. Live applications only — people who submitted in a browser,
+       not demo seed data. Also how visitors search and convert.</p>
   </div>
 </div>
 
@@ -23,8 +23,8 @@
   <a class="app-card internal-card" href="{{ url_for('operator_inbox') }}">
     <span class="internal-card-ico">{{ ic.icon('inbox') }}</span>
     <h2>Application inbox</h2>
-    <p>Every person who applied, across all studies - contact details, screener
-       answers, eligibility, and flags. Forward to the study team.</p>
+    <p>Live applies only. Where they came from, what they searched on the site,
+       contact, screener, and flags. Forward to the study team.</p>
     <span class="internal-card-go">Open inbox {{ ic.icon('arrow-right') }}</span>
   </a>
   <a class="app-card internal-card" href="{{ url_for('internal_registry') }}">

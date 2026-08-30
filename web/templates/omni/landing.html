@@ -31,18 +31,17 @@
    always. Editing the text clears the template pick (static/omni.js). #}
 <section class="om-hero" id="start">
   <div class="om-hero-in">
-    <span class="om-hero-badge">{{ ic.icon('sparkle') }} Built for clinical research sites</span>
-    <h1 class="om-h1">Every study needs an inbox</h1>
-    <p class="om-sub">Describe your site. Get an inbox.</p>
+    <h1 class="om-h1">Describe your business. Get an inbox.</h1>
+    <p class="om-sub">One prompt. A custom inbox. This one is a clinical research site.</p>
 
     <form method="post" action="{{ url_for('om_start') }}" class="om-hero-ask js-pending-submit" data-pending-text="Building your inbox..." id="omStartForm">
       <input type="hidden" name="example" id="omExample" value="{{ demo_data.template_key }}">
       <div class="om-ask-card">
         <textarea class="om-ask-input" name="prompt" id="omPrompt" rows="4" required
-                  aria-label="Describe your site and where patients come from"
-                  placeholder="Describe your site and where patients come from">{{ demo_data.prompt }}</textarea>
+                  aria-label="Describe your business and where leads come from"
+                  placeholder="Describe your business and where leads come from">{{ demo_data.prompt }}</textarea>
         <div class="om-ask-foot">
-          <span class="om-ask-hint">{{ ic.icon('sparkle') }} Pre-filled &mdash; edit or press Enter</span>
+          <span class="om-ask-hint">{{ ic.icon('sparkle') }} Pre-filled. Edit or press Enter</span>
           <div class="om-ask-tools">
             <span class="om-ask-mode">Build{{ ic.icon('chevron-down') }}</span>
             <button type="submit" class="om-ask-go" aria-label="Build my inbox" title="Build my inbox (Enter)">{{ ic.icon('arrow-right') }}</button>

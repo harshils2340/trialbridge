@@ -413,8 +413,19 @@ FAQ_ITEMS = [
      "sends on its own and never decides eligibility. A human always reviews, and "
      "every action is audit-logged."),
     ("Do you train AI on our patient data?",
-     "No. Inquiry and patient data is not used to train any model, it runs on a "
-     "no-training endpoint, and it is de-identified. Every action is audit-logged."),
+     "No. Inquiry and patient data is not used to train any model. It runs on a "
+     "no-training API, and we send the model only what the task needs. Every AI "
+     "action is recorded with who confirmed it."),
+    ("Are you HIPAA, ICH GCP, and 21 CFR Part 11 ready?",
+     "HIPAA: BridgeMD is built for HIPAA, and we sign a BAA before any identifiable "
+     "data moves. ICH GCP E6(R3): recruitment copy is versioned and cannot go live "
+     "until its IRB approval is recorded, consent is stored with its exact wording "
+     "and time, and every applicant action sits on a timestamped timeline a monitor "
+     "can read. 21 CFR Part 11: approvals in BridgeMD record who approved and in "
+     "what role. Binding e-signatures and eConsent stay in your validated "
+     "e-signature vendor. SOC 2 Type II is in progress. We support your UAT and "
+     "system validation and share our security overview on request. CDISC does "
+     "not apply here: BridgeMD handles recruitment, not study datasets."),
     ("Do you list focus groups or interview studies?",
      "The trial finder lists recruiting clinical trials, including observational "
      "studies on ClinicalTrials.gov and studies a site posts directly. Focus groups "
@@ -439,19 +450,30 @@ FAQ_HTML = (
 )
 
 # ---------------------------------------------------------------------------
-# Trust / compliance strip (our own block; injected right below the hero, where
-# the template's "logoipsum" customer strip used to sit). This is an ADVERTISING
-# claim about security posture, so wording is deliberate (compliance.mdc: ads
-# must be truthful). What's shown:
-#   - "HIPAA compliant / PHIPA / PIPEDA": a direct compliance claim. Only ship this
-#     wording while it is TRUE (safeguards + signed BAAs in place). If that is not
-#     verified, revert to "Built for HIPAA" (design-intent framing) -- ads must be
-#     truthful (compliance.mdc / FTC).
-#   - practice facts true by construction: de-identified, no-training AI,
-#     audit-logged, encrypted in transit & at rest.
-#   - "SOC 2 in progress": SOC 2 IS a third-party audit/report. Do NOT upgrade
-#     this to a plain "SOC 2" badge unless a real report exists -- buyers verify
-#     it in vendor review. Remove this chip entirely if the audit isn't underway.
+# Trust / compliance strip (our own block; injected right below the hero, ahead of
+# the sources diagram, so a site director or sponsor reviewer sees the posture
+# before anything else). This is an ADVERTISING claim about security posture, so
+# every chip must be backed by the code or a signed document (compliance.mdc:
+# ads must be truthful). Rules:
+#   - "Built for HIPAA, BAA on request": design-intent framing plus a promise we
+#     keep (sites_features.py "BAA available"). Do NOT write "HIPAA compliant":
+#     the database is not encrypted at rest and identifiers are stored in full.
+#   - "PHIPA / PIPEDA aligned", "ICH GCP E6(R3) aligned": alignment, not
+#     certification. The workflow follows the principles (IRB-gated copy, consent
+#     with wording + time, human review, timestamped timeline). A sponsor audit
+#     will still ask for validation docs; that is what the "on request" line is for.
+#   - "IRB-approved materials only": true by construction, campaigns.irb_approved
+#     gates go-live (db.py).
+#   - "Timestamped audit timeline": lead_events. Do NOT say "immutable",
+#     "tamper-evident" or "every edit": field edits are not logged.
+#   - "AI drafts, a person sends": copilot_actions propose -> confirm, enforced.
+#   - "SOC 2 Type II in progress": SOC 2 IS a third-party audit/report. Do NOT
+#     upgrade this to a plain "SOC 2" badge unless a real report exists. Remove
+#     the words entirely if the audit is not underway.
+#   - 21 CFR Part 11 is answered in the FAQ, not claimed as a chip: approvals are
+#     recorded, binding e-signatures live in the customer's validated vendor.
+#   - Never: "encrypted at rest", "de-identified", "HIPAA compliant", "Part 11
+#     compliant", "TCPA compliant" (no inbound STOP handling exists).
 _SHIELD = ('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" '
            'stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">'
            '<path d="M12 3l7 3v5c0 4.5-3 7.6-7 9-4-1.4-7-4.5-7-9V6l7-3z"/>'
@@ -479,24 +501,50 @@ _LOCK = ('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" '
          '<rect x="4.5" y="10.5" width="15" height="9.5" rx="2"/>'
          '<path d="M8 10.5V7a4 4 0 0 1 8 0v3.5"/></svg>')
 
+_CLOCK = ('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+          'stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">'
+          '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>')
+_USER = ('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+         'stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">'
+         '<circle cx="12" cy="8" r="4"/><path d="M4 20c0-3.5 3.6-6 8-6s8 2.5 8 6"/>'
+         '</svg>')
+_LIST = ('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+         'stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">'
+         '<path d="M9 6h11M9 12h11M9 18h11"/><path d="M4 6l1 1 2-2M4 12l1 1 2-2'
+         'M4 18l1 1 2-2"/></svg>')
+
+LEGAL_CONTACT = os.environ.get("LEGAL_CONTACT", "hello@bridgemd.health").strip()
+
 TRUST_ITEMS = [
-    (_SHIELD, "HIPAA compliant"),
-    (_GLOBE, "PHIPA / PIPEDA"),
-    (_EYE, "Data de-identified"),
-    (_SPARK, "No-training AI"),
-    (_DOC, "Audit-logged"),
-    (_LOCK, "Encrypted at rest &amp; in transit"),
+    (_SHIELD, "Built for HIPAA, BAA on request"),
+    (_GLOBE, "PHIPA / PIPEDA aligned"),
+    (_LIST, "ICH GCP E6(R3) aligned"),
+    (_DOC, "IRB-approved materials only"),
+    (_CLOCK, "Timestamped audit timeline"),
+    (_USER, "AI drafts, a person sends"),
 ]
 
 TRUST_HTML = (
     '<section id="bmd-trust"><div class="bmd-trust-wrap">'
-    '<p class="bmd-trust-head">Built for healthcare-grade privacy and security</p>'
+    '<p class="bmd-trust-head">Built for the review your sponsor and IRB will run</p>'
     '<div class="bmd-trust-row">'
     + ''.join(
         f'<span class="bmd-trust-item"><span class="bmd-trust-ic">{icon}</span>'
         f'<b>{label}</b></span>'
         for icon, label in TRUST_ITEMS)
-    + '</div></div></section>'
+    + '</div>'
+    '<p class="bmd-trust-foot">SOC 2 Type II in progress. Security overview, BAA, '
+    'and support for your UAT and system validation on request. '
+    f'<a href="mailto:{LEGAL_CONTACT}?subject=BridgeMD%20security%20documents">'
+    'Request security docs</a></p>'
+    '</div></section>'
+)
+
+# Short reassurance under the hero button, so the posture is visible before the
+# visitor scrolls. Same rules as TRUST_ITEMS above.
+HERO_TRUST_HTML = (
+    '<p class="bmd-hero-trust">Built for HIPAA &middot; BAA on request &middot; '
+    'IRB-approved materials only &middot; ICH GCP aligned</p>'
 )
 
 # ---------------------------------------------------------------------------
@@ -946,6 +994,24 @@ def _wire_hero_primary(html):
         r'href="[^"]*"',
         rf'\1href="{CAL}" target="_blank" rel="noopener"',
         body, flags=re.S)
+    return html[:m.start()] + head + body + tail + html[m.end():]
+
+
+def _inject_hero_trust(html):
+    """Drop HERO_TRUST_HTML just before the hero image block, i.e. right under the
+    CTA row, inside the Hero Section only."""
+    m = re.search(
+        r'(<section\b[^>]*data-framer-name="Hero Section"[^>]*>)(.*?)(</section>)',
+        html, re.S)
+    if not m:
+        return html
+    head, body, tail = m.group(1), m.group(2), m.group(3)
+    body, n = re.subn(
+        r'(<div class="ssr-variant[^"]*"><div class="framer-[\w-]+" '
+        r'data-framer-name="image">)',
+        HERO_TRUST_HTML + r'\1', body, count=1)
+    if not n:
+        print("  [warn] hero image anchor not found; hero trust line skipped")
     return html[:m.start()] + head + body + tail + html[m.end():]
 
 
@@ -1496,13 +1562,15 @@ def build(dst, colormap, asset_prefix, raster_hue=None, accent="#1257b0"):
     h = re.sub(r'(<section [^>]*class="framer-17hpso4")',
                FAQ_HTML + r'\1', h, count=1)
 
-    # Inject the "sources -> one inbox" section, then the trust strip, right below the
-    # hero (before Features). Injecting SOURCES first, then TRUST at the same anchor,
-    # lands them in order: hero -> sources -> trust -> features.
-    h = re.sub(r'(<section [^>]*class="framer-r3ortg")',
-               SOURCES_HTML + r'\1', h, count=1)
+    # Inject the trust strip, then the "sources -> one inbox" section, right below
+    # the hero (before Features). Injecting TRUST first, then SOURCES at the same
+    # anchor, lands them in order: hero -> trust -> sources -> features.
     h = re.sub(r'(<section [^>]*class="framer-r3ortg")',
                TRUST_HTML + r'\1', h, count=1)
+    h = re.sub(r'(<section [^>]*class="framer-r3ortg")',
+               SOURCES_HTML + r'\1', h, count=1)
+    # One reassurance line under the hero button, ahead of the live demo image.
+    h = _inject_hero_trust(h)
 
     # Bake the real brand logos referenced by the sources diagram into local assets
     # (fetched from apistemic) so the page never hotlinks a third party at runtime.
@@ -1751,6 +1819,15 @@ def build(dst, colormap, asset_prefix, raster_hue=None, accent="#1257b0"):
         'justify-content:center;width:32px;height:32px;border-radius:50%;'
         'background:rgba(18,87,176,.10);color:#1257b0;flex:0 0 auto}'
         '#bmd-trust .bmd-trust-ic svg{width:18px;height:18px;display:block}'
+        '#bmd-trust .bmd-trust-foot{margin:22px auto 0;max-width:640px;color:#6b7590;'
+        'font-size:14px;line-height:1.6}'
+        '#bmd-trust .bmd-trust-foot a{color:#1257b0;font-weight:600;'
+        'text-decoration:none;white-space:nowrap}'
+        '#bmd-trust .bmd-trust-foot a:hover{text-decoration:underline}'
+        # (e1) hero reassurance line: sits under the CTA row, above the live demo.
+        '.bmd-hero-trust{margin:-6px 0 18px;color:#5a6a86;font-size:14px;'
+        'font-weight:500;letter-spacing:.01em;text-align:center;'
+        'font-family:"Figtree",system-ui,-apple-system,sans-serif}'
         # (e2) sources -> one inbox: an animated beam network. The BridgeMD inbox is the
         # centre node, the source logos flank it, and a brand-coloured beam travels along
         # each connector into the centre. One self-contained SVG (SMIL), scales via the
@@ -1936,6 +2013,25 @@ def build(dst, colormap, asset_prefix, raster_hue=None, accent="#1257b0"):
         '<link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">')
     if 'href="/static/favicon-32.png"' not in h:
         h = h.replace('<head>', '<head>' + bmd_favicon, 1)
+
+    # Social preview: Framer ships a Saify collage as og/twitter image and a
+    # framer.app canonical. Always point crawlers at the BridgeMD card.
+    h = re.sub(
+        r'(<meta property="og:image" content=")[^"]+(")',
+        r'\1https://bridgemd.health/static/og-default.png\2', h)
+    h = re.sub(
+        r'(<meta name="twitter:image" content=")[^"]+(")',
+        r'\1https://bridgemd.health/static/og-default.png\2', h)
+    h = h.replace('https://fancy-cogwheel-201934.framer.app/',
+                  'https://bridgemd.health/')
+    if 'og:image:alt' not in h:
+        h = h.replace(
+            '<meta property="og:image" content="https://bridgemd.health/static/og-default.png">',
+            '<meta property="og:image" content="https://bridgemd.health/static/og-default.png">'
+            '<meta property="og:image:width" content="1200">'
+            '<meta property="og:image:height" content="630">'
+            '<meta property="og:image:alt" content="BridgeMD — one shared inbox for clinical research sites">',
+            1)
 
     # BridgeMD wordmark: the Framer export ships the mark as a boxless two-tone
     # glyph. Point both landing logos (nav + footer) at the filled blue-square mark

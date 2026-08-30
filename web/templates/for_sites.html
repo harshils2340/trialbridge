@@ -221,25 +221,32 @@
      so the compliance posture reads at a glance instead of hiding inside a chip. #}
   <div class="fs-frames">
     <div class="fs-frame"><span class="fs-frame-ic">{{ ic.icon('shield-check') }}</span>
-      <span class="fs-frame-tx"><b>HIPAA</b><i>{{ ic.icon('check') }} Safe Harbor</i></span></div>
+      <span class="fs-frame-tx"><b>HIPAA</b><i>{{ ic.icon('check') }} Built for it, BAA on request</i></span></div>
     <div class="fs-frame"><span class="fs-frame-ic">{{ ic.icon('lock') }}</span>
       <span class="fs-frame-tx"><b>GDPR</b><i>{{ ic.icon('check') }} Aligned</i></span></div>
     <div class="fs-frame"><span class="fs-frame-ic">{{ ic.icon('shield') }}</span>
-      <span class="fs-frame-tx"><b>PHIPA</b><i>{{ ic.icon('check') }} Aligned</i></span></div>
+      <span class="fs-frame-tx"><b>PHIPA / PIPEDA</b><i>{{ ic.icon('check') }} Aligned</i></span></div>
     <div class="fs-frame"><span class="fs-frame-ic">{{ ic.icon('file-check') }}</span>
-      <span class="fs-frame-tx"><b>PIPEDA</b><i>{{ ic.icon('check') }} Aligned</i></span></div>
+      <span class="fs-frame-tx"><b>ICH GCP E6(R3)</b><i>{{ ic.icon('check') }} Aligned</i></span></div>
+    <div class="fs-frame"><span class="fs-frame-ic">{{ ic.icon('file') }}</span>
+      <span class="fs-frame-tx"><b>21 CFR Part 11</b><i class="prog">Timeline here, e-sign in your vendor</i></span></div>
+    <div class="fs-frame"><span class="fs-frame-ic">{{ ic.icon('file-check') }}</span>
+      <span class="fs-frame-tx"><b>IRB review</b><i>{{ ic.icon('check') }} Copy gated on approval</i></span></div>
     <div class="fs-frame is-progress"><span class="fs-frame-ic">{{ ic.icon('award') }}</span>
       <span class="fs-frame-tx"><b>SOC&nbsp;2 Type&nbsp;II</b><i class="prog">{{ ic.icon('clock') }} In progress</i></span></div>
     <div class="fs-frame"><span class="fs-frame-ic">{{ ic.icon('file') }}</span>
       <span class="fs-frame-tx"><b>BAA</b><i>{{ ic.icon('check') }} On request</i></span></div>
   </div>
 
-  {# The practices behind the badges. #}
+  {# The practices behind the badges. Each one is backed by code: reveal-gated
+     contact details, consent + consent_at, lead_events, deletion on request,
+     and no data sale. Do not reintroduce "de-identified", "full audit log" or
+     "you control retention" until the code does those things. #}
   <div class="fs-secure-chips">
-    <span class="fs-dt">{{ ic.icon('shield') }} De-identified by design</span>
-    <span class="fs-dt">{{ ic.icon('lock') }} Blinded until the patient consents</span>
-    <span class="fs-dt">{{ ic.icon('user') }} Role-based access + full audit log</span>
-    <span class="fs-dt">{{ ic.icon('file') }} You control retention &amp; deletion</span>
+    <span class="fs-dt">{{ ic.icon('lock') }} Blinded until your team accepts</span>
+    <span class="fs-dt">{{ ic.icon('file') }} Consent stored with wording and time</span>
+    <span class="fs-dt">{{ ic.icon('user') }} Role-based access + activity timeline</span>
+    <span class="fs-dt">{{ ic.icon('shield') }} Deletion on request</span>
     <span class="fs-dt">{{ ic.icon('shield-check') }} We never sell patient data</span>
   </div>
   <div class="fs-secure-foot">

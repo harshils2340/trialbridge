@@ -118,8 +118,8 @@ FEATURES = {
              "d": "Scoring runs on structured, minimized facts. Where identifiable data "
                   "is processed, it is under a Business Associate Agreement, and it is "
                   "never used to train a model."},
-            {"h": "Full audit trail",
-             "d": "Who reviewed an applicant, what they changed and when, kept for "
+            {"h": "Activity timeline",
+             "d": "Who reviewed an applicant, what status changed and when, kept for "
                   "inspection."},
         ],
     },
@@ -219,9 +219,9 @@ FEATURES = {
         ],
         "legal": [
             {"h": "Never trained on your documents",
-             "d": "Sponsor and CRO material is processed under enterprise API terms with "
-                  "no training on your content and no retention on the provider side. "
-                  "That is the whole reason this exists instead of a consumer chatbot."},
+             "d": "Sponsor and CRO material is processed under API terms that do not "
+                  "train on your content. That is the whole reason this exists instead "
+                  "of a consumer chatbot."},
             {"h": "Confidentiality respected",
              "d": "Documents stay in the study workspace, scoped by role. They are "
                   "yours, they are not shared across customers, and they are deleted on "
