@@ -136,6 +136,9 @@ def test_find_trial_is_split_carousel():
     assert "For research sites" in html
     assert "A real trial finder, directly on your website." in html
     assert "Find a trial that fits." in html
+    assert "bmd-embed-frame" in html
+    assert "Find a clinical trial at" in html
+    assert "One snippet to embed" not in html
     assert "Horizontal focus carousel" in html
     assert "Start split." in html
     assert "Split carousel retired" not in html

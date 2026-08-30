@@ -686,8 +686,8 @@ body.home-screen .fy-left .hero-card .search-modes{
 .fy-right .fy-lead{ max-width:1180px; }
 .fy-stage{ flex:1; min-height:0; display:flex; flex-direction:column; }
 .fy-right .bmd-embed-frame{
-  flex:1; min-height:0; width:100%; max-width:1180px; margin:0 auto;
-  position:relative; display:flex; flex-direction:column;
+  flex:1 1 auto; min-height:380px; height:100%; width:100%; max-width:1180px;
+  margin:0 auto; position:relative; display:flex; flex-direction:column;
   background:#fff; border:1px solid rgba(255,255,255,.3);
   border-radius:16px; overflow:hidden;
   box-shadow:0 32px 64px -28px rgba(0,0,0,.55); }
@@ -949,10 +949,10 @@ body.home-screen.is-fy-left .fy-brand,
 body.home-screen.is-fy-split .fy-brand{ left:28px; color:#153554; }
 
 
-/* Stacked-layout extras (cards, inbox overlay, embed CTA) stay in the DOM
-   for the below-fold page, but they are not part of the split mock. */
-.fy .bmd-embed-grid, .fy .bmd-embed-cta, .fy .bmd-route-card,
-.fy .fy-embed-sub{ display:none; }
+/* Split is the hospital mock only. These leftovers from the stacked
+   marketing page were winning the layout and covering the finder. */
+.fy .bmd-embed-grid, .fy .bmd-embed-cta, .fy .fy-embed-sub{
+  display:none !important; }
 
 @media (max-height:820px){
   .fy-left-in.hero-in, .fy-right-in{ padding-top:72px; padding-bottom:28px; }
@@ -1356,28 +1356,6 @@ body.home-screen.is-fy-split .fy-brand{ left:28px; color:#153554; }
         <div class="bmd-rc-note">On the right person&rsquo;s desk in seconds. No email, no forwarding.</div>
       </div>
     </div>
-    <div class="bmd-embed-grid">
-      <div class="bmd-embed-card">
-        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 8l-4 4 4 4"/><path d="M16 8l4 4-4 4"/></svg></span>
-        <h3>One snippet to embed</h3>
-        <p>Drop it into your site. No developer project, no new login.</p>
-      </div>
-      <div class="bmd-embed-card">
-        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="4.5" width="17" height="4" rx="1.2"/><rect x="3.5" y="10.5" width="17" height="4" rx="1.2"/><rect x="3.5" y="16.5" width="11" height="3" rx="1.2"/></svg></span>
-        <h3>Your studies first</h3>
-        <p>Shows your active studies first, then relevant recruiting trials nearby.</p>
-      </div>
-      <div class="bmd-embed-card">
-        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 12.5V6a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2v6.5"/><path d="M3.5 12.5H8l1.5 2.5h5L16 12.5h4.5V18a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/></svg></span>
-        <h3>Every search is a lead</h3>
-        <p>Each search becomes an inquiry in your shared inbox, sorted and routed.</p>
-      </div>
-    </div>
-    <div class="bmd-embed-cta">
-      <a class="bmd-btn-primary" href="#main">Open the trial finder</a>
-      <a class="bmd-btn-ghost" href="{{ cal_link }}" target="_blank" rel="noopener">Add this finder to your website</a>
-    </div>
-
     <span class="fy-snip" id="bxSnipSite">your-hospital</span>
     <span class="fy-snip" id="bxSnipAccent">#1257b0</span>
   </div>
