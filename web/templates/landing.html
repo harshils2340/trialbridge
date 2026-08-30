@@ -551,8 +551,8 @@ body.home-screen .landing-legal-links a:hover{ color:var(--fx-accent); }
 
 /* ============================================================================
    Horizontal focus carousel: one viewport, two panels.
-   Split = both visible. Click/swipe/arrows to focus left or right; the other
-   collapses to a slim peek strip (MJSTK-style, BridgeMD palette).
+   Start split. Desktop stays a locked 50/50 — leftover .hero / .bmd-embed-sec
+   rules must not grow either pane, and hover must not collapse the other.
    ========================================================================== */
 body.home-screen{
   height:100vh !important; max-height:100vh; overflow:hidden !important;
@@ -589,17 +589,14 @@ body.home-screen:not(.is-fy-ready) .fy-panel,
 body.home-screen:not(.is-fy-ready) .fy-body,
 body.home-screen:not(.is-fy-ready) .pill-nav,
 body.home-screen:not(.is-fy-ready) .bmd-site-extra{ transition:none !important; }
-.fy-panel{ flex:0 0 50%; min-width:0; min-height:0; position:relative;
-  overflow:hidden; transition:flex-basis var(--fy-dur) var(--fy-ez); }
-.fy.is-left .fy-left{ flex-basis:90%; }
-.fy.is-left .fy-right{ flex-basis:10%; cursor:pointer; }
-.fy.is-split .fy-left, .fy.is-split .fy-right{ flex-basis:50%; }
-.fy.is-right .fy-left{ flex-basis:10%; cursor:pointer; }
-.fy.is-right .fy-right{ flex-basis:90%; }
-.fy.is-split.is-hover-left .fy-left{ flex-basis:90%; }
-.fy.is-split.is-hover-left .fy-right{ flex-basis:10%; }
-.fy.is-split.is-hover-right .fy-left{ flex-basis:10%; }
-.fy.is-split.is-hover-right .fy-right{ flex-basis:90%; }
+.fy-panel{ flex:0 0 50%; width:50%; max-width:50%; min-width:0; min-height:0;
+  position:relative; overflow:hidden; }
+/* Beat body.home-screen .hero { flex:1 1 auto / none; max-width:1080px } and
+   .bmd-embed-sec padding so both backgrounds meet in the middle. */
+body.home-screen .fy.is-split .fy-panel.fy-left.hero,
+body.home-screen .fy.is-split .fy-panel.fy-right.bmd-embed-sec{
+  flex:0 0 50%; width:50%; max-width:50%; min-width:0; min-height:0;
+  margin:0; padding:0; }
 
 body.home-screen .fy-left.hero{
   background:#f2f7fc !important; color:#102a43; }
@@ -608,21 +605,8 @@ body.home-screen .fy-left.hero{
   background:#0b2340; color:#f7fbff; padding:0; border:0;
   display:flex; flex-direction:column; }
 
-.fy-body{ height:100%; opacity:1; transform:none; pointer-events:auto;
-  transition:opacity .38s var(--fy-ez), transform .58s var(--fy-ez); }
-.fy.is-left .fy-right .fy-body,
-.fy.is-right .fy-left .fy-body,
-.fy.is-split.is-hover-left .fy-right .fy-body,
-.fy.is-split.is-hover-right .fy-left .fy-body{
-  opacity:0; pointer-events:none; transform:scale(.97); }
-.fy-peek{ display:none; position:absolute; inset:0; align-items:center;
-  justify-content:center; flex-direction:column; padding:24px 8px;
-  text-align:center; pointer-events:none; }
-.fy.is-left .fy-right .fy-peek,
-.fy.is-right .fy-left .fy-peek,
-.fy.is-split.is-hover-left .fy-right .fy-peek,
-.fy.is-split.is-hover-right .fy-left .fy-peek{
-  display:flex; pointer-events:auto; }
+.fy-body{ height:100%; opacity:1; transform:none; pointer-events:auto; }
+.fy-peek{ display:none; }
 .fy-peek-label{ writing-mode:vertical-rl; transform:rotate(180deg);
   font-size:10px; font-weight:800; letter-spacing:.18em; text-transform:uppercase; }
 .fy-left .fy-peek-label{ color:rgba(16,42,67,.62); }
@@ -631,9 +615,9 @@ body.home-screen .fy-left.hero{
 .fy-left.hero{ max-width:none; margin:0; padding:0; text-align:left; }
 .fy-left.hero::before{ display:none; }
 body.home-screen .fy-left-in.hero-in{
-  height:100%; width:100%; max-width:760px; margin:0 auto;
+  height:100%; width:100%; max-width:none; margin:0;
   display:flex; flex-direction:column;
-  justify-content:center; padding:88px 48px 52px; box-sizing:border-box; }
+  justify-content:center; padding:88px 40px 40px; box-sizing:border-box; }
 body.home-screen .fy-left .fy-who,
 body.home-screen .fy-right .fy-who{
   margin:0 0 10px; max-width:none; text-align:left;
@@ -680,7 +664,7 @@ body.home-screen .fy-left .hero-card .search-modes{
 .fy-legal a{ color:#526b82; }
 
 .fy-right-in{ height:100%; display:flex; flex-direction:column;
-  padding:88px 40px 36px; box-sizing:border-box; }
+  padding:88px 40px 40px; box-sizing:border-box; }
 .fy-right .fy-who, .fy-right .fy-lead{
   width:min(100%,1180px); margin-left:auto; margin-right:auto; }
 .fy-right .fy-lead{ max-width:1180px; }
@@ -723,15 +707,8 @@ body.home-screen .fy-left .hero-card .search-modes{
 .fy-right .bmd-tc-why{ display:none; }
 .fy-right .bmd-tcard:nth-child(n+3){ display:none; }
 
-/* 50/50: the left hero has padding:76px 24px 52px (body.home-screen .hero).
-   Mirror that on the right so "For research sites" starts on the same
-   baseline, then let the mock fill the leftover navy without changing
-   the widget's internal sizes. */
 @media (min-width:981px){
-  body.home-screen .fy-right.bmd-embed-sec{ padding:76px 24px 52px; }
-  body.home-screen .fy-right-in{ justify-content:flex-start; padding:70px 40px 0; }
-  body.home-screen.is-fy-right .fy-right.bmd-embed-sec{ padding:0; }
-  body.home-screen.is-fy-right .fy-right-in{ padding:88px 40px 36px; }
+  body.home-screen .fy-right-in{ justify-content:flex-start; }
 }
 
 /* Split (and the collapsed left-focus peek): a quiet product preview.
@@ -894,19 +871,18 @@ body.home-screen .fy-left .hero-card .search-modes{
   pointer-events:none; transition:opacity .2s ease, transform .2s ease; }
 .bmd-site-toast.is-show{ opacity:1; transform:translate(-50%,0); }
 
-.fy-grip{ position:absolute; z-index:65; left:50%; top:50%;
+body.home-screen .fy .fy-grip,
+body.home-screen .fy.is-split .fy-grip{
+  position:fixed; z-index:65; left:50%; top:50%;
   transform:translate(-50%,-50%); width:32px; height:26px;
   display:flex; align-items:center; justify-content:center; gap:0;
   background:linear-gradient(90deg,#f2f7fc 0 50%,#0b2340 50% 100%);
   border:1px solid rgba(145,170,194,.5); border-radius:10px;
   box-shadow:0 5px 14px -10px rgba(5,35,64,.8);
-  pointer-events:none;
-  transition:left var(--fy-dur) var(--fy-ez), opacity .25s ease; }
+  pointer-events:none; margin:0; }
 .fy-grip svg{ width:8px; height:8px; stroke-width:2.35; }
 .fy-grip svg:first-child{ color:#1257b0; }
 .fy-grip svg:last-child{ color:#f2f7fc; }
-.fy.is-left .fy-grip, .fy.is-split.is-hover-left .fy-grip{ left:90%; }
-.fy.is-right .fy-grip, .fy.is-split.is-hover-right .fy-grip{ left:10%; }
 
 .fy-rail{ position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
   z-index:60; display:flex; align-items:center; gap:6px; pointer-events:none;
@@ -976,12 +952,15 @@ body.home-screen.is-fy-split .fy-brand{ left:28px; color:#153554; }
   body.home-screen .pill-nav-auth{ justify-self:end; }
   body.home-screen .fy-brand{ display:none; }
   .fy{ flex-direction:column; height:auto; overflow:visible; touch-action:auto; }
-  .fy-panel, .fy.is-left .fy-left, .fy.is-left .fy-right,
-  .fy.is-right .fy-left, .fy.is-right .fy-right{
-    flex-basis:auto !important; cursor:default; overflow:visible; }
+  .fy-panel,
+  body.home-screen .fy.is-split .fy-panel.fy-left.hero,
+  body.home-screen .fy.is-split .fy-panel.fy-right.bmd-embed-sec{
+    flex:none !important; width:100% !important; max-width:none !important;
+    cursor:default; overflow:visible; }
   .fy-peek{ display:none !important; }
   .fy-body{ opacity:1 !important; pointer-events:auto !important; transform:none !important; }
-  .fy-grip, .fy-rail, .fy-pager, .fy-skip{ display:none; }
+  .fy-grip, body.home-screen .fy .fy-grip, body.home-screen .fy.is-split .fy-grip,
+  .fy-rail, .fy-pager, .fy-skip{ display:none !important; }
   body.home-screen .fy-left-in.hero-in{
     height:auto; max-width:none; padding:28px 18px 36px; }
   body.home-screen .fy-left .fy-who,
@@ -2094,92 +2073,16 @@ body.home-screen.is-fy-split .fy-brand{ left:28px; color:#153554; }
 })();
 </script>
 <script>
-/* Start split. The first hovered panel locks open; later switches require a click. */
+/* Start split. Desktop stays 50/50; hover and arrows do not collapse a pane. */
 (function () {
   var root = document.getElementById('fyCarousel');
   if (!root) return;
   var body = document.body;
-  var prev = document.getElementById('fyPrev');
-  var next = document.getElementById('fyNext');
-  var pagerPrev = document.getElementById('fyPagerPrev');
-  var pagerNext = document.getElementById('fyPagerNext');
-  var splitBtn = document.getElementById('fySplit');
-  var numEl = document.getElementById('fyNum');
-  var slide = 1;
-  var hasChosenSide = false;
-
-  function desktopSplit() {
-    return window.matchMedia('(min-width: 981px) and (hover: hover)').matches;
-  }
-
-  function apply(n) {
-    var next = Math.max(0, Math.min(2, n));
-    var bodyState = next === 0 ? 'is-fy-left' : next === 2 ? 'is-fy-right' : 'is-fy-split';
-    var rootState = next === 0 ? 'is-left' : next === 2 ? 'is-right' : 'is-split';
-    var already = slide === next
-      && body.classList.contains(bodyState)
-      && root.classList.contains(rootState);
-    slide = next;
-    if (!already) {
-      root.classList.remove(
-        'is-left', 'is-split', 'is-right', 'is-hover-left', 'is-hover-right');
-      body.classList.remove('is-fy-left', 'is-fy-split', 'is-fy-right');
-      root.classList.add(rootState);
-      body.classList.add(bodyState);
-    }
-    root.setAttribute('data-slide', String(slide));
-    if (numEl) numEl.textContent = slide === 2 ? '02' : '01';
-    if (splitBtn) splitBtn.hidden = slide === 1;
-    root.querySelectorAll('.fy-peek').forEach(function (p) {
-      p.setAttribute('aria-hidden', slide === 1 ? 'true' : 'false');
-    });
-  }
-
-  function go(delta) { apply(slide + delta); }
-
-  if (prev) prev.addEventListener('click', function (e) { e.stopPropagation(); go(-1); });
-  if (next) next.addEventListener('click', function (e) { e.stopPropagation(); go(1); });
-  if (pagerPrev) pagerPrev.addEventListener('click', function () { go(-1); });
-  if (pagerNext) pagerNext.addEventListener('click', function () { go(1); });
-  if (splitBtn) splitBtn.addEventListener('click', function () { apply(1); });
-
-  root.querySelectorAll('[data-fy-go]').forEach(function (btn) {
-    btn.addEventListener('click', function (e) {
-      e.stopPropagation();
-      apply(parseInt(btn.getAttribute('data-fy-go'), 10));
-    });
-  });
-
-  var SEARCH_KEEP = 'input, textarea, select, button, a, label, .hero-card, .bmd-widget, .bmd-finder-search, .search-modes';
-
-  root.querySelectorAll('.fy-panel').forEach(function (panel) {
-    panel.addEventListener('mouseenter', function () {
-      if (!desktopSplit() || hasChosenSide || slide !== 1) return;
-      hasChosenSide = true;
-      apply(panel.classList.contains('fy-left') ? 0 : 2);
-    });
-    panel.addEventListener('click', function (e) {
-      if (e.target.closest(SEARCH_KEEP)) return;
-      if (panel.classList.contains('fy-left') && slide === 2) {
-        e.preventDefault();
-        apply(0);
-      } else if (panel.classList.contains('fy-right') && slide === 0) {
-        e.preventDefault();
-        apply(2);
-      }
-    });
-  });
-
-  document.addEventListener('keydown', function (e) {
-    if (!desktopSplit()) return;
-    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
-    if (e.target && e.target.closest('input, textarea, select, [contenteditable="true"]')) return;
-    e.preventDefault();
-    hasChosenSide = true;
-    apply(e.key === 'ArrowLeft' ? 0 : 2);
-  });
-
-  apply(1);
+  root.classList.remove('is-left', 'is-right', 'is-hover-left', 'is-hover-right');
+  root.classList.add('is-split');
+  body.classList.remove('is-fy-left', 'is-fy-right');
+  body.classList.add('is-fy-split');
+  root.setAttribute('data-slide', '1');
   requestAnimationFrame(function () {
     requestAnimationFrame(function () { body.classList.add('is-fy-ready'); });
   });
