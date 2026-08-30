@@ -562,6 +562,36 @@ def test_bridget_pane_writes_reply_when_thread_open():
     nothing = ask("Offer a call", thread_id=None)
     assert not nothing.get("draft"), nothing
 
+    # Triage runs before anything is written, on both entry points.
+    assert _post(client, "/marketing-hub/threads", {
+        "source_id": str(source_id), "contact_name": "Dev Rao",
+        "contact_handle": "dev@example.com", "subject": "Not okay",
+        "body": "honestly i don't want to be here anymore, nothing is helping",
+    }).status_code == 302
+    assert _post(client, "/marketing-hub/threads", {
+        "source_id": str(source_id), "contact_name": "Ola Nwosu",
+        "contact_handle": "ola@example.com", "subject": "Paid?",
+        "body": "Do I get paid for this and how much per visit?",
+    }).status_code == 302
+    with webapp.app.app_context():
+        by_name = {t["contact_name"]: t["id"]
+                   for t in db.list_marketing_threads(owner_id)}
+    held = ask("Answer their question", thread_id=by_name["Dev Rao"])
+    assert held["mode"] == "hold" and not held.get("draft"), held
+    assert "personally" in held["answer"], held["answer"]
+    r = client.post(f"/marketing-hub/threads/{by_name['Dev Rao']}/draft.json",
+                    json={"instruction": ""}, headers={"X-CSRF-Token": CSRF})
+    assert r.status_code == 409 and _json.loads(r.get_data(as_text=True))["hold"]
+
+    flagged = ask("Answer their question", thread_id=by_name["Ola Nwosu"])
+    assert flagged["mode"] == "draft" and flagged["category"] == "pricing", flagged
+    assert flagged["flags"] and "$" not in flagged["draft"], flagged
+    with webapp.app.app_context():
+        rows = db.list_copilot_drafts(owner_id)
+        outcomes = {(r["thread_id"], r["outcome"]) for r in rows}
+    assert (by_name["Dev Rao"], "hold") in outcomes
+    assert (by_name["Ola Nwosu"], "draft") in outcomes
+
 def test_unread_by_study_counts():
     """Top-switcher badge data: unread threads grouped by study NCT. Unassigned
     threads (no NCT) must be excluded so a badge only reflects a real trial."""

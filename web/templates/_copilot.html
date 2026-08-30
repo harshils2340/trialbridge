@@ -510,6 +510,7 @@
         // The reply box fills while the pane says so: one motion, two places.
         if (d.draft) placeDraft(d.draft);
         revealText(p, d.answer || '', function () {
+          renderGuard(working, d);
           renderItems(working, d.items);
           var cites = d.citations || [];
           if (d.items && d.items.length > 1) {
@@ -534,6 +535,30 @@
       working.remove();
       addMsg('bot', 'I couldn\u2019t reach the assistant. Check your connection and try again.');
     }).finally(function () { setBusy(false); });
+  }
+
+  // Triage and the draft scanner speak here. A hold or a block is the whole
+  // answer (nothing was written), so it reads as a warning; a review flag
+  // sits under a written draft as a quiet note. Both are plain sentences from
+  // the server, never a code.
+  function renderGuard(wrap, d) {
+    var kind = (d.mode === 'hold' || d.mode === 'blocked') ? 'is-hold'
+             : (d.flags && d.flags.length ? 'is-flag' : '');
+    if (!kind) return;
+    var box = document.createElement('div');
+    box.className = 'copilot-guard ' + kind;
+    var label = document.createElement('b');
+    label.textContent = kind === 'is-hold' ? 'Held for a person' : 'Review before sending';
+    box.appendChild(label);
+    if (kind === 'is-flag') {
+      d.flags.forEach(function (f) {
+        var t = document.createElement('span');
+        t.textContent = f;
+        box.appendChild(t);
+      });
+    }
+    bodyOf(wrap).appendChild(box);
+    scroll();
   }
 
   function renderFollowups(wrap, sugs) {

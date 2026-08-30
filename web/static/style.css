@@ -5821,6 +5821,14 @@ a.rail-attn:hover { text-decoration: underline; }
 .ch-del svg { width: 14px; height: 14px; }
 .copilot-suggest, .copilot-cites { display: flex; flex-wrap: wrap; gap: 6px;
   margin-top: 2px; }
+/* Guardrail notes: a hold or a block is a warning (nothing was written); a
+   review flag under a draft is a quiet note. Same type scale as the answer. */
+.copilot-guard { display: flex; flex-direction: column; gap: 3px;
+  padding: 8px 10px; border-left: 2px solid var(--border-strong, var(--border));
+  font-size: 12.5px; line-height: 1.45; color: var(--muted); }
+.copilot-guard b { font-weight: 600; color: var(--ink); }
+.copilot-guard.is-hold { border-left-color: var(--red); }
+.copilot-guard.is-hold b { color: var(--red); }
 .copilot-chip {
   border: 1px solid var(--border); background: var(--surface); cursor: pointer;
   color: var(--ink-soft, var(--muted)); font: 500 12px/1 var(--sans);

@@ -17,7 +17,7 @@ from copy_sanitize import sanitize_copy
 
 import db
 
-from . import actions, drafts, registry, tools
+from . import actions, drafts, policy, registry, tools
 
 SYSTEM_PROMPT = (
     "You are BridgeMD Copilot, an assistant for a clinical-trial study team. "
@@ -147,7 +147,9 @@ PLANNER_SYSTEM = (
     "its parameters. You only route; you never answer, invent data, or decide "
     "eligibility. Respond with ONLY a JSON object of the form "
     '{"tool": "<tool_name>", "params": {}}. Use the exact tool names given. If '
-    'no tool fits, use {"tool": "help", "params": {}}.')
+    'no tool fits, use {"tool": "help", "params": {}}. Requests that are '
+    'unreadable, unrelated to running clinical-trial recruitment, or outside '
+    'the menu also go to help; never stretch a tool to fit.')
 
 
 _BULK_HINTS = ("everyone", "all of them", "each of", "each one", "stuck",
@@ -494,6 +496,14 @@ def answer(user_id, query, context=None):
         if intent == "draft_reply" or tool is None or tool.kind == "action" \
                 or tool.needs_lead:
             return _sanitize_answer(_draft_reply(user_id, thread_id, query))
+    elif drafts.is_garbled(query):
+        # Not a request a person could have meant. Say so instead of routing
+        # it somewhere and returning a confident answer to nothing.
+        p = _help_payload(context)
+        return _sanitize_answer({
+            "answer": f"I didn't follow \"{_short(query)}\". " + p["summary"],
+            "mode": "clarify", "citations": [], "trace": [],
+            "suggestions": STARTERS})
     else:
         intent, params = _plan(query, context)
     params = _enrich_params(params, context, query)
@@ -501,20 +511,22 @@ def answer(user_id, query, context=None):
     tool = registry.get(intent)
     if tool is None:                       # "help" or an unknown name
         p = _help_payload(context)
-        return _sanitize_answer({"answer": p["summary"], "citations": [], "trace": [],
-                "suggestions": STARTERS})
+        return _sanitize_answer({"answer": p["summary"], "mode": "help",
+                "citations": [], "trace": [], "suggestions": STARTERS})
 
     if tool.needs_lead and not lead_id:
         return _sanitize_answer({
             "answer": "Open an applicant first, then ask again - that lets me "
                       "pull their record.",
-            "citations": [], "suggestions": STARTERS,
+            "mode": "help", "citations": [], "suggestions": STARTERS,
         })
 
     # --- Action tools: build a confirmable proposal (never auto-send) ----------
     if tool.kind == "action":
         res = _propose(intent, user_id, lead_id, params, context, query)
         res.setdefault("trace", tool.trace)
+        res["mode"] = "action" if res.get("proposal") else "help"
+        res["tool"] = intent
         return _sanitize_answer(res)
 
     # --- Read tools: grounded answer ------------------------------------------
@@ -525,6 +537,8 @@ def answer(user_id, query, context=None):
         suggestions = [f"Blast everyone accepted in {(context['studies'][0]['title'] or '')[:30]}"]
     return _sanitize_answer({
         "answer": text,
+        "mode": "read",
+        "tool": intent,
         "items": _display_items(payload.get("items")),
         "citations": payload.get("citations", []),
         "trace": tool.trace,
@@ -532,15 +546,24 @@ def answer(user_id, query, context=None):
     })
 
 
+def _short(q, n=60):
+    q = " ".join((q or "").split())
+    return q if len(q) <= n else q[:n - 3].rstrip() + "..."
+
+
 def draft_for_thread(user_id, thread_id, instruction=""):
     """Write the reply for an inbox conversation.
 
     ``instruction`` is what the coordinator asked for ("offer a screening call
     next week"); with none, the draft answers the last inbound message. Returns
-    {draft, target} or {error}. Never sends: the text lands in the reply box
-    for a person to edit and send (COMPLIANCE.md). Shared by the rail
-    (/app/copilot/ask with a thread open) and the thread's draft.json endpoint
-    so both write the same reply."""
+    {draft, target, first, ask_used} or {error, unclear?}. Never sends: the
+    text lands in the reply box for a person to edit and send (COMPLIANCE.md).
+    Shared by the rail (/app/copilot/ask with a thread open) and the thread's
+    draft.json endpoint so both write the same reply.
+
+    An instruction Bridget cannot carry out is not quietly swapped for a
+    generic reply: the result is {error, unclear: True} and nothing is
+    written. See drafts.draft_reply_report for what counts as understood."""
     thread = db.get_marketing_thread(user_id, thread_id)
     if not thread:
         return {"error": "I can't find that conversation."}
@@ -553,9 +576,49 @@ def draft_for_thread(user_id, thread_id, instruction=""):
         return {"error": "No inbound message to draft from."}
     first = (thread["contact_name"] or "there").split()[0]
     study = thread["study_label"] or "the study"
-    text = drafts.draft("reply", {
+
+    def _log(outcome, reasons=None):
+        db.log_copilot_draft(user_id, thread_id, instruction, category, outcome,
+                             reasons, model_used=bool(mt.LLM_API_KEY))
+
+    # Triage first. Some conversations must not get a drafted reply at all:
+    # a person in distress needs a person, and someone who asked to be left
+    # alone does not get more marketing. The rail says why nothing was written.
+    category = policy.categorize(latest, instruction)
+    if category in policy.HOLD_REASONS:
+        _log("hold", [category])
+        return {"hold": True, "category": category,
+                "reason": policy.HOLD_REASONS[category], "first": first}
+
+    rep = drafts.draft_reply_report({
         "first": first, "study": study, "inbound": latest, "ask": instruction})
-    return {"draft": text,
+    if rep.get("unclear"):
+        _log("unclear")
+        return {"error": f"I didn't follow \"{_short(instruction)}\", so I "
+                         "didn't write anything. Try one of: "
+                         + ", ".join(p.lower() for p in DRAFT_PRESETS) + ".",
+                "unclear": True, "first": first, "category": category}
+
+    # Scan the finished draft, whoever wrote it. The prompt asks the model not
+    # to state amounts, odds, eligibility or medical direction; this is what
+    # makes sure it did not. A draft that fails is not written.
+    broken = policy.check_draft(rep["text"], instruction)
+    if broken:
+        _log("blocked", broken)
+        return {"blocked": True, "reasons": broken, "category": category,
+                "reason": f"I won't write that. {policy.describe(broken)} "
+                          "Nothing went into the reply box.",
+                "first": first}
+
+    flags = [policy.FLAG_REASONS[category]] if category in policy.FLAG_REASONS \
+        else []
+    _log("draft", [category] if flags else [])
+    return {"draft": rep["text"],
+            "ask_used": rep.get("ask_used"),
+            "category": category,
+            "flags": flags,
+            "checked": ["No amounts, odds, eligibility claims or medical "
+                        "direction in the draft"],
             "target": thread["contact_name"] or thread["contact_handle"]
             or "this contact",
             "first": first}
@@ -563,18 +626,60 @@ def draft_for_thread(user_id, thread_id, instruction=""):
 
 def _draft_reply(user_id, thread_id, query):
     """The rail's answer when a conversation is open: the reply goes into the
-    box, the rail says so, and offers the other starting points."""
+    box and the rail says so. If the request was not understood, nothing goes
+    into the box and the rail asks what was meant, with the presets it does
+    understand. The trace never claims a reply was written when it was not."""
     res = draft_for_thread(user_id, thread_id, query)
+    if res.get("hold"):
+        return {
+            "answer": res["reason"],
+            "mode": "hold",
+            "category": res.get("category"),
+            "citations": [],
+            "trace": ["Read this conversation",
+                      "Held for a person: " + res.get("category", "").replace("_", " ")],
+            "suggestions": [],
+        }
+    if res.get("blocked"):
+        return {
+            "answer": res["reason"],
+            "mode": "blocked",
+            "category": res.get("category"),
+            "reasons": res.get("reasons", []),
+            "citations": [],
+            "trace": ["Read this conversation",
+                      "Checked the draft: " + policy.describe(res.get("reasons", [])),
+                      "Nothing written"],
+            "suggestions": list(DRAFT_PRESETS),
+        }
+    if res.get("unclear"):
+        return {
+            "answer": f"I didn't follow \"{_short(query)}\". With this "
+                      f"conversation open, I write the reply to "
+                      f"{res.get('first') or 'them'}. Pick one below, or say "
+                      "in a sentence what it should tell them.",
+            "mode": "clarify",
+            "citations": [],
+            "trace": ["Read this conversation", "Nothing written: request not understood"],
+            "suggestions": list(DRAFT_PRESETS),
+        }
     if res.get("error"):
-        return {"answer": res["error"], "citations": [], "suggestions": []}
+        return {"answer": res["error"], "mode": "help", "citations": [],
+                "suggestions": []}
     used = (query or "").strip().lower()
     return {
         "answer": f"Written into the reply box for {res['first']}. Edit it "
                   "there and send it when it reads right.",
+        "mode": "draft",
         "draft": res["draft"],
         "target": res["target"],
+        "category": res.get("category"),
+        "flags": res.get("flags", []),
         "citations": [],
-        "trace": ["Read this conversation", "Wrote a reply for you to review"],
+        "trace": ["Read this conversation",
+                  "Checked the draft: no amounts, odds, eligibility claims or "
+                  "medical direction",
+                  "Wrote a reply for you to review"],
         "suggestions": [p for p in DRAFT_PRESETS if p.lower() != used],
     }
 

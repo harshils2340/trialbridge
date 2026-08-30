@@ -1222,6 +1222,24 @@ CREATE TABLE IF NOT EXISTS copilot_actions (
 );
 CREATE INDEX IF NOT EXISTS idx_copilot_actions_token ON copilot_actions(token);
 
+-- Audit trail for Bridget's inbox drafts: what was asked, how the conversation
+-- was triaged, and whether a draft was written, held, blocked or not
+-- understood. One row per request, whichever entry point it came through.
+CREATE TABLE IF NOT EXISTS copilot_drafts (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id      INTEGER NOT NULL,
+    org_id       INTEGER,
+    thread_id    INTEGER,
+    instruction  TEXT DEFAULT '',
+    category     TEXT DEFAULT 'routine',   -- routine | pricing | medical_legal | distress | opt_out
+    outcome      TEXT NOT NULL,            -- draft | hold | blocked | unclear | error
+    reasons      TEXT DEFAULT '',          -- JSON list of rule keys / flags
+    model_used   INTEGER DEFAULT 0,
+    created_at   TEXT NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
+CREATE INDEX IF NOT EXISTS idx_copilot_drafts_thread ON copilot_drafts(thread_id);
+
 -- Internal patient->trial matching. A connected clinic's own patients, surfaced
 -- as candidates for a trial by the matching engine. This is the "found +
 -- pre-screened" supply that feeds the ATS. Rows are DE-IDENTIFIED (initials +
@@ -2081,6 +2099,36 @@ def get_copilot_action(token):
         return None
     return get_db().execute(
         "SELECT * FROM copilot_actions WHERE token = ?", (token,)).fetchone()
+
+
+def log_copilot_draft(user_id, thread_id, instruction, category, outcome,
+                      reasons=None, model_used=False):
+    """One audit row per draft request. Never raises: the audit trail must not
+    be the thing that stops a coordinator from getting a reply."""
+    try:
+        conn = get_db()
+        conn.execute(
+            "INSERT INTO copilot_drafts (user_id, org_id, thread_id, instruction, "
+            "category, outcome, reasons, model_used, created_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?)",
+            (user_id, user_org_id(user_id), thread_id,
+             (instruction or "")[:400], category or "routine", outcome,
+             json.dumps(list(reasons or [])), 1 if model_used else 0, now()))
+        conn.commit()
+    except Exception:
+        pass
+
+
+def list_copilot_drafts(user_id, thread_id=None, limit=50):
+    """Recent audit rows for the team, newest first (optionally one thread)."""
+    oid = user_org_id(user_id)
+    if thread_id:
+        return get_db().execute(
+            "SELECT * FROM copilot_drafts WHERE org_id = ? AND thread_id = ? "
+            "ORDER BY id DESC LIMIT ?", (oid, thread_id, limit)).fetchall()
+    return get_db().execute(
+        "SELECT * FROM copilot_drafts WHERE org_id = ? ORDER BY id DESC LIMIT ?",
+        (oid, limit)).fetchall()
 
 
 def mark_copilot_action(token, status):

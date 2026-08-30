@@ -20,6 +20,7 @@ amounts, placebo odds, visit counts, eligibility outcomes. It offers to find out
 instead. A rushed "send as-is" must not be able to state an unapproved claim.
 Bridget drafts; a person edits and sends. Nothing here sends anything.
 """
+import re
 
 import match_trials as mt
 
@@ -61,8 +62,28 @@ ASK_RULES = (
     "instruction states explicitly may appear in the message - the coordinator "
     "is the source of it and reviews the result before sending. Never add a "
     "fact of your own on top, and rules 2 and 4 hold no matter what the "
-    "instruction asks."
+    "instruction asks.\n"
+    "6. If the instruction is not something a study coordinator would say to "
+    "this person in a reply - it is unreadable, off topic, asks for medical "
+    "advice, or tells them they qualify, are enrolled, or will be paid a "
+    "specific amount - write no message at all. Reply with exactly the single "
+    "word UNCLEAR."
 )
+
+# Instructions that mean "reply to what they wrote": the inbound ladder is the
+# answer and the instruction counts as carried out.
+_ANSWER_HINTS = ("answer", "respond", "reply", "their question", "what they asked")
+
+
+def is_garbled(text):
+    """True for input a person could not have meant as an instruction or a
+    question: fewer than two real words, or mostly digits and symbols. Bridget
+    asks what was meant instead of guessing ("whats 20_50", "??", "asdf")."""
+    text = (text or "").strip()
+    words = re.findall(r"[A-Za-z']{2,}", text)
+    nonspace = sum(1 for c in text if not c.isspace())
+    letters = sum(1 for c in text if c.isalpha())
+    return len(words) < 2 or (nonspace > 0 and letters / nonspace < 0.6)
 
 
 # --------------------------------------------------------------------------- #
@@ -286,16 +307,64 @@ def draft(intent, ctx=None):
     if intent not in INTENTS:
         intent = "reply"
     base = _deterministic(intent, ctx)
-    out = _polish(base, intent, ctx) or base
-    return sanitize_copy(out)
+    out, _status = _polish(base, intent, ctx)
+    return sanitize_copy(out or base)
+
+
+def draft_reply_report(ctx):
+    """The inbox reply, with an honest account of the instruction.
+
+    Returns {"text", "ask_used"} or {"unclear": True}. The rules:
+      * an instruction the ladder understands is carried out deterministically;
+      * "answer / reply / respond" means answer their last message;
+      * anything else can only be carried by the model. If there is no key, or
+        the model says UNCLEAR (off topic, medical, an eligibility promise), or
+        the instruction is unreadable, nothing is written and the caller asks
+        what was meant. A reply that ignores what the coordinator typed is not
+        a reply, it is noise with a checkmark on it."""
+    ctx = dict(ctx or {})
+    who = (ctx.get("first") or "there").strip() or "there"
+    study = (ctx.get("study") or "the study").strip() or "the study"
+    inbound = ctx.get("inbound") or ""
+    ask = (ctx.get("ask") or "").strip()
+    opener = f"Hi {who}, thanks for reaching out about {study}. "
+    answer_base = opener + _pick(_REPLY_LADDER, inbound, _REPLY_FALLBACK)
+
+    if not ask:
+        out, _ = _polish(answer_base, "reply", ctx)
+        return {"text": sanitize_copy(out or answer_base), "ask_used": None}
+
+    body = _pick(_ASK_LADDER, ask, "")
+    if body:
+        base = f"Hi {who}, " + body
+    elif any(h in ask.lower() for h in _ANSWER_HINTS):
+        base = answer_base
+    else:
+        base = None
+
+    if base:
+        out, status = _polish(base, "reply", ctx)
+        # The ladder understood the instruction; a model refusal does not
+        # override that, the deterministic text simply stands.
+        return {"text": sanitize_copy(out if status == "ok" else base),
+                "ask_used": True}
+
+    if is_garbled(ask):
+        return {"unclear": True}
+    out, status = _polish(answer_base, "reply", ctx)
+    if status == "ok" and out:
+        return {"text": sanitize_copy(out), "ask_used": True}
+    return {"unclear": True}
 
 
 def _polish(base, intent, ctx):
-    """Optional LLM rewrite of a draft that is already correct. Returns None on
-    no key, any failure, or output that looks wrong, so the caller keeps the
-    deterministic text."""
+    """Optional LLM rewrite of a draft that is already correct. Returns
+    (text, status): status is "off" with no key, "ok" on a usable rewrite,
+    "unclear" when the model declined the coordinator's instruction, and
+    "failed" on any error or suspicious output. Callers keep the deterministic
+    text unless status is "ok"."""
     if not mt.LLM_API_KEY:
-        return None
+        return None, "off"
     ask = (ctx.get("ask") or "").strip()
     try:
         user = (f"INTENT: {intent}\n"
@@ -307,10 +376,12 @@ def _polish(base, intent, ctx):
                 "Rewrite it now, following your rules.")
         out = (mt.llm_chat(SYSTEM_PROMPT + (ASK_RULES if ask else ""),
                            user) or "").strip()
+        if ask and out.strip(' ."\'').upper().startswith("UNCLEAR"):
+            return None, "unclear"
         # A refusal, an empty answer, or a wall of text means something went
         # sideways - fall back rather than surface it to a coordinator.
-        if not out or len(out) > 1200:
-            return None
-        return sanitize_copy(out)
+        if not out or len(out) > 1200 or "UNCLEAR" in out[:40].upper():
+            return None, "failed"
+        return sanitize_copy(out), "ok"
     except Exception:
-        return None
+        return None, "failed"

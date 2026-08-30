@@ -6586,9 +6586,18 @@ def marketing_thread_draft(thread_id):
     # Same writer the rail uses (Bridget with this conversation open), so the
     # two entry points can never drift apart.
     res = copilot.agent.draft_for_thread(g.user["id"], thread_id, instruction)
+    if res.get("hold") or res.get("blocked"):
+        # Triage held it for a person, or the draft broke a rule. Nothing is
+        # written; the reason is the message.
+        return jsonify({"ok": False, "message": res["reason"],
+                        "hold": bool(res.get("hold")),
+                        "blocked": bool(res.get("blocked")),
+                        "category": res.get("category")}), 409
     if res.get("error"):
         return jsonify({"ok": False, "message": res["error"]}), 400
     return jsonify({"ok": True, "draft": res["draft"],
+                    "category": res.get("category"),
+                    "flags": res.get("flags", []),
                     "human_review_required": True})
 
 

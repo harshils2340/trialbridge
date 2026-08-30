@@ -31,6 +31,41 @@ def _two_studies(uid, a="NCT11111111", b="NCT22222222"):
     db.add_study_claim(uid, b, "Beta Migraine Study", verified=True)
 
 
+def test_policy_triage_and_scanner():
+    """The guardrails that run in code on every draft, key or no key."""
+    from copilot import policy
+    assert policy.categorize("i don't want to be here anymore") == "distress"
+    assert policy.categorize("chest pain after the visit, went to the ER") == "distress"
+    assert policy.categorize("please stop contacting me") == "opt_out"
+    assert policy.categorize("Do I get paid for this?") == "pricing"
+    assert policy.categorize("Will I get a placebo? Is it safe?") == "medical_legal"
+    assert policy.categorize("Do you have evening appointments?") == "routine"
+    # The instruction can raise the category, never lower it.
+    assert policy.categorize("Do you have evening slots?", "tell them about the $50 stipend") == "pricing"
+
+    # Every ladder draft is clean by construction.
+    from copilot import drafts
+    for intent in ("reply", "check_in", "booking", "reschedule", "thanks", "blast"):
+        text = drafts.draft(intent, {"first": "Sam", "study": "the study",
+                                     "inbound": "Do I get paid and how many visits?"})
+        assert not policy.check_draft(text), (intent, text)
+    # The things Bridget must never say, however they are phrased.
+    assert "amount" in policy.check_draft("You will be paid $500 per visit.")
+    assert "odds" in policy.check_draft("There is a 50% chance you get placebo.")
+    assert "eligibility" in policy.check_draft("Good news, you qualify for the study!")
+    assert "eligibility" in policy.check_draft("You are eligible and enrolled.")
+    assert "medical" in policy.check_draft("Stop taking your antidepressant before the visit.")
+    assert "medical" in policy.check_draft("The medication is completely safe.")
+    assert "schedule" in policy.check_draft("It is 6 visits over 8 weeks.")
+    # A fact the coordinator typed is theirs to state; a promise never is.
+    assert not policy.check_draft("It is 6 visits over 8 weeks.",
+                                  "tell them it is 6 visits over 8 weeks")
+    assert "eligibility" in policy.check_draft("You qualify.", "tell them they qualify")
+    assert "medical" in policy.check_draft("Stop taking your medication.",
+                                           "tell them to stop taking their medication")
+    assert policy.describe(["amount", "odds"]).startswith("It states")
+
+
 def test_open_thread_routes_instructions_to_the_drafter():
     """With an inbox conversation open, what you type at Bridget is a reply to
     write unless it is plainly a workspace question."""
@@ -116,8 +151,35 @@ def test_answer_list_studies():
     assert len(out.get("items") or []) == 2
 
 
+def test_bridget_stays_in_role_without_key():
+    """The behaviour evals, deterministic mode: garbage and off-role requests
+    get a question back and nothing written; presets and workspace questions
+    still work. See copilot/evals.py for the cases."""
+    import match_trials as mt
+    from copilot import evals
+    uid = _uid("g")
+    _two_studies(uid)
+    tid = evals.seed(uid)
+    assert tid
+    ctx = {"studies": [{"nct": "NCT11111111", "title": "Alpha Depression Study"}],
+           "active_nct": "", "scope_label": "All studies"}
+    real = mt.LLM_API_KEY
+    mt.LLM_API_KEY = ""
+    try:
+        results = evals.run(uid, tid, ctx, key=False)
+    finally:
+        mt.LLM_API_KEY = real
+    bad = [r for r in results if not r["ok"]]
+    assert not bad, bad
+    # The rail must never claim it wrote something it did not.
+    res = agent.answer(uid, "whats 20_50", dict(ctx, has_thread=True, thread_id=tid))
+    assert "draft" not in res and res["mode"] == "clarify"
+    assert not any("wrote" in t.lower() for t in res["trace"])
+
+
 if __name__ == "__main__":
     tests = [
+        test_policy_triage_and_scanner,
         test_open_thread_routes_instructions_to_the_drafter,
         test_list_studies_routing,
         test_blast_this_trial_uses_scope,
@@ -127,6 +189,7 @@ if __name__ == "__main__":
         test_context_reads_session_scope,
         test_blast_blocked_lists_studies_hint,
         test_answer_list_studies,
+        test_bridget_stays_in_role_without_key,
     ]
     with app.app_context():
         db.init_db()
