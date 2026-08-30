@@ -40,7 +40,7 @@
   <meta property="og:title" content="{% block og_title %}{{ self.title() }}{% endblock %}">
   <meta property="og:description" content="{% block og_description %}{{ self.description() }}{% endblock %}">
   <meta property="og:url" content="{% block og_url %}{{ request.url }}{% endblock %}">
-  <meta property="og:image" content="{% block og_image %}{{ url_for('static', filename='og-default.png', _external=True) }}{% endblock %}">
+  <meta property="og:image" content="{% block og_image %}{{ url_for('static', filename='og-default.png', _external=True) }}?v=20260830{% endblock %}">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
   <meta property="og:image:alt" content="BridgeMD — one shared inbox for clinical research sites">

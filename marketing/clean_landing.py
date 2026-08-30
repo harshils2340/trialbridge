@@ -2018,16 +2018,16 @@ def build(dst, colormap, asset_prefix, raster_hue=None, accent="#1257b0"):
     # framer.app canonical. Always point crawlers at the BridgeMD card.
     h = re.sub(
         r'(<meta property="og:image" content=")[^"]+(")',
-        r'\1https://bridgemd.health/static/og-default.png\2', h)
+        r'\1https://bridgemd.health/static/og-default.png?v=20260830\2', h)
     h = re.sub(
         r'(<meta name="twitter:image" content=")[^"]+(")',
-        r'\1https://bridgemd.health/static/og-default.png\2', h)
+        r'\1https://bridgemd.health/static/og-default.png?v=20260830\2', h)
     h = h.replace('https://fancy-cogwheel-201934.framer.app/',
                   'https://bridgemd.health/')
     if 'og:image:alt' not in h:
         h = h.replace(
-            '<meta property="og:image" content="https://bridgemd.health/static/og-default.png">',
-            '<meta property="og:image" content="https://bridgemd.health/static/og-default.png">'
+            '<meta property="og:image" content="https://bridgemd.health/static/og-default.png?v=20260830">',
+            '<meta property="og:image" content="https://bridgemd.health/static/og-default.png?v=20260830">'
             '<meta property="og:image:width" content="1200">'
             '<meta property="og:image:height" content="630">'
             '<meta property="og:image:alt" content="BridgeMD — one shared inbox for clinical research sites">',

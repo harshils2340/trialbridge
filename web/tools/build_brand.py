@@ -87,37 +87,84 @@ def write_ico(pngs: list[pathlib.Path], out: pathlib.Path) -> None:
     out.write_bytes(header + entries + body)
 
 
+# Figtree files shipped with the landing page — same face LinkedIn will
+# see as the site, so the card does not fall back to Arial.
+_FIGTREE = {
+    400: "8221d5aa15__Xmz-HUzqDCFdgfMsYiV_F7wfS-Bs_d_QF5bwkEU4HTy.woff2",
+    500: "22a0ab5a22__Xmz-HUzqDCFdgfMsYiV_F7wfS-Bs_dNQF5bwkEU4HTy.woff2",
+    600: "7bde881678__Xmz-HUzqDCFdgfMsYiV_F7wfS-Bs_ehR15bwkEU4HTy.woff2",
+    700: "acab8c9edc__Xmz-HUzqDCFdgfMsYiV_F7wfS-Bs_eYR15bwkEU4HTy.woff2",
+}
+_ASSETS = pathlib.Path(__file__).resolve().parent.parent / "landing" / "assets"
+
+
 def og_html() -> str:
-    """Social card: same mark, same charcoal, so shares look like the product."""
+    """1200×630 share card: Figtree, the mark, one readable thread."""
+    faces = "\n".join(
+        f'@font-face{{font-family:Figtree;font-weight:{w};'
+        f'src:url("{(_ASSETS / name).as_uri()}")}}'
+        for w, name in _FIGTREE.items()
+    )
+    logo = tile_svg()
     return f"""<!doctype html><meta charset="utf-8">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@600;800&display=swap" rel="stylesheet">
 <style>
-  html, body {{ margin: 0; width: 1536px; height: 1024px; }}
-    body {{ background:
-      radial-gradient(900px 620px at 78% -12%, rgba(18,87,176,.46), transparent 62%),
-      {CHARCOAL};
-    font-family: Inter, "Helvetica Neue", Helvetica, Arial, sans-serif;
-    display: flex; flex-direction: column; justify-content: center;
-    padding: 0 118px; box-sizing: border-box; color: #fff; }}
-  .lock {{ display: flex; align-items: center; gap: 30px; }}
-  .lock b {{ font-size: 86px; font-weight: 800; letter-spacing: -.035em; }}
-  h1 {{ font-size: 80px; font-weight: 800; letter-spacing: -.038em; line-height: 1.07;
-    margin: 58px 0 0; max-width: 26ch; }}
-  p {{ font-size: 34px; font-weight: 600; color: rgba(255,255,255,.66);
-    margin: 30px 0 0; letter-spacing: -.01em; }}
-  .chips {{ display: flex; gap: 14px; margin-top: 54px; }}
-  .chips span {{ font-size: 24px; font-weight: 700; padding: 13px 24px;
-    border-radius: 999px; border: 1px solid rgba(255,255,255,.2);
-    background: rgba(255,255,255,.06); color: rgba(255,255,255,.82); }}
+{faces}
+html,body{{margin:0;width:1200px;height:630px}}
+body{{
+  background:#eef2f7;
+  font-family:Figtree,ui-sans-serif,system-ui,sans-serif;
+  color:#17191d;
+  display:flex;align-items:center;
+  padding:56px 56px 56px 64px;box-sizing:border-box;gap:48px;
+}}
+.brand{{flex:0 0 390px}}
+.brand svg{{display:block;width:56px;height:56px;border-radius:14px}}
+h1{{font-size:52px;font-weight:700;letter-spacing:-.04em;line-height:1;
+  margin:28px 0 0}}
+.line{{font-size:23px;font-weight:500;color:#3d444c;letter-spacing:-.02em;
+  line-height:1.25;margin:16px 0 0;max-width:14.5em}}
+.url{{font-size:15px;font-weight:600;color:#1257b0;letter-spacing:-.01em;
+  margin:28px 0 0}}
+.window{{
+  flex:1;align-self:center;background:#fff;border:1px solid #dde3ea;
+  border-radius:16px;box-shadow:0 18px 40px rgba(23,25,29,.10);
+  overflow:hidden;display:flex;flex-direction:column;min-width:0;
+}}
+.head{{padding:20px 22px 16px;border-bottom:1px solid #e8ebef}}
+.head b{{display:block;font-size:18px;font-weight:700;letter-spacing:-.02em}}
+.head span{{display:block;margin-top:4px;font-size:13px;font-weight:500;color:#5c646e}}
+.msg{{margin:20px 22px 16px;background:#f4f6f8;border-radius:12px;padding:14px 16px;
+  font-size:16px;font-weight:400;line-height:1.4;color:#17191d}}
+.msg small{{display:block;font-size:12px;font-weight:600;color:#5c646e;margin-bottom:6px}}
+.tabs{{display:flex;gap:16px;padding:0 22px;font-size:13px;font-weight:600}}
+.tabs b{{color:#1257b0;border-bottom:2px solid #1257b0;padding-bottom:8px}}
+.tabs span{{color:#5c646e;padding-bottom:8px}}
+.prompt{{margin:14px 16px 16px;background:#e8f1fc;border-radius:10px;
+  padding:12px 14px;font-size:14px;font-weight:600;color:#1257b0;
+  display:flex;align-items:center;gap:8px}}
+.prompt svg{{flex:0 0 16px;width:16px;height:16px;stroke:#1257b0;fill:none;
+  stroke-width:1.8;stroke-linejoin:round}}
 </style>
-<div class="lock">
-  <svg viewBox="0 0 512 512" width="112" height="112">{mark(ON_CHARCOAL)}</svg>
-  <b>BridgeMD</b>
+<div class="brand">
+  {logo}
+  <h1>BridgeMD</h1>
+  <p class="line">One shared inbox for clinical research sites.</p>
+  <p class="url">bridgemd.health</p>
 </div>
-<h1>Clinical trials, matched and managed in one place.</h1>
-<p>bridgemd.health</p>
-<div class="chips">
-  <span>Consent-first</span><span>De-identified by default</span><span>Human-in-the-loop AI</span>
+<div class="window">
+  <div class="head">
+    <b>Extension study timing</b>
+    <span>Victor Hale · Gmail</span>
+  </div>
+  <div class="msg">
+    <small>Victor Hale</small>
+    I am finishing the main study next month. When does the extension normally begin?
+  </div>
+  <div class="tabs"><b>Reply</b><span>Internal note</span></div>
+  <div class="prompt">
+    <svg viewBox="0 0 24 24"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/></svg>
+    Tell Bridget what to say — offer a screening call next week
+  </div>
 </div>
 """
 
@@ -196,17 +243,23 @@ def main() -> int:
                 (STATIC / man).write_text(manifest_json(theme, suffix))
                 print(f"ok {man}")
 
-            # Social card is palette-agnostic (charcoal), built once.
+            # Social card is 1200×630 (Open Graph). Render at 2× and
+            # downscale so Figtree stays sharp when LinkedIn shows it small.
+            from PIL import Image
             og = STATIC / "_tmp_og.html"
             og.write_text(og_html())
             tmps.append(og)
-            pg = b.new_context(viewport={"width": 1536, "height": 1024},
-                               device_scale_factor=1).new_page()
+            raw = STATIC / "_tmp_og.png"
+            tmps.append(raw)
+            pg = b.new_context(viewport={"width": 1200, "height": 630},
+                               device_scale_factor=2).new_page()
             pg.goto(f"file://{og}")
-            pg.wait_for_timeout(1200)   # let the webfont land if online
-            pg.screenshot(path=str(STATIC / "og-default.png"))
+            pg.wait_for_timeout(200)
+            pg.screenshot(path=str(raw))
             pg.close()
-            print("ok og-default.png (1536x1024)")
+            Image.open(raw).resize((1200, 630), Image.Resampling.LANCZOS).save(
+                STATIC / "og-default.png")
+            print("ok og-default.png (1200x630)")
             b.close()
     finally:
         for tmp in tmps:
