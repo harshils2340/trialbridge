@@ -33,7 +33,7 @@ def sanitize_copy(text):
     s = _TIGHT_EM.sub("-", s)
     s = re.sub(r",\s*,+", ",", s)
     s = re.sub(r"\s+,", ",", s)
-    s = re.sub(r",\s+\.", ".", s)
+    s = re.sub(r",\s+\.(?![\w-])", ".", s)
     return s
 
 

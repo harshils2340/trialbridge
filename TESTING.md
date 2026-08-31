@@ -210,3 +210,32 @@ now 3-tuple). Full suite green: `test_ehr_lane` 5/5, `test_a11y_theme` 6/6,
 `test_ui_fixes` 4/4, `test_search_cache` 4/4. Headless Chromium: **0px** overflow
 at 390px and 1200px in light and dark; Details expander shows the de-identified
 chart snapshot (vitals/labs/meds/eligibility).
+
+## 2026-08-31: Landing split-screen collapsed panel showed squeezed content
+
+**Bug:** On `/find-trial`, the collapsed side of the two-audience split screen
+showed its full hero content crushed into the 10% column (one word per line)
+instead of hiding it behind the vertical peek label.
+
+**Root cause:** Not the CSS. The `_no_em_dashes` after_request hook runs
+`sanitize_copy` over whole HTML pages whenever the body contains an em dash
+(one leaked in via `public_base.html`'s og:image:alt). Its prose cleanup
+`re.sub(r",\s+\.", ".", s)` also matched CSS selector lists split across
+lines, deleting the comma in `".fy-body,\n.fy.is-right"` and fusing the four
+hide/peek selectors into one selector that matched nothing.
+
+**Fix:** `copy_sanitize.py` now uses `re.sub(r",\s+\.(?![\w-])", ".", s)` so a
+dot that starts a word (CSS class, decimal) is left alone. Also removed the
+source dashes: em dashes in `public_base.html`, `internal.html`,
+`internal_inbox.html`, `marketing/clean_landing.py` (og alt), and the
+`1–2 business days` en dash in `landing.html`.
+
+**Tests:** `web/test_copy_sanitize.py` gained
+`test_sanitize_keeps_css_selector_lists`; the pre-existing static em-dash
+guard now passes again. `All 5 passed.`
+
+**Result:** Verified with headless Chromium on a scratch server (port 5055):
+in all four collapse states (hover left/right in split, locked left/right) the
+collapsed panel's `.fy-body` computes `opacity: 0` and `.fy-peek` computes
+`display: flex`; screenshots show the clean sliver with the vertical label on
+both sides.

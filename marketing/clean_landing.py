@@ -2030,7 +2030,7 @@ def build(dst, colormap, asset_prefix, raster_hue=None, accent="#1257b0"):
             '<meta property="og:image" content="https://bridgemd.health/static/og-default.png?v=20260830">'
             '<meta property="og:image:width" content="1200">'
             '<meta property="og:image:height" content="630">'
-            '<meta property="og:image:alt" content="BridgeMD — one shared inbox for clinical research sites">',
+            '<meta property="og:image:alt" content="BridgeMD, one shared inbox for clinical research sites">',
             1)
 
     # BridgeMD wordmark: the Framer export ships the mark as a boxless two-tone

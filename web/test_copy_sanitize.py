@@ -84,11 +84,28 @@ def test_no_em_dash_in_user_facing_web_copy():
     assert not bad, f"em dash still in: {bad}"
 
 
+def test_sanitize_keeps_css_selector_lists():
+    """The response-level hook runs sanitize_copy over whole HTML pages, so the
+    comma cleanups must not touch code. A trailing-comma selector list used to
+    collapse (",\n.cls" -> ".cls"), fusing the landing split-screen rules into
+    one selector that matched nothing and leaving the collapsed panel showing
+    its squeezed body instead of the peek label."""
+    css = (".fy.is-left .fy-right .fy-body,\n"
+           ".fy.is-right .fy-left .fy-body{ opacity:0; }\n"
+           "Copy with a dash \u2014 so the sanitizer actually runs.")
+    out = sanitize_copy(css)
+    assert ".fy-body,\n.fy.is-right" in out
+    assert "dash, so" in out
+    # Prose commas before a period still get cleaned.
+    assert sanitize_copy("done, \u2014 fine, .") == "done, fine."
+
+
 if __name__ == "__main__":
     tests = [
         test_sanitize_spaced_em_dash,
         test_sanitize_html_entity,
         test_sanitize_none,
+        test_sanitize_keeps_css_selector_lists,
         test_no_em_dash_in_user_facing_web_copy,
     ]
     for t in tests:
