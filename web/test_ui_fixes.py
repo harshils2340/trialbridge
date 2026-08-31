@@ -132,15 +132,15 @@ def test_find_trial_is_split_carousel():
     assert r.status_code == 200, r.status_code
     html = r.get_data(as_text=True)
     assert 'id="fyCarousel"' in html
-    assert 'class="fy-grip"' in html
+    assert 'class="fy-grip"' not in html
     assert "For research sites" in html
     assert "A real trial finder, directly on your website." in html
     assert "Find a trial that fits." in html
     assert "bmd-embed-frame" in html
     assert "Find a clinical trial at" in html
     assert "One snippet to embed" not in html
-    assert "Horizontal focus carousel" in html
-    assert "Start split." in html
+    assert "Two-audience layout" in html
+    assert "hover previews a side" in html
     assert "Split carousel retired" not in html
     assert "Find your next trial match." not in html
     assert "We also have a trial finder" not in html
