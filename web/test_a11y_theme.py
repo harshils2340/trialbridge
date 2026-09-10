@@ -149,6 +149,7 @@ def test_inbox_detail_is_focused_and_responsive():
     assert ".mh-workspace:not(.is-thread-selected) .mh-conversation" in css
     assert css.count(".mh-workspace:not(.is-thread-selected) .mh-conversation") >= 2, \
         "phones wider than 720px still stack a preview conversation on the list"
+    assert "mh-workspace.is-list-only .mh-conversation" in css
     assert "@container mh-conv (max-width:900px)" in css
     print("PASS: inbox detail separates conversation, applicant tools, and mobile state")
 
@@ -157,9 +158,16 @@ def test_landing_hero_embeds_product_demo():
     response = app.app.test_client().get("/")
     html = response.get_data(as_text=True)
     assert response.status_code == 200
-    assert 'class="landing-product-demo is-live"' in html
-    assert 'src="/app/inbox?embed=1&owner=unassigned&thread=85' in html
+    assert 'class="landing-demo"' in html
+    assert 'src="/app/inbox?embed=1&owner=unassigned' in html
+    assert "thread=85" not in html
     assert 'title="BridgeMD live demo"' in html
+    inbox = app.app.test_client().get(
+        "/app/inbox?embed=1&owner=unassigned").get_data(as_text=True)
+    assert "is-list-only" in inbox
+    assert "is-thread-selected" not in inbox
+    assert "Select a conversation" in inbox
+    assert "mh-thread-row is-active" not in inbox
     assert "Open full size" in html
     assert not re.search(r'<img\b[^>]*alt="Hero Image"', html), \
         "the old hero screenshot is still rendered"

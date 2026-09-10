@@ -30,6 +30,11 @@
         {% endif %}
         <span>{{ ic.icon('calendar') }} Applied {{ view.last_activity }}</span>
         {% if not view.revealed and not is_owner %}<span>{{ ic.icon('lock') }} Contact hidden until accepted</span>{% endif %}
+        {% if is_owner and clinic_notify %}
+        <span>{{ ic.icon('mail') }} Emailed:
+          {% for c in clinic_notify %}{{ c.email }}{% if not loop.last %}, {% endif %}{% endfor %}
+        </span>
+        {% endif %}
       </div>
     </div>
   </div>

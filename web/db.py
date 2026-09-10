@@ -1666,6 +1666,10 @@ _MIGRATIONS = {
         # in that team's inbox with zero study setup - and NEVER leaks to anyone
         # else (scoping is org-membership based).
         "owner_user_id": "INTEGER",
+        # Clinics emailed on apply (JSON list of {email, facility, source}).
+        # Lets the operator see that the local site was notified without a
+        # manual forward, and keeps a record if SMTP was off at apply time.
+        "clinic_notify_json": "TEXT DEFAULT ''",
         # Channel-side identifier to address an outbound reply back to (Instagram
         # username, Messenger PSID, WhatsApp number, ...). Populated by the intake
         # connector for social leads; the connector uses it to route our reply to
@@ -6297,6 +6301,65 @@ def get_lead_events(lead_id):
     return get_db().execute(
         "SELECT * FROM lead_events WHERE lead_id = ? ORDER BY id ASC",
         (lead_id,)).fetchall()
+
+
+def record_clinic_notify(lead_id, recipients):
+    """Persist which clinics were selected for the auto-notify on apply.
+
+    `recipients` is a list of dicts with at least email + facility + source.
+    Always stored, even when SMTP is off, so the operator can see the intended
+    clinic handoff and the secure link still works if they send it by hand.
+    """
+    db = get_db()
+    if not get_lead(lead_id):
+        return False
+    payload = []
+    for rec in recipients or []:
+        email = (rec.get("email") or "").strip()
+        if not email:
+            continue
+        payload.append({
+            "email": email,
+            "facility": (rec.get("facility") or "").strip(),
+            "city": (rec.get("city") or "").strip(),
+            "source": (rec.get("source") or "").strip(),
+            "name": (rec.get("name") or "").strip(),
+        })
+    db.execute(
+        "UPDATE leads SET clinic_notify_json = ?, updated_at = ? WHERE id = ?",
+        (json.dumps(payload, ensure_ascii=False), now(), lead_id))
+    if payload:
+        note = "clinic notified: " + ", ".join(
+            (p["facility"] or p["email"]) for p in payload[:4])
+        db.execute(
+            "INSERT INTO lead_events (lead_id, status, note, actor, created_at) "
+            "VALUES (?,?,?,?,?)",
+            (lead_id, "prescreen", note, "system", now()))
+    db.commit()
+    return True
+
+
+def leads_missing_clinic_notify():
+    """Applies that have not had study-team recipients recorded yet."""
+    return get_db().execute(
+        "SELECT * FROM leads WHERE TRIM(COALESCE(clinic_notify_json, '')) = '' "
+        "ORDER BY id ASC").fetchall()
+
+
+def lead_clinic_notify(lead):
+    """Parse clinic_notify_json from a lead row. Returns a list of dicts."""
+    raw = ""
+    try:
+        raw = lead["clinic_notify_json"] or ""
+    except (KeyError, IndexError, TypeError):
+        raw = ""
+    if not raw:
+        return []
+    try:
+        rows = json.loads(raw)
+    except (ValueError, TypeError):
+        return []
+    return rows if isinstance(rows, list) else []
 
 
 def set_lead_prescreen(lead_id, eligibility_json="", readiness_json=""):

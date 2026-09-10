@@ -60,17 +60,26 @@ def build_message(ref, link):
     return subject, "\n".join(lines)
 
 
-def build_candidate_message(lead, link):
-    """Notify a study site that a new de-identified candidate is waiting.
-    Contains NO contact details - the site reveals those only after accepting
-    via the secure link."""
+def build_candidate_message(lead, link, clinic=None):
+    """Notify study contacts that a new de-identified candidate is waiting.
+    Contains NO contact details - those unlock only after accepting via the
+    secure link."""
     nct = lead["nct"] or "your study"
-    subject = f"New candidate for {nct} - BridgeMD"
+    clinic = clinic or {}
+    facility = (clinic.get("facility") or "").strip()
+    if not facility:
+        try:
+            facility = (lead["site"] or "").strip()
+        except (KeyError, IndexError, TypeError):
+            facility = ""
+    where = facility or "this study"
+    subject = f"New applicant for {nct} - BridgeMD"
     lines = [
         "Hello,",
         "",
-        "A patient has applied and may be eligible for your study. They are "
-        "de-identified until you accept them.",
+        f"A patient applied on BridgeMD for {where}. They asked to be contacted "
+        "about this study. Details stay de-identified until you accept them on "
+        "the secure link below.",
         "",
         f"Study: {lead['title'] or nct}",
     ]
@@ -79,14 +88,17 @@ def build_candidate_message(lead, link):
     if lead["condition"]:
         lines.append(f"Condition: {lead['condition']}")
     if lead["location"]:
-        lines.append(f"Region: {lead['location']}")
+        lines.append(f"Patient area: {lead['location']}")
+    if facility:
+        lines.append(f"Listed site: {facility}")
     lines += [
         "",
-        "Review the candidate and accept or decline (no login required):",
+        "Open this secure link to review the applicant, accept or decline, and "
+        "set up contact for screening (no login required):",
         link,
         "",
-        "If you accept, the patient's consented contact details are unlocked so "
-        "you can invite them to a screening visit.",
+        "If you accept, the patient's consented contact details unlock so you "
+        "can reach them for screening. Reply to this email or use the link.",
         "",
         "Sent via BridgeMD.",
     ]

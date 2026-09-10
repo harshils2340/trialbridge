@@ -223,9 +223,10 @@ body.home-screen .hero-reassurance{ justify-content:center; }
   gap:16px; padding:16px 26px; border-bottom:1px solid #eef2f6; }
 .bmd-host-brand{ display:inline-flex; align-items:center; gap:9px; min-width:0;
   border:0; padding:0; background:none; cursor:pointer; font:inherit;
-  font-weight:800; color:#0f2a3a; font-size:16px; letter-spacing:-.01em; }
+  font-weight:800; color:#0f2a3a; font-size:16px; letter-spacing:-.01em;
+  overflow:visible; }
 .bmd-host-mark{ width:22px; height:22px; border-radius:7px; flex:0 0 auto;
-  background:var(--bx); transition:background .55s var(--ez); }
+  overflow:visible; background:var(--bx); transition:background .55s var(--ez); }
 .bmd-host-links{ display:inline-flex; gap:20px; font-size:14px; font-weight:600; }
 .bmd-host-links button{ border:0; padding:3px 0; background:none; cursor:pointer;
   color:var(--fx-faint); font:inherit; font-weight:600; }
@@ -927,14 +928,21 @@ body.home-screen.is-fy-split .fy-skip{ color:rgba(246,241,232,.45); }
 body.home-screen.is-fy-right .fy-skip:hover,
 body.home-screen.is-fy-split .fy-skip:hover{ color:#f6f1e8; }
 .fy-snip{ display:none; }
-.fy-brand{ position:fixed; top:22px; left:28px; z-index:80; display:flex;
+.fy-brand{ position:fixed; top:22px; left:28px; z-index:90; display:flex;
   align-items:center; gap:10px; font-weight:700; font-size:20px; color:#153554;
   text-decoration:none; letter-spacing:-.02em;
   transition:left var(--fy-dur) var(--fy-ez), color .35s ease; }
-body.home-screen.is-fy-right .fy-brand{
-  left:calc(10% + 28px); color:#f7fbff; }
+.fy-brand .brand-glyph{ flex-shrink:0; overflow:visible; }
 body.home-screen.is-fy-left .fy-brand,
-body.home-screen.is-fy-split .fy-brand{ left:28px; color:#153554; }
+body.home-screen.is-fy-split .fy:not(.is-hover-right) .fy-brand{
+  left:28px; color:#153554; }
+/* Hover-preview and a locked clinic panel both shrink the patient side to a
+   10% strip. Keep the mark + wordmark fully on the navy side so the strip
+   cannot bisect the icon (the notch shows whatever is behind it). */
+body.home-screen.is-fy-right .fy-brand,
+body.home-screen.is-fy-split .fy.is-hover-right .fy-brand{
+  left:calc(10% + 36px); color:#f7fbff;
+  --mark-a:#fff; --mark-b:rgba(255,255,255,.55); }
 
 
 /* Split is the hospital mock only. These leftovers from the stacked

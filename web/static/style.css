@@ -8551,6 +8551,12 @@ body[data-embed="1"] .mh-page .mh-workspace {
   body[data-embed="1"] .mh-page .mh-workspace {
     grid-template-columns: 320px minmax(0, 1fr) !important;
   }
+  body[data-embed="1"] .mh-page .mh-workspace.is-list-only {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+  body[data-embed="1"] .mh-page .mh-workspace.is-list-only .mh-conversation {
+    display: none;
+  }
 }
 /* Keep the column's own grid (display:flex here laid the thread rows out
    sideways as 63px slivers); only lift the height cap so it fills the frame. */

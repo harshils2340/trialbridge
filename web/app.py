@@ -1214,13 +1214,16 @@ def _log_event(name, detail=None):
 #   NOTIFY_LIVE=1
 #   SMTP_HOST / SMTP_PORT / SMTP_USER / SMTP_PASS / SMTP_FROM
 #   NOTIFY_SMS=1 + TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN / TWILIO_FROM_NUMBER
-#   SITE_NOTIFY_EMAIL=coordinator@site          (where new candidates are sent)
+#   SITE_NOTIFY_EMAIL=contact@sonicmedicaltrust.com
 #   PUBLIC_BASE_URL=https://yourdomain.com      (optional, for correct email links)
-# While OFF, the loop still works end to end: the operator copies the secure
-# /c/<token> link from the dashboard and hands it to the site by hand.
+# On apply we email every public address we can find for that trial, at once:
+# local clinic contacts first, then sponsor/central contacts. If CT.gov lists
+# no email, we fall back to SITE_NOTIFY_EMAIL (default contact@sonicmedicaltrust.com).
 # --------------------------------------------------------------------------- #
 NOTIFY_LIVE = os.environ.get("NOTIFY_LIVE", "0") == "1"
-SITE_NOTIFY_EMAIL = os.environ.get("SITE_NOTIFY_EMAIL", "").strip()
+SITE_NOTIFY_EMAIL = (
+    os.environ.get("SITE_NOTIFY_EMAIL") or "contact@sonicmedicaltrust.com"
+).strip()
 # Internal inbox(es) that get a heads-up on every new application, so the operator
 # can confirm the funnel is producing real, legit applications. De-identified.
 # Comma-separated; defaults to the brand inbox + your personal owner email so you
@@ -1325,16 +1328,113 @@ def _gcal_sync_async(lead, visit, invite_url):
     threading.Thread(target=_run, daemon=True).start()
 
 
-def _notify_site_new_candidate(token):
-    """Tell the study site a new de-identified candidate is waiting (with the
-    secure review link). Recipient: the lead's site email, else SITE_NOTIFY_EMAIL."""
+def _notify_site_new_candidate(token, trial=None, lat=None, lon=None,
+                               radius=None, unit="km"):
+    """Email every public study contact we can find, in one send.
+
+    Clinic/facility addresses first, then sponsor/central contacts, then the
+    Sonic Medical Trust fallback if CT.gov lists nothing. One SMTP message
+    goes to all of them with the secure /c/<site_token> review link.
+    """
     lead = db.get_lead_by_token(token)
     if not lead:
-        return False
-    to_addr = db.site_contact_for_nct(lead["nct"]) or SITE_NOTIFY_EMAIL
+        return []
+    lat, lon, radius, unit = _notify_geo_for_lead(
+        lead, lat=lat, lon=lon, radius=radius, unit=unit)
+    recipients = _resolve_clinic_notify_recipients(
+        lead, trial=trial, lat=lat, lon=lon, radius=radius, unit=unit)
+    try:
+        db.record_clinic_notify(lead["id"], recipients)
+    except Exception:
+        app.logger.exception("record clinic notify failed")
+    if not recipients:
+        return []
     link = _abs_url("candidate_page", token=lead["site_token"])
-    subject, body = mailer.build_candidate_message(lead, link)
-    return _notify_async(to_addr, subject, body)
+    subject, body = mailer.build_candidate_message(
+        lead, link, clinic=recipients[0])
+    to_all = ", ".join(rec["email"] for rec in recipients)
+    _notify_async(to_all, subject, body)
+    return [rec["email"] for rec in recipients]
+
+
+_DEFAULT_NOTIFY_RADIUS_KM = 80
+_clinic_backfill_started = False
+_clinic_backfill_lock = threading.Lock()
+
+
+def _notify_geo_for_lead(lead, lat=None, lon=None, radius=None, unit="km"):
+    """Use apply-form coordinates when present; otherwise geocode the city."""
+    unit = (unit or "km").strip() or "km"
+    try:
+        radius = float(radius) if radius not in (None, "") else None
+    except (TypeError, ValueError):
+        radius = None
+    if lat is not None and lon is not None:
+        return lat, lon, radius or _DEFAULT_NOTIFY_RADIUS_KM, unit
+    loc = ""
+    try:
+        loc = (lead["location"] or "").strip()
+    except (KeyError, IndexError, TypeError):
+        loc = ""
+    if loc:
+        try:
+            geo = geocode(loc)
+        except Exception:
+            geo = None
+        if geo:
+            return geo[0], geo[1], radius or _DEFAULT_NOTIFY_RADIUS_KM, unit
+    return lat, lon, radius, unit
+
+
+def _backfill_clinic_notify_existing():
+    """Email study teams for live applies that never got the clinic send.
+
+    Used once after deploy so recent applications (the ones that only produced
+    the operator heads-up) get the same clinic/sponsor email as new applies.
+    Skips any lead that already has clinic_notify_json, so worker restarts
+    do not send twice.
+    """
+    if not notifications_ready():
+        return 0
+    live = db.live_apply_index()
+    sent = 0
+    for lead in db.leads_missing_clinic_notify():
+        if not _is_live_application(lead, live):
+            continue
+        try:
+            emails = _notify_site_new_candidate(lead["token"])
+        except Exception:
+            app.logger.exception(
+                "clinic notify backfill failed for lead %s", lead["id"])
+            continue
+        if emails:
+            sent += 1
+            app.logger.info(
+                "clinic notify backfill lead=%s nct=%s to=%s",
+                lead["id"], lead["nct"], ", ".join(emails))
+    return sent
+
+
+def _run_clinic_notify_backfill():
+    with app.app_context():
+        try:
+            n = _backfill_clinic_notify_existing()
+            app.logger.info("clinic notify backfill emailed %s existing apply(s)", n)
+        except Exception:
+            app.logger.exception("clinic notify backfill failed")
+
+
+@app.before_request
+def _kick_clinic_notify_backfill():
+    """First request after boot emails any live apply that missed the new send."""
+    global _clinic_backfill_started
+    if _clinic_backfill_started or not notifications_ready():
+        return
+    with _clinic_backfill_lock:
+        if _clinic_backfill_started:
+            return
+        _clinic_backfill_started = True
+    threading.Thread(target=_run_clinic_notify_backfill, daemon=True).start()
 
 
 def _dedup_email_list(raw, exclude=None):
@@ -5273,17 +5373,25 @@ def interest():
         "registry_opt_in": 1 if f.get("registry_opt_in") else 0,
         "registry_consent_version": REGISTRY_CONSENT_VERSION,
     })
-    # Go-live hook: tell the site a new blinded candidate is waiting. No-op while
-    # NOTIFY_LIVE is off, so nothing is emailed during testing.
-    _notify_site_new_candidate(token)
+    def _form_float(key):
+        raw = (f.get(key) or "").strip()
+        try:
+            return float(raw) if raw else None
+        except (TypeError, ValueError):
+            return None
+    apply_lat = _form_float("lat")
+    apply_lon = _form_float("lon")
+    apply_radius = _form_float("radius")
+    apply_unit = (f.get("unit") or "km").strip() or "km"
+    # Email every public study address we can find (clinic, then sponsor) in
+    # one send. No-op while NOTIFY_LIVE is off, but the chosen addresses are
+    # still stored on the lead.
+    site_emails = _notify_site_new_candidate(
+        token, lat=apply_lat, lon=apply_lon, radius=apply_radius, unit=apply_unit)
     # Internal heads-up so the operator can confirm real applications are landing.
-    # For BridgeMD (site-posted) studies the poster is the operator, so the site
-    # already got the candidate email above - exclude that address to avoid a
-    # duplicate heads-up landing in the same inbox.
-    _lead_for_notify = db.get_lead_by_token(token)
-    _site_to = ((db.site_contact_for_nct(_lead_for_notify["nct"]) or SITE_NOTIFY_EMAIL)
-                if _lead_for_notify else "")
-    _notify_owner_new_application(token, exclude_emails=[_site_to] if _site_to else None)
+    # Skip addresses that already got the clinic email so one apply is not two
+    # near-duplicate messages in the same inbox.
+    _notify_owner_new_application(token, exclude_emails=site_emails)
     # Confirm receipt to the applicant (job-application style). The in-app system
     # message always shows in their thread; the email sends only when go-live is
     # on, so both surfaces stay in sync.
@@ -5301,9 +5409,9 @@ def interest():
     if new_lead:
         db.add_message(
             new_lead["id"], "system",
-            "Thanks for applying - your application was received and sent to the "
-            "study team. Someone will respond shortly, usually within a few "
-            "business days. You don't need to do anything right now.")
+            "Thanks for applying - your application was received and emailed to "
+            "the study team. They can review it on a secure link and will contact "
+            "you if they want to screen you. You don't need to do anything right now.")
     _notify_applicant_apply_confirmation(token)
     _log_event("apply", {"nct": f.get("nct", "").strip()})
     # Prefill an OPTIONAL "alert me about similar trials" offer on the thank-you
@@ -5364,7 +5472,7 @@ _LANDING_HERO_IMAGE_RE = re.compile(
 # hidden iframe, and that one is swapped in only after it has loaded and
 # painted. The old page stays on screen the whole time.
 _LANDING_VIEW_W, _LANDING_VIEW_H = 1180, 626   # app viewport at the hero slot's aspect
-_LANDING_INBOX = "/app/inbox?embed=1&owner=unassigned&thread=85"
+_LANDING_INBOX = "/app/inbox?embed=1&owner=unassigned"
 _LANDING_DEMO_BAR = 36   # window bar height (px) above the app
 _LANDING_DEMO_SLOT = '<div class="landing-demo-slot" style="position:absolute;inset:0"></div>'
 _LANDING_DEMO_PORTAL = (
@@ -5695,11 +5803,9 @@ def marketing_hub():
     if (active and stage_filter != "all"
             and (active["pipeline_stage"] or "new") != stage_filter):
         active = None
-    if not active and threads:
-        active = db.get_marketing_thread(g.user["id"], threads[0]["id"])
-    # The first row is previewed by default, but only an explicit thread click
-    # should clear its unread state. This also prevents browser reloads from
-    # silently walking through and clearing the whole queue.
+    # Nothing is selected until someone clicks a row (`?thread=`). Auto-opening
+    # the first conversation made the landing embed and default inbox look busy.
+    # Unread only clears on an explicit thread click so reloads do not walk the queue.
     if active and active["unread"] and selected_id:
         db.mark_marketing_thread_read(g.user["id"], active["id"])
         active = db.get_marketing_thread(g.user["id"], active["id"])
@@ -8488,25 +8594,16 @@ def _queue_item(it):
 
 
 def _forward_draft(lead, it):
-    """Find the study's coordinator contact and pre-draft the handoff email the
-    operator sends. Onboarded/claimed studies use the site's notify address;
-    public CT.gov trials fall back to the registered central contact. Returns
-    None if there's no NCT to work with."""
+    """Pre-draft the handoff email to every public study address we have:
+    clinic contacts first, then sponsor/central, then the fallback inbox."""
     nct = (lead["nct"] or "").strip()
     if not nct:
         return None
-    to_email = db.site_contact_for_nct(nct)
-    to_name = ""
+    recipients = _resolve_clinic_notify_recipients(lead)
+    to_email = ", ".join(r["email"] for r in recipients if r.get("email"))
+    to_name = (recipients[0].get("name") or "") if recipients else ""
     ctgov_url = (f"https://clinicaltrials.gov/study/{nct}"
                  if _NCT_RE.match(nct.upper()) else "")
-    if not to_email and _NCT_RE.match(nct.upper()):
-        trial = _get_study(nct)
-        if trial:
-            for c in _public_contacts(trial, {"contacts": []}):
-                if c.get("email"):
-                    to_email = c["email"]
-                    to_name = c.get("name") or ""
-                    break
     sender_name = ""
     try:
         if g.user:
@@ -8517,7 +8614,8 @@ def _forward_draft(lead, it):
         lead, it.get("elig"), it.get("screener"), it.get("flags"),
         to_name=to_name, sender_name=sender_name)
     return {"to": to_email, "to_name": to_name, "subject": subject,
-            "body": body, "ctgov_url": ctgov_url, "found": bool(to_email)}
+            "body": body, "ctgov_url": ctgov_url, "found": bool(to_email),
+            "clinics": recipients}
 
 
 def _decode_lead(row, recon=None):
@@ -12347,13 +12445,15 @@ def applicant_detail(lead_id):
     live_attr = {}
     if _is_owner():
         live_attr = db.apply_attribution_for(lead["nct"], lead["created_at"])
+    clinic_notify = db.lead_clinic_notify(lead)
     return render_template("applicant_detail.html", it=it, l=lead, view=view,
                            statuses=db.LEAD_STATUSES, labels=db.LEAD_LABELS,
                            screener_labels=SCREENER_LABELS,
                            screener_flags=SCREENER_FLAGS, notes=notes,
                            default_schedule=default_schedule, fwd=fwd,
                            portal=portal, portal_reveal=reveal,
-                           portal_url=portal_url, live_attr=live_attr)
+                           portal_url=portal_url, live_attr=live_attr,
+                           clinic_notify=clinic_notify)
 
 
 @app.route("/app/dashboard")
@@ -15671,6 +15771,186 @@ def _coordinator(trial, site):
         if s:
             return s
     return ""
+
+
+_MAX_CLINIC_NOTIFY = 8
+_PI_ROLES = ("PRINCIPAL_INVESTIGATOR", "PRINCIPAL-INVESTIGATOR",
+             "PRINCIPAL INVESTIGATOR")
+
+
+def _contact_email(c):
+    return ((c or {}).get("email") or "").strip()
+
+
+def _contact_role(c):
+    return ((c or {}).get("role") or "").upper().replace("-", "_").replace(" ", "_")
+
+
+def _is_pi_contact(c):
+    role = _contact_role(c)
+    if role in _PI_ROLES:
+        return True
+    return role.endswith("_INVESTIGATOR") and "SUB" not in role
+
+
+def clinic_emails_from_site(site, skip_emails=None, include_pi=True):
+    """Emails listed on one CT.gov facility. Coordinators first, then PIs."""
+    skip = {e.lower() for e in (skip_emails or []) if e}
+    contacts = list((site or {}).get("contacts") or [])
+    picked, seen = [], set()
+
+    def _take(c):
+        email = _contact_email(c)
+        key = email.lower()
+        if not email or key in skip or key in seen:
+            return
+        seen.add(key)
+        picked.append({
+            "email": email,
+            "name": _clean_name(c.get("name")) if c.get("name") else "",
+            "role": (c.get("role") or "").strip(),
+            "facility": (site or {}).get("facility") or "",
+            "city": (site or {}).get("city") or "",
+            "source": "facility",
+        })
+
+    for c in contacts:
+        if _is_pi_contact(c):
+            continue
+        _take(c)
+    if include_pi:
+        for c in contacts:
+            if _is_pi_contact(c):
+                _take(c)
+    return picked
+
+
+def _site_matches_label(site, label):
+    label = (label or "").strip().lower()
+    if not label:
+        return False
+    facility = ((site or {}).get("facility") or "").strip().lower()
+    full = _site_str(site).lower()
+    return (facility and facility in label) or (full and (full == label or full in label or label in full))
+
+
+def sites_for_patient_area(trial, site_label="", lat=None, lon=None,
+                           radius=None, unit="km"):
+    """Recruiting facilities for this apply, nearest first.
+
+    Uses the site string captured at search time, then other recruiting sites
+    inside the patient's radius. Does not return every location on the trial.
+    """
+    locations = [s for s in (trial or {}).get("locations") or [] if _is_active_site(s)]
+    if not locations:
+        return []
+    has_geo = lat is not None and lon is not None
+    if has_geo:
+        ranked = []
+        for s in locations:
+            if s.get("lat") is None or s.get("lon") is None:
+                continue
+            d = haversine(lat, lon, s["lat"], s["lon"], unit)
+            if radius and d > radius:
+                continue
+            ranked.append({**s, "distance": d})
+        ranked.sort(key=lambda x: x["distance"])
+        if ranked:
+            locations = ranked
+    labeled = [s for s in locations if _site_matches_label(s, site_label)]
+    if labeled:
+        rest = [s for s in locations if s not in labeled]
+        return labeled + rest
+    return locations
+
+
+def resolve_clinic_notify_recipients(lead, trial=None, *, claimed_email="",
+                                     posted_email="", fallback="", lat=None,
+                                     lon=None, radius=None, unit="km",
+                                     max_clinics=_MAX_CLINIC_NOTIFY):
+    """Who gets the on-apply email. Email-first, many recipients at once.
+
+    Order: local clinic coordinators, then PIs, then any claimed/posted inbox,
+    then sponsor/central contacts. If CT.gov lists no email, use fallback
+    (contact@sonicmedicaltrust.com by default).
+    """
+    def _one(email, facility="", source="", name="", city="", role=""):
+        email = (email or "").strip()
+        if not email:
+            return None
+        return {"email": email, "facility": facility or "", "source": source,
+                "name": name or "", "city": city or "", "role": role or ""}
+
+    site_label = ""
+    try:
+        site_label = (lead["site"] or "").strip()
+    except (KeyError, IndexError, TypeError):
+        site_label = ""
+
+    clinic, seen = [], set()
+
+    def _add(bucket, rec):
+        if not rec:
+            return
+        key = rec["email"].lower()
+        if key in seen:
+            return
+        seen.add(key)
+        bucket.append(rec)
+
+    for site in sites_for_patient_area(
+            trial, site_label=site_label, lat=lat, lon=lon,
+            radius=radius, unit=unit or "km"):
+        for rec in clinic_emails_from_site(site):
+            _add(clinic, rec)
+            if len(clinic) >= max_clinics:
+                break
+        if len(clinic) >= max_clinics:
+            break
+
+    extras = []
+    _add(extras, _one(claimed_email, site_label, "claimed"))
+    _add(extras, _one(posted_email, site_label, "posted"))
+    for c in (trial or {}).get("centralContacts") or []:
+        _add(extras, _one(
+            _contact_email(c),
+            facility=(c.get("name") or "").strip() or "Study sponsor",
+            source="sponsor",
+            name=_clean_name(c.get("name")) if c.get("name") else "",
+            role=(c.get("role") or "").strip(),
+        ))
+
+    out = clinic + extras
+    if out:
+        return out
+    rec = _one(fallback, site_label, "fallback")
+    return [rec] if rec else []
+
+
+def _resolve_clinic_notify_recipients(lead, trial=None, lat=None, lon=None,
+                                      radius=None, unit="km"):
+    """Load every public email for this apply: CT.gov clinic + sponsor + fallback."""
+    nct = ""
+    try:
+        nct = (lead["nct"] or "").strip()
+    except (KeyError, IndexError, TypeError):
+        nct = ""
+    claimed = db.site_contact_for_nct(nct) if nct else ""
+    posted_email = ""
+    if nct:
+        posted = db.get_site_posted_study_by_nct(nct)
+        if posted:
+            posted_email = (posted["contact_email"] or "").strip()
+    if trial is None and nct:
+        try:
+            trial = _get_study(nct)
+        except Exception:
+            app.logger.exception("clinic notify: study fetch failed for %s", nct)
+            trial = None
+    return resolve_clinic_notify_recipients(
+        lead, trial=trial, claimed_email=claimed, posted_email=posted_email,
+        fallback=SITE_NOTIFY_EMAIL, lat=lat, lon=lon, radius=radius,
+        unit=unit or "km")
 
 
 @app.route("/search", methods=["GET", "POST"])
