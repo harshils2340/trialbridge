@@ -137,22 +137,28 @@ def test_fallback_when_no_public_email():
     print("PASS: no public email falls back to contact@sonicmedicaltrust.com")
 
 
-def test_email_is_blinded_and_has_secure_link():
+def test_applicant_email_in_body_not_as_recipient():
     lead = {"nct": "NCT09990001", "title": "Diabetes site study",
             "condition": "Type 2 diabetes", "location": "Columbus, OH",
             "site": "Riverside Clinic", "email": "patient@secret.test",
             "name": "Alex Morgan", "phone": "614-555-0100"}
+    recs = webapp.resolve_clinic_notify_recipients(
+        lead, trial=_trial(), lat=39.96, lon=-83.00, radius=80, unit="km")
+    assert "patient@secret.test" not in [r["email"] for r in recs]
     subject, body = mailer.build_candidate_message(
         lead, "https://bridgemd.health/c/abc123",
         clinic={"facility": "Riverside Clinic"})
-    assert "Riverside Clinic" in body
+    assert "patient@secret.test" in body
+    assert "not copied" in body.lower()
+    assert "https://bridgemd.health/find-trial" in body
     assert "https://bridgemd.health/c/abc123" in body
-    assert "patient@secret.test" not in body
-    assert "Alex Morgan" not in body
     assert "614-555-0100" not in body
-    assert "not the trial sponsor" not in body.lower()
     assert "NCT09990001" in subject
-    print("PASS: clinic email carries the secure link and no patient contact")
+    html = mailer.branded_html(body)
+    assert "https://bridgemd.health/static/apple-touch-icon.png" in html
+    assert "https://bridgemd.health/find-trial" in html
+    assert "BridgeMD" in html
+    print("PASS: applicant email is in the body only; branding + finder link included")
 
 
 def test_missing_clinic_notify_list_clears_after_record():
@@ -199,7 +205,7 @@ def main():
         test_claimed_site_is_added_not_exclusive,
         test_pi_and_sponsor_when_no_coordinator,
         test_fallback_when_no_public_email,
-        test_email_is_blinded_and_has_secure_link,
+        test_applicant_email_in_body_not_as_recipient,
         test_missing_clinic_notify_list_clears_after_record,
         test_persists_clinic_notify_on_lead,
     ]

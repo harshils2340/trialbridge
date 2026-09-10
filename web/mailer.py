@@ -7,6 +7,7 @@ with zero infrastructure. Set these to enable real sending:
     SMTP_HOST, SMTP_PORT (default 587), SMTP_USER, SMTP_PASS,
     SMTP_FROM (defaults to SMTP_USER), SMTP_TLS ("1" default)
 """
+import html
 import json
 import os
 import smtplib
@@ -60,49 +61,100 @@ def build_message(ref, link):
     return subject, "\n".join(lines)
 
 
+FINDER_URL = "https://bridgemd.health/find-trial"
+BRAND_HOME = "https://bridgemd.health"
+# PNG mark (email clients often skip SVG). Already served on production.
+LOGO_URL = "https://bridgemd.health/static/apple-touch-icon.png"
+
+
+def _lead_text(lead, key):
+    try:
+        val = lead[key]
+    except (KeyError, IndexError, TypeError):
+        return ""
+    return ("" if val is None else str(val)).strip()
+
+
 def build_candidate_message(lead, link, clinic=None):
-    """Notify study contacts that a new de-identified candidate is waiting.
-    Contains NO contact details - those unlock only after accepting via the
-    secure link."""
-    nct = lead["nct"] or "your study"
+    """Notify study contacts that someone applied. Applicant email is in the
+    body so they can write back. The applicant is never on To/CC."""
+    nct = _lead_text(lead, "nct") or "your study"
     clinic = clinic or {}
     facility = (clinic.get("facility") or "").strip()
     if not facility:
-        try:
-            facility = (lead["site"] or "").strip()
-        except (KeyError, IndexError, TypeError):
-            facility = ""
+        facility = _lead_text(lead, "site")
     where = facility or "this study"
+    applicant_email = _lead_text(lead, "email")
+    applicant_name = _lead_text(lead, "name")
     subject = f"New applicant for {nct} - BridgeMD"
     lines = [
         "Hello,",
         "",
         f"A patient applied on BridgeMD for {where}. They asked to be contacted "
-        "about this study. Details stay de-identified until you accept them on "
-        "the secure link below.",
+        "about this study. Reply to them directly at the address below. They "
+        "are not copied on this email.",
         "",
-        f"Study: {lead['title'] or nct}",
+        f"Study: {_lead_text(lead, 'title') or nct}",
     ]
-    if lead["nct"]:
-        lines.append(f"NCT: {lead['nct']}")
-    if lead["condition"]:
-        lines.append(f"Condition: {lead['condition']}")
-    if lead["location"]:
-        lines.append(f"Patient area: {lead['location']}")
+    if _lead_text(lead, "nct"):
+        lines.append(f"NCT: {_lead_text(lead, 'nct')}")
+    if _lead_text(lead, "condition"):
+        lines.append(f"Condition: {_lead_text(lead, 'condition')}")
+    if _lead_text(lead, "location"):
+        lines.append(f"Patient area: {_lead_text(lead, 'location')}")
     if facility:
         lines.append(f"Listed site: {facility}")
+    lines += ["", "Applicant"]
+    if applicant_name:
+        lines.append(f"Name: {applicant_name}")
+    lines.append(f"Email: {applicant_email or 'not provided'}")
+    if link:
+        lines += [
+            "",
+            "Full application (no login required):",
+            link,
+        ]
     lines += [
         "",
-        "Open this secure link to review the applicant, accept or decline, and "
-        "set up contact for screening (no login required):",
-        link,
-        "",
-        "If you accept, the patient's consented contact details unlock so you "
-        "can reach them for screening. Reply to this email or use the link.",
-        "",
         "Sent via BridgeMD.",
+        f"Find recruiting trials near you: {FINDER_URL}",
     ]
     return subject, "\n".join(lines)
+
+
+def branded_html(body):
+    """HTML wrapper with the BridgeMD mark and finder link. Used as the
+    multipart alternative so Gmail/Outlook show branding, not only plain text."""
+    escaped = html.escape(body or "").replace("\n", "<br>\n")
+    return (
+        "<!doctype html><html><body style=\"margin:0;padding:0;background:#f4f7fb;"
+        "font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;"
+        "color:#12122b;\">"
+        "<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" "
+        "cellspacing=\"0\" style=\"background:#f4f7fb;padding:24px 12px;\">"
+        "<tr><td align=\"center\">"
+        "<table role=\"presentation\" width=\"560\" cellpadding=\"0\" "
+        "cellspacing=\"0\" style=\"background:#ffffff;border-radius:12px;"
+        "padding:28px 28px 22px;max-width:560px;\">"
+        "<tr><td>"
+        f"<a href=\"{FINDER_URL}\" style=\"text-decoration:none;color:#1257b0;\">"
+        f"<img src=\"{LOGO_URL}\" width=\"40\" height=\"40\" alt=\"BridgeMD\" "
+        "style=\"display:block;border:0;border-radius:9px;\">"
+        "</a>"
+        "<div style=\"font-size:20px;font-weight:800;letter-spacing:-0.3px;"
+        "color:#12122b;margin:10px 0 4px;\">BridgeMD</div>"
+        f"<div style=\"font-size:13px;margin:0 0 20px;\">"
+        f"<a href=\"{FINDER_URL}\" style=\"color:#1257b0;text-decoration:none;"
+        f"font-weight:600;\">{FINDER_URL}</a></div>"
+        f"<div style=\"font-size:15px;line-height:1.55;color:#1a1a2e;\">{escaped}</div>"
+        "<div style=\"margin-top:28px;padding-top:16px;border-top:1px solid #e4eaf2;"
+        "font-size:13px;line-height:1.5;color:#5b6475;\">"
+        f"<a href=\"{FINDER_URL}\" style=\"color:#1257b0;font-weight:700;"
+        "text-decoration:none;\">Find a trial that fits</a>"
+        f"<div style=\"margin-top:4px;\"><a href=\"{FINDER_URL}\" "
+        f"style=\"color:#1257b0;\">{FINDER_URL}</a></div>"
+        "</div></td></tr></table></td></tr></table></body></html>"
+    )
 
 
 def build_owner_new_application(lead, link, inbox=""):
@@ -567,7 +619,9 @@ def send_email(to_addr, subject, body):
     msg["Subject"] = subject
     msg["From"] = sender
     msg["To"] = to_addr
+    # Applicant is never Cc/Bcc. Their address, if any, lives in the body.
     msg.set_content(body)
+    msg.add_alternative(branded_html(body), subtype="html")
     try:
         with smtplib.SMTP(host, port, timeout=20) as s:
             if use_tls:
