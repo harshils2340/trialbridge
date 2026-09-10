@@ -6303,6 +6303,11 @@ def get_lead_events(lead_id):
         (lead_id,)).fetchall()
 
 
+# Stamped on each clinic_notify_json row so we can resend when the outbound
+# copy changes (e.g. blinded link -> applicant email in the body).
+CLINIC_NOTIFY_COPY = "contact_in_body"
+
+
 def record_clinic_notify(lead_id, recipients):
     """Persist which clinics were selected for the auto-notify on apply.
 
@@ -6324,6 +6329,7 @@ def record_clinic_notify(lead_id, recipients):
             "city": (rec.get("city") or "").strip(),
             "source": (rec.get("source") or "").strip(),
             "name": (rec.get("name") or "").strip(),
+            "copy": CLINIC_NOTIFY_COPY,
         })
     db.execute(
         "UPDATE leads SET clinic_notify_json = ?, updated_at = ? WHERE id = ?",
@@ -6339,11 +6345,19 @@ def record_clinic_notify(lead_id, recipients):
     return True
 
 
-def leads_missing_clinic_notify():
-    """Applies that have not had study-team recipients recorded yet."""
-    return get_db().execute(
-        "SELECT * FROM leads WHERE TRIM(COALESCE(clinic_notify_json, '')) = '' "
-        "ORDER BY id ASC").fetchall()
+def leads_missing_clinic_notify(copy=CLINIC_NOTIFY_COPY):
+    """Live-candidate pool: no notify yet, or an older outbound copy.
+
+    Used to email existing applicants once when we change the study-team
+    message (they are still filtered to real applies in the app).
+    """
+    out = []
+    for row in get_db().execute(
+            "SELECT * FROM leads ORDER BY id ASC").fetchall():
+        saved = lead_clinic_notify(row)
+        if not saved or not any((r.get("copy") or "") == copy for r in saved):
+            out.append(row)
+    return out
 
 
 def lead_clinic_notify(lead):

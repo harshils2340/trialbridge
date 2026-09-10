@@ -177,7 +177,14 @@ def test_missing_clinic_notify_list_clears_after_record():
         }])
         ids = [r["id"] for r in webapp.db.leads_missing_clinic_notify()]
         assert lead["id"] not in ids
-    print("PASS: recorded clinic notify is not selected for backfill again")
+        webapp.db.get_db().execute(
+            "UPDATE leads SET clinic_notify_json = ? WHERE id = ?",
+            ('[{"email":"maya@riversideclinic.test","source":"facility"}]',
+             lead["id"]))
+        webapp.db.get_db().commit()
+        ids = [r["id"] for r in webapp.db.leads_missing_clinic_notify()]
+        assert lead["id"] in ids
+    print("PASS: current copy is skipped; older blinded notify is resent")
 
 
 def test_persists_clinic_notify_on_lead():
@@ -193,6 +200,7 @@ def test_persists_clinic_notify_on_lead():
         assert webapp.db.record_clinic_notify(lead["id"], recs)
         saved = webapp.db.lead_clinic_notify(webapp.db.get_lead_by_token(tok))
         assert saved[0]["email"] == "maya@riversideclinic.test"
+        assert saved[0]["copy"] == webapp.db.CLINIC_NOTIFY_COPY
         notes = [e["note"] for e in webapp.db.get_lead_events(lead["id"])]
         assert any("Riverside Clinic" in (n or "") for n in notes)
     print("PASS: chosen clinic is stored on the lead even when SMTP is off")

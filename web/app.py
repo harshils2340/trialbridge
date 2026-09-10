@@ -1387,12 +1387,11 @@ def _notify_geo_for_lead(lead, lat=None, lon=None, radius=None, unit="km"):
 
 
 def _backfill_clinic_notify_existing():
-    """Email study teams for live applies that never got the clinic send.
+    """Email study teams for live applies that never got the current send.
 
-    Used once after deploy so recent applications (the ones that only produced
-    the operator heads-up) get the same clinic/sponsor email as new applies.
-    Skips any lead that already has clinic_notify_json, so worker restarts
-    do not send twice.
+    Covers brand-new applies and existing ones still on the old blinded copy.
+    After a send we stamp copy=contact_in_body so worker restarts do not
+    mail the same clinics twice.
     """
     if not notifications_ready():
         return 0
