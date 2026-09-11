@@ -1370,6 +1370,9 @@ def _notify_site_new_candidate_sync(token, trial=None, lat=None, lon=None,
     lead = db.get_lead_by_token(token)
     if not lead:
         return []
+    print(
+        f"clinic-notify start lead={lead['id']} nct={lead['nct']}",
+        flush=True)
     lat, lon, radius, unit = _notify_geo_for_lead(
         lead, lat=lat, lon=lon, radius=radius, unit=unit)
     recipients = _resolve_clinic_notify_recipients(
@@ -16002,11 +16005,13 @@ def resolve_clinic_notify_recipients(lead, trial=None, *, claimed_email="",
         lookup_fn = lambda site, sponsor=sponsor: clinic_lookup.lookup_site_emails(
             site, sponsor=sponsor)
 
+    lookup_tries = 0
     for site in sites_for_patient_area(
             trial, site_label=site_label, lat=lat, lon=lon,
             radius=radius, unit=unit or "km"):
         recs = clinic_emails_from_site(site)
-        if not recs and lookup_fn:
+        if not recs and lookup_fn and lookup_tries < 3:
+            lookup_tries += 1
             try:
                 recs = lookup_fn(site, sponsor=sponsor) or []
             except TypeError:

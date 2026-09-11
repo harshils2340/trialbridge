@@ -190,10 +190,10 @@ def _site_urls(facility):
     )
     urls = []
     for path in paths:
-        for host in hosts:
+        for host in hosts[:3]:
             urls.append("https://www." + host + path)
             urls.append("https://" + host + path)
-    return urls[:16]
+    return urls[:8]
 
 
 def lookup_site_emails(site, sponsor=""):
@@ -223,6 +223,8 @@ def lookup_site_emails(site, sponsor=""):
                 continue
             seen.add(email)
             scored.append((_score(email, facility, city, pi_name), email))
+        if any(score >= 8 for score, _ in scored):
+            break
     scored.sort(key=lambda x: -x[0])
     picked = []
     pi_last = ""
@@ -241,7 +243,7 @@ def lookup_site_emails(site, sponsor=""):
             "city": city,
             "source": "lookup",
         })
-        if len(picked) >= 2:
+        if len(picked) >= 1:
             break
     _MEMO[memo_key] = picked
     return picked
