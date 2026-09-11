@@ -191,6 +191,14 @@ def test_guesses_state_clinic_domain():
     print("PASS: clinic domains are guessed from the CT.gov site name")
 
 
+def test_abs_url_works_without_http_request():
+    with webapp.app.app_context():
+        url = webapp._abs_url("candidate_page", token="tok123")
+    assert url.endswith("/c/tok123"), url
+    assert url.startswith("http"), url
+    print("PASS: review link can be built in a background notify thread")
+
+
 def test_applicant_email_in_body_not_as_recipient():
     lead = {"nct": "NCT09990001", "title": "Diabetes site study",
             "condition": "Type 2 diabetes", "location": "Columbus, OH",
@@ -269,6 +277,7 @@ def main():
         test_fallback_when_no_public_email,
         test_looks_up_local_clinic_not_lilly,
         test_guesses_state_clinic_domain,
+        test_abs_url_works_without_http_request,
         test_applicant_email_in_body_not_as_recipient,
         test_missing_clinic_notify_list_clears_after_record,
         test_persists_clinic_notify_on_lead,

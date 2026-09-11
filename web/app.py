@@ -1250,10 +1250,25 @@ _NOTIFIER = notifications_mod.Notifier(
 
 
 def _abs_url(endpoint, **kw):
-    """Absolute URL for links placed inside emails."""
-    if PUBLIC_BASE_URL:
-        return PUBLIC_BASE_URL + url_for(endpoint, **kw)
-    return url_for(endpoint, _external=True, **kw)
+    """Absolute URL for links placed inside emails.
+
+    Background notify threads have no HTTP request, so Flask url_for can raise
+    without SERVER_NAME. Build the known public paths off PUBLIC_BASE_URL.
+    """
+    base = (PUBLIC_BASE_URL or "").rstrip("/")
+    if not base:
+        host = (CANONICAL_HOST or "bridgemd.health").strip()
+        base = "https://" + host
+    token = kw.get("token")
+    if endpoint == "candidate_page" and token:
+        return f"{base}/c/{token}"
+    lead_id = kw.get("lead_id")
+    if endpoint == "applicant_detail" and lead_id is not None:
+        return f"{base}/app/applicant/{lead_id}"
+    try:
+        return base + url_for(endpoint, **kw)
+    except RuntimeError:
+        return base
 
 
 def _oauth_redirect_url(endpoint):
@@ -1359,17 +1374,17 @@ def _notify_site_new_candidate_sync(token, trial=None, lat=None, lon=None,
         lead, lat=lat, lon=lon, radius=radius, unit=unit)
     recipients = _resolve_clinic_notify_recipients(
         lead, trial=trial, lat=lat, lon=lon, radius=radius, unit=unit)
-    try:
-        db.record_clinic_notify(lead["id"], recipients)
-    except Exception:
-        app.logger.exception("record clinic notify failed")
     if not recipients:
         return []
     link = _abs_url("candidate_page", token=lead["site_token"])
     subject, body = mailer.build_candidate_message(
         lead, link, clinic=recipients[0])
     to_all = ", ".join(rec["email"] for rec in recipients)
-    _notify_async(to_all, subject, body)
+    _notify(to_all, subject, body)
+    try:
+        db.record_clinic_notify(lead["id"], recipients)
+    except Exception:
+        app.logger.exception("record clinic notify failed")
     return [rec["email"] for rec in recipients]
 
 
