@@ -1518,14 +1518,14 @@ def _boot_clinic_notify_backfill():
     if not notifications_ready():
         print("clinic-notify backfill skipped (notify not live)", flush=True)
         return
+    global _clinic_backfill_started
+    with _clinic_backfill_lock:
+        if _clinic_backfill_started:
+            return
+        _clinic_backfill_started = True
 
     def _run():
         time.sleep(2)
-        global _clinic_backfill_started
-        with _clinic_backfill_lock:
-            if _clinic_backfill_started:
-                return
-            _clinic_backfill_started = True
         _run_clinic_notify_backfill()
 
     threading.Thread(target=_run, daemon=True).start()

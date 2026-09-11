@@ -106,10 +106,18 @@ def _emails_in(text):
         found.add(m.group(0).strip().strip(".,;"))
     out = []
     for e in found:
-        e = e.lower()
+        e = htmlmod.unescape(e).lower()
+        e = re.sub(r"^(?:u003[ce])+", "", e)
+        e = e.lstrip("<>\"'")
+        if not _EMAIL_RE.fullmatch(e):
+            continue
         if e.startswith("www."):
             continue
         if any(e.endswith("." + ext) for ext in ("png", "jpg", "gif", "webp", "css", "js")):
+            continue
+        local = e.split("@")[0]
+        if "u003" in local or local in (
+                "privacy", "dataprivacy", "legal", "webmaster", "admin"):
             continue
         out.append(e)
     return out
@@ -117,9 +125,15 @@ def _emails_in(text):
 
 def _skip_email(email, sponsor=""):
     dom = _domain(email)
+    local = _local(email)
     if any(dom == d or dom.endswith("." + d) for d in _SKIP_DOMAINS):
         return True
     if any(dom == d or dom.endswith("." + d) for d in _SPONSOR_DOMAINS):
+        return True
+    if "u003" in local or local in (
+            "privacy", "dataprivacy", "legal", "webmaster", "admin"):
+        return True
+    if not re.match(r"^[a-z0-9]", local):
         return True
     sp = _norm(sponsor)
     if sp and sp.split()[0] in dom.replace(".", " "):

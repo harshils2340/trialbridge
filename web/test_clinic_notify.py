@@ -191,6 +191,17 @@ def test_guesses_state_clinic_domain():
     print("PASS: clinic domains are guessed from the CT.gov site name")
 
 
+def test_rejects_html_escape_emails():
+    import clinic_lookup
+    found = clinic_lookup._emails_in(
+        r'contact \u003edataprivacy@plains.com and recruitment@azresearchcenter.com')
+    assert "recruitment@azresearchcenter.com" in found
+    assert not any("dataprivacy" in e or "u003e" in e for e in found), found
+    assert clinic_lookup._skip_email("u003edataprivacy@plains.com")
+    assert clinic_lookup._skip_email("dataprivacy@plains.com")
+    print("PASS: HTML-escaped privacy scrapes are not treated as clinic inboxes")
+
+
 def test_abs_url_works_without_http_request():
     with webapp.app.app_context():
         url = webapp._abs_url("candidate_page", token="tok123")
@@ -298,6 +309,7 @@ def main():
         test_fallback_when_no_public_email,
         test_looks_up_local_clinic_not_lilly,
         test_guesses_state_clinic_domain,
+        test_rejects_html_escape_emails,
         test_abs_url_works_without_http_request,
         test_applicant_email_in_body_not_as_recipient,
         test_missing_clinic_notify_list_clears_after_record,
