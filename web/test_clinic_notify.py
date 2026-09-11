@@ -13,6 +13,7 @@ os.environ["NOTIFY_LIVE"] = "0"
 os.environ["ALERTS_BACKGROUND"] = "0"
 os.environ["REMINDERS_BACKGROUND"] = "0"
 os.environ["SECRET_KEY"] = "clinic-notify-test"
+os.environ["CLINIC_LOOKUP"] = "0"
 os.environ.pop("SITE_NOTIFY_EMAIL", None)
 
 import app as webapp  # noqa: E402
@@ -55,7 +56,7 @@ def _trial():
     }
 
 
-def test_clinic_first_then_sponsor():
+def test_clinic_emails_not_sponsor():
     lead = {"nct": "NCT09990001", "site": "Riverside Clinic, Columbus, OH, United States"}
     recs = webapp.resolve_clinic_notify_recipients(
         lead, trial=_trial(), lat=39.96, lon=-83.00, radius=80, unit="km")
@@ -64,10 +65,8 @@ def test_clinic_first_then_sponsor():
     assert "pi@riversideclinic.test" in emails
     assert emails.index("maya@riversideclinic.test") < emails.index(
         "pi@riversideclinic.test")
-    assert "recruit@sponsor-pharma.test" in emails
-    assert emails.index("pi@riversideclinic.test") < emails.index(
-        "recruit@sponsor-pharma.test")
-    print("PASS: clinic emails first, then PI, then sponsor, all in one list")
+    assert "recruit@sponsor-pharma.test" not in emails
+    print("PASS: clinic emails first, then PI; sponsor inbox is skipped")
 
 
 def test_nearby_clinics_in_area_not_cross_country():
@@ -78,8 +77,8 @@ def test_nearby_clinics_in_area_not_cross_country():
     assert "maya@riversideclinic.test" in emails
     assert "sam@lakeside.test" in emails
     assert "west@faraway.test" not in emails, emails
-    assert "recruit@sponsor-pharma.test" in emails
-    print("PASS: nearby clinics plus sponsor; distant sites stay out")
+    assert "recruit@sponsor-pharma.test" not in emails
+    print("PASS: nearby clinics included; distant sites and sponsor stay out")
 
 
 def test_claimed_site_is_added_not_exclusive():
@@ -90,11 +89,11 @@ def test_claimed_site_is_added_not_exclusive():
     emails = [r["email"] for r in recs]
     assert "inbox@bridgemd-clinic.test" in emails
     assert "maya@riversideclinic.test" in emails
-    assert "recruit@sponsor-pharma.test" in emails
-    print("PASS: a claimed inbox is added alongside clinic and sponsor emails")
+    assert "recruit@sponsor-pharma.test" not in emails
+    print("PASS: a claimed inbox is added alongside clinic emails")
 
 
-def test_pi_and_sponsor_when_no_coordinator():
+def test_pi_used_when_no_coordinator():
     trial = {
         "nctId": "NCT09990002",
         "centralContacts": [{"email": "hq@sponsor.test"}],
@@ -113,8 +112,8 @@ def test_pi_and_sponsor_when_no_coordinator():
         lead, trial=trial, lat=39.76, lon=-84.19, radius=50, unit="km")
     emails = [r["email"] for r in recs]
     assert emails[0] == "pi@solo.test", emails
-    assert "hq@sponsor.test" in emails
-    print("PASS: PI email is used when the facility has no coordinator, plus sponsor")
+    assert "hq@sponsor.test" not in emails
+    print("PASS: PI email is used when the facility has no coordinator; sponsor skipped")
 
 
 def test_fallback_when_no_public_email():
@@ -135,6 +134,61 @@ def test_fallback_when_no_public_email():
     assert [r["email"] for r in recs] == ["contact@sonicmedicaltrust.com"]
     assert recs[0]["source"] == "fallback"
     print("PASS: no public email falls back to contact@sonicmedicaltrust.com")
+
+
+def test_looks_up_local_clinic_not_lilly():
+    trial = {
+        "nctId": "NCT07641504",
+        "leadSponsor": "Eli Lilly and Company",
+        "centralContacts": [
+            {"name": "Lilly trials", "email": "LillyTrials@Lilly.com",
+             "role": "CONTACT"},
+        ],
+        "locations": [{
+            "facility": "Arizona Research Center", "city": "Phoenix",
+            "state": "Arizona", "country": "United States", "status": "RECRUITING",
+            "lat": 33.45, "lon": -112.07,
+            "contacts": [
+                {"name": "Louise Taber MD", "role": "PRINCIPAL_INVESTIGATOR"},
+            ],
+        }, {
+            "facility": "Synexus Clinical Research US, Inc.", "city": "Phoenix",
+            "state": "Arizona", "country": "United States", "status": "RECRUITING",
+            "lat": 33.45, "lon": -112.07,
+            "contacts": [
+                {"name": "Shawn Searle", "role": "PRINCIPAL_INVESTIGATOR"},
+            ],
+        }],
+    }
+
+    def fake_lookup(site, sponsor=""):
+        fac = (site.get("facility") or "")
+        if "Arizona Research" in fac:
+            return [{"email": "recruitment@azresearchcenter.com",
+                     "facility": fac, "city": "Phoenix", "source": "lookup"}]
+        if "Synexus" in fac:
+            return [{"email": "phoenix@trialmed.com",
+                     "facility": fac, "city": "Phoenix", "source": "lookup"}]
+        return []
+
+    lead = {"nct": "NCT07641504", "site": "Arizona Research Center, Phoenix, AZ"}
+    recs = webapp.resolve_clinic_notify_recipients(
+        lead, trial=trial, lat=33.45, lon=-112.07, radius=80, unit="km",
+        lookup_fn=fake_lookup)
+    emails = [r["email"] for r in recs]
+    assert "recruitment@azresearchcenter.com" in emails, emails
+    assert "phoenix@trialmed.com" in emails, emails
+    assert "LillyTrials@Lilly.com" not in emails
+    print("PASS: Phoenix clinic emails are used; Lilly sponsor inbox is skipped")
+
+
+def test_guesses_state_clinic_domain():
+    import clinic_lookup
+    hosts = clinic_lookup._guess_hosts("Arizona Research Center")
+    assert hosts[0] == "azresearchcenter.com", hosts
+    syn = clinic_lookup._guess_hosts("Synexus Clinical Research US, Inc.")
+    assert "trialmed.com" in syn and "synexus.com" in syn
+    print("PASS: clinic domains are guessed from the CT.gov site name")
 
 
 def test_applicant_email_in_body_not_as_recipient():
@@ -208,11 +262,13 @@ def test_persists_clinic_notify_on_lead():
 
 def main():
     tests = [
-        test_clinic_first_then_sponsor,
+        test_clinic_emails_not_sponsor,
         test_nearby_clinics_in_area_not_cross_country,
         test_claimed_site_is_added_not_exclusive,
-        test_pi_and_sponsor_when_no_coordinator,
+        test_pi_used_when_no_coordinator,
         test_fallback_when_no_public_email,
+        test_looks_up_local_clinic_not_lilly,
+        test_guesses_state_clinic_domain,
         test_applicant_email_in_body_not_as_recipient,
         test_missing_clinic_notify_list_clears_after_record,
         test_persists_clinic_notify_on_lead,

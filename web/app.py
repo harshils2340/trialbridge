@@ -72,6 +72,7 @@ import alerts as alerts_mod  # noqa: E402
 import analytics  # noqa: E402
 import calendar_invites  # noqa: E402
 import campaigns as campaigns_mod  # noqa: E402
+import clinic_lookup  # noqa: E402
 import codes  # noqa: E402
 import db  # noqa: E402
 import fhir  # noqa: E402
@@ -1216,9 +1217,8 @@ def _log_event(name, detail=None):
 #   NOTIFY_SMS=1 + TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN / TWILIO_FROM_NUMBER
 #   SITE_NOTIFY_EMAIL=contact@sonicmedicaltrust.com
 #   PUBLIC_BASE_URL=https://yourdomain.com      (optional, for correct email links)
-# On apply we email every public address we can find for that trial, at once:
-# local clinic contacts first, then sponsor/central contacts. If CT.gov lists
-# no email, we fall back to SITE_NOTIFY_EMAIL (default contact@sonicmedicaltrust.com).
+# On apply we email the local clinic (looked up from the CT.gov site + PI
+# when the listing has no address). Sponsor/central inboxes are skipped.
 # --------------------------------------------------------------------------- #
 NOTIFY_LIVE = os.environ.get("NOTIFY_LIVE", "0") == "1"
 SITE_NOTIFY_EMAIL = (
@@ -1329,13 +1329,29 @@ def _gcal_sync_async(lead, visit, invite_url):
 
 
 def _notify_site_new_candidate(token, trial=None, lat=None, lon=None,
-                               radius=None, unit="km"):
-    """Email every public study contact we can find, in one send.
-
-    Clinic/facility addresses first, then sponsor/central contacts, then the
-    Sonic Medical Trust fallback if CT.gov lists nothing. One SMTP message
-    goes to all of them with the secure /c/<site_token> review link.
+                               radius=None, unit="km", wait=False):
+    """Email local study clinics. Looks up public site/PI addresses when CT.gov
+    only lists a name. Sponsor inboxes are skipped. Lookup can take a few
+    seconds, so apply fires this in a background thread unless wait=True.
     """
+    if wait:
+        return _notify_site_new_candidate_sync(
+            token, trial=trial, lat=lat, lon=lon, radius=radius, unit=unit)
+
+    def _run():
+        with app.app_context():
+            try:
+                _notify_site_new_candidate_sync(
+                    token, trial=trial, lat=lat, lon=lon, radius=radius,
+                    unit=unit)
+            except Exception:
+                app.logger.exception("clinic notify failed")
+    threading.Thread(target=_run, daemon=True).start()
+    return []
+
+
+def _notify_site_new_candidate_sync(token, trial=None, lat=None, lon=None,
+                                    radius=None, unit="km"):
     lead = db.get_lead_by_token(token)
     if not lead:
         return []
@@ -1401,7 +1417,7 @@ def _backfill_clinic_notify_existing():
         if not _is_live_application(lead, live):
             continue
         try:
-            emails = _notify_site_new_candidate(lead["token"])
+            emails = _notify_site_new_candidate(lead["token"], wait=True)
         except Exception:
             app.logger.exception(
                 "clinic notify backfill failed for lead %s", lead["id"])
@@ -15866,12 +15882,13 @@ def sites_for_patient_area(trial, site_label="", lat=None, lon=None,
 def resolve_clinic_notify_recipients(lead, trial=None, *, claimed_email="",
                                      posted_email="", fallback="", lat=None,
                                      lon=None, radius=None, unit="km",
-                                     max_clinics=_MAX_CLINIC_NOTIFY):
-    """Who gets the on-apply email. Email-first, many recipients at once.
+                                     max_clinics=_MAX_CLINIC_NOTIFY,
+                                     lookup_fn=None):
+    """Who gets the on-apply email: local clinic / PI addresses, not the sponsor.
 
-    Order: local clinic coordinators, then PIs, then any claimed/posted inbox,
-    then sponsor/central contacts. If CT.gov lists no email, use fallback
-    (contact@sonicmedicaltrust.com by default).
+    CT.gov facility emails first. If a nearby site only lists a PI name, look
+    up the clinic's public recruitment email. Sponsor/central inboxes are
+    skipped. If nothing local is found, use fallback.
     """
     def _one(email, facility="", source="", name="", city="", role=""):
         email = (email or "").strip()
@@ -15897,10 +15914,29 @@ def resolve_clinic_notify_recipients(lead, trial=None, *, claimed_email="",
         seen.add(key)
         bucket.append(rec)
 
+    sponsor = ""
+    try:
+        sponsor = (trial or {}).get("leadSponsor") or ""
+    except (KeyError, IndexError, TypeError):
+        sponsor = ""
+    if lookup_fn is None and os.environ.get("CLINIC_LOOKUP", "1") != "0":
+        lookup_fn = lambda site, sponsor=sponsor: clinic_lookup.lookup_site_emails(
+            site, sponsor=sponsor)
+
     for site in sites_for_patient_area(
             trial, site_label=site_label, lat=lat, lon=lon,
             radius=radius, unit=unit or "km"):
-        for rec in clinic_emails_from_site(site):
+        recs = clinic_emails_from_site(site)
+        if not recs and lookup_fn:
+            try:
+                recs = lookup_fn(site, sponsor=sponsor) or []
+            except TypeError:
+                recs = lookup_fn(site) or []
+            except Exception:
+                app.logger.exception("clinic email lookup failed for %s",
+                                     (site or {}).get("facility"))
+                recs = []
+        for rec in recs:
             _add(clinic, rec)
             if len(clinic) >= max_clinics:
                 break
@@ -15910,14 +15946,6 @@ def resolve_clinic_notify_recipients(lead, trial=None, *, claimed_email="",
     extras = []
     _add(extras, _one(claimed_email, site_label, "claimed"))
     _add(extras, _one(posted_email, site_label, "posted"))
-    for c in (trial or {}).get("centralContacts") or []:
-        _add(extras, _one(
-            _contact_email(c),
-            facility=(c.get("name") or "").strip() or "Study sponsor",
-            source="sponsor",
-            name=_clean_name(c.get("name")) if c.get("name") else "",
-            role=(c.get("role") or "").strip(),
-        ))
 
     out = clinic + extras
     if out:
