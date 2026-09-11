@@ -249,6 +249,27 @@ def test_missing_clinic_notify_list_clears_after_record():
     print("PASS: current copy is skipped; older blinded notify is resent")
 
 
+def test_failed_send_does_not_stamp():
+    with webapp.app.app_context():
+        tok = webapp.db.create_lead({
+            "nct": "NCT09990001", "title": "Diabetes site study",
+            "site": "Riverside Clinic", "name": "C", "email": "c@x.test",
+            "consent": 1,
+        })
+        orig = webapp._notify
+        webapp._notify = lambda *a, **k: False
+        try:
+            emails = webapp._notify_site_new_candidate_sync(
+                tok, trial=_trial(), lat=39.96, lon=-83.00)
+        finally:
+            webapp._notify = orig
+        assert emails == []
+        lead = webapp.db.get_lead_by_token(tok)
+        ids = [r["id"] for r in webapp.db.leads_missing_clinic_notify()]
+        assert lead["id"] in ids
+    print("PASS: failed SMTP does not stamp the lead, so backfill can retry")
+
+
 def test_persists_clinic_notify_on_lead():
     with webapp.app.app_context():
         tok = webapp.db.create_lead({
@@ -280,6 +301,7 @@ def main():
         test_abs_url_works_without_http_request,
         test_applicant_email_in_body_not_as_recipient,
         test_missing_clinic_notify_list_clears_after_record,
+        test_failed_send_does_not_stamp,
         test_persists_clinic_notify_on_lead,
     ]
     failed = 0

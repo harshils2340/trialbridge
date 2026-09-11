@@ -6305,7 +6305,7 @@ def get_lead_events(lead_id):
 
 # Stamped on each clinic_notify_json row so we can resend when the outbound
 # copy changes (e.g. sponsor-only -> local clinic lookup).
-CLINIC_NOTIFY_COPY = "clinic_lookup_v4"
+CLINIC_NOTIFY_COPY = "clinic_lookup_v5"
 
 
 def record_clinic_notify(lead_id, recipients):
@@ -6346,14 +6346,16 @@ def record_clinic_notify(lead_id, recipients):
 
 
 def leads_missing_clinic_notify(copy=CLINIC_NOTIFY_COPY):
-    """Live-candidate pool: no notify yet, or an older outbound copy.
+    """Real inbound applies that have not had the current clinic send.
 
     Used to email existing applicants once when we change the study-team
-    message (they are still filtered to real applies in the app).
+    message. Demo/seed rows are excluded by source.
     """
     out = []
-    for row in get_db().execute(
-            "SELECT * FROM leads ORDER BY id ASC").fetchall():
+    rows = get_db().execute(
+        "SELECT * FROM leads WHERE source IN ('web', 'referral') "
+        "ORDER BY id ASC").fetchall()
+    for row in rows:
         saved = lead_clinic_notify(row)
         if not saved or not any((r.get("copy") or "") == copy for r in saved):
             out.append(row)

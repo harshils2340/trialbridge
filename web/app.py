@@ -1375,17 +1375,33 @@ def _notify_site_new_candidate_sync(token, trial=None, lat=None, lon=None,
     recipients = _resolve_clinic_notify_recipients(
         lead, trial=trial, lat=lat, lon=lon, radius=radius, unit=unit)
     if not recipients:
+        print(
+            f"clinic-notify lead={lead['id']} nct={lead['nct']} no recipients",
+            flush=True)
         return []
     link = _abs_url("candidate_page", token=lead["site_token"])
     subject, body = mailer.build_candidate_message(
         lead, link, clinic=recipients[0])
-    to_all = ", ".join(rec["email"] for rec in recipients)
-    _notify(to_all, subject, body)
+    delivered = []
+    for rec in recipients:
+        ok = _notify(rec["email"], subject, body)
+        print(
+            f"clinic-notify lead={lead['id']} nct={lead['nct']} "
+            f"to={rec['email']} ok={ok}",
+            flush=True)
+        if ok:
+            delivered.append(rec)
+        else:
+            app.logger.error(
+                "clinic notify send failed lead=%s to=%s",
+                lead["id"], rec["email"])
+    if not delivered:
+        return []
     try:
-        db.record_clinic_notify(lead["id"], recipients)
+        db.record_clinic_notify(lead["id"], delivered)
     except Exception:
         app.logger.exception("record clinic notify failed")
-    return [rec["email"] for rec in recipients]
+    return [rec["email"] for rec in delivered]
 
 
 _DEFAULT_NOTIFY_RADIUS_KM = 80
@@ -1421,25 +1437,34 @@ def _backfill_clinic_notify_existing():
     """Email local clinics for every real inbound apply on the current copy.
 
     Includes past applications (the operator inbox set), not only ones that
-    also logged a browser apply event. After send we stamp clinic_lookup_v3
-    so worker restarts do not mail the same clinics twice.
+    also logged a browser apply event. After a successful SMTP send we stamp
+    the current copy so worker restarts do not mail the same clinics twice.
     """
     if not notifications_ready():
+        print("clinic-notify backfill skipped (notify not live)", flush=True)
         return 0
     sent = 0
-    for lead in db.leads_missing_clinic_notify():
-        if not _is_inbound_application(lead):
-            continue
-        if not (lead["nct"] or "").strip():
-            continue
+    pending = [
+        lead for lead in db.leads_missing_clinic_notify()
+        if _is_inbound_application(lead) and (lead["nct"] or "").strip()
+    ]
+    print(f"clinic-notify backfill pending {len(pending)} apply(s)", flush=True)
+    for lead in pending:
         try:
             emails = _notify_site_new_candidate(lead["token"], wait=True)
         except Exception:
+            print(
+                f"clinic-notify backfill crash lead={lead['id']}",
+                flush=True)
             app.logger.exception(
                 "clinic notify backfill failed for lead %s", lead["id"])
             continue
         if emails:
             sent += 1
+            print(
+                f"clinic-notify backfill lead={lead['id']} nct={lead['nct']} "
+                f"to={', '.join(emails)}",
+                flush=True)
             app.logger.info(
                 "clinic notify backfill lead=%s nct=%s to=%s",
                 lead["id"], lead["nct"], ", ".join(emails))
@@ -1449,9 +1474,12 @@ def _backfill_clinic_notify_existing():
 def _run_clinic_notify_backfill():
     with app.app_context():
         try:
+            print("clinic-notify backfill start", flush=True)
             n = _backfill_clinic_notify_existing()
+            print(f"clinic-notify backfill emailed {n} apply(s)", flush=True)
             app.logger.info("clinic notify backfill emailed %s existing apply(s)", n)
         except Exception:
+            print("clinic-notify backfill crashed", flush=True)
             app.logger.exception("clinic notify backfill failed")
 
 
@@ -1466,6 +1494,41 @@ def _kick_clinic_notify_backfill():
             return
         _clinic_backfill_started = True
     threading.Thread(target=_run_clinic_notify_backfill, daemon=True).start()
+
+
+@app.route("/ops/clinic-notify-backfill")
+def ops_clinic_notify_backfill():
+    """Owner trigger: email clinics for every inbound apply missing the current copy."""
+    if not _ops_key_ok():
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+    n = _backfill_clinic_notify_existing()
+    return jsonify({"ok": True, "emailed": n,
+                    "notify_live": notifications_ready()})
+
+
+def _boot_clinic_notify_backfill():
+    """Do not wait for an HTTP request. Health checks were not starting the send."""
+    print(
+        f"clinic-notify boot live={NOTIFY_LIVE} "
+        f"smtp={mailer.smtp_configured()} ready={notifications_ready()}",
+        flush=True)
+    if not notifications_ready():
+        print("clinic-notify backfill skipped (notify not live)", flush=True)
+        return
+
+    def _run():
+        time.sleep(2)
+        global _clinic_backfill_started
+        with _clinic_backfill_lock:
+            if _clinic_backfill_started:
+                return
+            _clinic_backfill_started = True
+        _run_clinic_notify_backfill()
+
+    threading.Thread(target=_run, daemon=True).start()
+
+
+_boot_clinic_notify_backfill()
 
 
 def _dedup_email_list(raw, exclude=None):
