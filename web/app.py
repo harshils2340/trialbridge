@@ -1403,18 +1403,19 @@ def _notify_geo_for_lead(lead, lat=None, lon=None, radius=None, unit="km"):
 
 
 def _backfill_clinic_notify_existing():
-    """Email study teams for live applies that never got the current send.
+    """Email local clinics for every real inbound apply on the current copy.
 
-    Covers brand-new applies and existing ones still on the old blinded copy.
-    After a send we stamp copy=contact_in_body so worker restarts do not
-    mail the same clinics twice.
+    Includes past applications (the operator inbox set), not only ones that
+    also logged a browser apply event. After send we stamp clinic_lookup_v3
+    so worker restarts do not mail the same clinics twice.
     """
     if not notifications_ready():
         return 0
-    live = db.live_apply_index()
     sent = 0
     for lead in db.leads_missing_clinic_notify():
-        if not _is_live_application(lead, live):
+        if not _is_inbound_application(lead):
+            continue
+        if not (lead["nct"] or "").strip():
             continue
         try:
             emails = _notify_site_new_candidate(lead["token"], wait=True)

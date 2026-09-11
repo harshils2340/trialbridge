@@ -6305,7 +6305,7 @@ def get_lead_events(lead_id):
 
 # Stamped on each clinic_notify_json row so we can resend when the outbound
 # copy changes (e.g. sponsor-only -> local clinic lookup).
-CLINIC_NOTIFY_COPY = "clinic_sites_v2"
+CLINIC_NOTIFY_COPY = "clinic_lookup_v3"
 
 
 def record_clinic_notify(lead_id, recipients):
