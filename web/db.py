@@ -1670,6 +1670,9 @@ _MIGRATIONS = {
         # Lets the operator see that the local site was notified without a
         # manual forward, and keeps a record if SMTP was off at apply time.
         "clinic_notify_json": "TEXT DEFAULT ''",
+        # When BridgeMD emailed the applicant their no-sign-in thread. Used so
+        # a boot backfill can send once to existing applies and then stop.
+        "connect_emailed_at": "TEXT DEFAULT ''",
         # Channel-side identifier to address an outbound reply back to (Instagram
         # username, Messenger PSID, WhatsApp number, ...). Populated by the intake
         # connector for social leads; the connector uses it to route our reply to
@@ -6376,6 +6379,28 @@ def lead_clinic_notify(lead):
     except (ValueError, TypeError):
         return []
     return rows if isinstance(rows, list) else []
+
+
+def mark_connect_emailed(lead_id):
+    """Stamp that we emailed this applicant their application thread."""
+    if not get_lead(lead_id):
+        return False
+    db = get_db()
+    db.execute(
+        "UPDATE leads SET connect_emailed_at = ?, updated_at = ? WHERE id = ?",
+        (now(), now(), lead_id))
+    db.commit()
+    return True
+
+
+def leads_missing_connect_email():
+    """Inbound applies that still need the applicant thread email."""
+    rows = get_db().execute(
+        "SELECT * FROM leads WHERE COALESCE(connect_emailed_at, '') = '' "
+        "AND COALESCE(email, '') != '' "
+        "AND COALESCE(source, '') NOT IN ('demo', 'emr') "
+        "ORDER BY id ASC").fetchall()
+    return rows
 
 
 def set_lead_prescreen(lead_id, eligibility_json="", readiness_json=""):

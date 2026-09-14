@@ -69,13 +69,15 @@ def test_apply_confirmation_includes_clinic():
                 "email": "info@northwindclinical.com"}]
     _subj, body = mailer.build_apply_confirmation(
         lead, "https://bridgemd.health/a/tok", clinic_contacts=clinics)
-    assert "info@northwindclinical.com" in body
+    assert "info@northwindclinical.com" not in body
     assert "/a/tok" in body
+    assert "Message them here" in body
     _subj2, body2 = mailer.build_clinic_connect_message(
         lead, "https://bridgemd.health/a/tok", clinic_contacts=clinics)
     assert "ignore" in body2.lower()
-    assert "info@northwindclinical.com" in body2
-    print("PASS: applicant emails include the clinic and thread link")
+    assert "info@northwindclinical.com" not in body2
+    assert "/a/tok" in body2
+    print("PASS: applicant emails are from BridgeMD and do not give clinic addresses")
 
 
 def test_placeholder_url_is_detected():

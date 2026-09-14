@@ -348,42 +348,27 @@ def build_applicant_message(lead, kind, link):
     return subj, "\n".join(lines)
 
 
-def _clinic_contact_lines(clinic_contacts):
-    """Facility + email lines the applicant can use to write the site."""
-    out = []
-    for c in clinic_contacts or []:
-        if not isinstance(c, dict):
-            continue
-        facility = (c.get("facility") or "").strip()
-        email = (c.get("email") or "").strip()
-        if not email:
-            continue
-        out.append(f"  - {facility + ' · ' if facility else ''}{email}")
-    return out
-
-
 def build_apply_confirmation(lead, link, clinic_contacts=None):
-    """Warm confirmation after apply. Includes the clinic so the applicant can
-    write them without waiting on BridgeMD."""
+    """BridgeMD emails the applicant their thread. They reply there, not by
+    writing the clinic themselves. clinic_contacts is unused (kept for callers)."""
+    _ = clinic_contacts
     title = lead["title"] or lead["nct"] or "a clinical trial"
     subj_title = title if len(title) <= 60 else title[:57].rstrip() + "..."
     subject = f"We got your application - {subj_title}"
     lines = [
         f"Hi {lead['name'] or 'there'},",
         "",
-        "Thanks for applying - your application was received and sent to the "
-        "study clinic. They have your email and can write you directly.",
+        "Thanks for applying. Your application was sent to the study team. "
+        "Message them here - no account needed. They will write you back on "
+        "this same thread.",
         "",
         f"Trial: {title}",
     ]
     if lead["nct"]:
         lines.append(f"Reference number: {lead['nct']}")
-    clinic_lines = _clinic_contact_lines(clinic_contacts)
-    if clinic_lines:
-        lines += ["", "Study clinic (you can email them too):"] + clinic_lines
     lines += [
         "",
-        "You can also message the study team here (no sign-in):",
+        "Open your application:",
         link,
         "",
         "This isn't medical advice and you can talk to your own doctor first.",
@@ -394,33 +379,27 @@ def build_apply_confirmation(lead, link, clinic_contacts=None):
 
 
 def build_clinic_connect_message(lead, link, clinic_contacts=None):
-    """Reconnect an existing applicant to the study clinic. No booking link."""
+    """BridgeMD emails the applicant their thread. No clinic address to write."""
+    _ = clinic_contacts
     title = lead["title"] or lead["nct"] or "a clinical trial"
-    subject = f"Your study clinic contact - {lead['nct'] or 'your application'}"
+    subject = f"Message the study team - {lead['nct'] or 'your application'}"
     lines = [
         f"Hi {lead['name'] or 'there'},",
         "",
-        "Here is how to reach the study clinic for your application. If you "
-        "got an earlier booking-link email from us, please ignore it - that "
-        "link was sent by mistake.",
+        "Your application is with the study team. If you got an earlier "
+        "booking-link email from us, please ignore it - that link was sent "
+        "by mistake.",
+        "",
+        "Message the study team here. No sign-in. They will reply on this "
+        "same thread.",
         "",
         f"Trial: {title}",
     ]
     if lead["nct"]:
         lines.append(f"Reference number: {lead['nct']}")
-    clinic_lines = _clinic_contact_lines(clinic_contacts)
-    if clinic_lines:
-        lines += ["", "Study clinic:"] + clinic_lines
-        lines.append("They already have your email from when you applied.")
-    else:
-        lines += [
-            "",
-            "The study team has your application and can contact you at the "
-            "email you used to apply.",
-        ]
     lines += [
         "",
-        "Message them here any time (no sign-in):",
+        "Open your application:",
         link,
         "",
         "This isn't medical advice and you can talk to your own doctor first.",
@@ -514,30 +493,19 @@ def build_schedule_sms(lead, schedule_url):
 
 def build_dm_message(lead, body, link, to="patient", clinic_contacts=None):
     """A new chat message notification. `to` is who receives the email."""
+    _ = clinic_contacts
     title = lead["title"] or lead["nct"] or "your clinical trial application"
     if to == "patient":
         subject = f"New message from the study team - {lead['nct'] or 'your application'}"
         opener = (f"Hi {lead['name'] or 'there'},\n\nThe study team sent you a "
                   f"message about {title}:")
-        reply = "Reply to the study team here (no sign-in needed):"
+        reply = "Reply here (no sign-in needed):"
     else:
         subject = f"New message from an applicant - {lead['nct'] or 'application'}"
         opener = f"An applicant sent a message about {title}:"
         reply = "Reply here:"
-    lines = [opener, "", f"  \"{body.strip()}\"", "", reply, link]
-    if to == "patient" and clinic_contacts:
-        lines += ["", "You can also reach the study clinic directly:"]
-        for c in clinic_contacts[:4]:
-            if not isinstance(c, dict):
-                continue
-            bit = "  - "
-            if c.get("facility"):
-                bit += f"{c['facility']} "
-            if c.get("email"):
-                bit += c["email"]
-            if bit.strip() != "-":
-                lines.append(bit.rstrip())
-    lines += ["", "Sent via BridgeMD."]
+    lines = [opener, "", f"  \"{body.strip()}\"", "", reply, link,
+             "", "Sent via BridgeMD."]
     return subject, "\n".join(lines)
 
 

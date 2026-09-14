@@ -1538,6 +1538,70 @@ def _boot_clinic_notify_backfill():
 _boot_clinic_notify_backfill()
 
 
+_connect_backfill_started = False
+_connect_backfill_lock = threading.Lock()
+
+
+def _backfill_applicant_connect_emails():
+    """Email live applicants their /a/ thread once. No clinic addresses."""
+    if not notifications_ready():
+        print("connect-email backfill skipped (notify not live)", flush=True)
+        return 0
+    sent = 0
+    live = db.live_apply_index()
+    pending = [
+        lead for lead in db.leads_missing_connect_email()
+        if _is_live_application(lead, live)
+    ]
+    print(f"connect-email backfill pending {len(pending)} apply(s)", flush=True)
+    for lead in pending:
+        try:
+            if _notify_applicant_clinic_connect(lead):
+                sent += 1
+                print(
+                    f"connect-email backfill lead={lead['id']} nct={lead['nct']}",
+                    flush=True)
+        except Exception:
+            app.logger.exception(
+                "connect email backfill failed for lead %s", lead["id"])
+    return sent
+
+
+def _run_connect_email_backfill():
+    with app.app_context():
+        try:
+            print("connect-email backfill start", flush=True)
+            n = _backfill_applicant_connect_emails()
+            print(f"connect-email backfill emailed {n} apply(s)", flush=True)
+        except Exception:
+            print("connect-email backfill crashed", flush=True)
+            app.logger.exception("connect email backfill failed")
+
+
+def _boot_connect_email_backfill():
+    print(
+        f"connect-email boot live={NOTIFY_LIVE} "
+        f"smtp={mailer.smtp_configured()} ready={notifications_ready()}",
+        flush=True)
+    if not notifications_ready():
+        print("connect-email backfill skipped (notify not live)", flush=True)
+        return
+    global _connect_backfill_started
+    with _connect_backfill_lock:
+        if _connect_backfill_started:
+            return
+        _connect_backfill_started = True
+
+    def _run():
+        time.sleep(4)
+        _run_connect_email_backfill()
+
+    threading.Thread(target=_run, daemon=True).start()
+
+
+_boot_connect_email_backfill()
+
+
 def _dedup_email_list(raw, exclude=None):
     """Split a comma-separated address string into a de-duplicated, order-
     preserving list, dropping any addresses in `exclude` (case-insensitive).
@@ -1620,33 +1684,30 @@ def _notify_applicant_by_id(lead_id, kind):
 
 
 def _notify_applicant_apply_confirmation(token, clinic_contacts=None):
-    """Send the applicant a friendly 'we got your application' confirmation right
-    after they apply. No-op if there's no email/phone or notifications are off."""
+    """BridgeMD emails the applicant their thread. No-op if notify is off."""
+    _ = clinic_contacts
     lead = db.get_lead_by_token(token)
     if not lead or (not lead["email"] and not lead["phone"]):
         return False
-    clinics = clinic_contacts if clinic_contacts is not None \
-        else db.lead_clinic_notify(lead)
     subject, body = mailer.build_apply_confirmation(
-        lead, _applicant_thread_url(lead), clinic_contacts=clinics)
-    _notify_patient_async(lead["email"], lead["phone"], subject, body, "")
-    return True
+        lead, _applicant_thread_url(lead))
+    ok = _notify_patient(lead["email"], lead["phone"], subject, body, "")
+    if ok:
+        db.mark_connect_emailed(lead["id"])
+    return ok
 
 
 def _notify_applicant_clinic_connect(lead, clinic_contacts=None):
-    """Email an existing applicant the clinic contact + their thread link."""
+    """BridgeMD emails an existing applicant their thread. No clinic address."""
+    _ = clinic_contacts
     if not lead or (not lead["email"] and not lead["phone"]):
         return False
-    clinics = clinic_contacts if clinic_contacts is not None \
-        else db.lead_clinic_notify(lead)
-    if not clinics:
-        nct = (lead["nct"] or "").strip()
-        if nct:
-            clinics = _resolve_clinic_notify_recipients(lead)
     subject, body = mailer.build_clinic_connect_message(
-        lead, _applicant_thread_url(lead), clinic_contacts=clinics)
-    _notify_patient_async(lead["email"], lead["phone"], subject, body, "")
-    return True
+        lead, _applicant_thread_url(lead))
+    ok = _notify_patient(lead["email"], lead["phone"], subject, body, "")
+    if ok:
+        db.mark_connect_emailed(lead["id"])
+    return ok
 
 
 _PLACEHOLDER_SCHEDULE_MARKERS = (
@@ -1742,9 +1803,7 @@ def _notify_applicant_message(lead, body):
     if not lead or (not lead["email"] and not lead["phone"]):
         return False
     link = _applicant_thread_url(lead)
-    subject, msg = mailer.build_dm_message(
-        lead, body, link, to="patient",
-        clinic_contacts=db.lead_clinic_notify(lead))
+    subject, msg = mailer.build_dm_message(lead, body, link, to="patient")
     sms = mailer.build_dm_sms(lead, link, to="patient")
     _notify_patient_async(lead["email"], lead["phone"], subject, msg, sms)
     return True
@@ -5598,19 +5657,11 @@ def interest():
             db.attribute_lead(new_lead["id"], _tr["campaign_id"],
                               _tr["placement_id"], only_if_nct=_tr["nct"])
     if new_lead:
-        sysmsg = (
-            "Thanks for applying - your application was received and emailed to "
-            "the study clinic. They have your email and can write you directly.")
-        clinic_bits = []
-        for rec in clinic_recs[:3]:
-            em = (rec.get("email") or "").strip()
-            fac = (rec.get("facility") or "").strip()
-            if em:
-                clinic_bits.append(f"{fac + ' ' if fac else ''}{em}".strip())
-        if clinic_bits:
-            sysmsg += " Clinic: " + "; ".join(clinic_bits) + "."
-        db.add_message(new_lead["id"], "system", sysmsg)
-    _notify_applicant_apply_confirmation(token, clinic_contacts=clinic_recs)
+        db.add_message(
+            new_lead["id"], "system",
+            "Thanks for applying. We emailed you a link to message the study "
+            "team. They will reply on that same thread.")
+    _notify_applicant_apply_confirmation(token)
     _log_event("apply", {"nct": f.get("nct", "").strip()})
     # Prefill an OPTIONAL "alert me about similar trials" offer on the thank-you
     # page (see thanks.html). Nothing is created unless the patient opts in.
@@ -6989,7 +7040,6 @@ def application_public(token):
         "application_public.html",
         lead=lead,
         messages=db.get_messages(lead["id"]),
-        clinic=db.lead_clinic_notify(lead),
         labels=db.LEAD_LABELS,
         closed=lead["status"] in db.LEAD_CLOSED)
 
@@ -12703,9 +12753,9 @@ def send_applicant_clinic_intro(lead_id):
     if _notify_applicant_clinic_connect(lead):
         db.add_message(
             lead_id, "system",
-            "Clinic contact emailed to the applicant so they can write the "
-            "study team directly.")
-        flash("Clinic contact emailed to the applicant.", "success")
+            "We emailed the applicant their application thread so they can "
+            "message the study team.")
+        flash("Application link emailed to the applicant.", "success")
     else:
         flash("Couldn't email that applicant.", "error")
     return redirect(back)

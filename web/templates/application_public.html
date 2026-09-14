@@ -19,21 +19,6 @@
     {{ ui.badge(labels.get(lead.status, lead.status), 'neutral' if closed else 'brand') }}
   </div>
 
-  {% if clinic %}
-  <div class="app-card pad">
-    <div class="thread-head">{{ ic.icon('mail') }} Study clinic</div>
-    <p class="apps-sub" style="margin:0 0 12px;">You can message the team here, or contact the clinic directly.</p>
-    <ul class="pdoc-list">
-      {% for c in clinic %}
-      <li class="pdoc">
-        <span class="pdoc-tag">{{ c.facility or 'Clinic' }}</span>
-        {% if c.email %}<a class="pdoc-link" href="mailto:{{ c.email }}">{{ c.email }}</a>{% endif %}
-      </li>
-      {% endfor %}
-    </ul>
-  </div>
-  {% endif %}
-
   <div class="thread" data-thread>
     <div class="thread-head">{{ ic.icon('chat') }} Messages with the study team</div>
     <ul class="thread-list" data-thread-list>
