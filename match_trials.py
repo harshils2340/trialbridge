@@ -718,6 +718,50 @@ def _normalize_prescreen(data, max_q):
     return out
 
 
+def structured_prescreen_questions(trial, max_q=None):
+    """Trial-specific yes/no questions from CT.gov fields, no LLM.
+
+    Used when the model is off, slow, or returns nothing, so the apply form
+    still asks about THIS study instead of the four generic gates.
+    """
+    if max_q is None:
+        max_q = PRESCREEN_MAX_Q
+    trial = trial or {}
+    out = []
+
+    def _add(q, flag_if):
+        q = (q or "").strip()
+        if not q or any(q.lower() == x["q"].lower() for x in out):
+            return
+        out.append({"q": q, "flag_if": flag_if})
+
+    healthy = str(trial.get("healthyVolunteers") or "").strip().lower()
+    conds = [c.strip() for c in (trial.get("conditions") or []) if str(c).strip()]
+    if conds and healthy not in ("yes", "true", "1"):
+        name = conds[0]
+        if len(name) > 80:
+            name = name[:77].rstrip() + "…"
+        _add(f"Have you been diagnosed with {name}?", "no")
+
+    min_age = (trial.get("minAge") or "").strip()
+    max_age = (trial.get("maxAge") or "").strip()
+    if min_age and max_age:
+        _add(f"Are you between {min_age} and {max_age} old?", "no")
+    elif min_age:
+        _add(f"Are you at least {min_age} old?", "no")
+    elif max_age:
+        _add(f"Are you {max_age} old or younger?", "no")
+
+    sex = (trial.get("sex") or "ALL").strip().upper()
+    if sex == "FEMALE":
+        _add("Are you pregnant, or planning to become pregnant, during the study?",
+             "yes")
+    elif sex == "MALE":
+        _add("Are you male?", "no")
+
+    return out[:max_q]
+
+
 # Pre-screen generation latency is dominated by the number of questions produced
 # (output tokens) and, secondarily, by how much criteria text we make the model
 # read (prefill). Both are tuned down from their original 6 questions / 6000 chars
@@ -986,6 +1030,19 @@ def selftest():
     # json repair
     check("json repair strips prose",
           _extract_json('here you go: {"a": 1} thanks')["a"] == 1)
+
+    t2d = {"nctId": "NCT1", "sex": "ALL", "minAge": "18 Years",
+           "maxAge": "75 Years", "conditions": ["Type 2 Diabetes"],
+           "healthyVolunteers": "No"}
+    qs = structured_prescreen_questions(t2d)
+    texts = " ".join(q["q"] for q in qs)
+    check("structured asks about this diagnosis", "Type 2 Diabetes" in texts)
+    check("structured asks about this age range", "18 Years" in texts and "75 Years" in texts)
+    check("structured skips generic travel gate", "travel" not in texts.lower())
+    female = structured_prescreen_questions(
+        {"sex": "FEMALE", "conditions": ["Migraine"], "healthyVolunteers": "No"})
+    check("female-only study asks pregnancy",
+          any("pregnant" in q["q"].lower() for q in female))
 
     print("\nSELFTEST:", "ALL PASS" if ok else "FAILURES PRESENT")
     sys.exit(0 if ok else 1)

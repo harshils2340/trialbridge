@@ -258,7 +258,7 @@
         <input type="hidden" name="sex" value="{{ q_sex or (records_profile.sex if records_profile else '') }}">
         <input type="hidden" name="eligibility" value='{{ {"verdict": m.verdict, "rationale": m.rationale, "met": m.met, "unknown": m.unknown, "not_met": m.not_met}|tojson }}'>
 
-        {% set ai_pending = prescreen_ai and not prescreen %}
+        {% set ai_pending = prescreen_ai and cached_prescreen is none %}
         {% set q_total = (prescreen|length + 2) if prescreen else 4 %}
         <div class="if-screener" id="ifScreener"{% if ai_pending %} data-prescreen-url="{{ url_for('trial_prescreen', search_id=search_id, nct=t.nctId) }}"{% endif %}>
           <div class="if-screener-head" id="ifScreenerHead">A few quick questions{% if not ai_pending %} ({{ q_total }}){% endif %} to pre-screen you for this study</div>
@@ -275,9 +275,15 @@
               </select></label>
             {% endfor %}
             <label><span>{{ prescreen|length + 1 }}. Can you travel to the study site for visits?</span>
-              <select name="travel"><option value="yes">Yes</option><option value="maybe">Not sure</option><option value="no">No</option></select></label>
+              <select name="travel" required>
+                <option value="" disabled selected>Select</option>
+                <option value="yes">Yes</option><option value="maybe">Not sure</option><option value="no">No</option>
+              </select></label>
             <label><span>{{ prescreen|length + 2 }}. Can you give your own informed consent?</span>
-              <select name="consent_capable"><option value="yes">Yes</option><option value="no">No</option></select></label>
+              <select name="consent_capable" required>
+                <option value="" disabled selected>Select</option>
+                <option value="yes">Yes</option><option value="no">No</option>
+              </select></label>
           {% elif ai_pending %}
             {# Lazy-load: show a skeleton until the study-specific questions arrive
                (JS in trial_prescreen fetch), so we never flash the generic set
@@ -287,23 +293,47 @@
             </div>
             <noscript>
               <label><span>1. Can you travel to the study site for visits?</span>
-                <select name="travel"><option value="yes">Yes</option><option value="maybe">Not sure</option><option value="no">No</option></select></label>
+                <select name="travel" required>
+                  <option value="" disabled selected>Select</option>
+                  <option value="yes">Yes</option><option value="maybe">Not sure</option><option value="no">No</option>
+                </select></label>
               <label><span>2. Are you currently in another clinical trial?</span>
-                <select name="other_trial"><option value="no">No</option><option value="yes">Yes</option></select></label>
+                <select name="other_trial" required>
+                  <option value="" disabled selected>Select</option>
+                  <option value="no">No</option><option value="yes">Yes</option>
+                </select></label>
               <label><span>3. Are you pregnant or planning to become pregnant?</span>
-                <select name="pregnancy"><option value="no">No</option><option value="yes">Yes</option><option value="na">Not applicable</option></select></label>
+                <select name="pregnancy" required>
+                  <option value="" disabled selected>Select</option>
+                  <option value="no">No</option><option value="yes">Yes</option><option value="na">Not applicable</option>
+                </select></label>
               <label><span>4. Can you give your own informed consent?</span>
-                <select name="consent_capable"><option value="yes">Yes</option><option value="no">No</option></select></label>
+                <select name="consent_capable" required>
+                  <option value="" disabled selected>Select</option>
+                  <option value="yes">Yes</option><option value="no">No</option>
+                </select></label>
             </noscript>
           {% else %}
             <label><span>1. Can you travel to the study site for visits?</span>
-              <select name="travel"><option value="yes">Yes</option><option value="maybe">Not sure</option><option value="no">No</option></select></label>
+              <select name="travel" required>
+                <option value="" disabled selected>Select</option>
+                <option value="yes">Yes</option><option value="maybe">Not sure</option><option value="no">No</option>
+              </select></label>
             <label><span>2. Are you currently in another clinical trial?</span>
-              <select name="other_trial"><option value="no">No</option><option value="yes">Yes</option></select></label>
+              <select name="other_trial" required>
+                <option value="" disabled selected>Select</option>
+                <option value="no">No</option><option value="yes">Yes</option>
+              </select></label>
             <label><span>3. Are you pregnant or planning to become pregnant?</span>
-              <select name="pregnancy"><option value="no">No</option><option value="yes">Yes</option><option value="na">Not applicable</option></select></label>
+              <select name="pregnancy" required>
+                <option value="" disabled selected>Select</option>
+                <option value="no">No</option><option value="yes">Yes</option><option value="na">Not applicable</option>
+              </select></label>
             <label><span>4. Can you give your own informed consent?</span>
-              <select name="consent_capable"><option value="yes">Yes</option><option value="no">No</option></select></label>
+              <select name="consent_capable" required>
+                <option value="" disabled selected>Select</option>
+                <option value="yes">Yes</option><option value="no">No</option>
+              </select></label>
           {% endif %}
           </div>
         </div>
@@ -394,13 +424,17 @@
   function renderGeneric() {
     var frag = document.createDocumentFragment();
     frag.appendChild(question('1. Can you travel to the study site for visits?',
-      select('travel', [opt('yes', 'Yes'), opt('maybe', 'Not sure'), opt('no', 'No')])));
+      select('travel', [opt('', 'Select', true, true), opt('yes', 'Yes'),
+        opt('maybe', 'Not sure'), opt('no', 'No')], true)));
     frag.appendChild(question('2. Are you currently in another clinical trial?',
-      select('other_trial', [opt('no', 'No'), opt('yes', 'Yes')])));
+      select('other_trial', [opt('', 'Select', true, true), opt('no', 'No'),
+        opt('yes', 'Yes')], true)));
     frag.appendChild(question('3. Are you pregnant or planning to become pregnant?',
-      select('pregnancy', [opt('no', 'No'), opt('yes', 'Yes'), opt('na', 'Not applicable')])));
+      select('pregnancy', [opt('', 'Select', true, true), opt('no', 'No'),
+        opt('yes', 'Yes'), opt('na', 'Not applicable')], true)));
     frag.appendChild(question('4. Can you give your own informed consent?',
-      select('consent_capable', [opt('yes', 'Yes'), opt('no', 'No')])));
+      select('consent_capable', [opt('', 'Select', true, true),
+        opt('yes', 'Yes'), opt('no', 'No')], true)));
     body.innerHTML = '';
     body.appendChild(frag);
     if (head) head.textContent =
@@ -412,7 +446,10 @@
     .then(function (r) { return r.json(); })
     .then(function (d) {
       var qs = (d && d.questions) || [];
-      if (!qs.length) { renderGeneric(); return; }  // no tailored -> generic
+      if (!qs.length) {
+        if (body.querySelector('.if-q-skel')) renderGeneric();
+        return;
+      }
       var frag = document.createDocumentFragment();
       qs.forEach(function (q, i) {
         var sel = select('sa_' + i, [
@@ -424,9 +461,11 @@
       });
       var n = qs.length;
       frag.appendChild(question((n + 1) + '. Can you travel to the study site for visits?',
-        select('travel', [opt('yes', 'Yes'), opt('maybe', 'Not sure'), opt('no', 'No')])));
+        select('travel', [opt('', 'Select', true, true), opt('yes', 'Yes'),
+          opt('maybe', 'Not sure'), opt('no', 'No')], true)));
       frag.appendChild(question((n + 2) + '. Can you give your own informed consent?',
-        select('consent_capable', [opt('yes', 'Yes'), opt('no', 'No')])));
+        select('consent_capable', [opt('', 'Select', true, true),
+          opt('yes', 'Yes'), opt('no', 'No')], true)));
       body.innerHTML = '';
       body.appendChild(frag);
       if (head) head.textContent = 'A few quick questions (' + (n + 2)

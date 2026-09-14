@@ -4781,22 +4781,32 @@ _PRESCREEN_CACHE_MAX = int(os.environ.get("PRESCREEN_CACHE_MAX", "200"))
 _PRESCREEN_TTL_SECONDS = int(os.environ.get("PRESCREEN_CACHE_TTL", "86400"))
 
 
+def _structured_prescreen(trial):
+    try:
+        return mt.structured_prescreen_questions(trial) or []
+    except Exception:
+        return []
+
+
 def _prescreen_for_trial(trial):
     """Return cached/generated patient-answerable pre-screen questions for a
-    trial. Never raises: on any failure returns [] so the apply form falls back
-    to the generic screener."""
+    trial. Prefers the LLM list, then structured CT.gov fields, then []."""
     nct = (trial or {}).get("nctId") or ""
-    if not nct or not mt.LLM_API_KEY:
-        return []
+    if not nct:
+        return _structured_prescreen(trial)
     hit = _PRESCREEN_CACHE.get(nct)
     if hit and (time.time() - float(hit.get("ts") or 0)) <= _PRESCREEN_TTL_SECONDS:
         _PRESCREEN_CACHE.move_to_end(nct)
         return hit["questions"]
-    try:
-        questions = mt.prescreen_questions(trial)
-    except Exception:
-        app.logger.exception("prescreen question generation failed")
-        questions = []
+    questions = []
+    if mt.LLM_API_KEY:
+        try:
+            questions = mt.prescreen_questions(trial)
+        except Exception:
+            app.logger.exception("prescreen question generation failed")
+            questions = []
+    if not questions:
+        questions = _structured_prescreen(trial)
     _PRESCREEN_CACHE[nct] = {"questions": questions, "ts": time.time()}
     _PRESCREEN_CACHE.move_to_end(nct)
     while len(_PRESCREEN_CACHE) > _PRESCREEN_CACHE_MAX:
@@ -5331,12 +5341,15 @@ def trial_detail(search_id, nct):
     # questions are already cached we render them inline; otherwise the page
     # ships instantly with the generic screener and JS upgrades it via the
     # `trial_prescreen` endpoint below.
-    prescreen = _prescreen_cached(r["trial"]) or []
+    cached_prescreen = _prescreen_cached(r["trial"])
+    prescreen = (cached_prescreen if cached_prescreen
+                 else _structured_prescreen(r["trial"]))
     prescreen_ai = bool(mt.LLM_API_KEY) and bool((r["trial"] or {}).get("criteria"))
     plain_terms = summarize.plain_terms(r["trial"])
     return render_template("trial_detail.html", r=r, search_id=search_id,
                            applied=applied, summary=summary, plain_terms=plain_terms,
-                           prescreen=prescreen, prescreen_ai=prescreen_ai, **ctx)
+                           prescreen=prescreen, prescreen_ai=prescreen_ai,
+                           cached_prescreen=cached_prescreen, **ctx)
 
 
 @app.route("/trial/<search_id>/<nct>/prescreen.json")
