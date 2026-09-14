@@ -220,22 +220,26 @@ input:focus, textarea:focus, select:focus {
    ring; the field inside must not draw its own. Keep this list in sync with the
    `:focus-within` wrappers (search `:focus-within` in this file). */
 .hero-search input, .hero-search select,
+.hero-field input,
 .chips-input input,
 .pr-topsearch-field input,
 .lead-search input,
 .chatbar input, .chatbar textarea,
 .dock-composer textarea,
 .mh-search input {
-  box-shadow: none; border-radius: 0;
+  box-shadow: none; border: none; outline: none; border-radius: 0;
+  background: transparent;
 }
 .hero-search input:focus, .hero-search select:focus,
+.hero-search input:focus-visible, .hero-search select:focus-visible,
+.hero-field input:focus, .hero-field input:focus-visible,
 .chips-input input:focus,
-.pr-topsearch-field input:focus,
+.pr-topsearch-field input:focus, .pr-topsearch-field input:focus-visible,
 .lead-search input:focus,
 .chatbar input:focus, .chatbar textarea:focus,
 .dock-composer textarea:focus,
 .mh-search input:focus {
-  box-shadow: none;
+  box-shadow: none; border: none; outline: none; border-color: transparent;
 }
 textarea { resize: vertical; min-height: 150px; line-height: 1.6; }
 /* iOS Safari zooms the whole page when a field under 16px takes focus, which
@@ -1792,28 +1796,23 @@ body.home-screen .landing-legal-links { margin: 0; flex: 0 0 auto; font-size: 12
   .pr-head-actions { justify-content: flex-end; }
   .if-row.two { flex-direction: column; }
 }
-/* Inline "search something new" bar at the top of results - mirrors the homepage
-   finder (incl. the By condition / Describe it language toggle) so patients can
-   retweak the query + location without leaving the page. */
+/* Inline "search something new" bar at the top of results - same unified
+   .hero-search as the homepage (condition | location | Search). Separate pills
+   each painted their own focus ring, so the focused input sat in a rectangle
+   inside a rounded field. */
 .pr-topsearch { margin: 0 0 18px; }
-/* Reuse the homepage's mode toggle (.search-modes/.search-mode) verbatim; just
-   tighten the margin for the results context. */
-.pr-topsearch .search-modes { margin: 0 0 8px; }
-.pr-topsearch-row { display: flex; gap: 8px; align-items: stretch; flex-wrap: wrap; }
-.pr-topsearch-field { display: flex; align-items: center; gap: 8px; background: var(--surface);
-  border: 1px solid var(--border); border-radius: var(--radius-pill); padding: 0 14px;
-  transition: border-color .12s ease, box-shadow .12s ease; }
-.pr-topsearch-field:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
-.pr-topsearch-field .ico { width: 17px; height: 17px; color: var(--faint); flex-shrink: 0; }
-.pr-topsearch-field input { border: none; background: none; outline: none; padding: 12px 0;
-  font: 400 15px/1 var(--sans); color: var(--ink); width: 100%; }
-.pr-topsearch-cond { flex: 2 1 260px; position: relative; }
-.pr-topsearch-loc { flex: 1 1 180px; }
+.pr-topsearch .search-modes { display: flex; width: 100%; max-width: 420px; gap: 4px;
+  margin: 0 0 10px; padding: 4px; background: #eef1f7; border-color: transparent;
+  border-radius: 14px; }
+.pr-topsearch .search-mode { flex: 1 1 0; text-align: center; padding: 9px 12px;
+  border-radius: 10px; font-size: 14px; }
+.pr-topsearch .search-mode.is-active {
+  background: linear-gradient(135deg, #3b6ef2, #1257b0); color: #fff;
+  box-shadow: 0 6px 14px -6px rgba(18, 87, 176, .6); }
+.pr-topsearch .search-mode.is-active:hover { color: #fff; }
+.pr-topsearch .hero-search { margin: 0; max-width: none; }
+.pr-topsearch-cond { position: relative; }
 .pr-topsearch-btn { flex-shrink: 0; white-space: nowrap; }
-@media (max-width: 560px) {
-  .pr-topsearch-field { flex-basis: 100%; }
-  .pr-topsearch-btn { width: 100%; justify-content: center; }
-}
 .pr-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;
   margin-bottom: 24px; }
 .pr-head h1 { font-size: 28px; letter-spacing: -.03em; margin: 0 0 4px; }

@@ -116,23 +116,30 @@
         <button type="button" class="search-mode is-active" data-mode="condition" role="tab" aria-selected="true">By condition</button>
         <button type="button" class="search-mode" data-mode="describe" role="tab" aria-selected="false">Describe it</button>
       </div>
-      <div class="pr-topsearch-row">
-        <div class="pr-topsearch-field pr-topsearch-cond">
-          {{ ic.icon('search') }}
-          <input type="text" id="prCondInput" name="condition"
-                 value="{{ '' if location_only else (q_condition or condition) }}"
-                 placeholder="Condition, treatment, or drug" autocomplete="off"
-                 autocapitalize="off" spellcheck="false" aria-label="Condition, treatment, or drug"
-                 {% if not location_only %}required{% endif %}>
-          <div id="prCondSuggest" class="hero-suggest" hidden></div>
+      {# Same unified bar as the homepage. Separate pills each drew their own
+         focus ring, so the focused input sat in a rectangle inside a rounded
+         field. The bar owns the ring; the fields inside stay flat. #}
+      <div class="hero-search">
+        <div class="hero-search-query">
+          <div class="hero-field pr-topsearch-cond">
+            {{ ic.icon('search') }}
+            <input type="text" id="prCondInput" name="condition"
+                   value="{{ '' if location_only else (q_condition or condition) }}"
+                   placeholder="Condition, treatment, or drug" autocomplete="off"
+                   autocapitalize="off" spellcheck="false" aria-label="Condition, treatment, or drug"
+                   {% if not location_only %}required{% endif %}>
+            <div id="prCondSuggest" class="hero-suggest" hidden></div>
+          </div>
         </div>
-        <div class="pr-topsearch-field pr-topsearch-loc">
-          {{ ic.icon('pin') }}
-          <input type="text" name="location" value="{{ location }}"
-                 placeholder="City or postal code" autocomplete="off"
-                 autocapitalize="words" spellcheck="false" aria-label="Location" required>
+        <div class="hero-search-loc">
+          <div class="hero-field">
+            {{ ic.icon('pin') }}
+            <input type="text" name="location" value="{{ location }}"
+                   placeholder="City or postal code" autocomplete="off"
+                   autocapitalize="words" spellcheck="false" aria-label="Location" required>
+          </div>
         </div>
-        <button type="submit" class="btn btn-primary pr-topsearch-btn">{{ ic.icon('search') }} Search</button>
+        <button type="submit" class="btn btn-primary hero-go pr-topsearch-btn">{{ ic.icon('search') }} Search</button>
       </div>
       <input type="hidden" name="radius" value="{{ q_radius }}">
       <input type="hidden" name="age" value="{{ q_age }}">

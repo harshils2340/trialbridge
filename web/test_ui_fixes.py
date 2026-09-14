@@ -118,6 +118,8 @@ def test_results_hide_probably_not_by_default():
         "'Probably not a fit' must NOT be checked by default"
     assert 'class="f-fit" value="no"' in html, "the 'no' checkbox should exist"
     assert 'id="prCondInput"' in html
+    assert 'class="hero-search"' in html, "results search must be one bar, not two pills"
+    assert 'pr-topsearch-field' not in html
     assert 'value="Widgetitis"' in html, "results should prefill the current condition"
     assert "\n  apply();" in html or "apply();" in html, \
         "init should apply the default filter on load"
