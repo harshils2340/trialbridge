@@ -386,9 +386,9 @@ def build_clinic_connect_message(lead, link, clinic_contacts=None):
     lines = [
         f"Hi {lead['name'] or 'there'},",
         "",
-        "Your application is with the study team. If you got an earlier "
-        "booking-link email from us, please ignore it - that link was sent "
-        "by mistake.",
+        "Your application is with the study team. Please disregard any "
+        "earlier email asking you to pick a screening time - that was sent "
+        "by mistake and the link does not work.",
         "",
         "Message the study team here. No sign-in. They will reply on this "
         "same thread.",

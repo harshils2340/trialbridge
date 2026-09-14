@@ -74,7 +74,7 @@ def test_apply_confirmation_includes_clinic():
     assert "Message them here" in body
     _subj2, body2 = mailer.build_clinic_connect_message(
         lead, "https://bridgemd.health/a/tok", clinic_contacts=clinics)
-    assert "ignore" in body2.lower()
+    assert "disregard" in body2.lower()
     assert "info@northwindclinical.com" not in body2
     assert "/a/tok" in body2
     print("PASS: applicant emails are from BridgeMD and do not give clinic addresses")
@@ -85,6 +85,14 @@ def test_placeholder_url_is_detected():
     assert not webapp._is_placeholder_schedule_url(
         "https://calendly.com/real-clinic/screening")
     print("PASS: demo Calendly is treated as a placeholder")
+
+
+def test_calendar_email_never_sends():
+    lead = {"id": 1, "email": "patient@test.local", "phone": "",
+            "schedule_url": "https://calendly.com/real-clinic/screening",
+            "nct": "NCT07219966", "title": "Brenipatide"}
+    assert webapp._notify_applicant_schedule(lead) is False
+    print("PASS: calendar pick-a-time emails are never sent")
 
 
 def test_accept_does_not_email_booking_link():
@@ -170,6 +178,7 @@ def test_owner_can_message_before_accept():
 if __name__ == "__main__":
     test_apply_confirmation_includes_clinic()
     test_placeholder_url_is_detected()
+    test_calendar_email_never_sends()
     test_accept_does_not_email_booking_link()
     test_guest_can_message_site_from_secret_link()
     test_owner_can_message_before_accept()

@@ -106,17 +106,8 @@
     </dl>
   </div>
   <div class="card">
-    <div class="section-title"><h2>Invite to book a screening call</h2></div>
-    <p class="hint">Set a booking link. This updates status to <b>Screening</b>.</p>
-    <form method="post" action="{{ url_for('candidate_schedule', token=lead['site_token']) }}">
-      <div class="field">
-        <input name="schedule_url" type="url" value="{{ lead['schedule_url'] }}"
-               placeholder="https://calendly.com/your-site/screening">
-      </div>
-      <button class="btn btn-primary" type="submit">{{ ic.icon('activity') }}
-        {{ 'Update booking link' if lead['schedule_url'] else 'Send booking link' }}</button>
-      {% if lead['schedule_url'] %}<p class="hint">Current link sent to applicant: {{ lead['schedule_url'] }}</p>{% endif %}
-    </form>
+    <div class="section-title"><h2>Message the applicant</h2></div>
+    <p class="hint">Use the thread below. Applicants are not emailed a calendar or asked to pick a time.</p>
   </div>
   <div class="card">
     <div class="section-title"><h2>Book a screening visit</h2></div>

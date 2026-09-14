@@ -1723,23 +1723,11 @@ def _is_placeholder_schedule_url(url):
 
 
 def _notify_applicant_schedule(lead):
-    """Email the applicant their booking link so they can self-schedule."""
-    if (not lead or not lead["schedule_url"] or
-            (not lead["email"] and not lead["phone"])):
-        return False
-    if _is_placeholder_schedule_url(lead["schedule_url"]):
+    """Never email an applicant a calendar / pick-a-time link."""
+    if lead:
         app.logger.warning(
-            "refusing demo booking link for lead %s", lead["id"])
-        return False
-    if g.get("user") and _is_demo_account(g.user):
-        app.logger.warning(
-            "demo account cannot email booking links to applicants")
-        return False
-    subject, body = mailer.build_schedule_message(
-        lead, lead["schedule_url"], _applicant_thread_url(lead))
-    sms = mailer.build_schedule_sms(lead, lead["schedule_url"])
-    _notify_patient_async(lead["email"], lead["phone"], subject, body, sms)
-    return True
+            "refusing calendar email for lead %s", lead["id"])
+    return False
 
 
 def _lead_source_key(lead):
@@ -13328,12 +13316,10 @@ def schedule_lead(lead_id):
         url = (db.get_claim_schedule_url(g.user["id"], nct) if nct else "") \
             or db.get_site_calendar_url(g.user["id"])
     if not url:
-        flash("Add your booking calendar in Settings first, then you can send it "
-              "to applicants with one click.", "error")
+        flash("Add your booking calendar in Settings first.", "error")
         return redirect(back)
     if _is_placeholder_schedule_url(url):
-        flash("That booking link is a demo placeholder and cannot be emailed "
-              "to applicants.", "error")
+        flash("That booking link is a demo placeholder.", "error")
         return redirect(back)
     lead = db.set_lead_schedule(lead_id, url)
     if not lead:
@@ -13350,9 +13336,8 @@ def schedule_lead(lead_id):
         if lead["revealed"]:
             db.add_message(lead_id, "site",
                            f"Video call link for your screening visit: {video}")
-    _notify_applicant_schedule(lead)
-    flash("Booking link sent - the applicant can now self-schedule their "
-          "screening call.", "success")
+    flash("Booking link saved on the application. It was not emailed.",
+          "success")
     return redirect(back)
 
 
@@ -13460,11 +13445,10 @@ def copilot_act():
                 return jsonify({"ok": False,
                                 "error": "Set your booking calendar in Settings first."}), 400
             db.set_lead_schedule(lead_id, url)
-            lead = db.get_lead(lead_id)
-            _notify_applicant_schedule(lead)
             db.mark_copilot_action(token, "confirmed")
             lbl = payload.get("label") or "the applicant"
-            return jsonify({"ok": True, "answer": f"Booking link sent to {lbl}.",
+            return jsonify({"ok": True,
+                            "answer": f"Booking link saved for {lbl}. It was not emailed.",
                             "citations": [{"label": lbl,
                                            "url": payload.get("url_ref", "")}]})
 
@@ -14531,13 +14515,11 @@ def candidate_schedule(token):
     if not lead:
         abort(410)
     if url and _is_placeholder_schedule_url(url):
-        flash("That booking link is a demo placeholder and cannot be emailed "
-              "to applicants.", "error")
+        flash("That booking link is a demo placeholder.", "error")
         return redirect(url_for("candidate_page", token=lead["site_token"]))
     lead = db.set_lead_schedule(lead["id"], url)
     if url:
-        _notify_applicant_schedule(lead)
-        flash("Booking link sent to the applicant.", "ok")
+        flash("Booking link saved. It was not emailed to the applicant.", "ok")
     else:
         flash("Booking link removed.", "ok")
     return redirect(url_for("candidate_page", token=lead["site_token"]))

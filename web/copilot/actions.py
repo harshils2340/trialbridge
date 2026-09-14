@@ -49,21 +49,12 @@ def build_message_proposal(user_id, lead_id, intent="check_in"):
 
 
 def build_booking_proposal(user_id, lead_id):
-    """Propose sending the team's booking link to one applicant."""
+    """Calendar links are not emailed to applicants."""
     lead = tools.own_lead(user_id, lead_id)
     if not lead:
         return None
-    url = (db.get_claim_schedule_url(user_id, lead["nct"])
-           or db.get_site_calendar_url(user_id))
-    lbl = tools.label(lead)
-    if not url:
-        return {"blocked": "Set your booking calendar in Settings first, then I "
-                           "can send it with one click."}
-    token = db.create_copilot_action(
-        user_id, "send_booking_link", lead["id"],
-        {"url": url, "label": lbl, "url_ref": tools._url(lead)})
-    return {"kind": "send_booking_link", "token": token, "target": lbl,
-            "url": url, "editable": False, "confirm_label": "Send booking link"}
+    return {"blocked": "We do not email applicants a calendar link. "
+                       "Message them from the thread instead."}
 
 
 def build_bulk_reminder_proposal(user_id, days=5):

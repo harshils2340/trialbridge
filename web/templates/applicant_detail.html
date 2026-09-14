@@ -152,21 +152,10 @@
       </details>
       {% endif %}
 
-      {% macro reach_line() %}
-      {% if view.email or view.phone %}
-      <div class="ns-reach">{{ ic.icon('send') }}
-        <span>Sends the link to
-          {%- if view.email and view.phone %} <b>{{ view.email }}</b> and texts <b>{{ view.phone }}</b>
-          {%- elif view.email %} <b>{{ view.email }}</b>
-          {%- else %} <b>{{ view.phone }}</b> by text{% endif %}.</span>
-      </div>
-      {% endif %}
-      {% endmacro %}
-
       {% if l['status'] == 'prescreen' and not l['decision'] %}
       <div class="nextstep">
         <div class="ns-h">Decide on {{ first }}</div>
-        <p class="ns-p">{{ first }} already completed the screening questionnaire. Accepting unlocks their contact so you can message them here. Booking links are sent separately, only when you choose to send one.</p>
+        <p class="ns-p">{{ first }} already completed the screening questionnaire. Accepting unlocks their contact so you can message them here. We do not email a calendar.</p>
         <div style="display:flex;gap:10px;">
           <form method="post" action="{{ url_for('accept_lead', lead_id=l['id']) }}">
             <input type="hidden" name="next" value="{{ url_for('applicant_detail', lead_id=l['id']) }}">
@@ -182,30 +171,8 @@
       <div class="callout warn">{{ ic.icon('info') }} Marked not eligible{% if l['decision_reason'] %}: {{ l['decision_reason'] }}{% endif %}.</div>
       {% else %}
       <div class="nextstep">
-        {% if l['schedule_url'] %}
-        <div class="ns-h">{{ ic.icon('check') }} Booking link sent to {{ first }}</div>
-        <p class="ns-p">They can self-book a screening call. <a href="{{ l['schedule_url'] }}" target="_blank" rel="noopener">Open your booking link</a>.</p>
-        {% if l['video_url'] %}<p class="ns-p">Video call ready: <a href="{{ l['video_url'] }}" target="_blank" rel="noopener">join link</a>.</p>{% endif %}
-        {{ reach_line() }}
-        <form method="post" action="{{ url_for('schedule_lead', lead_id=l['id']) }}">
-          <input type="hidden" name="next" value="{{ url_for('applicant_detail', lead_id=l['id']) }}">
-          {{ ui.btn('Resend booking-link email', 'ghost', 'sm', type='submit', icon='send') }}
-        </form>
-        {% elif default_schedule %}
-        <div class="ns-h">Step 2 · Invite {{ first }} to book</div>
-        <p class="ns-p">Your booking calendar is set up. Send it and they self-book a screening visit in one click, no back-and-forth.</p>
-        {{ reach_line() }}
-        <form method="post" action="{{ url_for('schedule_lead', lead_id=l['id']) }}">
-          <input type="hidden" name="next" value="{{ url_for('applicant_detail', lead_id=l['id']) }}">
-          {{ ui.btn('Send booking-link email', 'primary', type='submit', icon='calendar') }}
-        </form>
-        {% else %}
-        <div class="ns-h">Step 2 · Invite {{ first }} to book</div>
-        <div class="callout warn" style="margin:0;">{{ ic.icon('info') }}
-          <span>Add your booking calendar once in
-          <a href="{{ url_for('site_setup') }}">Settings</a>, then invite applicants to self-book with one click.</span>
-        </div>
-        {% endif %}
+        <div class="ns-h">Step 2 · Message {{ first }}</div>
+        <p class="ns-p">Write them from the thread on this page. We do not email applicants a calendar or ask them to pick a time.</p>
       </div>
       {% endif %}
       <div class="verdict-fine">AI-assisted decision support. A qualified team member must review and decide.</div>
