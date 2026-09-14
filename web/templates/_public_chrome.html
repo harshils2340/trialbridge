@@ -1,5 +1,5 @@
 {# Shared marketing chrome for the patient trial finder + SEO pages.
-   Keeps /find-trial, /trials, and condition pages visually aligned with `/`. #}
+   Keeps /, /trials, and condition pages visually aligned. #}
 {% import "_nav.html" as nav %}
 
 {% macro head_assets() %}
@@ -76,5 +76,5 @@ body.pub-marketing .chip:hover{ border-color:rgba(18,87,176,.28); color:#1257b0;
    ('Trial finder', url_for('home')),
    ('FAQ', url_for('for_sites') ~ '#bmd-faq')],
   'Book a call', cal_link, cta_blank=true,
-  brand_href=url_for('for_sites')) }}
+  brand_href=url_for('home')) }}
 {% endmacro %}

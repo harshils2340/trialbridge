@@ -200,9 +200,9 @@ if NO_LOGIN and IS_PROD and PUBLIC_DEMO:
 SITE_DEMO = os.environ.get("SITE_DEMO", "1") == "1"
 
 # Optional dedicated host for the site-side marketing site (e.g.
-# "sites.bridgemd.health"). Only used to build the "For sites" link, since "/"
-# serves the site-side page on every host now. Empty by default => the link
-# stays on the current domain.
+# "sites.bridgemd.health"). Only used to build the "For sites" link. Empty by
+# default => the link stays on this domain at /for-sites. The site root is the
+# patient trial finder.
 SITES_HOST = os.environ.get("SITES_HOST", "").strip().lower()
 
 # Booking link used by the "Book a demo" CTA on the site-side site.
@@ -1951,17 +1951,18 @@ def inject_globals():
 
 
 def _sites_home_url():
-    """Absolute URL of the site-side site: the dedicated subdomain when
-    SITES_HOST is configured, otherwise the root of the current domain, which is
-    the site-side page. Lets the 'For sites' link point at sites.bridgemd.health
-    in prod while still working locally / before DNS is set up."""
+    """Absolute URL of the research-site marketing page.
+
+    Uses the dedicated subdomain when SITES_HOST is set, otherwise /for-sites
+    on the current host. The site root is the patient trial finder.
+    """
     if SITES_HOST:
         scheme = "https" if os.environ.get("BEHIND_PROXY") else request.scheme
-        return f"{scheme}://{SITES_HOST}/"
+        return f"{scheme}://{SITES_HOST}/for-sites"
     try:
         return url_for("for_sites")
     except Exception:
-        return "/"
+        return "/for-sites"
 
 
 @app.route("/demo-mode", methods=["POST"])
@@ -4568,12 +4569,16 @@ def build_patient_note(condition, age="", sex="", about="", pregnant="",
     return "\n".join(lines)
 
 
-@app.route("/find-trial")
+@app.route("/")
 def home():
-    # The patient search landing. It used to be the site root; the root is now
-    # the site-side page, so patient links (which all go through url_for("home"))
-    # follow this rule instead.
+    """Default site: the patient trial finder. Most visitors come to search."""
     return _render_landing()
+
+
+@app.route("/find-trial")
+def find_trial():
+    """Old finder URL. The search landing is now the site root."""
+    return redirect(url_for("home"), code=301)
 
 
 @app.route("/e/visit", methods=["POST"])
@@ -5742,11 +5747,9 @@ def _serve_landing():
     return resp
 
 
-@app.route("/")
+@app.route("/for-sites")
 def for_sites():
-    """The front door: the self-hosted BridgeMD marketing shell (one inbox for every
-    study inquiry, with an embedded trial finder). Patients get their own search at
-    url_for("home") (/find-trial), linked from the page."""
+    """Research-site marketing shell. The public front door is the trial finder."""
     _log_event("view_for_sites")
     return _serve_landing()
 
@@ -6831,12 +6834,6 @@ def marketing_coverage():
     else:
         flash("Vacation coverage is off. The primary owner is back on duty.", "ok")
     return redirect(url_for("marketing_hub"))
-
-
-@app.route("/for-sites")
-def for_sites_legacy():
-    """Old URL for the site-side marketing page. The hub now lives at `/`."""
-    return redirect(url_for("for_sites"), code=301)
 
 
 @app.route("/for-sites/<slug>")

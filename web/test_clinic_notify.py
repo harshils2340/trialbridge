@@ -223,13 +223,13 @@ def test_applicant_email_in_body_not_as_recipient():
         clinic={"facility": "Riverside Clinic"})
     assert "patient@secret.test" in body
     assert "not copied" in body.lower()
-    assert "https://bridgemd.health/find-trial" in body
+    assert "https://bridgemd.health/" in body
     assert "https://bridgemd.health/c/abc123" in body
     assert "614-555-0100" not in body
     assert "NCT09990001" in subject
     html = mailer.branded_html(body)
     assert "https://bridgemd.health/static/apple-touch-icon.png" in html
-    assert "https://bridgemd.health/find-trial" in html
+    assert "https://bridgemd.health/" in html
     assert "BridgeMD" in html
     print("PASS: applicant email is in the body only; branding + finder link included")
 

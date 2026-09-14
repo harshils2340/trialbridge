@@ -64,18 +64,18 @@
     "@graph": [
       {
         "@type": "Organization",
-        "@id": "{{ url_for('for_sites', _external=True) }}#org",
+        "@id": "{{ url_for('home', _external=True) }}#org",
         "name": "BridgeMD",
-        "url": "{{ url_for('for_sites', _external=True) }}",
+        "url": "{{ url_for('home', _external=True) }}",
         "logo": "{{ url_for('static', filename='logo.svg', _external=True) }}",
         "description": "BridgeMD helps people find recruiting clinical trials near them and apply online, free."
       },
       {
         "@type": "WebSite",
-        "@id": "{{ url_for('for_sites', _external=True) }}#website",
+        "@id": "{{ url_for('home', _external=True) }}#website",
         "name": "BridgeMD",
-        "url": "{{ url_for('for_sites', _external=True) }}",
-        "publisher": {"@id": "{{ url_for('for_sites', _external=True) }}#org"}
+        "url": "{{ url_for('home', _external=True) }}",
+        "publisher": {"@id": "{{ url_for('home', _external=True) }}#org"}
       }
     ]
   }

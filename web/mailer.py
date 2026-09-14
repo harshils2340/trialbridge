@@ -61,7 +61,7 @@ def build_message(ref, link):
     return subject, "\n".join(lines)
 
 
-FINDER_URL = "https://bridgemd.health/find-trial"
+FINDER_URL = "https://bridgemd.health/"
 BRAND_HOME = "https://bridgemd.health"
 # PNG mark (email clients often skip SVG). Already served on production.
 LOGO_URL = "https://bridgemd.health/static/apple-touch-icon.png"

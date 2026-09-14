@@ -125,10 +125,9 @@ def test_results_hide_probably_not_by_default():
 
 
 def test_find_trial_is_split_carousel():
-    """/find-trial must match production: two-panel split, not a stacked
-    marketing page. Regression for when the carousel CSS/JS was retired."""
+    """The site root is the two-panel finder, not the research-site shell."""
     client = app.app.test_client()
-    r = client.get("/find-trial")
+    r = client.get("/")
     assert r.status_code == 200, r.status_code
     html = r.get_data(as_text=True)
     assert 'id="fyCarousel"' in html
@@ -148,30 +147,41 @@ def test_find_trial_is_split_carousel():
     assert "We also have a trial finder" not in html
     assert "home-screen" in html
     assert "is-fy-split" in html
-    print("PASS: /find-trial is the production split carousel")
+    print("PASS: / is the production split carousel")
 
 
 def test_find_trial_book_a_call_uses_cal_link():
     """The sites-side Book a call pill must open Cal.com. The header lives in
     a Jinja macro imported without context, so cal_link has to be passed in."""
     client = app.app.test_client()
-    html = client.get("/find-trial").get_data(as_text=True)
+    html = client.get("/").get_data(as_text=True)
     assert 'class="pill-nav-cta"' in html
     assert 'href="' + app.CAL_LINK + '"' in html
     assert 'Book a call' in html
-    print("PASS: /find-trial Book a call points at Cal.com")
+    print("PASS: / Book a call points at Cal.com")
 
 
-def test_for_sites_legacy_url_redirects_home():
-    """The footer used to 404 on /for-sites. That path must 301 to the hub."""
+def test_old_finder_url_redirects_home():
+    """Bookmarks and emails still use /find-trial. That path 301s to /."""
     from urllib.parse import urlparse
     client = app.app.test_client()
-    r = client.get("/for-sites", follow_redirects=False)
-    assert r.status_code == 301, f"/for-sites returned {r.status_code}"
+    r = client.get("/find-trial", follow_redirects=False)
+    assert r.status_code == 301, f"/find-trial returned {r.status_code}"
     path = urlparse(r.headers.get("Location") or "").path
     assert path in ("/", ""), (
-        f"/for-sites redirected to {r.headers.get('Location')}, expected /")
-    print("PASS: /for-sites 301s to the sites homepage")
+        f"/find-trial redirected to {r.headers.get('Location')}, expected /")
+    print("PASS: /find-trial 301s to the finder homepage")
+
+
+def test_for_sites_stays_on_its_own_path():
+    """Research-site marketing is at /for-sites, not the public front door."""
+    client = app.app.test_client()
+    r = client.get("/for-sites")
+    assert r.status_code == 200, r.status_code
+    html = r.get_data(as_text=True)
+    assert 'class="landing-demo"' in html
+    assert "Find a trial that fits." not in html
+    print("PASS: /for-sites is the research-site marketing page")
 
 
 def main():
@@ -182,7 +192,8 @@ def main():
         test_results_hide_probably_not_by_default,
         test_find_trial_is_split_carousel,
         test_find_trial_book_a_call_uses_cal_link,
-        test_for_sites_legacy_url_redirects_home,
+        test_old_finder_url_redirects_home,
+        test_for_sites_stays_on_its_own_path,
     ]
     failed = 0
     for t in tests:

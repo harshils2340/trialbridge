@@ -30,7 +30,7 @@ SRC = "marketing_test"
 # Same default (and same override) as web/app.py's CAL_LINK, so the static landing
 # and the Jinja pages can never point at two different booking links.
 CAL = os.environ.get("CAL_LINK", "https://cal.com/harshil-shah-7tkvs7/30min").strip()
-FINDER_URL = "/find-trial"
+FINDER_URL = "/"
 # "Product" opens the actual app. /app/home is login-gated and redirects to the inbox.
 APP_HOME = "/app/home"
 # Framer's CDN image base. It appears in both the JS chunks and the SSR HTML; both get
@@ -852,8 +852,8 @@ SOURCES_HTML = (
 # oversized empty top area. We hide it (kill-list) and render this compact
 # BridgeMD footer instead: real links only, correct copy, no socials/404.
 FOOTER_LINKS = [
-    ("/find-trial", "Trial finder"),
-    ("/", "For sites"),
+    ("/", "Trial finder"),
+    ("/for-sites", "For sites"),
     (CAL, "Contact"),
     ("/privacy", "Privacy"),
     ("/terms", "Terms"),
