@@ -72,9 +72,9 @@ body.pub-marketing .chip:hover{ border-color:rgba(18,87,176,.28); color:#1257b0;
 
 {% macro header(cal_link='') %}
 {{ nav.pill(
-  [('How it works', url_for('for_sites') ~ '#features'),
+  [('How it works', url_for('inbox') ~ '#features'),
    ('Trial finder', url_for('home')),
-   ('FAQ', url_for('for_sites') ~ '#bmd-faq')],
+   ('FAQ', url_for('inbox') ~ '#bmd-faq')],
   'Book a call', cal_link, cta_blank=true,
   brand_href=url_for('home')) }}
 {% endmacro %}

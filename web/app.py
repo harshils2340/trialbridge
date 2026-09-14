@@ -201,7 +201,7 @@ SITE_DEMO = os.environ.get("SITE_DEMO", "1") == "1"
 
 # Optional dedicated host for the site-side marketing site (e.g.
 # "sites.bridgemd.health"). Only used to build the "For sites" link. Empty by
-# default => the link stays on this domain at /for-sites. The site root is the
+# default => the link stays on this domain at /inbox. The site root is the
 # patient trial finder.
 SITES_HOST = os.environ.get("SITES_HOST", "").strip().lower()
 
@@ -1953,16 +1953,16 @@ def inject_globals():
 def _sites_home_url():
     """Absolute URL of the research-site marketing page.
 
-    Uses the dedicated subdomain when SITES_HOST is set, otherwise /for-sites
+    Uses the dedicated subdomain when SITES_HOST is set, otherwise /inbox
     on the current host. The site root is the patient trial finder.
     """
     if SITES_HOST:
         scheme = "https" if os.environ.get("BEHIND_PROXY") else request.scheme
-        return f"{scheme}://{SITES_HOST}/for-sites"
+        return f"{scheme}://{SITES_HOST}/inbox"
     try:
-        return url_for("for_sites")
+        return url_for("inbox")
     except Exception:
-        return "/for-sites"
+        return "/inbox"
 
 
 @app.route("/demo-mode", methods=["POST"])
@@ -5760,11 +5760,17 @@ def _serve_landing():
     return resp
 
 
-@app.route("/for-sites")
-def for_sites():
-    """Research-site marketing shell. The public front door is the trial finder."""
+@app.route("/inbox")
+def inbox():
+    """Research-site product site (inbox + marketing). / is the patient finder."""
     _log_event("view_for_sites")
     return _serve_landing()
+
+
+@app.route("/for-sites")
+def for_sites():
+    """Old research-site URL. The site-side home is now /inbox."""
+    return redirect(url_for("inbox"), code=301)
 
 
 @app.route("/landing/assets/<path:filename>")
@@ -6858,7 +6864,7 @@ def for_sites_feature(slug):
     remains the canonical slug registry used by navigation and the sitemap."""
     if sites_features.get(slug) is None:
         abort(404)
-    return redirect(url_for("for_sites") + "#how", code=301)
+    return redirect(url_for("inbox") + "#how", code=301)
 
 
 # The public blog / resources section was removed from the product. The route
@@ -6867,12 +6873,12 @@ def for_sites_feature(slug):
 # still builds instead of crashing a page.
 @app.route("/blog")
 def blog_index():
-    return redirect(url_for("for_sites"), code=301)
+    return redirect(url_for("inbox"), code=301)
 
 
 @app.route("/blog/<slug>")
 def blog_post(slug):
-    return redirect(url_for("for_sites"), code=301)
+    return redirect(url_for("inbox"), code=301)
 
 
 @app.route("/privacy")

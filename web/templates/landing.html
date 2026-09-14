@@ -638,8 +638,9 @@ body.home-screen .fy-left.hero{
 .fy.is-right .fy-left .fy-peek:hover{ background:rgba(18,87,176,.08); }
 .fy-swap{ display:inline-flex; align-items:center; gap:8px; margin:16px 0 0;
   border:0; background:none; padding:0; cursor:pointer; font:inherit;
-  font-size:13.5px; font-weight:700; color:#1257b0; }
+  font-size:13.5px; font-weight:700; color:#1257b0; text-decoration:none; }
 .fy-swap:hover{ color:#0b3f86; }
+a.fy-peek{ text-decoration:none; color:inherit; }
 body.home-screen.is-fy-right .fy-swap{ display:none; }
 
 .fy-left.hero{ max-width:none; margin:0; padding:0; text-align:left; }
@@ -1190,7 +1191,7 @@ body.home-screen.is-fy-split .fy.is-hover-right .fy-brand{
       <span>{{ ic.icon('check') }} Takes about 2 minutes</span>
       <span>{{ ic.icon('lock') }} No account required</span>
     </div>
-    <button type="button" class="fy-swap" data-fy-go="2">Research sites: open the inbox →</button>
+    <a class="fy-swap" href="{{ url_for('inbox') }}">Research sites: open the inbox →</a>
     <p class="fy-legal">Free. Trials from ClinicalTrials.gov. Not medical advice.
       <a href="{{ url_for('privacy') }}">Privacy</a> ·
       <a href="{{ url_for('terms') }}">Terms</a></p>
@@ -1199,10 +1200,10 @@ body.home-screen.is-fy-split .fy.is-hover-right .fy-brand{
 </section>
 
 <aside class="fy-panel fy-right bmd-embed-sec" id="embed" data-panel="sites" aria-label="Embeddable finder on a research site">
-  <button type="button" class="fy-peek" data-fy-go="2" aria-label="Open the research-site inbox">
+  <a class="fy-peek" href="{{ url_for('inbox') }}" aria-label="Open the research-site inbox">
     <span class="fy-peek-label">Research sites</span>
     <span class="fy-peek-hint">Open</span>
-  </button>
+  </a>
   <div class="fy-body">
   <div class="fy-right-in">
     <p class="fy-who">For research sites</p>
@@ -2172,7 +2173,7 @@ body.home-screen.is-fy-split .fy.is-hover-right .fy-brand{
         apply(0);
       } else if (panel.classList.contains('fy-right') && slide === 0) {
         e.preventDefault();
-        apply(2);
+        window.location.href = {{ url_for('inbox')|tojson }};
       }
     });
   });

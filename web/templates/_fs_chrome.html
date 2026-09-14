@@ -8,7 +8,7 @@
    site-side pages and the patient finder share a single header component. Only
    the links + CTA are site-specific. #}
 {% macro nav(cal_link) %}
-{% set hub = url_for('for_sites') %}
+{% set hub = url_for('inbox') %}
 {{ pillnav.pill(
      [('How it works', hub ~ '#how'), ('Pricing', hub ~ '#pricing'), ('Security', hub ~ '#security')],
      'Book a demo', cal_link, cta_blank=true,
@@ -17,7 +17,7 @@
 {% endmacro %}
 
 {% macro foot() %}
-{% set hub = url_for('for_sites') %}
+{% set hub = url_for('inbox') %}
 <footer class="fs-foot">
   <div class="fs-foot-in">
     <div class="fs-foot-brand">

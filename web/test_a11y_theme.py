@@ -155,7 +155,7 @@ def test_inbox_detail_is_focused_and_responsive():
 
 
 def test_landing_hero_embeds_product_demo():
-    response = app.app.test_client().get("/for-sites")
+    response = app.app.test_client().get("/inbox")
     html = response.get_data(as_text=True)
     assert response.status_code == 200
     assert 'class="landing-demo"' in html

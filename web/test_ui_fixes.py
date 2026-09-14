@@ -143,6 +143,7 @@ def test_find_trial_is_split_carousel():
     assert "Two-audience layout" in html
     assert "finder owns the screen on load" in html
     assert "Research sites: open the inbox" in html
+    assert 'href="/inbox"' in html
     assert "fy.is-hover-right .fy-brand" in html, \
         "clinic expand must move the logo off the patient peek strip"
     assert "Split carousel retired" not in html
@@ -177,14 +178,18 @@ def test_old_finder_url_redirects_home():
 
 
 def test_for_sites_stays_on_its_own_path():
-    """Research-site marketing is at /for-sites, not the public front door."""
+    """Research-site marketing lives at /inbox. /for-sites still reaches it."""
+    from urllib.parse import urlparse
     client = app.app.test_client()
-    r = client.get("/for-sites")
+    r = client.get("/inbox")
     assert r.status_code == 200, r.status_code
     html = r.get_data(as_text=True)
     assert 'class="landing-demo"' in html
     assert "Find a trial that fits." not in html
-    print("PASS: /for-sites is the research-site marketing page")
+    old = client.get("/for-sites", follow_redirects=False)
+    assert old.status_code == 301, old.status_code
+    assert urlparse(old.headers.get("Location") or "").path == "/inbox"
+    print("PASS: /inbox is the research-site page; /for-sites redirects there")
 
 
 def main():
