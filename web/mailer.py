@@ -348,9 +348,23 @@ def build_applicant_message(lead, kind, link):
     return subj, "\n".join(lines)
 
 
-def build_apply_confirmation(lead, link):
-    """Warm, job-application-style confirmation sent to the applicant right after
-    they apply. Sets expectations (someone will respond) and respects their time."""
+def _clinic_contact_lines(clinic_contacts):
+    """Facility + email lines the applicant can use to write the site."""
+    out = []
+    for c in clinic_contacts or []:
+        if not isinstance(c, dict):
+            continue
+        facility = (c.get("facility") or "").strip()
+        email = (c.get("email") or "").strip()
+        if not email:
+            continue
+        out.append(f"  - {facility + ' · ' if facility else ''}{email}")
+    return out
+
+
+def build_apply_confirmation(lead, link, clinic_contacts=None):
+    """Warm confirmation after apply. Includes the clinic so the applicant can
+    write them without waiting on BridgeMD."""
     title = lead["title"] or lead["nct"] or "a clinical trial"
     subj_title = title if len(title) <= 60 else title[:57].rstrip() + "..."
     subject = f"We got your application - {subj_title}"
@@ -358,22 +372,55 @@ def build_apply_confirmation(lead, link):
         f"Hi {lead['name'] or 'there'},",
         "",
         "Thanks for applying - your application was received and sent to the "
-        "study team. We know your time matters, so here's exactly what happens "
-        "next:",
+        "study clinic. They have your email and can write you directly.",
         "",
         f"Trial: {title}",
     ]
     if lead["nct"]:
         lines.append(f"Reference number: {lead['nct']}")
+    clinic_lines = _clinic_contact_lines(clinic_contacts)
+    if clinic_lines:
+        lines += ["", "Study clinic (you can email them too):"] + clinic_lines
     lines += [
         "",
-        "What's next:",
-        "  - The study team reviews your application.",
-        "  - Someone will respond shortly - typically within a few business days.",
-        "  - You'll hear from us here and in your BridgeMD account either way.",
+        "You can also message the study team here (no sign-in):",
+        link,
         "",
-        "You don't need to do anything right now. You can check your status or "
-        "message the study team any time here (no sign-in):",
+        "This isn't medical advice and you can talk to your own doctor first.",
+        "",
+        "Sent via BridgeMD.",
+    ]
+    return subject, "\n".join(lines)
+
+
+def build_clinic_connect_message(lead, link, clinic_contacts=None):
+    """Reconnect an existing applicant to the study clinic. No booking link."""
+    title = lead["title"] or lead["nct"] or "a clinical trial"
+    subject = f"Your study clinic contact - {lead['nct'] or 'your application'}"
+    lines = [
+        f"Hi {lead['name'] or 'there'},",
+        "",
+        "Here is how to reach the study clinic for your application. If you "
+        "got an earlier booking-link email from us, please ignore it - that "
+        "link was sent by mistake.",
+        "",
+        f"Trial: {title}",
+    ]
+    if lead["nct"]:
+        lines.append(f"Reference number: {lead['nct']}")
+    clinic_lines = _clinic_contact_lines(clinic_contacts)
+    if clinic_lines:
+        lines += ["", "Study clinic:"] + clinic_lines
+        lines.append("They already have your email from when you applied.")
+    else:
+        lines += [
+            "",
+            "The study team has your application and can contact you at the "
+            "email you used to apply.",
+        ]
+    lines += [
+        "",
+        "Message them here any time (no sign-in):",
         link,
         "",
         "This isn't medical advice and you can talk to your own doctor first.",

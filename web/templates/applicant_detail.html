@@ -47,6 +47,11 @@
       {{ ui.btn('Call', 'ghost', 'sm', icon='phone', href='tel:' ~ c_phone) }}
       {{ ui.btn('Text', 'ghost', 'sm', icon='chat', href='sms:' ~ c_phone) }}
     {% endif %}
+    {% if is_owner %}
+    <form method="post" action="{{ url_for('send_applicant_clinic_intro', lead_id=l['id']) }}">
+      {{ ui.btn('Email clinic contact', 'ghost', 'sm', type='submit', icon='mail') }}
+    </form>
+    {% endif %}
     {% if fwd %}{{ ui.btn('Forward', 'ghost', 'sm', icon='send', extra='data-ui-open="fwdModal"') }}{% endif %}
     {% if l['revealed'] and l['status'] not in ['enrolled','closed','withdrawn'] %}
     <form method="post" action="{{ url_for('update_lead', lead_id=l['id']) }}">

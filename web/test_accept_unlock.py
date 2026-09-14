@@ -17,6 +17,7 @@ os.environ["OWNER_EMAIL"] = "owner@bridgemd.test"
 
 import app as webapp  # noqa: E402
 import db  # noqa: E402
+import mailer  # noqa: E402
 
 CSRF = "accept-unlock-csrf"
 DEMO_CAL = "https://calendly.com/bridgemd-demo/screening"
@@ -59,6 +60,22 @@ def _seed():
         })
         lead = db.get_lead_by_token(token)
         return site_id, owner_id, lead["id"]
+
+
+def test_apply_confirmation_includes_clinic():
+    lead = {"name": "George Cole", "nct": "NCT07219966",
+            "title": "Brenipatide AUD"}
+    clinics = [{"facility": "Northwind Clinical",
+                "email": "info@northwindclinical.com"}]
+    _subj, body = mailer.build_apply_confirmation(
+        lead, "https://bridgemd.health/a/tok", clinic_contacts=clinics)
+    assert "info@northwindclinical.com" in body
+    assert "/a/tok" in body
+    _subj2, body2 = mailer.build_clinic_connect_message(
+        lead, "https://bridgemd.health/a/tok", clinic_contacts=clinics)
+    assert "ignore" in body2.lower()
+    assert "info@northwindclinical.com" in body2
+    print("PASS: applicant emails include the clinic and thread link")
 
 
 def test_placeholder_url_is_detected():
@@ -149,6 +166,7 @@ def test_owner_can_message_before_accept():
 
 
 if __name__ == "__main__":
+    test_apply_confirmation_includes_clinic()
     test_placeholder_url_is_detected()
     test_accept_does_not_email_booking_link()
     test_guest_can_message_site_from_secret_link()

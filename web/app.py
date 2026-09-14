@@ -1619,14 +1619,32 @@ def _notify_applicant_by_id(lead_id, kind):
     return _notify_applicant(lead["token"], kind) if lead else False
 
 
-def _notify_applicant_apply_confirmation(token):
+def _notify_applicant_apply_confirmation(token, clinic_contacts=None):
     """Send the applicant a friendly 'we got your application' confirmation right
     after they apply. No-op if there's no email/phone or notifications are off."""
     lead = db.get_lead_by_token(token)
     if not lead or (not lead["email"] and not lead["phone"]):
         return False
+    clinics = clinic_contacts if clinic_contacts is not None \
+        else db.lead_clinic_notify(lead)
     subject, body = mailer.build_apply_confirmation(
-        lead, _applicant_thread_url(lead))
+        lead, _applicant_thread_url(lead), clinic_contacts=clinics)
+    _notify_patient_async(lead["email"], lead["phone"], subject, body, "")
+    return True
+
+
+def _notify_applicant_clinic_connect(lead, clinic_contacts=None):
+    """Email an existing applicant the clinic contact + their thread link."""
+    if not lead or (not lead["email"] and not lead["phone"]):
+        return False
+    clinics = clinic_contacts if clinic_contacts is not None \
+        else db.lead_clinic_notify(lead)
+    if not clinics:
+        nct = (lead["nct"] or "").strip()
+        if nct:
+            clinics = _resolve_clinic_notify_recipients(lead)
+    subject, body = mailer.build_clinic_connect_message(
+        lead, _applicant_thread_url(lead), clinic_contacts=clinics)
     _notify_patient_async(lead["email"], lead["phone"], subject, body, "")
     return True
 
@@ -5548,6 +5566,18 @@ def interest():
     # Email every public study address we can find (clinic, then sponsor) in
     # one send. No-op while NOTIFY_LIVE is off, but the chosen addresses are
     # still stored on the lead.
+    new_lead = db.get_lead_by_token(token)
+    clinic_recs = []
+    if new_lead:
+        geo_lat, geo_lon, geo_r, geo_u = _notify_geo_for_lead(
+            new_lead, lat=apply_lat, lon=apply_lon, radius=apply_radius,
+            unit=apply_unit)
+        try:
+            clinic_recs = _resolve_clinic_notify_recipients(
+                new_lead, lat=geo_lat, lon=geo_lon, radius=geo_r, unit=geo_u)
+        except Exception:
+            app.logger.exception("clinic resolve failed")
+            clinic_recs = []
     site_emails = _notify_site_new_candidate(
         token, lat=apply_lat, lon=apply_lon, radius=apply_radius, unit=apply_unit)
     # Internal heads-up so the operator can confirm real applications are landing.
@@ -5557,7 +5587,6 @@ def interest():
     # Confirm receipt to the applicant (job-application style). The in-app system
     # message always shows in their thread; the email sends only when go-live is
     # on, so both surfaces stay in sync.
-    new_lead = db.get_lead_by_token(token)
     # Recruitment-campaign attribution: if the applicant arrived via a tracked
     # campaign/placement link, credit it - but ONLY if they applied to that
     # campaign's study, so an unrelated application never inflates a campaign
@@ -5569,12 +5598,19 @@ def interest():
             db.attribute_lead(new_lead["id"], _tr["campaign_id"],
                               _tr["placement_id"], only_if_nct=_tr["nct"])
     if new_lead:
-        db.add_message(
-            new_lead["id"], "system",
+        sysmsg = (
             "Thanks for applying - your application was received and emailed to "
-            "the study team. They can review it on a secure link and will contact "
-            "you if they want to screen you. You don't need to do anything right now.")
-    _notify_applicant_apply_confirmation(token)
+            "the study clinic. They have your email and can write you directly.")
+        clinic_bits = []
+        for rec in clinic_recs[:3]:
+            em = (rec.get("email") or "").strip()
+            fac = (rec.get("facility") or "").strip()
+            if em:
+                clinic_bits.append(f"{fac + ' ' if fac else ''}{em}".strip())
+        if clinic_bits:
+            sysmsg += " Clinic: " + "; ".join(clinic_bits) + "."
+        db.add_message(new_lead["id"], "system", sysmsg)
+    _notify_applicant_apply_confirmation(token, clinic_contacts=clinic_recs)
     _log_event("apply", {"nct": f.get("nct", "").strip()})
     # Prefill an OPTIONAL "alert me about similar trials" offer on the thank-you
     # page (see thanks.html). Nothing is created unless the patient opts in.
@@ -12652,6 +12688,27 @@ def applicant_detail(lead_id):
                            portal=portal, portal_reveal=reveal,
                            portal_url=portal_url, live_attr=live_attr,
                            clinic_notify=clinic_notify)
+
+
+@app.route("/app/applicant/<int:lead_id>/send-intro", methods=["POST"])
+@login_required
+def send_applicant_clinic_intro(lead_id):
+    """Owner-only: email the applicant the clinic contact + their thread."""
+    if not _is_owner():
+        abort(404)
+    lead = db.get_lead(lead_id)
+    if not lead:
+        abort(404)
+    back = url_for("applicant_detail", lead_id=lead_id)
+    if _notify_applicant_clinic_connect(lead):
+        db.add_message(
+            lead_id, "system",
+            "Clinic contact emailed to the applicant so they can write the "
+            "study team directly.")
+        flash("Clinic contact emailed to the applicant.", "success")
+    else:
+        flash("Couldn't email that applicant.", "error")
+    return redirect(back)
 
 
 @app.route("/app/dashboard")
