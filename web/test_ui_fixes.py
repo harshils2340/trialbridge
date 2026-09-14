@@ -141,14 +141,15 @@ def test_find_trial_is_split_carousel():
     assert "Find a clinical trial at" in html
     assert "One snippet to embed" not in html
     assert "Two-audience layout" in html
-    assert "hover previews a side" in html
+    assert "finder owns the screen on load" in html
+    assert "Research sites: open the inbox" in html
     assert "fy.is-hover-right .fy-brand" in html, \
         "clinic expand must move the logo off the patient peek strip"
     assert "Split carousel retired" not in html
     assert "Find your next trial match." not in html
     assert "We also have a trial finder" not in html
     assert "home-screen" in html
-    assert "is-fy-split" in html
+    assert "is-fy-left" in html
     print("PASS: / is the production split carousel")
 
 

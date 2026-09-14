@@ -551,8 +551,9 @@ body.home-screen .landing-legal-links a:hover{ color:var(--fx-accent); }
 }
 
 /* ============================================================================
-   Two-audience layout. Laptop: 50/50 split on load; hover previews a side,
-   click locks it open (no switcher pill). Phone: both panels stacked vertically.
+   Two-audience layout. Laptop: finder owns the screen on load; the navy
+   strip (or the "Research sites" button) swaps to the inbox site. Phone:
+   both panels stacked vertically.
    ========================================================================== */
 body.home-screen{
   height:100vh !important; max-height:100vh; overflow:hidden !important;
@@ -616,17 +617,30 @@ body.home-screen .fy-left.hero{
 .fy.is-split.is-hover-right .fy-left .fy-body{
   opacity:0; pointer-events:none; transform:scale(.97); }
 .fy-peek{ display:none; position:absolute; inset:0; align-items:center;
-  justify-content:center; flex-direction:column; padding:24px 8px;
-  text-align:center; pointer-events:none; }
+  justify-content:center; flex-direction:column; gap:12px; padding:24px 8px;
+  text-align:center; pointer-events:none; border:0; background:transparent;
+  width:100%; cursor:pointer; font:inherit; color:inherit; }
 .fy.is-left .fy-right .fy-peek,
 .fy.is-right .fy-left .fy-peek,
 .fy.is-split.is-hover-left .fy-right .fy-peek,
 .fy.is-split.is-hover-right .fy-left .fy-peek{
   display:flex; pointer-events:auto; }
 .fy-peek-label{ writing-mode:vertical-rl; transform:rotate(180deg);
-  font-size:10px; font-weight:800; letter-spacing:.18em; text-transform:uppercase; }
+  font-size:11px; font-weight:800; letter-spacing:.16em; text-transform:uppercase; }
+.fy-peek-hint{ writing-mode:horizontal-tb; transform:none;
+  font-size:11px; font-weight:700; letter-spacing:.02em;
+  border-radius:999px; padding:5px 10px; }
 .fy-left .fy-peek-label{ color:rgba(16,42,67,.62); }
-.fy-right .fy-peek-label{ color:rgba(232,242,252,.68); }
+.fy-right .fy-peek-label{ color:rgba(232,242,252,.88); }
+.fy-right .fy-peek-hint{ color:#0b2340; background:#fff; }
+.fy-left .fy-peek-hint{ color:#fff; background:#1257b0; }
+.fy.is-left .fy-right .fy-peek:hover{ background:rgba(255,255,255,.08); }
+.fy.is-right .fy-left .fy-peek:hover{ background:rgba(18,87,176,.08); }
+.fy-swap{ display:inline-flex; align-items:center; gap:8px; margin:16px 0 0;
+  border:0; background:none; padding:0; cursor:pointer; font:inherit;
+  font-size:13.5px; font-weight:700; color:#1257b0; }
+.fy-swap:hover{ color:#0b3f86; }
+body.home-screen.is-fy-right .fy-swap{ display:none; }
 
 .fy-left.hero{ max-width:none; margin:0; padding:0; text-align:left; }
 .fy-left.hero::before{ display:none; }
@@ -971,6 +985,7 @@ body.home-screen.is-fy-split .fy.is-hover-right .fy-brand{
   body.home-screen .pill-nav .brand{ display:flex; }
   body.home-screen .pill-nav-auth{ justify-self:end; }
   body.home-screen .fy-brand{ display:none; }
+  .fy-swap{ display:none !important; }
   .fy{ flex-direction:column; height:auto; overflow:visible; touch-action:auto; }
   .fy-panel, .fy.is-left .fy-left, .fy.is-left .fy-right,
   .fy.is-right .fy-left, .fy.is-right .fy-right{
@@ -1068,12 +1083,13 @@ body.home-screen.is-fy-split .fy.is-hover-right .fy-brand{
      'why': 'Ruled out for you: this one needs kidney function below a threshold yours is above.',
      'fit': 'Not a fit', 'cls': 'off'}]
 } %}
-<div class="fy is-split" id="fyCarousel" data-slide="1">
+<div class="fy is-left" id="fyCarousel" data-slide="0">
 <a class="fy-brand" href="{{ url_for('home') }}">{{ ic.icon('mark', 'brand-glyph') }}BridgeMD</a>
 <section class="fy-panel fy-left hero" data-panel="patients">
-  <div class="fy-peek" aria-hidden="true">
-    <span class="fy-peek-label">For patients</span>
-  </div>
+  <button type="button" class="fy-peek" data-fy-go="0" aria-label="Back to the trial finder">
+    <span class="fy-peek-label">Trial finder</span>
+    <span class="fy-peek-hint">Open</span>
+  </button>
   <div class="fy-body">
   <div class="fy-left-in hero-in">
     <p class="fy-who">For patients</p>
@@ -1174,6 +1190,7 @@ body.home-screen.is-fy-split .fy.is-hover-right .fy-brand{
       <span>{{ ic.icon('check') }} Takes about 2 minutes</span>
       <span>{{ ic.icon('lock') }} No account required</span>
     </div>
+    <button type="button" class="fy-swap" data-fy-go="2">Research sites: open the inbox →</button>
     <p class="fy-legal">Free. Trials from ClinicalTrials.gov. Not medical advice.
       <a href="{{ url_for('privacy') }}">Privacy</a> ·
       <a href="{{ url_for('terms') }}">Terms</a></p>
@@ -1182,9 +1199,10 @@ body.home-screen.is-fy-split .fy.is-hover-right .fy-brand{
 </section>
 
 <aside class="fy-panel fy-right bmd-embed-sec" id="embed" data-panel="sites" aria-label="Embeddable finder on a research site">
-  <div class="fy-peek" aria-hidden="true">
-    <span class="fy-peek-label">For research sites</span>
-  </div>
+  <button type="button" class="fy-peek" data-fy-go="2" aria-label="Open the research-site inbox">
+    <span class="fy-peek-label">Research sites</span>
+    <span class="fy-peek-hint">Open</span>
+  </button>
   <div class="fy-body">
   <div class="fy-right-in">
     <p class="fy-who">For research sites</p>
@@ -2087,7 +2105,8 @@ body.home-screen.is-fy-split .fy.is-hover-right .fy-brand{
 })();
 </script>
 <script>
-/* Laptop: 50/50 on load, hover previews a side, click locks it. Phone: stack both. */
+/* Laptop: finder first. Click the navy strip or "Research sites" to open
+   the inbox. Phone: stack both. */
 (function () {
   var root = document.getElementById('fyCarousel');
   if (!root) return;
@@ -2098,21 +2117,10 @@ body.home-screen.is-fy-split .fy.is-hover-right .fy-brand{
   var pagerNext = document.getElementById('fyPagerNext');
   var splitBtn = document.getElementById('fySplit');
   var numEl = document.getElementById('fyNum');
-  var slide = 1;
-  var hasChosenSide = false;
+  var slide = 0;
 
   function desktopSplit() {
     return window.matchMedia('(min-width: 981px) and (hover: hover)').matches;
-  }
-
-  function clearHover() {
-    root.classList.remove('is-hover-left', 'is-hover-right');
-  }
-
-  function previewPanel(panel) {
-    if (!desktopSplit() || hasChosenSide || slide !== 1) return;
-    clearHover();
-    root.classList.add(panel.classList.contains('fy-left') ? 'is-hover-left' : 'is-hover-right');
   }
 
   function apply(n) {
@@ -2134,7 +2142,8 @@ body.home-screen.is-fy-split .fy.is-hover-right .fy-brand{
     if (numEl) numEl.textContent = slide === 2 ? '02' : '01';
     if (splitBtn) splitBtn.hidden = slide === 1;
     root.querySelectorAll('.fy-peek').forEach(function (p) {
-      p.setAttribute('aria-hidden', slide === 1 ? 'true' : 'false');
+      var openSites = p.getAttribute('data-fy-go') === '2';
+      p.setAttribute('aria-hidden', (openSites ? slide !== 0 : slide !== 2) ? 'true' : 'false');
     });
   }
 
@@ -2144,7 +2153,7 @@ body.home-screen.is-fy-split .fy.is-hover-right .fy-brand{
   if (next) next.addEventListener('click', function (e) { e.stopPropagation(); go(1); });
   if (pagerPrev) pagerPrev.addEventListener('click', function () { go(-1); });
   if (pagerNext) pagerNext.addEventListener('click', function () { go(1); });
-  if (splitBtn) splitBtn.addEventListener('click', function () { apply(1); });
+  if (splitBtn) splitBtn.addEventListener('click', function () { apply(0); });
 
   root.querySelectorAll('[data-fy-go]').forEach(function (btn) {
     btn.addEventListener('click', function (e) {
@@ -2155,22 +2164,9 @@ body.home-screen.is-fy-split .fy.is-hover-right .fy-brand{
 
   var SEARCH_KEEP = 'input, textarea, select, button, a, label, .hero-card, .bmd-widget, .bmd-finder-search, .search-modes';
 
-  root.addEventListener('mouseleave', function () {
-    if (slide === 1 && !hasChosenSide) clearHover();
-  });
-
   root.querySelectorAll('.fy-panel').forEach(function (panel) {
-    panel.addEventListener('mouseenter', function () {
-      previewPanel(panel);
-    });
     panel.addEventListener('click', function (e) {
       if (e.target.closest(SEARCH_KEEP)) return;
-      if (slide === 1 && !hasChosenSide && desktopSplit()) {
-        hasChosenSide = true;
-        clearHover();
-        apply(panel.classList.contains('fy-left') ? 0 : 2);
-        return;
-      }
       if (panel.classList.contains('fy-left') && slide === 2) {
         e.preventDefault();
         apply(0);
@@ -2186,23 +2182,17 @@ body.home-screen.is-fy-split .fy.is-hover-right .fy-brand{
     if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
     if (e.target && e.target.closest('input, textarea, select, [contenteditable="true"]')) return;
     e.preventDefault();
-    hasChosenSide = true;
-    clearHover();
     apply(e.key === 'ArrowLeft' ? 0 : 2);
   });
 
   function syncLayout() {
-    if (!desktopSplit()) {
-      hasChosenSide = false;
-      clearHover();
-      apply(1);
-    }
+    if (!desktopSplit()) apply(1);
+    else if (slide === 1) apply(0);
   }
 
   window.addEventListener('resize', syncLayout);
 
-  apply(1);
-  syncLayout();
+  apply(desktopSplit() ? 0 : 1);
   requestAnimationFrame(function () {
     requestAnimationFrame(function () { body.classList.add('is-fy-ready'); });
   });
