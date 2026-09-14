@@ -519,6 +519,8 @@ RATE_LIMIT_ROUTES = {
     # Public search is the one expensive public endpoint (LLM calls per query),
     # so cap it per IP to blunt bursts/bots. Generous for real users.
     "find": max(1, int(os.environ.get("RATE_LIMIT_FIND_MAX", "20"))),
+    "application_public_message": max(
+        1, int(os.environ.get("RATE_LIMIT_APP_MSG_MAX", "20"))),
 }
 
 # Global daily ceiling on LLM-backed searches so a traffic spike or abuse can't
@@ -1262,6 +1264,8 @@ def _abs_url(endpoint, **kw):
     token = kw.get("token")
     if endpoint == "candidate_page" and token:
         return f"{base}/c/{token}"
+    if endpoint == "application_public" and token:
+        return f"{base}/a/{token}"
     lead_id = kw.get("lead_id")
     if endpoint == "applicant_detail" and lead_id is not None:
         return f"{base}/app/applicant/{lead_id}"
@@ -1579,13 +1583,32 @@ def _notify_owner_new_application(token, exclude_emails=None):
     return _notify_async(", ".join(recipients), subject, body)
 
 
+def _applicant_thread_url(lead):
+    """Secret link to this application. Guests can open it without signing in."""
+    if not lead:
+        return _abs_url("applications")
+    tok = ""
+    try:
+        tok = lead["token"] or ""
+    except (KeyError, IndexError, TypeError):
+        tok = ""
+    if not tok:
+        try:
+            tok = lead["lead_token"] or ""
+        except (KeyError, IndexError, TypeError):
+            tok = ""
+    if not tok:
+        return _abs_url("applications")
+    return _abs_url("application_public", token=tok)
+
+
 def _notify_applicant(token, kind):
     """Tell the applicant their status changed. kind in {accepted, declined,
     screening, enrolled}."""
     lead = db.get_lead_by_token(token)
     if not lead or (not lead["email"] and not lead["phone"]):
         return False
-    link = _abs_url("applications")
+    link = _applicant_thread_url(lead)
     subject, body = mailer.build_applicant_message(lead, kind, link)
     _notify_patient_async(lead["email"], lead["phone"], subject, body, "")
     return True
@@ -1602,9 +1625,22 @@ def _notify_applicant_apply_confirmation(token):
     lead = db.get_lead_by_token(token)
     if not lead or (not lead["email"] and not lead["phone"]):
         return False
-    subject, body = mailer.build_apply_confirmation(lead, _abs_url("applications"))
+    subject, body = mailer.build_apply_confirmation(
+        lead, _applicant_thread_url(lead))
     _notify_patient_async(lead["email"], lead["phone"], subject, body, "")
     return True
+
+
+_PLACEHOLDER_SCHEDULE_MARKERS = (
+    "calendly.com/bridgemd-demo",
+    "meet.google.com/bmd-demo",
+)
+
+
+def _is_placeholder_schedule_url(url):
+    """Demo seed links that must never go to a real applicant."""
+    u = (url or "").strip().lower()
+    return any(marker in u for marker in _PLACEHOLDER_SCHEDULE_MARKERS)
 
 
 def _notify_applicant_schedule(lead):
@@ -1612,8 +1648,16 @@ def _notify_applicant_schedule(lead):
     if (not lead or not lead["schedule_url"] or
             (not lead["email"] and not lead["phone"])):
         return False
+    if _is_placeholder_schedule_url(lead["schedule_url"]):
+        app.logger.warning(
+            "refusing demo booking link for lead %s", lead["id"])
+        return False
+    if g.get("user") and _is_demo_account(g.user):
+        app.logger.warning(
+            "demo account cannot email booking links to applicants")
+        return False
     subject, body = mailer.build_schedule_message(
-        lead, lead["schedule_url"], _abs_url("applications"))
+        lead, lead["schedule_url"], _applicant_thread_url(lead))
     sms = mailer.build_schedule_sms(lead, lead["schedule_url"])
     _notify_patient_async(lead["email"], lead["phone"], subject, body, sms)
     return True
@@ -1679,9 +1723,10 @@ def _deliver_reply(lead, body, connector=None):
 def _notify_applicant_message(lead, body):
     if not lead or (not lead["email"] and not lead["phone"]):
         return False
-    link = _abs_url("applications")
+    link = _applicant_thread_url(lead)
     subject, msg = mailer.build_dm_message(
-        lead, body, _abs_url("applications"), to="patient")
+        lead, body, link, to="patient",
+        clinic_contacts=db.lead_clinic_notify(lead))
     sms = mailer.build_dm_sms(lead, link, to="patient")
     _notify_patient_async(lead["email"], lead["phone"], subject, msg, sms)
     return True
@@ -1700,8 +1745,9 @@ def _notify_applicant_visit(lead, when, location, invite_url=""):
     if not lead or (not lead["email"] and not lead["phone"]):
         return False
     subject, body = mailer.build_visit_message(
-        lead, when, location, _abs_url("applications"), invite_url=invite_url)
-    sms = mailer.build_reminder_sms(lead, when, location, _abs_url("applications"))
+        lead, when, location, _applicant_thread_url(lead), invite_url=invite_url)
+    sms = mailer.build_reminder_sms(
+        lead, when, location, _applicant_thread_url(lead))
     _notify_patient_async(lead["email"], lead["phone"], subject, body, sms)
     return True
 
@@ -1727,19 +1773,20 @@ def _remind_visit(visit):
         prep = visit["prep"]
     except (IndexError, KeyError):
         prep = ""
+    thread = _applicant_thread_url(db.get_lead(visit["lead_id"]))
     subject, body = mailer.build_reminder_message(
-        visit, visit["visit_at"], visit["location"], _abs_url("applications"),
-        prep=prep)
+        visit, visit["visit_at"], visit["location"], thread, prep=prep)
     sms = mailer.build_reminder_sms(
-        visit, visit["visit_at"], visit["location"], _abs_url("applications"))
+        visit, visit["visit_at"], visit["location"], thread)
     return _notify_patient(visit["email"], visit["phone"], subject, body, sms)
 
 
 def _nudge_applicant(lead):
     if not lead["email"] and not lead["phone"]:
         return False
-    subject, body = mailer.build_nudge_message(lead, _abs_url("applications"))
-    sms = mailer.build_nudge_sms(lead, _abs_url("applications"))
+    thread = _applicant_thread_url(lead)
+    subject, body = mailer.build_nudge_message(lead, thread)
+    sms = mailer.build_nudge_sms(lead, thread)
     return _notify_patient(lead["email"], lead["phone"], subject, body, sms)
 
 
@@ -6891,6 +6938,44 @@ def privacy():
 def terms():
     return render_template("terms.html", legal_contact=LEGAL_CONTACT,
                            legal_updated=LEGAL_UPDATED)
+
+
+@app.route("/a/<token>")
+def application_public(token):
+    """Guest-safe thread for one application. The token is the secret; no
+    patient login. This is what message emails link to so someone who applied
+    without an account can still talk to the study team."""
+    lead = db.get_lead_by_token(token)
+    if not lead:
+        abort(410)
+    db.mark_thread_read(lead["id"], "patient")
+    return render_template(
+        "application_public.html",
+        lead=lead,
+        messages=db.get_messages(lead["id"]),
+        clinic=db.lead_clinic_notify(lead),
+        labels=db.LEAD_LABELS,
+        closed=lead["status"] in db.LEAD_CLOSED)
+
+
+@app.route("/a/<token>/message", methods=["POST"])
+def application_public_message(token):
+    """Applicant replies from the secret link. Same thread the site/operator
+    already sees."""
+    blocked = _guard_ip_rate_limit("application_public_message")
+    if blocked:
+        return blocked
+    lead = db.get_lead_by_token(token)
+    if not lead:
+        abort(410)
+    body = request.form.get("body", "").strip()
+    if body:
+        db.add_message(lead["id"], "patient", body)
+        _notify_site_message(lead, body)
+        flash("Message sent to the study team.", "success")
+    else:
+        flash("Write a message first.", "error")
+    return redirect(url_for("application_public", token=token))
 
 
 @app.route("/applications")
@@ -13088,25 +13173,11 @@ def accept_lead(lead_id):
     if not db.accept_candidate(lead_id, note):
         flash("Couldn't accept that candidate.", "error")
         return redirect(_lead_action_return())
-    # They've already completed the screening questionnaire, so accepting should
-    # move them straight to booking. Auto-attach the team's booking calendar
-    # (per-study default, else the account calendar in Settings) and email the
-    # applicant the link - one message tells them they've advanced AND how to
-    # self-book their screening visit. Falls back to a plain "accepted" note if
-    # no calendar is configured yet.
-    lead = db.get_lead(lead_id)
-    nct = (lead["nct"] or "") if lead else ""
-    url = (db.get_claim_schedule_url(g.user["id"], nct) if nct else "") \
-        or db.get_site_calendar_url(g.user["id"])
-    if lead and url:
-        lead = db.set_lead_schedule(lead_id, url) or lead
-        _notify_applicant_schedule(lead)
-        flash("Accepted - contact unlocked and a booking link was emailed so "
-              "they can self-schedule their screening visit.", "success")
-    else:
-        _notify_applicant_by_id(lead_id, "accepted")
-        flash("Accepted - contact unlocked. Add your booking calendar in "
-              "Settings to auto-send a self-booking link on accept.", "success")
+    # Unlock contact only. Booking links are a separate, explicit send so a
+    # demo or misconfigured calendar cannot email a real applicant by accident.
+    _notify_applicant_by_id(lead_id, "accepted")
+    flash("Accepted - contact unlocked. You can message them from this page.",
+          "success")
     return redirect(_lead_action_return())
 
 
@@ -13153,6 +13224,10 @@ def schedule_lead(lead_id):
         flash("Add your booking calendar in Settings first, then you can send it "
               "to applicants with one click.", "error")
         return redirect(back)
+    if _is_placeholder_schedule_url(url):
+        flash("That booking link is a demo placeholder and cannot be emailed "
+              "to applicants.", "error")
+        return redirect(back)
     lead = db.set_lead_schedule(lead_id, url)
     if not lead:
         flash("Couldn't find that candidate.", "error")
@@ -13184,13 +13259,16 @@ def _lead_action_return():
 @login_required
 def message_lead(lead_id):
     """Study-team inbox action: send a message without leaving the board."""
-    _ensure_site_access_for_lead(lead_id)
-    back = _lead_action_return()
     lead = db.get_lead(lead_id)
+    back = _lead_action_return()
     if not lead:
         flash("Couldn't find that candidate.", "error")
         return redirect(back)
-    if not lead["revealed"]:
+    if not (db.lead_belongs_to_user(lead_id, g.user["id"]) or _is_owner()):
+        abort(403)
+    # Sites stay blinded until accept. The operator can write first so a live
+    # applicant can be reached without pretending a site already accepted them.
+    if not lead["revealed"] and not _is_owner():
         flash("Accept the candidate first to message them.", "error")
         return redirect(back)
     body = request.form.get("body", "").strip()
@@ -14345,6 +14423,10 @@ def candidate_schedule(token):
     lead = _site_token_lead_or_none(token)
     if not lead:
         abort(410)
+    if url and _is_placeholder_schedule_url(url):
+        flash("That booking link is a demo placeholder and cannot be emailed "
+              "to applicants.", "error")
+        return redirect(url_for("candidate_page", token=lead["site_token"]))
     lead = db.set_lead_schedule(lead["id"], url)
     if url:
         _notify_applicant_schedule(lead)
@@ -14455,7 +14537,10 @@ def google_site_verification():
 
 @app.route("/robots.txt")
 def robots():
-    body = ("User-agent: *\nAllow: /\nSitemap: "
+    body = ("User-agent: *\n"
+            "Disallow: /a/\n"
+            "Disallow: /c/\n"
+            "Allow: /\nSitemap: "
             + url_for("sitemap", _external=True) + "\n")
     return app.response_class(body, mimetype="text/plain")
 

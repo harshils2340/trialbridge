@@ -10,7 +10,7 @@
 {% set c_email = view.email or (l['email'] if (is_owner and not view.revealed) else '') %}
 {% set c_phone = view.phone or (l['phone'] if (is_owner and not view.revealed) else '') %}
 
-<a class="app-back" href="{{ url_for('leads') }}">{{ ic.icon('arrow-left') }} Back to applicants</a>
+<a class="app-back" href="{{ url_for('operator_inbox') if is_owner else url_for('leads') }}">{{ ic.icon('arrow-left') }} Back to applicants</a>
 
 {# ── Patient header: identity, status, and every fast action in one bar ── #}
 <div class="pt-topbar" data-demo-tour-target="applicant-detail">
@@ -161,16 +161,11 @@
       {% if l['status'] == 'prescreen' and not l['decision'] %}
       <div class="nextstep">
         <div class="ns-h">Decide on {{ first }}</div>
-        {% if default_schedule %}
-        <p class="ns-p">{{ first }} already completed the screening questionnaire. Accepting unlocks their contact and <b>emails them your booking link</b> so they can self-schedule their screening visit in one click, no back-and-forth.</p>
-        {{ reach_line() }}
-        {% else %}
-        <p class="ns-p">{{ first }} already completed the screening questionnaire. Accepting unlocks their contact so you can invite them to book. <a href="{{ url_for('site_setup') }}">Add your booking calendar</a> to auto-send the link on accept.</p>
-        {% endif %}
+        <p class="ns-p">{{ first }} already completed the screening questionnaire. Accepting unlocks their contact so you can message them here. Booking links are sent separately, only when you choose to send one.</p>
         <div style="display:flex;gap:10px;">
           <form method="post" action="{{ url_for('accept_lead', lead_id=l['id']) }}">
             <input type="hidden" name="next" value="{{ url_for('applicant_detail', lead_id=l['id']) }}">
-            {{ ui.btn(('Accept & send booking link' if default_schedule else 'Accept & unlock contact'), 'primary', type='submit', icon='check') }}
+            {{ ui.btn('Accept & unlock contact', 'primary', type='submit', icon='check') }}
           </form>
           <form method="post" action="{{ url_for('decline_lead', lead_id=l['id']) }}">
             <input type="hidden" name="next" value="{{ url_for('applicant_detail', lead_id=l['id']) }}">
@@ -225,7 +220,7 @@
         <div class="app-sub" style="font-size:13px;color:var(--faint);text-align:center;">No messages yet.</div>
         {% endfor %}
       </div>
-      {% if l['revealed'] %}
+      {% if l['revealed'] or is_owner %}
       <div class="app-chips chat-suggest" id="quickReplies">
         <button type="button" class="ui-chip" data-msg="Hi {{ first }}, just checking in on your interest in the study - happy to answer any questions.">Check in</button>
         <button type="button" class="ui-chip" data-msg="Friendly reminder to book your screening visit using the link we sent - let me know if you need another time.">Booking reminder</button>
@@ -233,6 +228,7 @@
         <button type="button" class="ui-chip" data-msg="Thanks so much - we've received everything we need for now and will follow up with next steps shortly.">Thanks</button>
       </div>
       <form method="post" action="{{ url_for('message_lead', lead_id=l['id']) }}" class="chatbar" data-ajax data-ajax-quiet data-ajax-refresh=".thread" data-optimistic=".thread">
+        <input type="hidden" name="next" value="{{ url_for('applicant_detail', lead_id=l['id']) }}">
         <template data-optimistic-tpl><div class="msg-out" data-ts="{{'{{time}}'}}"><div class="bubble">{{'{{body}}'}}</div></div></template>
         <textarea name="body" id="composerBody" class="chatbar-input" rows="1"
                   placeholder="Message {{ first }}…" required data-ajax-clear

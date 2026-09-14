@@ -338,7 +338,7 @@ def build_applicant_message(lead, kind, link):
         "",
         f"Trial: {title}",
         "",
-        "See your applications and status any time here:",
+        "See this application and message the study team here (no sign-in):",
         link,
         "",
         "This isn't medical advice and you can talk to your own doctor first.",
@@ -373,7 +373,7 @@ def build_apply_confirmation(lead, link):
         "  - You'll hear from us here and in your BridgeMD account either way.",
         "",
         "You don't need to do anything right now. You can check your status or "
-        "message the study team any time here:",
+        "message the study team any time here (no sign-in):",
         link,
         "",
         "This isn't medical advice and you can talk to your own doctor first.",
@@ -448,7 +448,7 @@ def build_schedule_message(lead, schedule_url, apps_link):
         "Pick a time that works for you here:",
         schedule_url,
         "",
-        "You can review this application any time at:",
+        "You can review this application any time here (no sign-in):",
         apps_link,
         "",
         "This isn't medical advice and you can talk to your own doctor first.",
@@ -465,18 +465,32 @@ def build_schedule_sms(lead, schedule_url):
             f"{trial}. Book here: {schedule_url}")
 
 
-def build_dm_message(lead, body, link, to="patient"):
+def build_dm_message(lead, body, link, to="patient", clinic_contacts=None):
     """A new chat message notification. `to` is who receives the email."""
     title = lead["title"] or lead["nct"] or "your clinical trial application"
     if to == "patient":
         subject = f"New message from the study team - {lead['nct'] or 'your application'}"
         opener = (f"Hi {lead['name'] or 'there'},\n\nThe study team sent you a "
                   f"message about {title}:")
+        reply = "Reply to the study team here (no sign-in needed):"
     else:
         subject = f"New message from an applicant - {lead['nct'] or 'application'}"
         opener = f"An applicant sent a message about {title}:"
-    lines = [opener, "", f"  \"{body.strip()}\"", "",
-             "Reply here:", link, "", "Sent via BridgeMD."]
+        reply = "Reply here:"
+    lines = [opener, "", f"  \"{body.strip()}\"", "", reply, link]
+    if to == "patient" and clinic_contacts:
+        lines += ["", "You can also reach the study clinic directly:"]
+        for c in clinic_contacts[:4]:
+            if not isinstance(c, dict):
+                continue
+            bit = "  - "
+            if c.get("facility"):
+                bit += f"{c['facility']} "
+            if c.get("email"):
+                bit += c["email"]
+            if bit.strip() != "-":
+                lines.append(bit.rstrip())
+    lines += ["", "Sent via BridgeMD."]
     return subject, "\n".join(lines)
 
 

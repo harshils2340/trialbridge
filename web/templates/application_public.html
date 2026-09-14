@@ -1,0 +1,61 @@
+{% extends "public_base.html" %}
+{% block title %}Your application · BridgeMD{% endblock %}
+{% block description %}Message the study team about your trial application.{% endblock %}
+{% block head_extra %}
+<meta name="robots" content="noindex,nofollow">
+{% endblock %}
+
+{% block body %}
+<section class="apps-wrap">
+  <div class="apps-head">
+    <div>
+      <h1>{{ lead.title or 'Your application' }}</h1>
+      <p class="apps-sub">
+        {% if lead.nct %}{{ lead.nct }}{% endif %}
+        {% if lead.nct and (lead.site or lead.location) %} · {% endif %}
+        {% if lead.site %}{{ lead.site }}{% elif lead.location %}Near {{ lead.location }}{% endif %}
+      </p>
+    </div>
+    {{ ui.badge(labels.get(lead.status, lead.status), 'neutral' if closed else 'brand') }}
+  </div>
+
+  {% if clinic %}
+  <div class="app-card pad">
+    <div class="thread-head">{{ ic.icon('mail') }} Study clinic</div>
+    <p class="apps-sub" style="margin:0 0 12px;">You can message the team here, or contact the clinic directly.</p>
+    <ul class="pdoc-list">
+      {% for c in clinic %}
+      <li class="pdoc">
+        <span class="pdoc-tag">{{ c.facility or 'Clinic' }}</span>
+        {% if c.email %}<a class="pdoc-link" href="mailto:{{ c.email }}">{{ c.email }}</a>{% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  <div class="thread" data-thread>
+    <div class="thread-head">{{ ic.icon('chat') }} Messages with the study team</div>
+    <ul class="thread-list" data-thread-list>
+      {% for m in messages %}
+      <li class="msg msg-{{ m.sender }}">
+        <span class="msg-who">{% if m.sender == 'patient' %}You{% elif m.sender == 'system' %}BridgeMD{% else %}Study team{% endif %}</span>
+        <span class="msg-body">{{ m.body }}</span>
+        <span class="msg-time">{{ m.created_at }}</span>
+      </li>
+      {% else %}
+      <li class="thread-empty">No messages yet. Ask about the visit, timing, or anything that would help you decide.</li>
+      {% endfor %}
+    </ul>
+    {% if not closed %}
+    <form class="thread-form" method="post" action="{{ url_for('application_public_message', token=lead.token) }}">
+      <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+      <input type="text" name="body" placeholder="Write a message to the study team…" required autocomplete="off">
+      {{ ui.btn('Send', 'primary', 'sm', type='submit') }}
+    </form>
+    {% else %}
+    <p class="thread-empty">This application is closed, so new messages are off.</p>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

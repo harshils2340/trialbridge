@@ -36,6 +36,7 @@
 </div>
 {% else %}
 {% set statuses = apps|map(attribute='status')|reject('equalto', '')|unique|list %}
+{% set studies = apps|selectattr('nct')|map(attribute='nct')|unique|list %}
 {% set new_count = apps|selectattr('is_new')|list|length %}
 <div class="list-toolbar">
   <div class="search-field">
@@ -45,6 +46,10 @@
   <button type="button" id="inboxNewToggle" class="chip" aria-pressed="false">
     {{ ic.icon('sparkle') }} New{% if new_count %} · {{ new_count }}{% endif %}
   </button>
+  <select id="inboxStudy">
+    <option value="">All studies</option>
+    {% for n in studies|sort %}<option value="{{ n }}">{{ n }}</option>{% endfor %}
+  </select>
   <select id="inboxStatus">
     <option value="">All statuses</option>
     {% for s in statuses|sort %}<option value="{{ s }}">{{ s|capitalize }}</option>{% endfor %}
@@ -72,6 +77,7 @@
       {% for a in apps %}
       <tr class="link{% if a.is_new %} is-new{% endif %}"
           data-status="{{ a.status }}"
+          data-nct="{{ a.nct }}"
           data-new="{{ '1' if a.is_new else '0' }}"
           data-text="{{ ((a.name ~ ' ' ~ a.email ~ ' ' ~ a.phone ~ ' ' ~ a.condition ~ ' ' ~ a.title ~ ' ' ~ a.nct ~ ' ' ~ a.location ~ ' ' ~ a.status ~ ' ' ~ a.found_via ~ ' ' ~ a.search_q)|lower) }}"
           onclick="window.location='{{ url_for('applicant_detail', lead_id=a.id) }}'">
@@ -115,22 +121,26 @@
 <script>
 (function () {
   var q = document.getElementById('inboxSearch'), st = document.getElementById('inboxStatus');
+  var study = document.getElementById('inboxStudy');
   var newTog = document.getElementById('inboxNewToggle');
   var rows = Array.prototype.slice.call(document.querySelectorAll('#inboxTable tbody tr'));
   var empty = document.getElementById('inboxEmpty'), count = document.getElementById('inboxCount');
   var newOnly = false;
   function apply() {
-    var term = (q.value || '').toLowerCase().trim(), s = st.value, shown = 0;
+    var term = (q.value || '').toLowerCase().trim(), s = st.value, nct = study ? study.value : '', shown = 0;
     rows.forEach(function (r) {
       var ok = (!term || r.dataset.text.indexOf(term) >= 0)
         && (!s || r.dataset.status === s)
+        && (!nct || r.dataset.nct === nct)
         && (!newOnly || r.dataset.new === '1');
       r.style.display = ok ? '' : 'none'; if (ok) shown++;
     });
     empty.style.display = shown ? 'none' : 'block';
     count.textContent = shown + (shown === 1 ? ' result' : ' results');
   }
-  q.addEventListener('input', apply); st.addEventListener('change', apply);
+  q.addEventListener('input', apply);
+  st.addEventListener('change', apply);
+  if (study) study.addEventListener('change', apply);
   if (newTog) newTog.addEventListener('click', function () {
     newOnly = !newOnly;
     newTog.classList.toggle('is-active', newOnly);
