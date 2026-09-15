@@ -1223,8 +1223,12 @@ def _log_event(name, detail=None):
 # when the listing has no address). Sponsor/central inboxes are skipped.
 # --------------------------------------------------------------------------- #
 NOTIFY_LIVE = os.environ.get("NOTIFY_LIVE", "0") == "1"
+# Last-resort recipient when no real clinic address exists for a study. This
+# must be an inbox a person actually reads, so it defaults to the brand inbox
+# (which forwards to the operator). It used to default to an early partner
+# clinic whose inbox bounced, which silently ate applicant handoffs.
 SITE_NOTIFY_EMAIL = (
-    os.environ.get("SITE_NOTIFY_EMAIL") or "contact@sonicmedicaltrust.com"
+    os.environ.get("SITE_NOTIFY_EMAIL") or "hello@bridgemd.health"
 ).strip()
 # Internal inbox(es) that get a heads-up on every new application, so the operator
 # can confirm the funnel is producing real, legit applications. De-identified.
@@ -1798,6 +1802,10 @@ def _notify_applicant_message(lead, body):
 
 
 def _notify_site_message(lead, body):
+    """An applicant wrote on their thread. Their words must always land in an
+    inbox a person reads: the claimed site when it has a real address,
+    otherwise the operator's fallback. site_contact_for_nct already refuses
+    placeholder addresses."""
     if not lead:
         return False
     to_addr = db.site_contact_for_nct(lead["nct"]) or SITE_NOTIFY_EMAIL
@@ -5580,6 +5588,25 @@ def interest():
             screener, elig))
     except Exception:
         app.logger.exception("readiness compute failed")
+
+    # Double-submit guard. A real applicant clicked apply three times in seven
+    # seconds and became three applications, three threads, and three clinic
+    # handoffs. The same email applying to the same study within minutes is one
+    # application: show the same thank-you page and send nothing again.
+    _dup = db.find_recent_duplicate_lead(email, f.get("nct", "").strip())
+    if _dup:
+        _log_event("apply_duplicate", {"nct": f.get("nct", "").strip()})
+        return render_template(
+            "thanks.html", title=f.get("title", ""), nct=f.get("nct", ""),
+            alert_prefill={
+                "condition": f.get("condition", "").strip(),
+                "location": f.get("location", "").strip(),
+                "lat": f.get("lat", "").strip(), "lon": f.get("lon", "").strip(),
+                "cc": f.get("cc", "").strip(),
+                "radius": f.get("radius", "").strip() or "50",
+                "unit": f.get("unit", "km").strip() or "km",
+                "email": email,
+            })
 
     token = db.create_lead({
         "applicant_token": applicant,
@@ -16218,8 +16245,13 @@ def resolve_clinic_notify_recipients(lead, trial=None, *, claimed_email="",
             break
 
     extras = []
-    _add(extras, _one(claimed_email, site_label, "claimed"))
-    _add(extras, _one(posted_email, site_label, "posted"))
+    # A claimed or posted contact rides along only when it is a real address.
+    # The demo seed's fictional site claims studies too, and its placeholder
+    # inbox swallowed real handoffs.
+    if claimed_email and not db.is_placeholder_site_email(claimed_email):
+        _add(extras, _one(claimed_email, site_label, "claimed"))
+    if posted_email and not db.is_placeholder_site_email(posted_email):
+        _add(extras, _one(posted_email, site_label, "posted"))
 
     out = clinic + extras
     if out:

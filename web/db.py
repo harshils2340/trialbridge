@@ -5285,15 +5285,21 @@ def site_contact_for_nct(nct):
     nct = _norm_nct(nct)
     if not nct:
         return ""
-    row = get_db().execute(
+    rows = get_db().execute(
         "SELECT c.notify_email, p.contact_email, u.email FROM study_claims c "
         "JOIN users u ON u.id = c.user_id "
         "LEFT JOIN site_profiles p ON p.user_id = c.user_id "
-        "WHERE c.nct = ? AND c.verified = 1 ORDER BY c.id DESC LIMIT 1",
-        (nct,)).fetchone()
-    if not row:
-        return ""
-    return (row["notify_email"] or row["contact_email"] or row["email"] or "").strip()
+        "WHERE c.nct = ? AND c.verified = 1 ORDER BY c.id DESC",
+        (nct,)).fetchall()
+    # The demo seed's fictional site claims studies too (SITE_DEMO). A real
+    # applicant's mail must never resolve to its placeholder address, so take
+    # the newest claim with a real one.
+    for row in rows:
+        contact = (row["notify_email"] or row["contact_email"]
+                   or row["email"] or "").strip()
+        if contact and not is_placeholder_site_email(contact):
+            return contact
+    return ""
 
 
 def add_recruitment_spend(user_id, nct, source, campaign, amount_usd, spend_date,
@@ -6310,6 +6316,26 @@ def get_lead_events(lead_id):
 # copy changes (e.g. sponsor-only -> local clinic lookup).
 CLINIC_NOTIFY_COPY = "clinic_lookup_v5"
 
+# Placeholder site addresses that must never receive a real applicant's
+# handoff or message: the demo seed's fictional clinic, internal test domains,
+# and scraped addresses whose local part is HTML-escape garbage. A send whose
+# only recipients were placeholders does not count as having notified anyone
+# (see leads_missing_clinic_notify), so the backfill retries it with real
+# addresses.
+PLACEHOLDER_SITE_DOMAINS = ("northwindclinical.com", "bridgemd.local",
+                            "example.com", "example.org", "example.net")
+
+
+def is_placeholder_site_email(email):
+    email = (email or "").strip().lower()
+    if "@" not in email:
+        return True
+    local, dom = email.rsplit("@", 1)
+    if "u003" in local or not local or not local[0].isalnum():
+        return True
+    return any(dom == d or dom.endswith("." + d)
+               for d in PLACEHOLDER_SITE_DOMAINS)
+
 
 def record_clinic_notify(lead_id, recipients):
     """Persist which clinics were selected for the auto-notify on apply.
@@ -6348,6 +6374,21 @@ def record_clinic_notify(lead_id, recipients):
     return True
 
 
+def find_recent_duplicate_lead(email, nct, minutes=15):
+    """The same email applying to the same study within `minutes`. The apply
+    route folds these into one application: one thread, one set of emails."""
+    email = (email or "").strip().lower()
+    nct = (nct or "").strip().upper()
+    if not email or not nct:
+        return None
+    cutoff = (dt.datetime.now() - dt.timedelta(minutes=minutes)).strftime(
+        "%Y-%m-%d %H:%M")
+    return get_db().execute(
+        "SELECT * FROM leads WHERE lower(email) = ? AND upper(nct) = ? "
+        "AND created_at >= ? ORDER BY id DESC LIMIT 1",
+        (email, nct, cutoff)).fetchone()
+
+
 def leads_missing_clinic_notify(copy=CLINIC_NOTIFY_COPY):
     """Real inbound applies that have not had the current clinic send.
 
@@ -6360,7 +6401,13 @@ def leads_missing_clinic_notify(copy=CLINIC_NOTIFY_COPY):
         "ORDER BY id ASC").fetchall()
     for row in rows:
         saved = lead_clinic_notify(row)
-        if not saved or not any((r.get("copy") or "") == copy for r in saved):
+        # A send counts only if at least one recipient on the current copy was
+        # a real address. A handoff that only ever reached the demo profile or
+        # an escape-garbled scrape notified nobody and must go out again.
+        if not saved or not any(
+                (r.get("copy") or "") == copy
+                and not is_placeholder_site_email(r.get("email") or "")
+                for r in saved):
             out.append(row)
     return out
 

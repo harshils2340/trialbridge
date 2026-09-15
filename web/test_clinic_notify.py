@@ -131,9 +131,11 @@ def test_fallback_when_no_public_email():
     recs = webapp.resolve_clinic_notify_recipients(
         lead, trial=trial, fallback=webapp.SITE_NOTIFY_EMAIL,
         lat=41.08, lon=-81.52, radius=50, unit="km")
-    assert [r["email"] for r in recs] == ["contact@sonicmedicaltrust.com"]
+    # The default fallback is the brand inbox the operator reads. It used to
+    # be an early partner clinic whose inbox bounced, which ate handoffs.
+    assert [r["email"] for r in recs] == ["hello@bridgemd.health"]
     assert recs[0]["source"] == "fallback"
-    print("PASS: no public email falls back to contact@sonicmedicaltrust.com")
+    print("PASS: no public email falls back to the operator inbox")
 
 
 def test_looks_up_local_clinic_not_lilly():
@@ -300,6 +302,70 @@ def test_persists_clinic_notify_on_lead():
     print("PASS: chosen clinic is stored on the lead even when SMTP is off")
 
 
+def test_placeholder_site_contacts_never_receive_mail():
+    """Demo-seed and garbled addresses are refused on every recipient path."""
+    import db
+    assert db.is_placeholder_site_email("info@northwindclinical.com")
+    assert db.is_placeholder_site_email("u003edataprivacy@plains.com")
+    assert db.is_placeholder_site_email("x@bridgemd.local")
+    assert not db.is_placeholder_site_email("navarrs@ccf.org")
+    # Resolver: a placeholder claimed contact with nothing else falls through
+    # to the operator fallback instead of the demo profile.
+    lead = {"nct": "NCT09990002", "site": ""}
+    recs = webapp.resolve_clinic_notify_recipients(
+        lead, trial={"locations": []},
+        claimed_email="info@northwindclinical.com",
+        fallback="owner@ops.test", lookup_fn=lambda *a, **k: [])
+    assert [r["email"] for r in recs] == ["owner@ops.test"], recs
+
+
+def test_demo_only_handoff_is_resent():
+    """A handoff whose only recipient was a placeholder notified nobody, so
+    the backfill must pick the lead up again; a real recipient settles it."""
+    import db
+    with webapp.app.app_context():
+        token = db.create_lead({
+            "applicant_token": "t-demo-handoff", "nct": "NCT09990003",
+            "title": "T", "name": "P", "email": "p@x.test", "consent": 1,
+            "source": "web"})
+        lead = db.get_lead_by_token(token)
+        db.record_clinic_notify(lead["id"], [
+            {"email": "info@northwindclinical.com", "facility": "Demo",
+             "source": "claimed"}])
+        assert lead["id"] in [r["id"] for r in db.leads_missing_clinic_notify()]
+        db.record_clinic_notify(lead["id"], [
+            {"email": "coord@realclinic.test", "facility": "Real",
+             "source": "ctgov"}])
+        assert lead["id"] not in [r["id"] for r in db.leads_missing_clinic_notify()]
+
+
+def test_site_contact_skips_demo_profile():
+    """A study claimed by the demo site resolves to no contact (so callers use
+    the operator fallback); a later real claim wins."""
+    import db
+    with webapp.app.app_context():
+        uid = db.create_user("demo-clinician@x.test", "pw", "Demo Site")
+        db.add_study_claim(uid, "NCT09990004", "T", verified=True)
+        db.upsert_site_profile(uid, "Northwind Clinical Research", "Elena",
+                               "info@northwindclinical.com", "+1 212 555 0148")
+        assert db.site_contact_for_nct("NCT09990004") == ""
+        uid2 = db.create_user("coord@realclinic.test", "pw", "Real Site")
+        db.add_study_claim(uid2, "NCT09990004", "T", verified=True)
+        assert db.site_contact_for_nct("NCT09990004") == "coord@realclinic.test"
+
+
+def test_apply_double_submit_is_one_application():
+    """Two identical applies within minutes make one lead and one email set."""
+    import db
+    with webapp.app.app_context():
+        assert db.find_recent_duplicate_lead("dup@x.test", "NCT09990005") is None
+        db.create_lead({
+            "applicant_token": "t-dup-1", "nct": "NCT09990005", "title": "T",
+            "name": "D", "email": "Dup@X.test", "consent": 1, "source": "web"})
+        assert db.find_recent_duplicate_lead("dup@x.test", "nct09990005") is not None
+        assert db.find_recent_duplicate_lead("dup@x.test", "NCT09990006") is None
+
+
 def main():
     tests = [
         test_clinic_emails_not_sponsor,
@@ -315,6 +381,10 @@ def main():
         test_missing_clinic_notify_list_clears_after_record,
         test_failed_send_does_not_stamp,
         test_persists_clinic_notify_on_lead,
+        test_placeholder_site_contacts_never_receive_mail,
+        test_demo_only_handoff_is_resent,
+        test_site_contact_skips_demo_profile,
+        test_apply_double_submit_is_one_application,
     ]
     failed = 0
     for t in tests:

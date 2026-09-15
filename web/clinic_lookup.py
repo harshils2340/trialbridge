@@ -30,6 +30,9 @@ _SKIP_DOMAINS = (
     "example.com", "godaddy.com", "cloudflare.com", "facebook.com",
     "linkedin.com", "instagram.com", "twitter.com", "x.com", "youtube.com",
     "wikipedia.org", "ichgcp.net", "centerwatch.com",
+    # Never our own demo or test domains: a scrape that lands on one of these
+    # is pointing back at us, not at a clinic.
+    "northwindclinical.com", "bridgemd.local", "bridgemd.health",
 )
 
 _SPONSOR_DOMAINS = (
