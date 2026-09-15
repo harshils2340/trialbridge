@@ -409,6 +409,53 @@ def build_clinic_connect_message(lead, link, clinic_contacts=None):
     return subject, "\n".join(lines)
 
 
+def build_founder_connect_message(lead, sites, central, link):
+    """A personal note from the founder with the study's own public contacts,
+    so a new platform's reply lag never slows an applicant down. Contacts come
+    straight from the study's ClinicalTrials.gov listing: phone numbers and
+    recruitment inboxes, no eligibility claims, no amounts (COMPLIANCE.md)."""
+    first = (lead["name"] or "there").split()[0]
+    title = lead["title"] or lead["nct"] or "the study you applied to"
+    nct = lead["nct"] or ""
+    subject = f"Direct contacts for your trial - {nct or 'your application'}"
+    lines = [
+        f"Hi {first},",
+        "",
+        "I'm Harshil, the founder of BridgeMD. Your application for "
+        f"{title} was sent to the study team. We're a new platform, so study "
+        "teams can take longer to reply here, and I don't want that to slow "
+        "you down.",
+        "",
+        "Here are the study's own contacts, straight from its public listing. "
+        "Calling is usually the fastest way to get screened:",
+        "",
+    ]
+    for site in sites:
+        bits = [b for b in (site.get("phone"), site.get("email")) if b]
+        where = ", ".join(b for b in (site.get("facility"), site.get("city")) if b)
+        if where and bits:
+            lines.append(f"- {where}: {' or '.join(bits)}")
+    for c in central:
+        bits = [b for b in (c.get("phone"), c.get("email")) if b]
+        if bits:
+            lines.append(f"- Study information line: {' or '.join(bits)}")
+    lines += [
+        "",
+        f"When you call, give them the study number {nct} and say you applied "
+        "through BridgeMD." if nct else
+        "When you call, say you applied through BridgeMD.",
+        "",
+        "You can also keep messaging the study team on your thread:",
+        link,
+        "",
+        "This isn't medical advice and you can talk to your own doctor first.",
+        "",
+        "Harshil Shah",
+        "Founder, BridgeMD",
+    ]
+    return subject, "\n".join(lines)
+
+
 def build_alert_message(alert, new_matches, link):
     """Notify a patient with a concise, useful weekly digest.
     `new_matches` accepts either [(nct, title)] or [{"nct","title"}, ...]."""

@@ -1673,6 +1673,7 @@ _MIGRATIONS = {
         # When BridgeMD emailed the applicant their no-sign-in thread. Used so
         # a boot backfill can send once to existing applies and then stop.
         "connect_emailed_at": "TEXT DEFAULT ''",
+        "founder_connect_at": "TEXT DEFAULT ''",
         # Channel-side identifier to address an outbound reply back to (Instagram
         # username, Messenger PSID, WhatsApp number, ...). Populated by the intake
         # connector for social leads; the connector uses it to route our reply to
@@ -6426,6 +6427,24 @@ def lead_clinic_notify(lead):
     except (ValueError, TypeError):
         return []
     return rows if isinstance(rows, list) else []
+
+
+def mark_founder_connect(lead_id):
+    """Stamp the one-time founder email with the study's direct contacts."""
+    db = get_db()
+    db.execute(
+        "UPDATE leads SET founder_connect_at = ?, updated_at = ? WHERE id = ?",
+        (now(), now(), lead_id))
+    db.commit()
+
+
+def leads_missing_founder_connect():
+    """Inbound applies that have not had the founder direct-contacts email."""
+    return get_db().execute(
+        "SELECT * FROM leads WHERE COALESCE(founder_connect_at, '') = '' "
+        "AND COALESCE(email, '') != '' "
+        "AND COALESCE(source, '') NOT IN ('demo', 'emr') "
+        "ORDER BY id ASC").fetchall()
 
 
 def mark_connect_emailed(lead_id):

@@ -366,6 +366,48 @@ def test_apply_double_submit_is_one_application():
         assert db.find_recent_duplicate_lead("dup@x.test", "NCT09990006") is None
 
 
+def test_founder_connect_email_content_and_stamp():
+    """The founder note carries real contacts and a thread link, never a
+    placeholder address, an em dash, or an eligibility claim; the stamp keeps
+    the backfill from sending it twice."""
+    import re
+    import db
+    lead = {"name": "George Cole", "email": "g@x.test", "nct": "NCT09990001",
+            "title": "Diabetes site study", "location": "", "site": ""}
+    sites = [{"facility": "Riverside Clinic", "city": "Columbus",
+              "phone": "614-555-0100", "email": "maya@riversideclinic.test"}]
+    central = [{"phone": "1-877-555-0199", "email": ""}]
+    subject, body = mailer.build_founder_connect_message(
+        lead, sites, central, "https://bridgemd.health/a/tok123")
+    assert "NCT09990001" in subject
+    assert "614-555-0100" in body and "1-877-555-0199" in body
+    assert "https://bridgemd.health/a/tok123" in body
+    assert "founder of BridgeMD" in body
+    assert not re.search(r"[\u2014\u2013]", subject + body)
+    assert "qualify" not in body.lower() and "$" not in body
+    assert "medical advice" in body
+
+    with webapp.app.app_context():
+        token = db.create_lead({
+            "applicant_token": "t-founder-1", "nct": "NCT09990001",
+            "title": "T", "name": "G", "email": "g@x.test", "consent": 1,
+            "source": "web"})
+        row = db.get_lead_by_token(token)
+        assert row["id"] in [r["id"] for r in db.leads_missing_founder_connect()]
+        # Payload built from the trial fixture, no network: emails come from
+        # the facility contacts and never from a placeholder.
+        real_get = webapp._get_study
+        webapp._get_study = lambda nct: _trial()
+        try:
+            found_sites, found_central = webapp._founder_connect_payload(row)
+        finally:
+            webapp._get_study = real_get
+        assert found_sites and found_sites[0]["email"] == "maya@riversideclinic.test"
+        assert found_central and found_central[0]["email"] == "recruit@sponsor-pharma.test"
+        db.mark_founder_connect(row["id"])
+        assert row["id"] not in [r["id"] for r in db.leads_missing_founder_connect()]
+
+
 def main():
     tests = [
         test_clinic_emails_not_sponsor,
@@ -385,6 +427,7 @@ def main():
         test_demo_only_handoff_is_resent,
         test_site_contact_skips_demo_profile,
         test_apply_double_submit_is_one_application,
+        test_founder_connect_email_content_and_stamp,
     ]
     failed = 0
     for t in tests:

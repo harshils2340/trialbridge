@@ -48,6 +48,7 @@ SUBJECT_KINDS = [
     ("A study team wants to move forward", "status: accepted (to applicant)"),
     ("Update on your trial application", "status: update (to applicant)"),
     ("Your trial application:", "status: screening/enrolled (to applicant)"),
+    ("Direct contacts for your trial", "founder connect (to applicant)"),
 ]
 
 # Content rules. An applicant email must carry the /a/<token> thread link and

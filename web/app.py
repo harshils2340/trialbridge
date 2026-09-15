@@ -1223,6 +1223,11 @@ def _log_event(name, detail=None):
 # when the listing has no address). Sponsor/central inboxes are skipped.
 # --------------------------------------------------------------------------- #
 NOTIFY_LIVE = os.environ.get("NOTIFY_LIVE", "0") == "1"
+# "For now, we connect them ourselves": every live applicant gets a personal
+# note from the founder with the study's own public contacts, because a new
+# platform's reply lag must not cost anyone an enrollment. Set to 0 once study
+# teams reply on the thread fast enough that the note is redundant.
+FOUNDER_CONNECT = os.environ.get("FOUNDER_CONNECT", "1") == "1"
 # Last-resort recipient when no real clinic address exists for a study. This
 # must be an inbox a person actually reads, so it defaults to the brand inbox
 # (which forwards to the operator). It used to default to an early partner
@@ -1582,6 +1587,125 @@ def _run_connect_email_backfill():
             app.logger.exception("connect email backfill failed")
 
 
+def _founder_connect_payload(lead):
+    """The study's own public contacts for this applicant: up to three nearby
+    recruiting sites (phone first) plus the study information line. Placeholder
+    and garbled addresses never appear (db.is_placeholder_site_email)."""
+    nct = (lead["nct"] or "").strip()
+    if not nct:
+        return [], []
+    try:
+        trial = _get_study(nct)
+    except Exception:
+        app.logger.exception("founder connect: study fetch failed for %s", nct)
+        return [], []
+    lat, lon, radius, unit = _notify_geo_for_lead(lead)
+    site_label = ""
+    try:
+        site_label = (lead["site"] or "").strip()
+    except (KeyError, IndexError, TypeError):
+        site_label = ""
+    sites = []
+    for site in sites_for_patient_area(trial, site_label=site_label, lat=lat,
+                                       lon=lon, radius=radius, unit=unit):
+        phone = ""
+        for c in (site.get("contacts") or []):
+            phone = (c.get("phone") or "").strip()
+            if phone:
+                break
+        email = ""
+        for rec in clinic_emails_from_site(site):
+            if not db.is_placeholder_site_email(rec["email"]):
+                email = rec["email"]
+                break
+        if phone or email:
+            sites.append({"facility": site.get("facility") or "",
+                          "city": site.get("city") or "",
+                          "phone": phone, "email": email})
+        if len(sites) >= 3:
+            break
+    central = []
+    for c in ((trial or {}).get("centralContacts") or [])[:2]:
+        phone = (c.get("phone") or "").strip()
+        email = (c.get("email") or "").strip()
+        if email and db.is_placeholder_site_email(email):
+            email = ""
+        if phone or email:
+            central.append({"phone": phone, "email": email})
+    return sites, central
+
+
+def _notify_applicant_founder_connect(token):
+    """One-time personal email with the study's direct contacts. Sends only
+    when there is something useful to say; stamps either way so the boot
+    backfill does not retry a contactless study forever."""
+    lead = db.get_lead_by_token(token)
+    if not lead or not (lead["email"] or "").strip():
+        return False
+    sites, central = _founder_connect_payload(lead)
+    if not sites and not central:
+        app.logger.info("founder connect: no public contacts for lead %s (%s)",
+                        lead["id"], lead["nct"])
+        db.mark_founder_connect(lead["id"])
+        return False
+    subject, body = mailer.build_founder_connect_message(
+        lead, sites, central, _applicant_thread_url(lead))
+    ok = _notify_patient(lead["email"], "", subject, body, "")
+    if ok:
+        db.mark_founder_connect(lead["id"])
+        print(f"founder-connect lead={lead['id']} nct={lead['nct']}", flush=True)
+    return ok
+
+
+def _notify_applicant_founder_connect_async(token):
+    def _run():
+        with app.app_context():
+            try:
+                _notify_applicant_founder_connect(token)
+            except Exception:
+                app.logger.exception("founder connect failed")
+    threading.Thread(target=_run, daemon=True).start()
+
+
+_founder_backfill_started = False
+_founder_backfill_lock = threading.Lock()
+
+
+def _boot_founder_connect_backfill():
+    """One pass over live applicants who never got the founder contacts email,
+    so everyone already waiting is connected the moment this ships."""
+    if not FOUNDER_CONNECT or not notifications_ready():
+        return
+    global _founder_backfill_started
+    with _founder_backfill_lock:
+        if _founder_backfill_started:
+            return
+        _founder_backfill_started = True
+
+    def _run():
+        time.sleep(8)
+        with app.app_context():
+            try:
+                live = db.live_apply_index()
+                pending = [
+                    lead for lead in db.leads_missing_founder_connect()
+                    if _is_live_application(lead, live)
+                ]
+                print(f"founder-connect backfill pending {len(pending)}",
+                      flush=True)
+                for lead in pending:
+                    try:
+                        _notify_applicant_founder_connect(lead["token"])
+                    except Exception:
+                        app.logger.exception(
+                            "founder connect backfill failed for lead %s",
+                            lead["id"])
+            except Exception:
+                app.logger.exception("founder connect backfill failed")
+
+    threading.Thread(target=_run, daemon=True).start()
+
+
 def _boot_connect_email_backfill():
     print(
         f"connect-email boot live={NOTIFY_LIVE} "
@@ -1604,6 +1728,7 @@ def _boot_connect_email_backfill():
 
 
 _boot_connect_email_backfill()
+_boot_founder_connect_backfill()
 
 
 def _dedup_email_list(raw, exclude=None):
@@ -5677,6 +5802,8 @@ def interest():
             "Thanks for applying. We emailed you a link to message the study "
             "team. They will reply on that same thread.")
     _notify_applicant_apply_confirmation(token)
+    if FOUNDER_CONNECT:
+        _notify_applicant_founder_connect_async(token)
     _log_event("apply", {"nct": f.get("nct", "").strip()})
     # Prefill an OPTIONAL "alert me about similar trials" offer on the thank-you
     # page (see thanks.html). Nothing is created unless the patient opts in.
