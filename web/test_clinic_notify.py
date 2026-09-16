@@ -308,6 +308,12 @@ def test_placeholder_site_contacts_never_receive_mail():
     assert db.is_placeholder_site_email("info@northwindclinical.com")
     assert db.is_placeholder_site_email("u003edataprivacy@plains.com")
     assert db.is_placeholder_site_email("x@bridgemd.local")
+    # A company's legal or privacy desk is not a clinic, wherever it came from.
+    assert db.is_placeholder_site_email("pclplegalnotices@plains.com")
+    import clinic_lookup
+    assert clinic_lookup._skip_email("pclplegalnotices@plains.com")
+    assert clinic_lookup._skip_email("noreply@realclinic.test")
+    assert not clinic_lookup._skip_email("research@realclinic.test")
     assert not db.is_placeholder_site_email("navarrs@ccf.org")
     # Resolver: a placeholder claimed contact with nothing else falls through
     # to the operator fallback instead of the demo profile.
@@ -404,8 +410,15 @@ def test_founder_connect_email_content_and_stamp():
             webapp._get_study = real_get
         assert found_sites and found_sites[0]["email"] == "maya@riversideclinic.test"
         assert found_central and found_central[0]["email"] == "recruit@sponsor-pharma.test"
+        # A double-submit sibling (same email, same study) is stamped with it.
+        tok2 = db.create_lead({
+            "applicant_token": "t-founder-2", "nct": "NCT09990001",
+            "title": "T", "name": "G", "email": "G@x.test", "consent": 1,
+            "source": "web"})
+        sib = db.get_lead_by_token(tok2)
         db.mark_founder_connect(row["id"])
-        assert row["id"] not in [r["id"] for r in db.leads_missing_founder_connect()]
+        pending = [r["id"] for r in db.leads_missing_founder_connect()]
+        assert row["id"] not in pending and sib["id"] not in pending
 
 
 def main():

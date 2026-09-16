@@ -6327,12 +6327,24 @@ PLACEHOLDER_SITE_DOMAINS = ("northwindclinical.com", "bridgemd.local",
                             "example.com", "example.org", "example.net")
 
 
+# Mailbox names that are never a person who screens patients. A scraped
+# "pclplegalnotices@" or "dataprivacy@" is a company's legal desk, and a
+# patient's application must not land there.
+NON_HUMAN_LOCALS = ("legal", "privacy", "notice", "noreply", "no-reply",
+                    "donotreply", "do-not-reply", "unsubscribe", "abuse",
+                    "postmaster", "webmaster", "billing", "invoice", "press",
+                    "media", "careers", "jobs", "hr@", "marketing", "sales",
+                    "investor", "compliance", "security", "dmca")
+
+
 def is_placeholder_site_email(email):
     email = (email or "").strip().lower()
     if "@" not in email:
         return True
     local, dom = email.rsplit("@", 1)
     if "u003" in local or not local or not local[0].isalnum():
+        return True
+    if any(k.rstrip("@") in local for k in NON_HUMAN_LOCALS):
         return True
     return any(dom == d or dom.endswith("." + d)
                for d in PLACEHOLDER_SITE_DOMAINS)
@@ -6430,11 +6442,21 @@ def lead_clinic_notify(lead):
 
 
 def mark_founder_connect(lead_id):
-    """Stamp the one-time founder email with the study's direct contacts."""
+    """Stamp the one-time founder email with the study's direct contacts. The
+    same person's duplicate applies to the same study (a double-submit) are
+    stamped together, so one email means one email."""
     db = get_db()
+    lead = get_lead(lead_id)
     db.execute(
         "UPDATE leads SET founder_connect_at = ?, updated_at = ? WHERE id = ?",
         (now(), now(), lead_id))
+    if lead and (lead["email"] or "").strip() and (lead["nct"] or "").strip():
+        db.execute(
+            "UPDATE leads SET founder_connect_at = ?, updated_at = ? "
+            "WHERE COALESCE(founder_connect_at, '') = '' "
+            "AND lower(email) = ? AND upper(nct) = ?",
+            (now(), now(), lead["email"].strip().lower(),
+             lead["nct"].strip().upper()))
     db.commit()
 
 

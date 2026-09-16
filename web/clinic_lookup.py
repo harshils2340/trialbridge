@@ -12,6 +12,8 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+import db
+
 _EMAIL_RE = re.compile(r"[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,18}", re.I)
 _MAILTO_RE = re.compile(r"mailto:([^?\"'\s>]+)", re.I)
 
@@ -133,8 +135,8 @@ def _skip_email(email, sponsor=""):
         return True
     if any(dom == d or dom.endswith("." + d) for d in _SPONSOR_DOMAINS):
         return True
-    if "u003" in local or local in (
-            "privacy", "dataprivacy", "legal", "webmaster", "admin"):
+    if "u003" in local or local == "admin" or any(
+            k.rstrip("@") in local for k in db.NON_HUMAN_LOCALS):
         return True
     if not re.match(r"^[a-z0-9]", local):
         return True
