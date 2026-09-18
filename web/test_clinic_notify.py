@@ -65,8 +65,12 @@ def test_clinic_emails_not_sponsor():
     assert "pi@riversideclinic.test" in emails
     assert emails.index("maya@riversideclinic.test") < emails.index(
         "pi@riversideclinic.test")
-    assert "recruit@sponsor-pharma.test" not in emails
-    print("PASS: clinic emails first, then PI; sponsor inbox is skipped")
+    # The listing's central study contact is the exact source for the trial:
+    # it is a recipient too, after the nearby site inboxes.
+    assert "recruit@sponsor-pharma.test" in emails
+    assert emails.index("pi@riversideclinic.test") < emails.index(
+        "recruit@sponsor-pharma.test")
+    print("PASS: clinic emails first, then PI, then the listed study contact")
 
 
 def test_nearby_clinics_in_area_not_cross_country():
@@ -77,8 +81,9 @@ def test_nearby_clinics_in_area_not_cross_country():
     assert "maya@riversideclinic.test" in emails
     assert "sam@lakeside.test" in emails
     assert "west@faraway.test" not in emails, emails
-    assert "recruit@sponsor-pharma.test" not in emails
-    print("PASS: nearby clinics included; distant sites and sponsor stay out")
+    # The listed study contact comes after every nearby site, never before.
+    assert emails[-1] == "recruit@sponsor-pharma.test", emails
+    print("PASS: nearby clinics included; distant sites stay out; study contact last")
 
 
 def test_claimed_site_is_added_not_exclusive():
@@ -89,8 +94,8 @@ def test_claimed_site_is_added_not_exclusive():
     emails = [r["email"] for r in recs]
     assert "inbox@bridgemd-clinic.test" in emails
     assert "maya@riversideclinic.test" in emails
-    assert "recruit@sponsor-pharma.test" not in emails
-    print("PASS: a claimed inbox is added alongside clinic emails")
+    assert "recruit@sponsor-pharma.test" in emails
+    print("PASS: a claimed inbox is added alongside clinic emails and the study contact")
 
 
 def test_pi_used_when_no_coordinator():
@@ -112,8 +117,8 @@ def test_pi_used_when_no_coordinator():
         lead, trial=trial, lat=39.76, lon=-84.19, radius=50, unit="km")
     emails = [r["email"] for r in recs]
     assert emails[0] == "pi@solo.test", emails
-    assert "hq@sponsor.test" not in emails
-    print("PASS: PI email is used when the facility has no coordinator; sponsor skipped")
+    assert emails[1] == "hq@sponsor.test", emails
+    print("PASS: PI email first when the facility has no coordinator, study contact second")
 
 
 def test_fallback_when_no_public_email():
@@ -180,7 +185,9 @@ def test_looks_up_local_clinic_not_lilly():
     emails = [r["email"] for r in recs]
     assert "recruitment@azresearchcenter.com" in emails, emails
     assert "phoenix@trialmed.com" in emails, emails
-    assert "LillyTrials@Lilly.com" not in emails
+    assert "LillyTrials@Lilly.com" in emails
+    assert emails.index("recruitment@azresearchcenter.com") < emails.index(
+        "LillyTrials@Lilly.com")
     print("PASS: Phoenix clinic emails are used; Lilly sponsor inbox is skipped")
 
 
@@ -485,6 +492,46 @@ def test_owner_copy_has_the_application_and_no_links():
     print("PASS: owner copy is the whole application, no links; places not codes")
 
 
+def test_listing_contacts_reach_applicant_and_letter():
+    """Site phone and principal investigator from the listing show up in the
+    applicant's contacts email and in the study-team letter; contacts aimed
+    at doctors who want to run a site are left out."""
+    trial = {
+        "nctId": "NCT09990009", "conditions": ["Type 2 diabetes"],
+        "centralContacts": [
+            {"name": "Trial questions: 1-877-555-0100 or", "role": "CONTACT",
+             "phone": "1-317-555-0100", "email": "trials@sponsor.test"},
+            {"name": "Physicians interested in becoming principal investigators",
+             "role": "CONTACT", "email": "inquiry_hub@sponsor.test"},
+        ],
+        "locations": [{
+            "facility": "Helios Clinical Research", "city": "Phoenix",
+            "state": "AZ", "country": "United States", "status": "RECRUITING",
+            "lat": 33.44, "lon": -112.07,
+            "contacts": [{"role": "CONTACT", "phone": "480-555-0100"},
+                         {"name": "David Francyk", "role": "PRINCIPAL_INVESTIGATOR"}],
+        }],
+    }
+    lead = {"name": "Pat Lee", "email": "pat@x.test", "nct": "NCT09990009",
+            "title": "T2D study", "location": "", "site": "",
+            "condition": "Type 2 diabetes"}
+    central = webapp.central_contacts_for_patients(trial)
+    assert [c["email"] for c in central] == ["trials@sponsor.test"], central
+    cards = webapp.site_contact_cards(trial, lead)
+    assert cards and cards[0]["phone"] == "480-555-0100"
+    assert cards[0]["pi"] == "David Francyk"
+    _, body = mailer.build_founder_connect_message(
+        lead, cards, central, "https://bridgemd.health/a/t9")
+    assert "480-555-0100" in body and "principal investigator: David Francyk" in body
+    assert "Study contact listed on ClinicalTrials.gov: 1-317-555-0100 or trials@sponsor.test" in body
+    assert "inquiry_hub" not in body
+    _, letter = mailer.build_candidate_message(
+        lead, None, clinic={"facility": "Helios Clinical Research",
+                            "phone": "480-555-0100", "pi": "David Francyk"})
+    assert "Site they chose: Helios Clinical Research (principal investigator David Francyk, 480-555-0100)" in letter
+    print("PASS: listing phone, PI and study contact reach the applicant and the letter")
+
+
 def main():
     tests = [
         test_clinic_emails_not_sponsor,
@@ -506,6 +553,7 @@ def main():
         test_apply_double_submit_is_one_application,
         test_founder_connect_email_content_and_stamp,
         test_owner_copy_has_the_application_and_no_links,
+        test_listing_contacts_reach_applicant_and_letter,
     ]
     failed = 0
     for t in tests:

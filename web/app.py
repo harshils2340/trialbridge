@@ -1399,9 +1399,16 @@ def _notify_site_new_candidate_sync(token, trial=None, lat=None, lon=None,
         return []
     # The email is the application: everything inline, no link (the study
     # team asked for something they can enroll from directly).
+    clinic = dict(recipients[0])
+    try:
+        cards = site_contact_cards(_get_study(lead["nct"]), lead, limit=1)
+        if cards:
+            clinic.setdefault("facility", cards[0]["facility"])
+            clinic["phone"], clinic["pi"] = cards[0]["phone"], cards[0]["pi"]
+    except Exception:
+        app.logger.exception("site card lookup failed")
     subject, body = mailer.build_candidate_message(
-        lead, None, clinic=recipients[0],
-        reach=db.count_inbound_applications())
+        lead, None, clinic=clinic, reach=db.count_inbound_applications())
     delivered = []
     for rec in recipients:
         ok = _notify(rec["email"], subject, body)
@@ -1591,6 +1598,69 @@ def _run_connect_email_backfill():
             app.logger.exception("connect email backfill failed")
 
 
+# Central contacts on a listing are the study's own front door ("Trial
+# questions: 1-877-... or LillyTrials@Lilly.com"). Some are aimed at doctors
+# who want to run a site, not at participants; those are left out.
+_CENTRAL_NOT_FOR_PATIENTS = ("investigator", "physician", "becoming", "site staff",
+                             "media", "press", "investor")
+
+
+def central_contacts_for_patients(trial):
+    """The listing's central contacts that a participant or a coordinator
+    can actually use: {name, phone, email}, cleaned, never a non-human inbox."""
+    out = []
+    for c in ((trial or {}).get("centralContacts") or []):
+        name = (c.get("name") or "").strip()
+        if any(k in name.lower() for k in _CENTRAL_NOT_FOR_PATIENTS):
+            continue
+        phone = (c.get("phone") or "").strip()
+        email = (c.get("email") or "").strip()
+        if email and db.is_placeholder_site_email(email):
+            email = ""
+        if not (phone or email):
+            continue
+        out.append({"name": _clean_name(name), "phone": phone, "email": email})
+    return out
+
+
+def site_contact_cards(trial, lead, limit=3):
+    """Nearby recruiting sites as cards a person can act on: facility, city,
+    the listed phone, a real email if any, and the principal investigator's
+    name. Straight from the ClinicalTrials.gov listing."""
+    lat, lon, radius, unit = _notify_geo_for_lead(lead)
+    site_label = ""
+    try:
+        site_label = (lead["site"] or "").strip()
+    except (KeyError, IndexError, TypeError):
+        site_label = ""
+    cards = []
+    for site in sites_for_patient_area(trial, site_label=site_label, lat=lat,
+                                       lon=lon, radius=radius, unit=unit):
+        phone, pi = "", ""
+        for c in (site.get("contacts") or []):
+            if _is_pi_contact(c) and not pi:
+                pi = _clean_name(c.get("name"))
+            elif not phone and (c.get("phone") or "").strip():
+                phone = (c.get("phone") or "").strip()
+        if not phone:
+            for c in (site.get("contacts") or []):
+                if (c.get("phone") or "").strip():
+                    phone = (c.get("phone") or "").strip()
+                    break
+        email = ""
+        for rec in clinic_emails_from_site(site):
+            if not db.is_placeholder_site_email(rec["email"]):
+                email = rec["email"]
+                break
+        if phone or email or pi:
+            cards.append({"facility": site.get("facility") or "",
+                          "city": site.get("city") or "",
+                          "phone": phone, "email": email, "pi": pi})
+        if len(cards) >= limit:
+            break
+    return cards
+
+
 def _founder_connect_payload(lead):
     """The study's own public contacts for this applicant: up to three nearby
     recruiting sites (phone first) plus the study information line. Placeholder
@@ -1603,40 +1673,7 @@ def _founder_connect_payload(lead):
     except Exception:
         app.logger.exception("founder connect: study fetch failed for %s", nct)
         return [], []
-    lat, lon, radius, unit = _notify_geo_for_lead(lead)
-    site_label = ""
-    try:
-        site_label = (lead["site"] or "").strip()
-    except (KeyError, IndexError, TypeError):
-        site_label = ""
-    sites = []
-    for site in sites_for_patient_area(trial, site_label=site_label, lat=lat,
-                                       lon=lon, radius=radius, unit=unit):
-        phone = ""
-        for c in (site.get("contacts") or []):
-            phone = (c.get("phone") or "").strip()
-            if phone:
-                break
-        email = ""
-        for rec in clinic_emails_from_site(site):
-            if not db.is_placeholder_site_email(rec["email"]):
-                email = rec["email"]
-                break
-        if phone or email:
-            sites.append({"facility": site.get("facility") or "",
-                          "city": site.get("city") or "",
-                          "phone": phone, "email": email})
-        if len(sites) >= 3:
-            break
-    central = []
-    for c in ((trial or {}).get("centralContacts") or [])[:2]:
-        phone = (c.get("phone") or "").strip()
-        email = (c.get("email") or "").strip()
-        if email and db.is_placeholder_site_email(email):
-            email = ""
-        if phone or email:
-            central.append({"phone": phone, "email": email})
-    return sites, central
+    return site_contact_cards(trial, lead), central_contacts_for_patients(trial)
 
 
 def _notify_applicant_founder_connect(token):
@@ -16451,6 +16488,14 @@ def resolve_clinic_notify_recipients(lead, trial=None, *, claimed_email="",
                 break
         if len(clinic) >= max_clinics:
             break
+
+    # The listing's own study contact is the exact source for the trial. It
+    # comes right after any nearby site inboxes, so the handoff reaches the
+    # people the registry says to write to, not only a guessed clinic address.
+    for c in central_contacts_for_patients(trial):
+        if c.get("email"):
+            _add(clinic, _one(c["email"], "Study contact", "central",
+                              name=c.get("name", "")))
 
     extras = []
     # A claimed or posted contact rides along only when it is a real address.

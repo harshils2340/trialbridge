@@ -262,6 +262,11 @@ def build_candidate_message(lead, link=None, clinic=None, reach=0):
     _ = link
     clinic = clinic or {}
     facility = (clinic.get("facility") or "").strip() or _lead_text(lead, "site")
+    site_bits = [b for b in (
+        (f"principal investigator {clinic['pi']}" if clinic.get("pi") else ""),
+        (clinic.get("phone") or "").strip()) if b]
+    if facility and site_bits:
+        facility = f"{facility} ({', '.join(site_bits)})"
     first = _first_name(lead)
     subject = human_subject("candidate", lead)
     place = _place(lead)
@@ -564,11 +569,15 @@ def build_founder_connect_message(lead, sites, central, link):
         bits = [b for b in (site.get("phone"), site.get("email")) if b]
         where = ", ".join(b for b in (site.get("facility"), site.get("city")) if b)
         if where and bits:
-            lines.append(f"- {where}: {' or '.join(bits)}")
+            line = f"- {where}: {' or '.join(bits)}"
+            if site.get("pi"):
+                line += f" (principal investigator: {site['pi']})"
+            lines.append(line)
     for c in central:
         bits = [b for b in (c.get("phone"), c.get("email")) if b]
         if bits:
-            lines.append(f"- Study information line: {' or '.join(bits)}")
+            lines.append(f"- Study contact listed on ClinicalTrials.gov: "
+                         f"{' or '.join(bits)}")
     lines += [
         "",
         f"When you call, give them the study number {nct} and say you applied "
