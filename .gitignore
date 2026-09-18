@@ -40,3 +40,7 @@ web/search_eval_state.json
 
 # Landing card previews rendered by tools; regenerate, do not commit.
 web/static/shots/_preview/
+
+# Contains applicant PII, never commit.
+applicant_email_report.md
+web/live_applicants.json
