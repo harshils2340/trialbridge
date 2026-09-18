@@ -451,6 +451,40 @@ def test_founder_connect_email_content_and_stamp():
         assert row["id"] not in pending and sib["id"] not in pending
 
 
+def test_owner_copy_has_the_application_and_no_links():
+    """The operator's own email carries the whole application, no record or
+    inbox links, only the website. A postal-code location becomes a place."""
+    import json as _json
+    import re as _re
+    lead = {"nct": "NCT09990001", "title": "Diabetes site study",
+            "condition": "Type 2 diabetes", "location": "Pembroke Pines, FL",
+            "site": "Riverside Clinic", "email": "patient@secret.test",
+            "name": "Alex Morgan", "phone": "614-555-0100", "dob": "1990-06-01",
+            "source": "web", "created_at": "2026-09-18 10:00",
+            "screener": _json.dumps({"travel": "yes", "_flags": []}),
+            "eligibility": "", "notes": "", "records_connected": 0}
+    subject, body = mailer.build_owner_new_application(lead)
+    assert subject == "New application: type 2 diabetes study in Pembroke Pines, FL"
+    assert "Alex Morgan" in body and "patient@secret.test" in body
+    assert "614-555-0100" in body and "1990-06-01" in body
+    assert "Can travel to the study site for visits: Yes" in body
+    assert "/app/applicant" not in body and "/internal" not in body
+    assert _re.findall(r"https?://\S+", body) == [mailer.FINDER_URL]
+    # Postal codes turn into places; typed places pass through; a trailing
+    # US ZIP is dropped.
+    real = webapp._zippopotam_place
+    webapp._zippopotam_place = lambda country, code: (
+        "Pembroke Pines, FL" if code == "33029" else "Toronto, ON")
+    try:
+        assert webapp.display_area("33029") == "Pembroke Pines, FL"
+        assert webapp.display_area("M5V 2T6") == "Toronto, ON"
+        assert webapp.display_area("Dallas, TX 75201") == "Dallas, TX"
+        assert webapp.display_area("Dallas, TX") == "Dallas, TX"
+    finally:
+        webapp._zippopotam_place = real
+    print("PASS: owner copy is the whole application, no links; places not codes")
+
+
 def main():
     tests = [
         test_clinic_emails_not_sponsor,
@@ -471,6 +505,7 @@ def main():
         test_site_contact_skips_demo_profile,
         test_apply_double_submit_is_one_application,
         test_founder_connect_email_content_and_stamp,
+        test_owner_copy_has_the_application_and_no_links,
     ]
     failed = 0
     for t in tests:

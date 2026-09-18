@@ -6391,6 +6391,28 @@ def record_clinic_notify(lead_id, recipients):
     return True
 
 
+def leads_with_postal_location(limit=50):
+    """Applications whose stored location is a bare postal code."""
+    rows = get_db().execute(
+        "SELECT id, location FROM leads WHERE source IN ('web', 'referral') "
+        "AND COALESCE(location, '') != '' ORDER BY id DESC LIMIT 500").fetchall()
+    out = []
+    for r in rows:
+        loc = (r["location"] or "").strip().upper()
+        if re.match(r"^\d{5}$", loc) or re.match(r"^[A-Z]\d[A-Z](\s*\d[A-Z]\d)?$", loc):
+            out.append(r)
+        if len(out) >= limit:
+            break
+    return out
+
+
+def set_lead_location(lead_id, location):
+    db = get_db()
+    db.execute("UPDATE leads SET location = ?, updated_at = ? WHERE id = ?",
+               ((location or "").strip()[:120], now(), lead_id))
+    db.commit()
+
+
 def count_inbound_applications():
     """How many real people have applied through the site. Quoted to study
     teams so they can see the platform is in use."""

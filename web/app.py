@@ -1733,6 +1733,29 @@ def _boot_connect_email_backfill():
 
 _boot_connect_email_backfill()
 _boot_founder_connect_backfill()
+
+
+def _boot_area_label_backfill():
+    """Existing applications stored a bare postal code as their location.
+    Resolve those to a city once so every email and inbox row reads like a
+    place. Small, background, best-effort."""
+    def _run():
+        time.sleep(10)
+        with app.app_context():
+            try:
+                n = 0
+                for row in db.leads_with_postal_location(limit=50):
+                    label = display_area(row["location"])
+                    if label and label != (row["location"] or "").strip():
+                        db.set_lead_location(row["id"], label)
+                        n += 1
+                print(f"area-label backfill updated {n}", flush=True)
+            except Exception:
+                app.logger.exception("area label backfill failed")
+    threading.Thread(target=_run, daemon=True).start()
+
+
+_boot_area_label_backfill()
 print(f"llm boot key={bool(mt.LLM_API_KEY)} model={mt.LLM_MODEL} "
       f"base={mt.LLM_BASE_URL}", flush=True)
 
@@ -1776,9 +1799,7 @@ def _notify_owner_new_application(token, exclude_emails=None):
     # Deep-link straight to this applicant's full record (contact + screener +
     # eligibility) so the operator can act/forward in one click, plus the
     # cross-study inbox for the tabular view of everything.
-    link = _abs_url("applicant_detail", lead_id=lead["id"])
-    inbox = _abs_url("operator_inbox")
-    subject, body = mailer.build_owner_new_application(lead, link, inbox=inbox)
+    subject, body = mailer.build_owner_new_application(lead)
     return _notify_async(", ".join(recipients), subject, body)
 
 
@@ -5756,7 +5777,7 @@ def interest():
         "applicant_token": applicant,
         "nct": f.get("nct", "").strip(), "title": f.get("title", "").strip(),
         "condition": f.get("condition", "").strip(),
-        "location": f.get("location", "").strip(),
+        "location": display_area(f.get("location", "")),
         "site": f.get("site", "").strip(), "name": name,
         "email": email, "phone": f.get("phone", "").strip(),
         "age": age, "sex": sex, "dob": dob,
@@ -15007,6 +15028,46 @@ def _zippopotam(country, code):
     except Exception:
         pass
     return None
+
+
+def _zippopotam_place(country, code):
+    """Postal code -> "City, ST" from zippopotam.us, or "" when unknown."""
+    try:
+        req = urllib.request.Request(
+            f"https://api.zippopotam.us/{country}/{urllib.parse.quote(code)}",
+            headers={"User-Agent": "BridgeMD/1.0"})
+        with urllib.request.urlopen(req, timeout=15) as r:
+            data = json.load(r)
+        p = (data.get("places") or [None])[0]
+        if p:
+            # Canadian FSAs come back as neighbourhood lists in parentheses;
+            # keep the recognisable part ("Downtown Toronto").
+            city = (p.get("place name") or "").split(" (")[0].strip()
+            st = (p.get("state abbreviation") or p.get("state") or "").strip()
+            return ", ".join(x for x in (city, st) if x)
+    except Exception:
+        pass
+    return ""
+
+
+def display_area(location):
+    """A place a person recognises. A bare postal code ("33029") becomes the
+    city it belongs to ("Pembroke Pines, FL"); a place with a trailing US ZIP
+    loses the ZIP. Anything else is returned as typed. Study teams and the
+    operator read this in every email, so it must read like a place, not a
+    code."""
+    loc = (location or "").strip()
+    if not loc:
+        return ""
+    up = loc.upper()
+    m = _CA_POSTAL.match(up)
+    if m:
+        return _zippopotam_place("CA", m.group(1)) or loc
+    if _CA_FSA.match(up):
+        return _zippopotam_place("CA", up) or loc
+    if _US_ZIP.match(up):
+        return _zippopotam_place("US", up) or loc
+    return _re.sub(r"\s+\d{5}(?:-\d{4})?$", "", loc).strip(" ,")
 
 
 def _nominatim(query):

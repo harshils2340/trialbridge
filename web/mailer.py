@@ -209,41 +209,12 @@ def _eligibility_block(lead):
     return lines
 
 
-def build_candidate_message(lead, link=None, clinic=None, reach=0):
-    """The handoff to a study team, written as a letter from the founder.
-
-    Everything the applicant told us is in the body, in order, so a
-    coordinator can screen and enroll them from the email alone. There is no
-    application link: the email is the application. The applicant is never on
-    To/CC; their contact details are the point of the handoff and they
-    consented to it. No eligibility claims: their answers are labelled as
-    self-reported."""
-    _ = link
-    clinic = clinic or {}
-    facility = (clinic.get("facility") or "").strip() or _lead_text(lead, "site")
-    first = _first_name(lead)
-    subject = human_subject("candidate", lead)
+def _application_block(lead, facility=""):
+    """The whole application as plain text: study, who they are, how to reach
+    them, what they answered. Shared by the study-team letter and the
+    operator's own copy, so both read the same and neither needs a link."""
     place = _place(lead)
-    who = f"{_lead_text(lead, 'name') or 'Someone'}"
-    if place:
-        who += f", in {place},"
-    lines = [
-        "Hi,",
-        "",
-        f"I'm {FOUNDER_NAME}, the founder of BridgeMD. I'm a student at the "
-        "University of Waterloo, and BridgeMD is a not-for-profit project with "
-        "one job: connecting people who want to join a clinical trial with the "
-        "team running it. We don't charge you or the applicant, we don't sell "
-        "anything, and we don't need anything from you.",
-        "",
-        f"{who} applied to your study on BridgeMD and asked to be contacted. "
-        "Everything they told us is below, so you can screen and enroll them "
-        "from this email. Please reach out to them directly. They are not "
-        "copied here.",
-        "",
-        "STUDY",
-        f"{_lead_text(lead, 'title') or 'your study'}",
-    ]
+    lines = ["STUDY", f"{_lead_text(lead, 'title') or 'the study'}"]
     if _lead_text(lead, "nct"):
         lines.append(f"Registry number: {_lead_text(lead, 'nct')}")
     if facility:
@@ -276,6 +247,42 @@ def build_candidate_message(lead, link=None, clinic=None, reach=0):
     summary = _lead_text(lead, "record_summary").strip()
     if summary:
         lines += ["", "FROM RECORDS THEY CONNECTED", summary]
+    return lines
+
+
+def build_candidate_message(lead, link=None, clinic=None, reach=0):
+    """The handoff to a study team, written as a letter from the founder.
+
+    Everything the applicant told us is in the body, in order, so a
+    coordinator can screen and enroll them from the email alone. There is no
+    application link: the email is the application. The applicant is never on
+    To/CC; their contact details are the point of the handoff and they
+    consented to it. No eligibility claims: their answers are labelled as
+    self-reported."""
+    _ = link
+    clinic = clinic or {}
+    facility = (clinic.get("facility") or "").strip() or _lead_text(lead, "site")
+    first = _first_name(lead)
+    subject = human_subject("candidate", lead)
+    place = _place(lead)
+    who = f"{_lead_text(lead, 'name') or 'Someone'}"
+    if place:
+        who += f", in {place},"
+    lines = [
+        "Hi,",
+        "",
+        f"I'm {FOUNDER_NAME}, the founder of BridgeMD. I'm a student at the "
+        "University of Waterloo, and BridgeMD is a not-for-profit project with "
+        "one job: connecting people who want to join a clinical trial with the "
+        "team running it. We don't charge you or the applicant, we don't sell "
+        "anything, and we don't need anything from you.",
+        "",
+        f"{who} applied to your study on BridgeMD and asked to be contacted. "
+        "Everything they told us is below, so you can screen and enroll them "
+        "from this email. Please reach out to them directly. They are not "
+        "copied here.",
+        "",
+    ] + _application_block(lead, facility)
     reach_line = ""
     try:
         n = int(reach or 0)
@@ -340,77 +347,18 @@ def branded_html(body):
     )
 
 
-def build_owner_new_application(lead, link, inbox=""):
-    """Internal heads-up to the operator that a new application came in, so they
-    can act on it (forward to the study team) fast. De-identified on purpose:
-    NO name, email, phone, or clinical notes in the email itself, those live
-    behind the secure record link. Includes triage context so the operator can
-    prioritise before clicking through."""
-    def _lget(key, default=""):
-        try:
-            v = lead[key]
-        except (KeyError, IndexError, TypeError):
-            return default
-        return v if v not in (None, "") else default
-
-    nct = _lget("nct") or "a study"
+def build_owner_new_application(lead, link=None, inbox=""):
+    """The operator's own copy of a new application: everything the study team
+    gets, in the same layout, so it can be forwarded or typed into a site's
+    system as is. No record or inbox links; the only URL is the website."""
+    _ = (link, inbox)
     subject = human_subject("owner", lead)
-    src = (_lget("source", "web")).replace("_", " ")
-    lines = [
-        "A new application was just submitted on BridgeMD.",
-        "",
-        f"Study: {_lget('title') or nct}",
-    ]
-    if _lget("nct"):
-        lines.append(f"NCT: {_lget('nct')}")
-    if _lget("condition"):
-        lines.append(f"Condition: {_lget('condition')}")
-    if _lget("location"):
-        lines.append(f"Region: {_lget('location')}")
-    lines.append(f"Source: {src}")
-
-    # Triage context (still de-identified): what the operator needs to decide
-    # how urgent this is, without any PII.
-    contact = []
-    if _lget("email"):
-        contact.append("email")
-    if _lget("phone"):
-        contact.append("phone")
-    lines.append(f"Contact on file: {', '.join(contact) or 'none'}")
-
-    verdict = ""
-    try:
-        elig = json.loads(_lget("eligibility") or "{}")
-        if isinstance(elig, dict):
-            verdict = (elig.get("verdict") or "").strip()
-    except (ValueError, TypeError):
-        pass
-    if verdict:
-        lines.append(f"Pre-screen: {verdict}")
-
-    try:
-        scr = json.loads(_lget("screener") or "{}")
-        flags = scr.get("_flags") if isinstance(scr, dict) else None
-        if flags:
-            lines.append(f"Flags: {len(flags)} to review")
-    except (ValueError, TypeError):
-        pass
-
-    if _lget("records_connected"):
-        lines.append("Records: connected")
-
-    lines += [
-        "",
-        "Open this applicant (contact + answers, behind login):",
-        link,
-    ]
-    if inbox:
-        lines += ["", "All applications (inbox):", inbox]
-    lines += [
-        "",
-        "You're getting this because you're the BridgeMD operator.",
-        "Sent via BridgeMD.",
-    ]
+    src = (_lead_text(lead, "source") or "web").replace("_", " ")
+    lines = ["New application on BridgeMD.", f"Came in via: {src}", ""]
+    lines += _application_block(lead, _lead_text(lead, "site"))
+    if _lead_text(lead, "records_connected") not in ("", "0"):
+        lines += ["", "Records: connected"]
+    lines += ["", FINDER_URL]
     return subject, "\n".join(lines)
 
 
