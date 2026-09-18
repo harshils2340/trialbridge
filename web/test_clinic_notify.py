@@ -213,28 +213,58 @@ def test_abs_url_works_without_http_request():
 
 
 def test_applicant_email_in_body_not_as_recipient():
+    """The clinic email is the whole application, written as a letter from
+    the founder: contact details, date of birth, their answers, no application
+    link, no registry code in the subject, and the applicant never on To."""
+    import json as _json
+    import re as _re
     lead = {"nct": "NCT09990001", "title": "Diabetes site study",
             "condition": "Type 2 diabetes", "location": "Columbus, OH",
             "site": "Riverside Clinic", "email": "patient@secret.test",
-            "name": "Alex Morgan", "phone": "614-555-0100"}
+            "name": "Alex Morgan", "phone": "614-555-0100", "dob": "1990-06-01",
+            "sex": "female", "created_at": "2026-09-18 10:00",
+            "screener": _json.dumps({"Have you been diagnosed with Type 2 diabetes?": "yes",
+                                     "travel": "yes", "_flags": []}),
+            "eligibility": _json.dumps({"met": ["Age 18+"], "unknown": ["HbA1c"],
+                                        "not_met": []}),
+            "notes": "Diagnosed in 2021."}
     recs = webapp.resolve_clinic_notify_recipients(
         lead, trial=_trial(), lat=39.96, lon=-83.00, radius=80, unit="km")
     assert "patient@secret.test" not in [r["email"] for r in recs]
     subject, body = mailer.build_candidate_message(
-        lead, "https://bridgemd.health/c/abc123",
-        clinic={"facility": "Riverside Clinic"})
-    assert "patient@secret.test" in body
+        lead, None, clinic={"facility": "Riverside Clinic"}, reach=12)
+    assert subject == "Alex in Columbus, OH applied to your type 2 diabetes study"
+    assert "NCT" not in subject
+    assert "patient@secret.test" in body and "614-555-0100" in body
+    assert "1990-06-01" in body and "(age " in body
+    assert "Have you been diagnosed with Type 2 diabetes? Yes" in body
+    assert "Can travel to the study site for visits: Yes" in body
+    assert "HbA1c" in body and "Diagnosed in 2021." in body
     assert "not copied" in body.lower()
-    assert "https://bridgemd.health/" in body
-    assert "https://bridgemd.health/c/abc123" in body
-    assert "614-555-0100" not in body
-    assert "NCT09990001" in subject
+    assert "founder of BridgeMD" in body and "University of Waterloo" in body
+    assert "12 people have applied" in body
+    assert "reply to this email" in body
+    # No application link. The only URL is the LinkedIn page in the signature.
+    urls = _re.findall(r"https?://\S+", body)
+    assert urls == [mailer.LINKEDIN_URL], urls
+    assert not _re.search(r"[\u2014\u2013]", subject + body)
     html = mailer.branded_html(body)
-    assert "https://bridgemd.health/static/apple-touch-icon.png" in html
-    assert "https://bridgemd.health/" in html
-    assert "BridgeMD" in html
-    print("PASS: applicant email is in the body only; branding + finder link included")
-
+    assert mailer.LINKEDIN_LOGO_URL in html and mailer.LINKEDIN_URL in html
+    assert "Harshil Shah" in html
+    # Every email comes from a person at the shared inbox, with replies to it.
+    assert mailer.from_header() == "Harshil Shah at BridgeMD <hello@bridgemd.health>"
+    assert mailer.reply_to_header() == "hello@bridgemd.health"
+    # Chat notifications to the team carry the contact inline, no link.
+    s2, b2 = mailer.build_dm_message(lead, "Can I come Tuesday?", "https://x/c/1", to="site")
+    assert s2 == "Alex sent you a message about the type 2 diabetes study"
+    assert "https://x/c/1" not in b2 and "patient@secret.test" in b2
+    # Applicant-facing subjects are human too, and their thread link stays.
+    s3, b3 = mailer.build_apply_confirmation(lead, "https://bridgemd.health/a/t1")
+    assert s3 == "Your application to the type 2 diabetes study"
+    assert "https://bridgemd.health/a/t1" in b3
+    assert mailer.age_from_dob("1990-06-01").isdigit()
+    assert mailer.age_from_dob("2999-01-01") == "" and mailer.age_from_dob("nope") == ""
+    print("PASS: clinic letter carries the whole application, no link, human subject")
 
 def test_missing_clinic_notify_list_clears_after_record():
     with webapp.app.app_context():
@@ -385,7 +415,7 @@ def test_founder_connect_email_content_and_stamp():
     central = [{"phone": "1-877-555-0199", "email": ""}]
     subject, body = mailer.build_founder_connect_message(
         lead, sites, central, "https://bridgemd.health/a/tok123")
-    assert "NCT09990001" in subject
+    assert subject == "How to reach the clinical trial team directly", subject
     assert "614-555-0100" in body and "1-877-555-0199" in body
     assert "https://bridgemd.health/a/tok123" in body
     assert "founder of BridgeMD" in body

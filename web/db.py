@@ -1674,6 +1674,7 @@ _MIGRATIONS = {
         # a boot backfill can send once to existing applies and then stop.
         "connect_emailed_at": "TEXT DEFAULT ''",
         "founder_connect_at": "TEXT DEFAULT ''",
+        "dob": "TEXT DEFAULT ''",
         # Channel-side identifier to address an outbound reply back to (Instagram
         # username, Messenger PSID, WhatsApp number, ...). Populated by the intake
         # connector for social leads; the connector uses it to route our reply to
@@ -5930,6 +5931,9 @@ def create_lead(data):
     if data.get("owner_user_id"):
         db.execute("UPDATE leads SET owner_user_id = ? WHERE id = ?",
                    (data.get("owner_user_id"), lead_id))
+    if data.get("dob"):
+        db.execute("UPDATE leads SET dob = ? WHERE id = ?",
+                   ((data.get("dob") or "").strip()[:10], lead_id))
     db.execute(
         "INSERT INTO lead_events (lead_id, status, note, actor, created_at) "
         "VALUES (?,?,?,?,?)",
@@ -6385,6 +6389,17 @@ def record_clinic_notify(lead_id, recipients):
             (lead_id, "prescreen", note, "system", now()))
     db.commit()
     return True
+
+
+def count_inbound_applications():
+    """How many real people have applied through the site. Quoted to study
+    teams so they can see the platform is in use."""
+    row = get_db().execute(
+        "SELECT COUNT(*) FROM leads WHERE source IN ('web', 'referral') "
+        "AND COALESCE(email, '') != '' "
+        "AND applicant_token NOT LIKE 'demo-%' "
+        "AND applicant_token NOT LIKE 'seeded-%'").fetchone()
+    return int(row[0] or 0)
 
 
 def find_recent_duplicate_lead(email, nct, minutes=15):

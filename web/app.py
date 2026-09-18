@@ -385,6 +385,8 @@ def ops_readiness():
                                              and os.environ.get("SMTP_FROM", "").strip()),
             "notifications_sms_live": bool(os.environ.get("NOTIFY_SMS", "0") == "1"
                                            and notifications_mod.sms_configured()),
+            "llm_configured": bool(mt.LLM_API_KEY),
+            "llm_model": mt.LLM_MODEL if mt.LLM_API_KEY else "",
         },
         "infra": {
             "db_path": db_path or str(db.DB_PATH),
@@ -1395,9 +1397,11 @@ def _notify_site_new_candidate_sync(token, trial=None, lat=None, lon=None,
             f"clinic-notify lead={lead['id']} nct={lead['nct']} no recipients",
             flush=True)
         return []
-    link = _abs_url("candidate_page", token=lead["site_token"])
+    # The email is the application: everything inline, no link (the study
+    # team asked for something they can enroll from directly).
     subject, body = mailer.build_candidate_message(
-        lead, link, clinic=recipients[0])
+        lead, None, clinic=recipients[0],
+        reach=db.count_inbound_applications())
     delivered = []
     for rec in recipients:
         ok = _notify(rec["email"], subject, body)
@@ -1729,6 +1733,8 @@ def _boot_connect_email_backfill():
 
 _boot_connect_email_backfill()
 _boot_founder_connect_backfill()
+print(f"llm boot key={bool(mt.LLM_API_KEY)} model={mt.LLM_MODEL} "
+      f"base={mt.LLM_BASE_URL}", flush=True)
 
 
 def _dedup_email_list(raw, exclude=None):
@@ -2499,6 +2505,7 @@ def _csrf_token():
 
 
 app.jinja_env.globals["csrf_token"] = _csrf_token
+app.jinja_env.globals["today_iso"] = lambda: dt.date.today().isoformat()
 
 
 _ASSET_VER_CACHE = {}
@@ -5051,7 +5058,10 @@ def _prescreen_for_trial(trial):
             app.logger.exception("prescreen question generation failed")
             questions = []
     if not questions:
-        questions = _structured_prescreen(trial)
+        # A failed or empty model call must not be remembered for a day: the
+        # next visitor should get another try at the tailored questions. Serve
+        # the structured fallback now without caching it.
+        return _structured_prescreen(trial)
     _PRESCREEN_CACHE[nct] = {"questions": questions, "ts": time.time()}
     _PRESCREEN_CACHE.move_to_end(nct)
     while len(_PRESCREEN_CACHE) > _PRESCREEN_CACHE_MAX:
@@ -5676,6 +5686,15 @@ def interest():
 
     age = f.get("age", "").strip()
     sex = f.get("sex", "").strip()
+    # Date of birth is what a study team actually screens on. It beats the
+    # age carried over from the search form, which may be a guess or blank.
+    dob = f.get("dob", "").strip()[:10]
+    if dob:
+        dob_age = mailer.age_from_dob(dob)
+        if not dob_age:
+            flash("Enter a valid date of birth.", "error")
+            return redirect(_safe_next(request.referrer) or url_for("home"))
+        age = dob_age
 
     # Auto-fill from records the patient already connected once. Age/sex fill any
     # blanks, the de-identified summary rides along, and connected clinical facts
@@ -5740,7 +5759,7 @@ def interest():
         "location": f.get("location", "").strip(),
         "site": f.get("site", "").strip(), "name": name,
         "email": email, "phone": f.get("phone", "").strip(),
-        "age": age, "sex": sex,
+        "age": age, "sex": sex, "dob": dob,
         "notes": f.get("about", "").strip(), "consent": 1, "source": source,
         "screener": json.dumps(screener) if screener else "",
         "eligibility": json.dumps(elig) if elig else "",
@@ -9214,6 +9233,7 @@ def _operator_inbox_row(r):
         "phone": g_("phone"),
         "contact": ", ".join(contact) or "none",
         "age": g_("age"),
+        "dob": g_("dob"),
         "sex": g_("sex"),
         "condition": g_("condition"),
         "title": g_("title"),

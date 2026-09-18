@@ -33,6 +33,7 @@ FIELDS = [
     "email",
     "phone",
     "age",
+    "dob",
     "sex",
     "location",
     "condition",

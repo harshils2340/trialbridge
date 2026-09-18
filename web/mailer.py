@@ -66,6 +66,92 @@ BRAND_HOME = "https://bridgemd.health"
 # PNG mark (email clients often skip SVG). Already served on production.
 LOGO_URL = "https://bridgemd.health/static/apple-touch-icon.png"
 
+# Every email is from a person, not a robot. Replies go to a real inbox the
+# founder reads, and the footer puts a face and a LinkedIn page on it so a
+# coordinator who has never heard of BridgeMD can see who is writing.
+HELLO_EMAIL = "hello@bridgemd.health"
+FOUNDER_NAME = "Harshil Shah"
+FOUNDER_TITLE = "Founder, BridgeMD. Student at the University of Waterloo."
+LINKEDIN_URL = os.environ.get(
+    "LINKEDIN_URL", "https://www.linkedin.com/company/bridgemd/").strip()
+LINKEDIN_LOGO_URL = "https://bridgemd.health/static/linkedin.png"
+
+
+def from_header():
+    """Sender for every outbound email. MAIL_FROM overrides; otherwise the
+    founder at the shared inbox, never a no-reply address."""
+    return (os.environ.get("MAIL_FROM") or "").strip() or \
+        f"{FOUNDER_NAME} at BridgeMD <{HELLO_EMAIL}>"
+
+
+def reply_to_header():
+    return (os.environ.get("MAIL_REPLY_TO") or "").strip() or HELLO_EMAIL
+
+
+def _first_name(lead):
+    return (_lead_text(lead, "name") or "there").split()[0]
+
+
+def _condition_phrase(lead):
+    c = _lead_text(lead, "condition").strip().rstrip(".")
+    # Mid-sentence, a condition reads as a plain noun ("alcohol use disorder
+    # study"); an acronym or proper noun ("COVID", "Crohn's") keeps its case.
+    if len(c) > 1 and c[0].isupper() and c[1].islower():
+        c = c[0].lower() + c[1:]
+    return f"{c} study" if c else "clinical trial"
+
+
+def _place(lead):
+    return _lead_text(lead, "location").strip()
+
+
+def human_subject(kind, lead):
+    """Subject lines that read like a person wrote them: what the trial is,
+    in plain words, and where. No registry codes, no brand tags."""
+    cond = _condition_phrase(lead)
+    place = _place(lead)
+    first = _first_name(lead)
+    if kind == "candidate":
+        who = f"{first} in {place}" if place else first
+        return f"{who} applied to your {cond}"
+    if kind == "apply_confirmation":
+        return f"Your application to the {cond}"
+    if kind == "founder_connect":
+        return f"How to reach the {cond} team directly"
+    if kind == "clinic_connect":
+        return f"Messaging the {cond} team"
+    if kind == "dm_to_site":
+        return f"{first} sent you a message about the {cond}"
+    if kind == "dm_to_patient":
+        return f"The {cond} team replied to you"
+    if kind == "owner":
+        return f"New application: {cond}" + (f" in {place}" if place else "")
+    return f"About your {cond}"
+
+
+def age_from_dob(dob):
+    """Whole years from a YYYY-MM-DD date of birth, or "" when unparseable."""
+    try:
+        y, m, d = (int(x) for x in (dob or "").strip().split("-"))
+        import datetime as _dt
+        born = _dt.date(y, m, d)
+        today = _dt.date.today()
+        if born > today:
+            return ""
+        return str(today.year - born.year
+                   - ((today.month, today.day) < (born.month, born.day)))
+    except (ValueError, TypeError):
+        return ""
+
+
+def _dob_line(lead):
+    dob = _lead_text(lead, "dob")
+    age = _lead_text(lead, "age")
+    if dob:
+        a = age_from_dob(dob) or age
+        return f"{dob}" + (f" (age {a})" if a else "")
+    return f"age {age}" if age else ""
+
 
 def _lead_text(lead, key):
     try:
@@ -75,49 +161,139 @@ def _lead_text(lead, key):
     return ("" if val is None else str(val)).strip()
 
 
-def build_candidate_message(lead, link, clinic=None):
-    """Notify study contacts that someone applied. Applicant email is in the
-    body so they can write back. The applicant is never on To/CC."""
-    nct = _lead_text(lead, "nct") or "your study"
+def _answers_block(lead):
+    """The applicant's own answers, question by question, plus any the study
+    would want a second look at. Plain text a coordinator can read in one
+    pass and type into their own system."""
+    raw = _lead_text(lead, "screener")
+    try:
+        scr = json.loads(raw) if raw else {}
+    except (ValueError, TypeError):
+        scr = {}
+    if not isinstance(scr, dict):
+        scr = {}
+    labels = {"travel": "Can travel to the study site for visits",
+              "other_trial": "Currently in another clinical trial",
+              "pregnancy": "Pregnant or planning to become pregnant",
+              "consent_capable": "Can give their own informed consent"}
+    lines = []
+    for q, a in scr.items():
+        if q.startswith("_"):
+            continue
+        label = labels.get(q, q)
+        ans = str(a).strip().capitalize()
+        lines.append(f"- {label} {ans}" if label.endswith("?") else f"- {label}: {ans}")
+    flags = scr.get("_flags") or []
+    if flags:
+        lines.append("")
+        lines.append("Answers worth a second look:")
+        lines += [f"- {f}" for f in flags]
+    return lines
+
+
+def _eligibility_block(lead):
+    raw = _lead_text(lead, "eligibility")
+    try:
+        elig = json.loads(raw) if raw else {}
+    except (ValueError, TypeError):
+        elig = {}
+    if not isinstance(elig, dict):
+        return []
+    lines = []
+    for key, label in (("met", "Looks met"), ("unknown", "Still to confirm"),
+                       ("not_met", "May not be met")):
+        items = [str(x).strip() for x in (elig.get(key) or []) if str(x).strip()]
+        if items:
+            lines.append(f"{label}:")
+            lines += [f"- {x}" for x in items[:8]]
+    return lines
+
+
+def build_candidate_message(lead, link=None, clinic=None, reach=0):
+    """The handoff to a study team, written as a letter from the founder.
+
+    Everything the applicant told us is in the body, in order, so a
+    coordinator can screen and enroll them from the email alone. There is no
+    application link: the email is the application. The applicant is never on
+    To/CC; their contact details are the point of the handoff and they
+    consented to it. No eligibility claims: their answers are labelled as
+    self-reported."""
+    _ = link
     clinic = clinic or {}
-    facility = (clinic.get("facility") or "").strip()
-    if not facility:
-        facility = _lead_text(lead, "site")
-    where = facility or "this study"
-    applicant_email = _lead_text(lead, "email")
-    applicant_name = _lead_text(lead, "name")
-    subject = f"New applicant for {nct} - BridgeMD"
+    facility = (clinic.get("facility") or "").strip() or _lead_text(lead, "site")
+    first = _first_name(lead)
+    subject = human_subject("candidate", lead)
+    place = _place(lead)
+    who = f"{_lead_text(lead, 'name') or 'Someone'}"
+    if place:
+        who += f", in {place},"
     lines = [
-        "Hello,",
+        "Hi,",
         "",
-        f"A patient applied on BridgeMD for {where}. They asked to be contacted "
-        "about this study. Reply to them directly at the address below. They "
-        "are not copied on this email.",
+        f"I'm {FOUNDER_NAME}, the founder of BridgeMD. I'm a student at the "
+        "University of Waterloo, and BridgeMD is a not-for-profit project with "
+        "one job: connecting people who want to join a clinical trial with the "
+        "team running it. We don't charge you or the applicant, we don't sell "
+        "anything, and we don't need anything from you.",
         "",
-        f"Study: {_lead_text(lead, 'title') or nct}",
+        f"{who} applied to your study on BridgeMD and asked to be contacted. "
+        "Everything they told us is below, so you can screen and enroll them "
+        "from this email. Please reach out to them directly. They are not "
+        "copied here.",
+        "",
+        "STUDY",
+        f"{_lead_text(lead, 'title') or 'your study'}",
     ]
     if _lead_text(lead, "nct"):
-        lines.append(f"NCT: {_lead_text(lead, 'nct')}")
+        lines.append(f"Registry number: {_lead_text(lead, 'nct')}")
+    if facility:
+        lines.append(f"Site they chose: {facility}")
+    lines += ["", "APPLICANT",
+              f"Name: {_lead_text(lead, 'name') or 'not given'}",
+              f"Email: {_lead_text(lead, 'email') or 'not given'}",
+              f"Phone: {_lead_text(lead, 'phone') or 'not given'}"]
+    dob = _dob_line(lead)
+    if dob:
+        lines.append(f"Date of birth: {dob}" if _lead_text(lead, "dob")
+                     else f"Age: {_lead_text(lead, 'age')}")
+    if _lead_text(lead, "sex"):
+        lines.append(f"Sex: {_lead_text(lead, 'sex').capitalize()}")
+    if place:
+        lines.append(f"Location: {place}")
     if _lead_text(lead, "condition"):
         lines.append(f"Condition: {_lead_text(lead, 'condition')}")
-    if _lead_text(lead, "location"):
-        lines.append(f"Patient area: {_lead_text(lead, 'location')}")
-    if facility:
-        lines.append(f"Listed site: {facility}")
-    lines += ["", "Applicant"]
-    if applicant_name:
-        lines.append(f"Name: {applicant_name}")
-    lines.append(f"Email: {applicant_email or 'not provided'}")
-    if link:
-        lines += [
-            "",
-            "Full application (no login required):",
-            link,
-        ]
+    if _lead_text(lead, "created_at"):
+        lines.append(f"Applied: {_lead_text(lead, 'created_at')}")
+    answers = _answers_block(lead)
+    if answers:
+        lines += ["", "THEIR ANSWERS (self-reported, not verified)"] + answers
+    elig = _eligibility_block(lead)
+    if elig:
+        lines += ["", "ELIGIBILITY READ FROM THEIR ANSWERS (not verified)"] + elig
+    notes = _lead_text(lead, "notes").strip()
+    if notes:
+        lines += ["", "IN THEIR OWN WORDS", notes]
+    summary = _lead_text(lead, "record_summary").strip()
+    if summary:
+        lines += ["", "FROM RECORDS THEY CONNECTED", summary]
+    reach_line = ""
+    try:
+        n = int(reach or 0)
+    except (TypeError, ValueError):
+        n = 0
+    if n >= 5:
+        reach_line = (f"So far {n} people have applied to trials through "
+                      "BridgeMD. ")
     lines += [
         "",
-        "Sent via BridgeMD.",
-        f"Find recruiting trials near you: {FINDER_URL}",
+        reach_line + "If this was useful, or if there is any reason you can't "
+        "act on it, just reply to this email and tell me. I read every reply, "
+        "and it is how we make this better.",
+        "",
+        FOUNDER_NAME,
+        FOUNDER_TITLE,
+        f"LinkedIn: {LINKEDIN_URL}",
+        HELLO_EMAIL,
     ]
     return subject, "\n".join(lines)
 
@@ -149,10 +325,17 @@ def branded_html(body):
         f"<div style=\"font-size:15px;line-height:1.55;color:#1a1a2e;\">{escaped}</div>"
         "<div style=\"margin-top:28px;padding-top:16px;border-top:1px solid #e4eaf2;"
         "font-size:13px;line-height:1.5;color:#5b6475;\">"
-        f"<a href=\"{FINDER_URL}\" style=\"color:#1257b0;font-weight:700;"
-        "text-decoration:none;\">Find a trial that fits</a>"
-        f"<div style=\"margin-top:4px;\"><a href=\"{FINDER_URL}\" "
-        f"style=\"color:#1257b0;\">{FINDER_URL}</a></div>"
+        "<table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\"><tr>"
+        f"<td style=\"padding-right:10px;\"><a href=\"{LINKEDIN_URL}\">"
+        f"<img src=\"{LINKEDIN_LOGO_URL}\" width=\"28\" height=\"28\" "
+        "alt=\"LinkedIn\" style=\"display:block;border:0;border-radius:6px;\">"
+        "</a></td><td>"
+        f"<div style=\"color:#12122b;font-weight:700;\">{FOUNDER_NAME}</div>"
+        f"<div>{html.escape(FOUNDER_TITLE)}</div>"
+        f"<div><a href=\"{LINKEDIN_URL}\" style=\"color:#1257b0;\">LinkedIn</a>"
+        f" &middot; <a href=\"mailto:{HELLO_EMAIL}\" style=\"color:#1257b0;\">"
+        f"{HELLO_EMAIL}</a></div>"
+        "</td></tr></table>"
         "</div></td></tr></table></td></tr></table></body></html>"
     )
 
@@ -171,7 +354,7 @@ def build_owner_new_application(lead, link, inbox=""):
         return v if v not in (None, "") else default
 
     nct = _lget("nct") or "a study"
-    subject = f"New application: {nct} - BridgeMD"
+    subject = human_subject("owner", lead)
     src = (_lget("source", "web")).replace("_", " ")
     lines = [
         "A new application was just submitted on BridgeMD.",
@@ -353,8 +536,7 @@ def build_apply_confirmation(lead, link, clinic_contacts=None):
     writing the clinic themselves. clinic_contacts is unused (kept for callers)."""
     _ = clinic_contacts
     title = lead["title"] or lead["nct"] or "a clinical trial"
-    subj_title = title if len(title) <= 60 else title[:57].rstrip() + "..."
-    subject = f"We got your application - {subj_title}"
+    subject = human_subject("apply_confirmation", lead)
     lines = [
         f"Hi {lead['name'] or 'there'},",
         "",
@@ -382,7 +564,7 @@ def build_clinic_connect_message(lead, link, clinic_contacts=None):
     """BridgeMD emails the applicant their thread. No clinic address to write."""
     _ = clinic_contacts
     title = lead["title"] or lead["nct"] or "a clinical trial"
-    subject = f"Message the study team - {lead['nct'] or 'your application'}"
+    subject = human_subject("clinic_connect", lead)
     lines = [
         f"Hi {lead['name'] or 'there'},",
         "",
@@ -417,7 +599,7 @@ def build_founder_connect_message(lead, sites, central, link):
     first = (lead["name"] or "there").split()[0]
     title = lead["title"] or lead["nct"] or "the study you applied to"
     nct = lead["nct"] or ""
-    subject = f"Direct contacts for your trial - {nct or 'your application'}"
+    subject = human_subject("founder_connect", lead)
     lines = [
         f"Hi {first},",
         "",
@@ -543,16 +725,26 @@ def build_dm_message(lead, body, link, to="patient", clinic_contacts=None):
     _ = clinic_contacts
     title = lead["title"] or lead["nct"] or "your clinical trial application"
     if to == "patient":
-        subject = f"New message from the study team - {lead['nct'] or 'your application'}"
+        subject = human_subject("dm_to_patient", lead)
         opener = (f"Hi {lead['name'] or 'there'},\n\nThe study team sent you a "
                   f"message about {title}:")
-        reply = "Reply here (no sign-in needed):"
-    else:
-        subject = f"New message from an applicant - {lead['nct'] or 'application'}"
-        opener = f"An applicant sent a message about {title}:"
-        reply = "Reply here:"
-    lines = [opener, "", f"  \"{body.strip()}\"", "", reply, link,
-             "", "Sent via BridgeMD."]
+        lines = [opener, "", f"  \"{body.strip()}\"", "",
+                 "Reply here (no sign-in needed):", link,
+                 "", "Sent via BridgeMD."]
+        return subject, "\n".join(lines)
+    # To the study team: the message and the person's contact details are in
+    # the email itself. They reply to the applicant directly, no link.
+    subject = human_subject("dm_to_site", lead)
+    contact = [c for c in (_lead_text(lead, "email"), _lead_text(lead, "phone")) if c]
+    lines = [
+        f"{_lead_text(lead, 'name') or 'An applicant'} sent a message about "
+        f"{title}:",
+        "", f"  \"{body.strip()}\"", "",
+        "Reply to them directly: " + (" or ".join(contact) or "no contact given"),
+    ]
+    if _lead_text(lead, "nct"):
+        lines.append(f"Registry number: {_lead_text(lead, 'nct')}")
+    lines += ["", FOUNDER_NAME, FOUNDER_TITLE, HELLO_EMAIL]
     return subject, "\n".join(lines)
 
 
@@ -684,7 +876,7 @@ def send_email(to_addr, subject, body):
     port = int(os.environ.get("SMTP_PORT", "587"))
     user = os.environ.get("SMTP_USER", "")
     pw = os.environ.get("SMTP_PASS", "")
-    sender = os.environ.get("SMTP_FROM", user)
+    sender = from_header()
     use_tls = os.environ.get("SMTP_TLS", "1") == "1"
 
     # Coordinators asked for no em dashes anywhere, and an email is the copy
@@ -694,6 +886,7 @@ def send_email(to_addr, subject, body):
     msg = EmailMessage()
     msg["Subject"] = subject
     msg["From"] = sender
+    msg["Reply-To"] = reply_to_header()
     msg["To"] = to_addr
     # Applicant is never Cc/Bcc. Their address, if any, lives in the body.
     msg.set_content(body)

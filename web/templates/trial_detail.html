@@ -210,7 +210,7 @@
       {% else %}
       {% set need_verify = not (patient_user and patient_user.verified) %}
       <h3 class="td-apply-title">{{ ic.icon('user-plus') }} Ask to be contacted</h3>
-      <p class="td-apply-sub">Answer a few quick questions and submit contact info. Contact is shared after acceptance.</p>
+      <p class="td-apply-sub">Answer a few quick questions and add your contact details. We send them to this study team so they can reach you.</p>
 
       {% if records_ui %}
       {% if records_profile %}
@@ -341,6 +341,7 @@
         <div class="if-row two">
           <label><span class="if-lbl">Your name</span><input name="name" type="text" value="{{ patient_user.full_name if patient_user else '' }}" required></label>
           <label><span class="if-lbl">Phone <span class="opt">(optional)</span></span><input name="phone" type="tel"></label>
+          <label><span class="if-lbl">Date of birth</span><input name="dob" type="date" required min="1900-01-01" max="{{ today_iso() }}" autocomplete="bday"></label>
         </div>
         <label><span class="if-lbl">Email</span><input name="email" id="ifEmail" type="email" value="{{ patient_user.email if patient_user else '' }}" required{% if not need_verify %} readonly{% endif %}></label>
         {% if need_verify %}
@@ -361,7 +362,7 @@
         {% endif %}
         <label class="if-consent">
           <input type="checkbox" name="consent" required>
-          <span>I agree to share a blinded summary for review and contact details after acceptance.</span>
+          <span>I agree that BridgeMD sends my answers and contact details to this study team so they can contact me.</span>
         </label>
         <label class="if-consent if-optin">
           <input type="checkbox" name="registry_opt_in">

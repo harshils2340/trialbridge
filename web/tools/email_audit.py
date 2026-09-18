@@ -49,7 +49,17 @@ SUBJECT_KINDS = [
     ("Update on your trial application", "status: update (to applicant)"),
     ("Your trial application:", "status: screening/enrolled (to applicant)"),
     ("Direct contacts for your trial", "founder connect (to applicant)"),
+    # Human subjects (no registry codes) from Sep 18 on.
+    ("Your application to the", "apply confirmation (to applicant)"),
+    ("How to reach the", "founder connect (to applicant)"),
+    ("Messaging the", "thread link / connect (to applicant)"),
+    ("New application:", "owner heads-up (internal)"),
+    ("The ", "chat notify (to applicant)"),
 ]
+
+
+def _is_candidate_subject(subject):
+    return " applied to your " in (subject or "")
 
 # Content rules. An applicant email must carry the /a/<token> thread link and
 # must not carry a booking or calendar link (commit f1fbb84), an em dash, or
@@ -101,6 +111,10 @@ def fetch_body(key, email_id):
 
 
 def kind_of(subject):
+    if _is_candidate_subject(subject):
+        return "clinic candidate notice (to clinic)"
+    if " sent you a message about " in (subject or ""):
+        return "chat notify (to team)"
     for prefix, label in SUBJECT_KINDS:
         if (subject or "").startswith(prefix):
             return label
