@@ -73,7 +73,7 @@ HELLO_EMAIL = "hello@bridgemd.health"
 FOUNDER_NAME = "Harshil Shah"
 FOUNDER_TITLE = "Founder, BridgeMD. Student at the University of Waterloo."
 LINKEDIN_URL = os.environ.get(
-    "LINKEDIN_URL", "https://www.linkedin.com/company/bridgemd/").strip()
+    "LINKEDIN_URL", "https://www.linkedin.com/company/bridgemd-health").strip()
 LINKEDIN_LOGO_URL = "https://bridgemd.health/static/linkedin.png"
 
 
