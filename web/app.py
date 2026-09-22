@@ -1689,8 +1689,7 @@ def _notify_applicant_founder_connect(token):
                         lead["id"], lead["nct"])
         db.mark_founder_connect(lead["id"])
         return False
-    subject, body = mailer.build_founder_connect_message(
-        lead, sites, central, _applicant_thread_url(lead))
+    subject, body = mailer.build_founder_connect_message(lead, sites, central)
     ok = _notify_patient(lead["email"], "", subject, body, "")
     if ok:
         db.mark_founder_connect(lead["id"])

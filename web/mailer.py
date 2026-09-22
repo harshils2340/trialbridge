@@ -185,9 +185,15 @@ def _answers_block(lead):
         lines.append(f"- {label} {ans}" if label.endswith("?") else f"- {label}: {ans}")
     flags = scr.get("_flags") or []
     if flags:
+        name = _lead_text(lead, "name") or "The applicant"
         lines.append("")
-        lines.append("Answers worth a second look:")
-        lines += [f"- {f}" for f in flags]
+        lines.append("Note for screening:")
+        for f in flags:
+            ans = str(scr.get(f, "")).strip()
+            if ans:
+                lines.append(f"- {name} answered {ans} to: {f}")
+            else:
+                lines.append(f"- {f}")
     return lines
 
 
@@ -282,10 +288,10 @@ def build_candidate_message(lead, link=None, clinic=None, reach=0):
         "team running it. We don't charge you or the applicant, we don't sell "
         "anything, and we don't need anything from you.",
         "",
-        f"{who} applied to your study on BridgeMD and asked to be contacted. "
-        "Everything they told us is below, so you can screen and enroll them "
-        "from this email. Please reach out to them directly. They are not "
-        "copied here.",
+        f"{who} applied to your study on BridgeMD and explicitly asked us to "
+        "forward their contact information to your site team. Everything "
+        "they told us is below, so you can screen and enroll them from this "
+        "email. Please reach out to them directly. They are not copied here.",
         "",
     ] + _application_block(lead, facility)
     reach_line = ""
@@ -544,7 +550,7 @@ def build_clinic_connect_message(lead, link, clinic_contacts=None):
     return subject, "\n".join(lines)
 
 
-def build_founder_connect_message(lead, sites, central, link):
+def build_founder_connect_message(lead, sites, central):
     """A personal note from the founder with the study's own public contacts,
     so a new platform's reply lag never slows an applicant down. Contacts come
     straight from the study's ClinicalTrials.gov listing: phone numbers and
@@ -583,9 +589,6 @@ def build_founder_connect_message(lead, sites, central, link):
         f"When you call, give them the study number {nct} and say you applied "
         "through BridgeMD." if nct else
         "When you call, say you applied through BridgeMD.",
-        "",
-        "You can also keep messaging the study team on your thread:",
-        link,
         "",
         "This isn't medical advice and you can talk to your own doctor first.",
         "",

@@ -410,9 +410,9 @@ def test_apply_double_submit_is_one_application():
 
 
 def test_founder_connect_email_content_and_stamp():
-    """The founder note carries real contacts and a thread link, never a
-    placeholder address, an em dash, or an eligibility claim; the stamp keeps
-    the backfill from sending it twice."""
+    """The founder note carries real contacts, never a placeholder address,
+    an em dash, an eligibility claim, or a BridgeMD application link; the
+    stamp keeps the backfill from sending it twice."""
     import re
     import db
     lead = {"name": "George Cole", "email": "g@x.test", "nct": "NCT09990001",
@@ -420,11 +420,10 @@ def test_founder_connect_email_content_and_stamp():
     sites = [{"facility": "Riverside Clinic", "city": "Columbus",
               "phone": "614-555-0100", "email": "maya@riversideclinic.test"}]
     central = [{"phone": "1-877-555-0199", "email": ""}]
-    subject, body = mailer.build_founder_connect_message(
-        lead, sites, central, "https://bridgemd.health/a/tok123")
+    subject, body = mailer.build_founder_connect_message(lead, sites, central)
     assert subject == "How to reach the clinical trial team directly", subject
     assert "614-555-0100" in body and "1-877-555-0199" in body
-    assert "https://bridgemd.health/a/tok123" in body
+    assert "bridgemd.health/a/" not in body
     assert "founder of BridgeMD" in body
     assert not re.search(r"[\u2014\u2013]", subject + body)
     assert "qualify" not in body.lower() and "$" not in body
@@ -520,8 +519,7 @@ def test_listing_contacts_reach_applicant_and_letter():
     cards = webapp.site_contact_cards(trial, lead)
     assert cards and cards[0]["phone"] == "480-555-0100"
     assert cards[0]["pi"] == "David Francyk"
-    _, body = mailer.build_founder_connect_message(
-        lead, cards, central, "https://bridgemd.health/a/t9")
+    _, body = mailer.build_founder_connect_message(lead, cards, central)
     assert "480-555-0100" in body and "principal investigator: David Francyk" in body
     assert "Study contact listed on ClinicalTrials.gov: 1-317-555-0100 or trials@sponsor.test" in body
     assert "inquiry_hub" not in body
