@@ -1,5 +1,4 @@
-"""The "Navigator" in software: proactive, scheduled outreach that keeps
-applicants from going quiet - the #1 driver of trial retention.
+"""Proactive, scheduled outreach that keeps applications from stalling.
 
 Two jobs run on a background sweep (mirrors alerts.py; in prod point cron at
 /reminders/run instead):
@@ -7,12 +6,17 @@ Two jobs run on a background sweep (mirrors alerts.py; in prod point cron at
 1. Visit reminders - for any booked visit happening within the next window
    (default 24h) that hasn't been reminded, drop a reminder into the thread and
    email the patient, then mark it reminded.
-2. Quiet-applicant nudges - for any application still active in the funnel with
-   no activity for QUIET_DAYS (and not nudged recently), post a gentle check-in
-   and email them. Silence is what kills enrollment; this breaks it.
+2. Quiet-application check-ins - for any application still active in the funnel
+   with no activity (from the patient OR the study team) for QUIET_DAYS, email
+   the study team asking for a status update. The patient never sees this: they
+   can't do anything with a "just checking in" message, and if the team is
+   already handling it off-thread, this never fires in the first place, since
+   any message the team sends on the thread counts as activity and resets the
+   clock.
 
-Everything has an in-app surface (a system message on the thread), so it works
-with email off (NOTIFY_LIVE=0). Email is sent via the callbacks app.py provides.
+Visit reminders are patient-facing and keep an in-app surface (a system message
+on the thread) so they work with email off (NOTIFY_LIVE=0). Check-ins are
+sent only via the callback app.py provides.
 """
 import datetime as dt
 import os
@@ -28,29 +32,17 @@ _on_nudge = None
 INTERVAL = int(os.environ.get("REMINDERS_INTERVAL_SECONDS", str(3600)))
 VISIT_WINDOW_H = int(os.environ.get("REMINDERS_VISIT_WINDOW_HOURS", "24"))
 QUIET_DAYS = int(os.environ.get("REMINDERS_QUIET_DAYS", "3"))
-# Stop nudging after this many unanswered check-ins so a quiet applicant never
-# gets spammed with the same line forever (that hurts trust and retention).
+# Stop checking in after this many unanswered study-team emails so a stalled
+# lead never gets emailed about forever.
 MAX_NUDGES = int(os.environ.get("REMINDERS_MAX_NUDGES", "3"))
 _FMT = "%Y-%m-%d %H:%M"
 
-# Rotate the nudge copy so repeat check-ins read like a real person following
-# up, not a copy-pasted loop. Indexed by how many times we've already nudged.
-_NUDGE_MESSAGES = [
-    "Just checking in - your application is still active. Reply here with any "
-    "questions, or let the team know you're still interested.",
-    "Following up in case my last note got buried. We'd still love to have you "
-    "- is there anything holding you back or that I can clarify?",
-    "Last check-in from me for now: your spot is still open. Reply any time and "
-    "we'll pick things right back up - no pressure either way.",
-]
-# Used to recognise our own nudges already sitting on a thread, so the cap and
-# rotation stay correct even if the per-lead counter is stale/missing.
-_NUDGE_SET = set(_NUDGE_MESSAGES)
-
-# SINGLE SWITCH for the cron reminder/nudge EMAILS (visit reminders + the
-# "still interested?" quiet-applicant check-ins). While off, the in-app system
-# messages still post on each thread - only the emails are suppressed.
+# SINGLE SWITCH for the cron VISIT REMINDER emails. While off, the in-app
+# system message still posts on the thread - only the email is suppressed.
 # Turn back on by flipping this to True, or set env REMINDER_EMAILS=1.
+# Study-team check-ins aren't gated by this: they're an operational email to
+# the clinic, not a patient-facing notification, so they follow the same
+# always-on NOTIFY_LIVE switch every other clinic email uses.
 SEND_REMINDER_EMAILS = False
 
 
@@ -64,7 +56,10 @@ def _reminder_emails_enabled():
 
 
 def configure(app, on_visit=None, on_nudge=None):
-    """on_visit(visit_row) and on_nudge(lead_row) send the (optional) emails."""
+    """on_visit(visit_row) emails the patient a visit reminder (optional, gated
+    by SEND_REMINDER_EMAILS). on_nudge(lead_row, prior) emails the study team a
+    status check on a quiet application; prior is how many times we've already
+    asked."""
     global _app, _on_visit, _on_nudge
     _app = app
     _on_visit = on_visit
@@ -101,8 +96,13 @@ def check_visits():
     return n
 
 
-def check_nudges():
-    """Re-engage applications that have gone quiet mid-funnel."""
+def check_clinic_checkins():
+    """Ask the study team for a status update on applications that have gone
+    quiet mid-funnel, instead of messaging the applicant. "Quiet" already means
+    neither the patient nor the study team has touched the thread for
+    QUIET_DAYS (last_activity_at covers messages from either side), so this
+    never fires while the team is actively in touch with the applicant, even
+    off-thread activity they've logged by replying here at all resets it."""
     cutoff = dt.datetime.now() - dt.timedelta(days=QUIET_DAYS)
     n = 0
     for lead in db.list_active_stage_leads():
@@ -111,33 +111,26 @@ def check_nudges():
             continue                          # still recent -> leave alone
         nudged = _parse(lead["nudged_at"])
         if nudged is not None and nudged > cutoff:
-            continue                          # already nudged recently
-        # Drive the cap AND which line to send off the nudges ALREADY on the
-        # thread. This is self-healing: a stale/missing nudge_count can never let
-        # the same check-in repeat past the cap (the bug behind the wall of
-        # identical "still active" messages). nudge_count is still bumped below
-        # for recency bookkeeping.
-        prior = sum(1 for m in db.get_messages(lead["id"])
-                    if m["sender"] == "system" and m["body"] in _NUDGE_SET)
+            continue                          # already checked in recently
+        prior = lead["nudge_count"] or 0
         if prior >= MAX_NUDGES:
-            continue                          # stop; don't spam the same person
-        db.add_message(lead["id"], "system", _NUDGE_MESSAGES[prior])
+            continue                          # stop; the team has heard enough
         db.set_nudged(lead["id"])
-        if _on_nudge and _reminder_emails_enabled():
+        if _on_nudge:
             try:
-                _on_nudge(lead)
+                _on_nudge(lead, prior)
             except Exception:
                 if _app is not None:
-                    _app.logger.exception("nudge email failed")
+                    _app.logger.exception("clinic check-in email failed")
         n += 1
     return n
 
 
 def run_all():
     if _app is None:
-        return {"visits": 0, "nudges": 0}
+        return {"visits": 0, "clinic_checkins": 0}
     with _app.app_context():
-        return {"visits": check_visits(), "nudges": check_nudges()}
+        return {"visits": check_visits(), "clinic_checkins": check_clinic_checkins()}
 
 
 def _loop():

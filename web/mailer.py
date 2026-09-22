@@ -373,6 +373,28 @@ def build_owner_new_application(lead, link=None, inbox=""):
     return subject, "\n".join(lines)
 
 
+def build_no_clinic_contact_alert(lead):
+    """Ops alert: this applicant has no findable study-team contact, so the
+    usual handoff letter has nowhere real to go. Sent to OWNER_NOTIFY_EMAIL
+    instead of mailing the founder letter to our own inbox, so a person
+    follows up and finds the site manually rather than the system silently
+    doing nothing."""
+    cond = _condition_phrase(lead)
+    place = _place(lead)
+    who = _lead_text(lead, "name") or "Someone"
+    subject = f"No study contact found for {cond}" + (f" in {place}" if place else "")
+    lines = [
+        f"{who} applied to the {cond}, but BridgeMD could not find a real "
+        "clinic, PI, or central contact email on the listing for this "
+        "applicant's location.",
+        "",
+        "Nobody at the study team was emailed. Find the site's contact by "
+        "hand and reach out.",
+        "",
+    ] + _application_block(lead, _lead_text(lead, "site")) + ["", FINDER_URL]
+    return subject, "\n".join(lines)
+
+
 def build_coordinator_forward(lead, elig=None, screener=None, flags=None,
                               to_name="", sender_name=""):
     """Draft the operator sends to a study coordinator to hand off a patient who
@@ -634,7 +656,7 @@ def build_alert_message(alert, new_matches, link):
         lines += [
             f"{i}) {title}",
             f"   NCT: {nct}",
-            f"   Details: https://clinicaltrials.gov/study/{nct}",
+            f"   Details: {BRAND_HOME}/study/{nct}",
             "",
         ]
     lines += [
@@ -797,33 +819,34 @@ def build_reminder_sms(lead, when, location, link):
     return f"{msg}. Details: {link}"
 
 
-def build_nudge_message(lead, link):
-    """Gentle check-in for an applicant who's gone quiet mid-process."""
-    title = lead["title"] or lead["nct"] or "your clinical trial application"
-    subject = f"Still interested? - {lead['nct'] or 'your trial application'}"
+def build_clinic_checkin_message(lead, prior=0):
+    """Ask the study team for a status update on an application that's gone
+    quiet, instead of messaging the applicant again - the applicant can't act
+    on a check-in, but the team can tell us whether they're already handling
+    it. `prior` is how many times we've already asked, so repeat check-ins
+    don't read like an identical message looping."""
+    first = _first_name(lead)
+    title = lead["title"] or lead["nct"] or "the study"
+    nct = _lead_text(lead, "nct")
+    subject = f"Status check: {first}'s application" + (f" ({nct})" if nct else "")
+    opener = ("Just checking in" if prior <= 0 else
+              "Following up again" if prior == 1 else
+              "Last check-in from us")
     lines = [
-        f"Hi {lead['name'] or 'there'},",
+        "Hi,",
         "",
-        f"Just checking in on {title}. Your application is still active and the "
-        "study team can move it forward whenever you're ready.",
+        f"{opener} on {first}'s application to {title}. It's been quiet on our "
+        "end for a few days. Are you already in touch with them, or is there "
+        "anything you need from BridgeMD to move it forward?",
         "",
-        "If you're still interested, open your application here - and message the "
-        "team with any questions:",
-        link,
+        "If you're already handling this directly, no need to reply - we just "
+        "want to make sure nothing fell through the cracks.",
         "",
-        "If your situation changed, you can withdraw from the same page. No "
-        "pressure either way.",
-        "",
-        "Sent via BridgeMD.",
+        "Thanks,",
+        FOUNDER_NAME,
+        "Founder, BridgeMD",
     ]
     return subject, "\n".join(lines)
-
-
-def build_nudge_sms(lead, link):
-    """Short SMS re-engagement nudge."""
-    trial = lead["nct"] or "your trial application"
-    return ("BridgeMD: Your application is still active for "
-            f"{trial}. Continue or message the team: {link}")
 
 
 def send_email(to_addr, subject, body):

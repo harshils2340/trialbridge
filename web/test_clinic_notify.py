@@ -530,6 +530,39 @@ def test_listing_contacts_reach_applicant_and_letter():
     print("PASS: listing phone, PI and study contact reach the applicant and the letter")
 
 
+def test_no_public_contact_alerts_ops_not_self():
+    """When nothing real is found, the founder letter must not be mailed to
+    our own inbox pretending to be a handoff. Ops gets a distinct alert and
+    no clinic recipients are recorded as delivered."""
+    trial = {
+        "nctId": "NCT09990007",
+        "centralContacts": [],
+        "locations": [],
+    }
+    with webapp.app.app_context():
+        tok = webapp.db.create_lead({
+            "nct": "NCT09990007", "title": "No contact study",
+            "site": "Nowhere Clinic", "name": "D", "email": "d@x.test",
+            "consent": 1,
+        })
+        sent = []
+        orig = webapp._notify
+        webapp._notify = lambda to, subject, body: sent.append(
+            (to, subject, body)) or True
+        try:
+            emails = webapp._notify_site_new_candidate_sync(
+                tok, trial=trial, lat=39.96, lon=-83.00)
+        finally:
+            webapp._notify = orig
+        assert emails == [], emails
+        assert len(sent) == 1, sent
+        to, subject, body = sent[0]
+        assert to == webapp.OWNER_NOTIFY_EMAIL
+        assert "No study contact found" in subject
+        assert "Nobody at the study team was emailed" in body
+    print("PASS: no real contact alerts ops instead of mailing ourselves the handoff letter")
+
+
 def main():
     tests = [
         test_clinic_emails_not_sponsor,
@@ -552,6 +585,7 @@ def main():
         test_founder_connect_email_content_and_stamp,
         test_owner_copy_has_the_application_and_no_links,
         test_listing_contacts_reach_applicant_and_letter,
+        test_no_public_contact_alerts_ops_not_self,
     ]
     failed = 0
     for t in tests:

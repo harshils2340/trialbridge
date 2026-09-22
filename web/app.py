@@ -1397,6 +1397,18 @@ def _notify_site_new_candidate_sync(token, trial=None, lat=None, lon=None,
             f"clinic-notify lead={lead['id']} nct={lead['nct']} no recipients",
             flush=True)
         return []
+    if all(r.get("source") == "fallback" for r in recipients):
+        # No real clinic, PI, or central contact was found. Mailing the
+        # founder letter to our own inbox would look like a successful
+        # handoff while nobody at the study team ever hears about the
+        # applicant. Alert ops instead so a person follows up by hand.
+        subject, body = mailer.build_no_clinic_contact_alert(lead)
+        ok = _notify(OWNER_NOTIFY_EMAIL, subject, body)
+        print(
+            f"clinic-notify lead={lead['id']} nct={lead['nct']} "
+            f"no real contact, ops alerted ok={ok}",
+            flush=True)
+        return []
     # The email is the application: everything inline, no link (the study
     # team asked for something they can enroll from directly).
     clinic = dict(recipients[0])
@@ -2042,24 +2054,30 @@ def _remind_visit(visit):
     return _notify_patient(visit["email"], visit["phone"], subject, body, sms)
 
 
-def _nudge_applicant(lead):
-    if not lead["email"] and not lead["phone"]:
+def _clinic_checkin(lead, prior=0):
+    """A quiet application gets a status-check email to the study team that
+    handled it, not another message to the applicant - they can't act on a
+    "just checking in", but the team can tell us where things actually stand."""
+    contacts = db.lead_clinic_notify(lead)
+    if not contacts:
         return False
-    thread = _applicant_thread_url(lead)
-    subject, body = mailer.build_nudge_message(lead, thread)
-    sms = mailer.build_nudge_sms(lead, thread)
-    return _notify_patient(lead["email"], lead["phone"], subject, body, sms)
+    subject, body = mailer.build_clinic_checkin_message(lead, prior)
+    delivered = False
+    for c in contacts:
+        if c.get("email") and _notify(c["email"], subject, body):
+            delivered = True
+    return delivered
 
 
-# Proactively remind about visits and re-engage quiet applicants (retention).
-# In demo/local builds the message threads are curated seed data; letting the
-# live background sweep run against a persistent demo DB just stacks repeated
-# nudges/visit-reminders onto the same threads over calendar time (the wall of
-# identical "still active" check-ins). Default it OFF in demo - still runnable
-# on demand via /reminders/run, or force it with REMINDERS_BACKGROUND=1.
+# Proactively remind patients about visits and check in with study teams on
+# quiet applications (retention). In demo/local builds the message threads are
+# curated seed data; letting the live background sweep run against a
+# persistent demo DB just stacks repeated visit-reminders onto the same
+# threads over calendar time. Default it OFF in demo - still runnable on
+# demand via /reminders/run, or force it with REMINDERS_BACKGROUND=1.
 if NO_LOGIN and "REMINDERS_BACKGROUND" not in os.environ:
     os.environ["REMINDERS_BACKGROUND"] = "0"
-reminders_mod.configure(app, on_visit=_remind_visit, on_nudge=_nudge_applicant)
+reminders_mod.configure(app, on_visit=_remind_visit, on_nudge=_clinic_checkin)
 
 
 def _active_scope():
