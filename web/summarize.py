@@ -14,6 +14,22 @@ import re
 import json
 
 import match_trials as mt
+
+# The app installs a per-request hook here (app.py) that answers False for
+# crawlers. Bots indexing thousands of study pages were spending the model
+# quota that real applicants need; they get the deterministic summary.
+ALLOW_LLM_HOOK = None
+
+
+def _llm_ok():
+    """True only when a key is set, the provider is not cooling us down after
+    a 429, and the current request (if any) is a person, not a crawler."""
+    if not mt.llm_available():
+        return False
+    try:
+        return ALLOW_LLM_HOOK is None or bool(ALLOW_LLM_HOOK())
+    except Exception:
+        return True
 import db
 
 _SPEC_PATH = pathlib.Path(__file__).resolve().parent / "trial_summary.md"
@@ -280,7 +296,7 @@ def _fidelity_score(summary_text, source_text):
 
 
 def _llm_eval(trial, summary_text, source_text):
-    if not (SUMMARY_EVAL_LLM and mt.LLM_API_KEY and summary_text and source_text):
+    if not (SUMMARY_EVAL_LLM and _llm_ok() and summary_text and source_text):
         return None
     prompt = (
         "You are evaluating a patient-facing clinical trial summary.\n"
@@ -554,7 +570,7 @@ def _intervention_explainer(trial):
     data = {"name": name, "what": what, "how": "",
             "aka": ", ".join(other_names[:2])}
 
-    if not (DETAIL_SUMMARY_LLM and mt.LLM_API_KEY):
+    if not (DETAIL_SUMMARY_LLM and _llm_ok()):
         return data
     try:
         system = (
@@ -612,7 +628,7 @@ def plain(trial):
 
     data = _fallback(trial)
     source = tidy(trial.get("briefSummary") or "")
-    if DETAIL_SUMMARY_LLM and mt.LLM_API_KEY and source:
+    if DETAIL_SUMMARY_LLM and _llm_ok() and source:
         try:
             user = (f"TITLE: {trial.get('title', '')}\n"
                     f"PHASE: {trial.get('phase') or 'NA'}\n"

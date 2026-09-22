@@ -577,10 +577,46 @@ MATCH_SCHEMA = (
 )
 
 
+# When the provider answers 429 the right move is to stop asking for a while,
+# not to retry every request into the same wall: a quota that is out stays
+# out, and a burst limit clears in a minute. While the cooldown runs every
+# caller gets its deterministic fallback at once instead of a slow failure.
+LLM_COOLDOWN_UNTIL = 0.0
+LLM_LAST_429 = ""
+
+
+class LLMCoolingDown(RuntimeError):
+    """Raised without a network call while a 429 cooldown is in effect."""
+
+
+def llm_available():
+    """False while the provider has told us to back off (429)."""
+    return bool(LLM_API_KEY) and time.time() >= LLM_COOLDOWN_UNTIL
+
+
+def _note_429(err):
+    """Read the provider's reason and set the cooldown: a spent quota or
+    billing problem waits 30 minutes, a burst limit 90 seconds."""
+    global LLM_COOLDOWN_UNTIL, LLM_LAST_429
+    reason = ""
+    try:
+        reason = (err.read() or b"").decode("utf-8", "replace")[:300]
+    except Exception:
+        pass
+    LLM_LAST_429 = reason
+    quota = any(k in reason.lower() for k in ("insufficient_quota", "billing",
+                                              "exceeded your current quota"))
+    LLM_COOLDOWN_UNTIL = time.time() + (1800 if quota else 90)
+    print(f"llm 429: cooling down {'30m (quota)' if quota else '90s (rate)'}"
+          f" reason={reason[:160]!r}", flush=True)
+
+
 def llm_chat(system, user, retries=2):
     """Minimal single-turn chat call (plain text out)."""
     from copy_sanitize import sanitize_copy, contains_em_dash
 
+    if time.time() < LLM_COOLDOWN_UNTIL:
+        raise LLMCoolingDown("provider asked us to back off")
     body = json.dumps({
         "model": LLM_MODEL,
         "messages": [{"role": "system", "content": system},
@@ -600,6 +636,13 @@ def llm_chat(system, user, retries=2):
                 if contains_em_dash(out):
                     out = sanitize_copy(out)
                 return out
+        except urllib.error.HTTPError as e:
+            last = e
+            if e.code == 429:
+                _note_429(e)
+                break
+            if attempt < retries - 1:
+                time.sleep(1)
         except Exception as e:
             last = e
             if attempt < retries - 1:

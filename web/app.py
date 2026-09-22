@@ -2583,6 +2583,18 @@ app.jinja_env.globals["csrf_token"] = _csrf_token
 app.jinja_env.globals["today_iso"] = lambda: dt.date.today().isoformat()
 
 
+def _llm_allowed_for_request():
+    """Model calls are for people. Outside a request (background jobs, tests)
+    they are allowed; inside one, a crawler User-Agent turns them off."""
+    from flask import has_request_context
+    if not has_request_context():
+        return True
+    return not _is_bot()
+
+
+summarize.ALLOW_LLM_HOOK = _llm_allowed_for_request
+
+
 _ASSET_VER_CACHE = {}
 
 
@@ -5126,9 +5138,15 @@ def _prescreen_for_trial(trial):
         _PRESCREEN_CACHE.move_to_end(nct)
         return hit["questions"]
     questions = []
-    if mt.LLM_API_KEY:
+    # Only a person on the apply form earns a model call. Crawlers hitting
+    # study pages were burning the provider quota (429s) and taking the
+    # tailored questions away from real applicants. While the provider is
+    # cooling us down, serve the structured questions at once.
+    if mt.llm_available() and not _is_bot():
         try:
             questions = mt.prescreen_questions(trial)
+        except mt.LLMCoolingDown:
+            questions = []
         except Exception:
             app.logger.exception("prescreen question generation failed")
             questions = []
@@ -12931,9 +12949,16 @@ def applicant_detail(lead_id):
     to the study team's claimed studies (PHI stays isolated by user)."""
     lead = db.get_lead(lead_id)
     ncts = set(db.user_claimed_ncts(g.user["id"]))
+    # The demo account (which SITE_DEMO signs any visitor into) may open only
+    # seeded demo applicants. A real person's application is visible to the
+    # owner and to the site that claimed the study, never to a walk-up
+    # visitor or a link-preview crawler that was handed the URL.
+    demo_ok = _is_demo_account(g.user) and not _is_inbound_application(lead or {})
     if not lead or (lead["nct"] and lead["nct"] not in ncts
-                    and not _is_demo_account(g.user)
+                    and not demo_ok
                     and not _is_owner()):
+        abort(404)
+    if _is_demo_account(g.user) and _is_inbound_application(lead):
         abort(404)
     it = _decode_lead(lead, db.latest_reconciliation(lead_id))
     view = _queue_item(it)

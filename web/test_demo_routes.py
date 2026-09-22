@@ -80,10 +80,34 @@ def test_demo_pages_render_the_study_shell():
     print("PASS: study-team pages render the study shell with Bridget")
 
 
+def test_walk_up_visitor_cannot_open_a_real_applicant():
+    """SITE_DEMO signs any visitor into the demo account. That account may
+    open seeded demo applicants only. A real person's application must be a
+    404 to a walk-up visitor (a link-preview crawler once fetched one)."""
+    import db
+    with webapp.app.app_context():
+        real = db.create_lead({
+            "applicant_token": "real-person-1", "nct": "NCT09990077",
+            "title": "T", "name": "Real Person", "email": "real@gmail.com",
+            "consent": 1, "source": "web"})
+        real_id = db.get_lead_by_token(real)["id"]
+        demo = db.create_lead({
+            "applicant_token": "demo-seed-1", "nct": "NCT09990078",
+            "title": "T", "name": "Demo Person", "email": "demo@example.com",
+            "consent": 1, "source": "demo"})
+        demo_id = db.get_lead_by_token(demo)["id"]
+    client = webapp.app.test_client()
+    assert client.get(f"/app/applicant/{real_id}").status_code == 404, \
+        "a walk-up visitor could open a real applicant's record"
+    assert client.get(f"/app/applicant/{demo_id}").status_code == 200
+    print("PASS: real applicants are hidden from the demo account")
+
+
 def main():
     test_demo_paths_do_not_bounce_to_login()
     test_owner_only_paths_still_gated()
     test_demo_pages_render_the_study_shell()
+    test_walk_up_visitor_cannot_open_a_real_applicant()
     print("PASS: demo route tests")
 
 
