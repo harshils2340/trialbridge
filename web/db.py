@@ -6333,12 +6333,27 @@ PLACEHOLDER_SITE_DOMAINS = ("northwindclinical.com", "bridgemd.local",
 
 # Mailbox names that are never a person who screens patients. A scraped
 # "pclplegalnotices@" or "dataprivacy@" is a company's legal desk, and a
-# patient's application must not land there.
-NON_HUMAN_LOCALS = ("legal", "privacy", "notice", "noreply", "no-reply",
-                    "donotreply", "do-not-reply", "unsubscribe", "abuse",
-                    "postmaster", "webmaster", "billing", "invoice", "press",
-                    "media", "careers", "jobs", "hr@", "marketing", "sales",
-                    "investor", "compliance", "security", "dmca")
+# patient's application must not land there. Distinctive words match
+# anywhere in the mailbox name; short ones ("hr", "press") only as a whole
+# token, so a coordinator called pschrader or chris is never mistaken for
+# an HR desk.
+NON_HUMAN_LOCAL_PARTS = ("legal", "privacy", "notice", "noreply", "no-reply",
+                         "donotreply", "do-not-reply", "unsubscribe", "abuse",
+                         "postmaster", "webmaster", "billing", "invoice",
+                         "compliance", "dmca", "careers", "newsletter")
+NON_HUMAN_LOCAL_TOKENS = ("hr", "press", "media", "sales", "marketing",
+                          "investor", "investors", "jobs", "admin", "security",
+                          "news", "events")
+
+
+def is_non_human_local(local):
+    local = (local or "").strip().lower()
+    if not local or "u003" in local or not local[0].isalnum():
+        return True
+    if any(k in local for k in NON_HUMAN_LOCAL_PARTS):
+        return True
+    tokens = [t for t in re.split(r"[._\-+]", local) if t]
+    return any(t in NON_HUMAN_LOCAL_TOKENS for t in tokens)
 
 
 def is_placeholder_site_email(email):
@@ -6346,9 +6361,7 @@ def is_placeholder_site_email(email):
     if "@" not in email:
         return True
     local, dom = email.rsplit("@", 1)
-    if "u003" in local or not local or not local[0].isalnum():
-        return True
-    if any(k.rstrip("@") in local for k in NON_HUMAN_LOCALS):
+    if is_non_human_local(local):
         return True
     return any(dom == d or dom.endswith("." + d)
                for d in PLACEHOLDER_SITE_DOMAINS)
@@ -6437,6 +6450,19 @@ def find_recent_duplicate_lead(email, nct, minutes=15):
         "SELECT * FROM leads WHERE lower(email) = ? AND upper(nct) = ? "
         "AND created_at >= ? ORDER BY id DESC LIMIT 1",
         (email, nct, cutoff)).fetchone()
+
+
+def lead_clinic_notify_only_reached(lead, addresses, copy=CLINIC_NOTIFY_COPY):
+    """True when every real recipient stamped on the current copy is one of
+    `addresses` (the operator fallback), so the study team itself has never
+    been told. The backfill retries these whenever a real address turns up."""
+    saved = [r for r in lead_clinic_notify(lead)
+             if (r.get("copy") or "") == copy
+             and not is_placeholder_site_email(r.get("email") or "")]
+    if not saved:
+        return False
+    low = {a.strip().lower() for a in addresses if a}
+    return all((r.get("email") or "").strip().lower() in low for r in saved)
 
 
 def leads_missing_clinic_notify(copy=CLINIC_NOTIFY_COPY):

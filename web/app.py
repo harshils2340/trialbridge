@@ -1359,14 +1359,16 @@ def _gcal_sync_async(lead, visit, invite_url):
 
 
 def _notify_site_new_candidate(token, trial=None, lat=None, lon=None,
-                               radius=None, unit="km", wait=False):
+                               radius=None, unit="km", wait=False,
+                               require_real=False):
     """Email local study clinics. Looks up public site/PI addresses when CT.gov
     only lists a name. Sponsor inboxes are skipped. Lookup can take a few
     seconds, so apply fires this in a background thread unless wait=True.
     """
     if wait:
         return _notify_site_new_candidate_sync(
-            token, trial=trial, lat=lat, lon=lon, radius=radius, unit=unit)
+            token, trial=trial, lat=lat, lon=lon, radius=radius, unit=unit,
+            require_real=require_real)
 
     def _run():
         with app.app_context():
@@ -1381,7 +1383,7 @@ def _notify_site_new_candidate(token, trial=None, lat=None, lon=None,
 
 
 def _notify_site_new_candidate_sync(token, trial=None, lat=None, lon=None,
-                                    radius=None, unit="km"):
+                                    radius=None, unit="km", require_real=False):
     lead = db.get_lead_by_token(token)
     if not lead:
         return []
@@ -1397,6 +1399,8 @@ def _notify_site_new_candidate_sync(token, trial=None, lat=None, lon=None,
             f"clinic-notify lead={lead['id']} nct={lead['nct']} no recipients",
             flush=True)
         return []
+    if require_real and all(r.get("source") == "fallback" for r in recipients):
+        return []
     if all(r.get("source") == "fallback" for r in recipients):
         # No real clinic, PI, or central contact was found. Mailing the
         # founder letter to our own inbox would look like a successful
@@ -1411,11 +1415,13 @@ def _notify_site_new_candidate_sync(token, trial=None, lat=None, lon=None,
         return []
     # The email is the application: everything inline, no link (the study
     # team asked for something they can enroll from directly).
-    clinic = dict(recipients[0])
+    # The letter names the site the applicant chose (or the nearest one),
+    # never a central contact's "Study contact" label.
+    clinic = {"facility": (lead["site"] or "").split(",")[0].strip()}
     try:
         cards = site_contact_cards(_get_study(lead["nct"]), lead, limit=1)
         if cards:
-            clinic.setdefault("facility", cards[0]["facility"])
+            clinic["facility"] = cards[0]["facility"] or clinic["facility"]
             clinic["phone"], clinic["pi"] = cards[0]["phone"], cards[0]["pi"]
     except Exception:
         app.logger.exception("site card lookup failed")
@@ -1483,14 +1489,25 @@ def _backfill_clinic_notify_existing():
         print("clinic-notify backfill skipped (notify not live)", flush=True)
         return 0
     sent = 0
+    fallbacks = {SITE_NOTIFY_EMAIL, "hello@bridgemd.health"}
     pending = [
         lead for lead in db.leads_missing_clinic_notify()
         if _is_inbound_application(lead) and (lead["nct"] or "").strip()
     ]
-    print(f"clinic-notify backfill pending {len(pending)} apply(s)", flush=True)
-    for lead in pending:
+    # A handoff that only ever reached the operator fallback has not told the
+    # study team. Try those again, and send only if a real address exists now
+    # (a listing gained a contact, or a filter that hid one was fixed).
+    retry = [
+        lead for lead in db.list_leads()
+        if _is_inbound_application(lead) and (lead["nct"] or "").strip()
+        and db.lead_clinic_notify_only_reached(lead, fallbacks)
+    ]
+    print(f"clinic-notify backfill pending {len(pending)} apply(s), "
+          f"{len(retry)} fallback-only to retry", flush=True)
+    for lead in pending + retry:
         try:
-            emails = _notify_site_new_candidate(lead["token"], wait=True)
+            emails = _notify_site_new_candidate(
+                lead["token"], wait=True, require_real=lead in retry)
         except Exception:
             print(
                 f"clinic-notify backfill crash lead={lead['id']}",

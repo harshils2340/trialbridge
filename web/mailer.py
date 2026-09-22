@@ -89,15 +89,24 @@ def reply_to_header():
 
 
 def _first_name(lead):
-    return (_lead_text(lead, "name") or "there").split()[0]
+    """First name as a person would write it: "MONICA" and "monica" both
+    become "Monica"; mixed case ("McKenna") is left as typed."""
+    first = (_lead_text(lead, "name") or "there").split()[0]
+    if first.isupper() or first.islower():
+        first = first.capitalize()
+    return first
 
 
 def _condition_phrase(lead):
     c = _lead_text(lead, "condition").strip().rstrip(".")
-    # Mid-sentence, a condition reads as a plain noun ("alcohol use disorder
-    # study"); an acronym or proper noun ("COVID", "Crohn's") keeps its case.
-    if len(c) > 1 and c[0].isupper() and c[1].islower():
-        c = c[0].lower() + c[1:]
+    # Mid-sentence, a condition reads as a plain noun ("healthy volunteer
+    # study", "type 2 diabetes study"); an acronym ("COVID-19", "ADHD") keeps
+    # its case.
+    words = []
+    for w in c.split():
+        core = w.strip("(),.-")
+        words.append(w if (len(core) > 1 and core.isupper()) else w.lower())
+    c = " ".join(words)
     return f"{c} study" if c else "clinical trial"
 
 

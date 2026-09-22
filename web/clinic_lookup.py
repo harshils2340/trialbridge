@@ -135,8 +135,7 @@ def _skip_email(email, sponsor=""):
         return True
     if any(dom == d or dom.endswith("." + d) for d in _SPONSOR_DOMAINS):
         return True
-    if "u003" in local or local == "admin" or any(
-            k.rstrip("@") in local for k in db.NON_HUMAN_LOCALS):
+    if db.is_non_human_local(local):
         return True
     if not re.match(r"^[a-z0-9]", local):
         return True

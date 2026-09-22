@@ -350,7 +350,14 @@ def test_placeholder_site_contacts_never_receive_mail():
     import clinic_lookup
     assert clinic_lookup._skip_email("pclplegalnotices@plains.com")
     assert clinic_lookup._skip_email("noreply@realclinic.test")
+    assert clinic_lookup._skip_email("hr@realclinic.test")
     assert not clinic_lookup._skip_email("research@realclinic.test")
+    # A person whose name merely contains "hr" or "press" is a person. This
+    # bug once dropped a study's only listed contact (pschrader@linear.org.au).
+    for ok in ("pschrader@linear.org.au", "chris.jones@clinic.test",
+               "cypress.research@clinic.test", "info@clinic.test"):
+        assert not db.is_placeholder_site_email(ok), ok
+        assert not clinic_lookup._skip_email(ok), ok
     assert not db.is_placeholder_site_email("navarrs@ccf.org")
     # Resolver: a placeholder claimed contact with nothing else falls through
     # to the operator fallback instead of the demo profile.
@@ -563,6 +570,45 @@ def test_no_public_contact_alerts_ops_not_self():
     print("PASS: no real contact alerts ops instead of mailing ourselves the handoff letter")
 
 
+def test_names_and_conditions_read_like_a_person_wrote_them():
+    """All-caps or all-lower first names are capitalised; Title Case
+    conditions read as plain nouns; acronyms keep their case."""
+    base = {"nct": "NCT09990001", "title": "T", "location": "Halifax, NS"}
+    s = mailer.human_subject("candidate", dict(base, name="MONICA NAUSS",
+                                                condition="Weight Loss"))
+    assert s == "Monica in Halifax, NS applied to your weight loss study", s
+    s = mailer.human_subject("candidate", dict(base, name="nathan cappa",
+                                                condition="Healthy Volunteer"))
+    assert s == "Nathan in Halifax, NS applied to your healthy volunteer study", s
+    s = mailer.human_subject("apply_confirmation", dict(base, name="Ana",
+                                                        condition="COVID-19"))
+    assert s == "Your application to the COVID-19 study", s
+    assert mailer._first_name(dict(base, name="McKenna Lee")) == "McKenna"
+    print("PASS: names and conditions in subjects read like a person wrote them")
+
+
+def test_fallback_only_handoff_is_retried_when_a_real_address_exists():
+    """A handoff that only reached the operator fallback has not told the
+    study team; the backfill retries it, and sends only to a real address."""
+    import db
+    with webapp.app.app_context():
+        token = db.create_lead({
+            "applicant_token": "t-fallback-only", "nct": "NCT09990088",
+            "title": "T", "name": "P", "email": "p@x.test", "consent": 1,
+            "source": "web"})
+        lead = db.get_lead_by_token(token)
+        db.record_clinic_notify(lead["id"], [
+            {"email": "hello@bridgemd.health", "facility": "", "source": "fallback"}])
+        lead = db.get_lead(lead["id"])
+        assert db.lead_clinic_notify_only_reached(lead, {"hello@bridgemd.health"})
+        db.record_clinic_notify(lead["id"], [
+            {"email": "hello@bridgemd.health", "facility": "", "source": "fallback"},
+            {"email": "pschrader@linear.org.au", "facility": "Linear", "source": "central"}])
+        lead = db.get_lead(lead["id"])
+        assert not db.lead_clinic_notify_only_reached(lead, {"hello@bridgemd.health"})
+    print("PASS: fallback-only handoffs are retried against real addresses")
+
+
 def main():
     tests = [
         test_clinic_emails_not_sponsor,
@@ -586,6 +632,8 @@ def main():
         test_owner_copy_has_the_application_and_no_links,
         test_listing_contacts_reach_applicant_and_letter,
         test_no_public_contact_alerts_ops_not_self,
+        test_names_and_conditions_read_like_a_person_wrote_them,
+        test_fallback_only_handoff_is_retried_when_a_real_address_exists,
     ]
     failed = 0
     for t in tests:
