@@ -127,6 +127,14 @@ def handle_received(msg, send_fn, owner_email, reach=0):
     sender_name = name_of(msg.get("from"))
     subject = (msg.get("subject") or "").strip()
     body = _plain(msg)
+    # Our own mail coming back (a forward we sent, a bounce notice from us)
+    # must never be forwarded again.
+    if sender and (sender == mailer.HELLO_EMAIL.lower()
+                   or sender == mailer.address_of_from().lower()
+                   or sender.endswith("@reply.bridgemd.health")):
+        db.record_inbound_email(msg.get("id") or "", sender, subject, None,
+                                "own", [])
+        return {"ok": True, "ignored": "own address"}
     auto = is_auto_reply(subject, msg.get("headers"))
     kind = "auto_reply" if auto else "reply"
     # Claim the message before doing anything with it, so a redelivered
@@ -190,9 +198,14 @@ def handle_received(msg, send_fn, owner_email, reach=0):
                        + (f" Application re-sent to {', '.join(forwarded_to)}."
                           if forwarded_to else
                           " It named no other contact, so nothing was re-sent."))
-    fwd_subject = (f"{sender_name or sender} replied: {subject_core(subject) or subject}"
-                   if not auto else
-                   f"Auto-reply from {sender_name or sender}: {subject_core(subject) or subject}")
+    if auto:
+        fwd_subject = f"Auto-reply from {sender_name or sender}: {subject_core(subject) or subject}"
+    elif lead:
+        fwd_subject = f"{sender_name or sender} replied: {subject_core(subject) or subject}"
+    else:
+        # Ordinary mail to the inbox, not about an application: pass it
+        # through under its own subject.
+        fwd_subject = subject or f"Email from {sender_name or sender}"
     fwd_body = "\n".join(context + ["", f"From: {msg.get('from') or sender}",
                                     "", body])
     send_fn(owner_email, fwd_subject, fwd_body, reply_to=sender or None)

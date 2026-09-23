@@ -8005,6 +8005,18 @@ def _send_reply_mail(to_addr, subject, body, reply_to=None):
     return bool(ok)
 
 
+def _inbound_forward_target():
+    """Where a received email is forwarded for a person to read: the first
+    operator address that is not on our own domain. Forwarding to hello@
+    would loop once hello@ itself is received through Resend."""
+    ours = ("bridgemd.health", "bridgemd.local")
+    for addr in (os.environ.get("INBOUND_FORWARD_TO") or OWNER_NOTIFY_EMAIL).split(","):
+        addr = addr.strip()
+        if addr and not any(addr.lower().endswith("@" + d) for d in ours):
+            return addr
+    return OWNER_EMAIL
+
+
 @app.route("/hooks/resend", methods=["POST"])
 def resend_webhook():
     """Resend posts here for every email received on reply.bridgemd.health.
@@ -8031,7 +8043,7 @@ def resend_webhook():
                 msg = _resend_get(f"/emails/receiving/{email_id}")
                 msg["id"] = msg.get("id") or email_id
                 res = replies.handle_received(
-                    msg, _send_reply_mail, OWNER_NOTIFY_EMAIL.split(",")[0].strip(),
+                    msg, _send_reply_mail, _inbound_forward_target(),
                     reach=db.count_inbound_applications())
                 print(f"inbound reply {email_id}: {res}", flush=True)
             except Exception:
