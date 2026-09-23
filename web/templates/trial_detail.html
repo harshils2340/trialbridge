@@ -357,7 +357,7 @@
             </select>
             <select name="dob_year" required aria-label="Year">
               <option value="" disabled selected>Year</option>
-              {% for y in range(this_year - 18, 1919, -1) %}<option value="{{ y }}">{{ y }}</option>{% endfor %}
+              {% for y in range(this_year, 1919, -1) %}<option value="{{ y }}">{{ y }}</option>{% endfor %}
             </select>
           </div>
         </div>
