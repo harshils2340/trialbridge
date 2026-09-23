@@ -208,6 +208,7 @@ def handle_received(msg, send_fn, owner_email, reach=0):
         fwd_subject = subject or f"Email from {sender_name or sender}"
     fwd_body = "\n".join(context + ["", f"From: {msg.get('from') or sender}",
                                     "", body])
-    send_fn(owner_email, fwd_subject, fwd_body, reply_to=sender or None)
+    copied = send_fn(owner_email, fwd_subject, fwd_body, reply_to=sender or None)
     return {"ok": True, "kind": kind, "lead_id": lead["id"] if lead else None,
-            "forwarded_to": forwarded_to}
+            "forwarded_to": forwarded_to, "operator_copy": bool(copied),
+            "operator": owner_email}

@@ -8003,8 +8003,11 @@ def _send_reply_mail(to_addr, subject, body, reply_to=None):
     """Outbound for the reply handler: same gate as every other email (go-live
     on and SMTP configured), with an optional Reply-To."""
     if not notifications_ready():
+        print(f"inbound forward skipped (notify not live) to={to_addr}", flush=True)
         return False
-    ok, _ = mailer.send_email(to_addr, subject, body, reply_to=reply_to)
+    ok, why = mailer.send_email(to_addr, subject, body, reply_to=reply_to)
+    if not ok:
+        print(f"inbound forward failed to={to_addr}: {why}", flush=True)
     return bool(ok)
 
 
