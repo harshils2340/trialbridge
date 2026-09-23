@@ -5709,14 +5709,20 @@ def trial_detail(search_id, nct):
     # ships instantly with the generic screener and JS upgrades it via the
     # `trial_prescreen` endpoint below.
     cached_prescreen = _prescreen_cached(r["trial"])
+    structured = _structured_prescreen(r["trial"])
+    prescreen_ai = mt.llm_available() and bool((r["trial"] or {}).get("criteria"))
+    # While the tailored questions are being written the form shows only a
+    # skeleton. Rendering the structured set first and swapping it out a
+    # second later flickered, and looked like the questions had changed.
+    # The structured set rides along as the fallback if the model fails.
     prescreen = (cached_prescreen if cached_prescreen
-                 else _structured_prescreen(r["trial"]))
-    prescreen_ai = bool(mt.LLM_API_KEY) and bool((r["trial"] or {}).get("criteria"))
+                 else ([] if prescreen_ai else structured))
     plain_terms = summarize.plain_terms(r["trial"])
     return render_template("trial_detail.html", r=r, search_id=search_id,
                            applied=applied, summary=summary, plain_terms=plain_terms,
                            prescreen=prescreen, prescreen_ai=prescreen_ai,
-                           cached_prescreen=cached_prescreen, **ctx)
+                           cached_prescreen=cached_prescreen,
+                           fallback_prescreen=structured, **ctx)
 
 
 @app.route("/trial/<search_id>/<nct>/prescreen.json")
@@ -5801,6 +5807,11 @@ def interest():
     # Date of birth is what a study team actually screens on. It beats the
     # age carried over from the search form, which may be a guess or blank.
     dob = f.get("dob", "").strip()[:10]
+    # The form asks month, day and year as three plain dropdowns (a native
+    # date picker made people scroll through decades to find their year).
+    if not dob and all(f.get(k, "").strip() for k in ("dob_year", "dob_month", "dob_day")):
+        dob = (f"{f['dob_year'].strip()}-{f['dob_month'].strip().zfill(2)}-"
+               f"{f['dob_day'].strip().zfill(2)}")
     if dob:
         dob_age = mailer.age_from_dob(dob)
         if not dob_age:

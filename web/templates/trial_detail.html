@@ -260,7 +260,7 @@
 
         {% set ai_pending = prescreen_ai and cached_prescreen is none %}
         {% set q_total = (prescreen|length + 2) if prescreen else 4 %}
-        <div class="if-screener" id="ifScreener"{% if ai_pending %} data-prescreen-url="{{ url_for('trial_prescreen', search_id=search_id, nct=t.nctId) }}"{% endif %}>
+        <div class="if-screener" id="ifScreener"{% if ai_pending %} data-prescreen-url="{{ url_for('trial_prescreen', search_id=search_id, nct=t.nctId) }}" data-fallback='{{ (fallback_prescreen or [])|tojson }}'{% endif %}>
           <div class="if-screener-head" id="ifScreenerHead">A few quick questions{% if not ai_pending %} ({{ q_total }}){% endif %} to pre-screen you for this study</div>
           {% if ai_pending %}<div class="if-screener-note" id="ifScreenerNote">Tailoring questions to this study…</div>{% endif %}
           <div class="if-screener-body" id="ifScreenerBody">
@@ -341,7 +341,25 @@
         <div class="if-row two">
           <label><span class="if-lbl">Your name</span><input name="name" type="text" value="{{ patient_user.full_name if patient_user else '' }}" required></label>
           <label><span class="if-lbl">Phone <span class="opt">(optional)</span></span><input name="phone" type="tel"></label>
-          <label><span class="if-lbl">Date of birth</span><input name="dob" type="date" required min="1900-01-01" max="{{ today_iso() }}" autocomplete="bday"></label>
+        </div>
+        {% set months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'] %}
+        {% set this_year = today_iso()[:4]|int %}
+        <div class="if-dob" role="group" aria-label="Date of birth">
+          <span class="if-lbl">Date of birth</span>
+          <div class="if-dob-row">
+            <select name="dob_month" required aria-label="Month">
+              <option value="" disabled selected>Month</option>
+              {% for m in months %}<option value="{{ '%02d' % loop.index }}">{{ m }}</option>{% endfor %}
+            </select>
+            <select name="dob_day" required aria-label="Day">
+              <option value="" disabled selected>Day</option>
+              {% for d in range(1, 32) %}<option value="{{ '%02d' % d }}">{{ d }}</option>{% endfor %}
+            </select>
+            <select name="dob_year" required aria-label="Year">
+              <option value="" disabled selected>Year</option>
+              {% for y in range(this_year - 18, 1919, -1) %}<option value="{{ y }}">{{ y }}</option>{% endfor %}
+            </select>
+          </div>
         </div>
         <label><span class="if-lbl">Email</span><input name="email" id="ifEmail" type="email" value="{{ patient_user.email if patient_user else '' }}" required{% if not need_verify %} readonly{% endif %}></label>
         {% if need_verify %}
@@ -443,37 +461,46 @@
     if (note) note.remove();
   }
 
+  // Study-specific questions in the layout the apply handler expects.
+  function renderTailored(qs) {
+    var frag = document.createDocumentFragment();
+    qs.forEach(function (q, i) {
+      var sel = select('sa_' + i, [
+        opt('', 'Select', true, true), opt('yes', 'Yes'),
+        opt('no', 'No'), opt('unsure', 'Not sure')
+      ], true);
+      frag.appendChild(question((i + 1) + '. ' + (q.q || ''), sel,
+        [hidden('sq_' + i, q.q || ''), hidden('sf_' + i, q.flag_if || '')]));
+    });
+    var n = qs.length;
+    frag.appendChild(question((n + 1) + '. Can you travel to the study site for visits?',
+      select('travel', [opt('', 'Select', true, true), opt('yes', 'Yes'),
+        opt('maybe', 'Not sure'), opt('no', 'No')], true)));
+    frag.appendChild(question((n + 2) + '. Can you give your own informed consent?',
+      select('consent_capable', [opt('', 'Select', true, true),
+        opt('yes', 'Yes'), opt('no', 'No')], true)));
+    body.innerHTML = '';
+    body.appendChild(frag);
+    if (head) head.textContent = 'A few quick questions (' + (n + 2)
+      + ') to pre-screen you for this study';
+    if (note) note.remove();
+  }
+  // If the model does not answer, fall back to questions built from the
+  // study's own listing (diagnosis, age range) rather than the generic set.
+  function renderFallback() {
+    var qs = [];
+    try { qs = JSON.parse(box.getAttribute('data-fallback') || '[]'); } catch (e) {}
+    if (qs && qs.length) renderTailored(qs); else renderGeneric();
+  }
+
   fetch(url, { headers: { 'X-Requested-With': 'fetch' } })
     .then(function (r) { return r.json(); })
     .then(function (d) {
       var qs = (d && d.questions) || [];
-      if (!qs.length) {
-        if (body.querySelector('.if-q-skel')) renderGeneric();
-        return;
-      }
-      var frag = document.createDocumentFragment();
-      qs.forEach(function (q, i) {
-        var sel = select('sa_' + i, [
-          opt('', 'Select', true, true), opt('yes', 'Yes'),
-          opt('no', 'No'), opt('unsure', 'Not sure')
-        ], true);
-        frag.appendChild(question((i + 1) + '. ' + (q.q || ''), sel,
-          [hidden('sq_' + i, q.q || ''), hidden('sf_' + i, q.flag_if || '')]));
-      });
-      var n = qs.length;
-      frag.appendChild(question((n + 1) + '. Can you travel to the study site for visits?',
-        select('travel', [opt('', 'Select', true, true), opt('yes', 'Yes'),
-          opt('maybe', 'Not sure'), opt('no', 'No')], true)));
-      frag.appendChild(question((n + 2) + '. Can you give your own informed consent?',
-        select('consent_capable', [opt('', 'Select', true, true),
-          opt('yes', 'Yes'), opt('no', 'No')], true)));
-      body.innerHTML = '';
-      body.appendChild(frag);
-      if (head) head.textContent = 'A few quick questions (' + (n + 2)
-        + ') to pre-screen you for this study';
-      if (note) note.remove();
+      if (!qs.length) { renderFallback(); return; }
+      renderTailored(qs);
     })
-    .catch(function () { renderGeneric(); });
+    .catch(function () { renderFallback(); });
 })();
 </script>
 
