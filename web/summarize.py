@@ -39,7 +39,10 @@ except OSError:
     _SPEC = ""
 
 KEYS = ["one_liner", "purpose", "who", "what", "commitment"]
-DETAIL_SUMMARY_LLM = os.environ.get("DETAIL_SUMMARY_LLM", "0") == "1"
+# On by default: the plain-English study summary is the page. It was off for
+# cost when every crawler hit paid for a model call; crawlers are gated now
+# (ALLOW_LLM_HOOK) and the provider's free tier covers real visitors.
+DETAIL_SUMMARY_LLM = os.environ.get("DETAIL_SUMMARY_LLM", "1") == "1"
 SUMMARY_EVAL_LLM = os.environ.get("SUMMARY_EVAL_LLM", "0") == "1"
 _STOP = {
     "the", "and", "for", "with", "that", "this", "from", "into", "your",
@@ -604,9 +607,10 @@ def _intervention_explainer(trial):
         out = {k: str(parsed.get(k, "") or "").strip() for k in ("name", "what", "how", "aka")}
         if out.get("what"):
             out["name"] = out.get("name") or name
+            out["_ai"] = True
             return out
-    except Exception:
-        pass
+    except Exception as e:  # noqa: BLE001
+        print(f"drug explainer model call failed: {type(e).__name__}: {e}", flush=True)
     return data
 
 
@@ -616,7 +620,10 @@ def plain(trial):
     nct = trial.get("nctId") or ""
     if nct:
         cached = db.get_trial_summary(nct)
-        if cached:
+        # A cached summary is final only if the model wrote it. A fallback
+        # cached while the model was down (out of credits, cooling down) is
+        # served until the model is back, then written again properly.
+        if cached and (cached.get("_ai") or not _llm_ok()):
             # Upgrade older cached summaries in place with the drug explainer.
             if "drug" not in cached:
                 cached["drug"] = _intervention_explainer(trial)
@@ -640,8 +647,10 @@ def plain(trial):
             if out["one_liner"] or out["purpose"]:
                 out["_ai"] = True
                 data = out
-        except Exception:
-            pass  # fall back to the deterministic version
+        except Exception as e:  # noqa: BLE001
+            # Keep the deterministic version, but say why in the log.
+            print(f"summary model call failed for {nct}: {type(e).__name__}: {e}",
+                  flush=True)
 
     data["drug"] = _intervention_explainer(trial)
     # Only cache polished (AI) results, so a fallback can upgrade later once a

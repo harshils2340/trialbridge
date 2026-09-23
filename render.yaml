@@ -46,6 +46,8 @@ services:
         value: https://api.groq.com/openai/v1
       - key: LLM_MODEL
         value: openai/gpt-oss-120b
+      - key: DETAIL_SUMMARY_LLM
+        value: "1"               # plain-English study summaries from the model
       - key: PYTHON_VERSION
         value: "3.11.9"
       - key: NO_LOGIN
