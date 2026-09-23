@@ -78,10 +78,20 @@ LINKEDIN_LOGO_URL = "https://bridgemd.health/static/linkedin.png"
 
 
 def from_header():
-    """Sender for every outbound email. MAIL_FROM overrides; otherwise the
-    founder at the shared inbox, never a no-reply address."""
+    """Sender for every outbound email, never a no-reply address.
+
+    Default: the founder at hello@. Once reply.bridgemd.health is verified,
+    set MAIL_FROM to "Harshil Shah at BridgeMD <harshil@reply.bridgemd.health>"
+    so out-of-office replies (which go to the From address) reach the app
+    (/hooks/resend) and are acted on; Reply-To stays hello@ so a person's
+    reply still lands in the founder's own inbox."""
     return (os.environ.get("MAIL_FROM") or "").strip() or \
         f"{FOUNDER_NAME} at BridgeMD <{HELLO_EMAIL}>"
+
+
+def address_of_from():
+    v = from_header()
+    return v.split("<", 1)[1].rstrip(">").strip() if "<" in v else v.strip()
 
 
 def reply_to_header():
@@ -858,8 +868,10 @@ def build_clinic_checkin_message(lead, prior=0):
     return subject, "\n".join(lines)
 
 
-def send_email(to_addr, subject, body):
-    """Send via SMTP. Returns (ok, message)."""
+def send_email(to_addr, subject, body, reply_to=None):
+    """Send via SMTP. Returns (ok, message). `reply_to` overrides the default
+    Reply-To (used when forwarding a clinic's reply to the operator, so their
+    answer goes back to the clinic)."""
     if not smtp_configured():
         return False, "SMTP is not configured."
     if not to_addr:
@@ -878,7 +890,7 @@ def send_email(to_addr, subject, body):
     msg = EmailMessage()
     msg["Subject"] = subject
     msg["From"] = sender
-    msg["Reply-To"] = reply_to_header()
+    msg["Reply-To"] = (reply_to or "").strip() or reply_to_header()
     msg["To"] = to_addr
     # Applicant is never Cc/Bcc. Their address, if any, lives in the body.
     msg.set_content(body)

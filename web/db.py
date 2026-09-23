@@ -1240,6 +1240,20 @@ CREATE TABLE IF NOT EXISTS copilot_drafts (
 );
 CREATE INDEX IF NOT EXISTS idx_copilot_drafts_thread ON copilot_drafts(thread_id);
 
+-- Replies to our study-team letters, as received through the mail provider.
+-- One row per inbound message; the provider id keeps a redelivered webhook
+-- from being acted on twice.
+CREATE TABLE IF NOT EXISTS inbound_emails (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    provider_id  TEXT UNIQUE,
+    sender       TEXT DEFAULT '',
+    subject      TEXT DEFAULT '',
+    lead_id      INTEGER,
+    kind         TEXT DEFAULT 'reply',       -- reply | auto_reply
+    forwarded_to TEXT DEFAULT '',            -- JSON list of addresses re-sent to
+    created_at   TEXT NOT NULL
+);
+
 -- Internal patient->trial matching. A connected clinic's own patients, surfaced
 -- as candidates for a trial by the matching engine. This is the "found +
 -- pre-screened" supply that feeds the ATS. Rows are DE-IDENTIFIED (initials +
@@ -6388,6 +6402,7 @@ def record_clinic_notify(lead_id, recipients):
             "city": (rec.get("city") or "").strip(),
             "source": (rec.get("source") or "").strip(),
             "name": (rec.get("name") or "").strip(),
+            "subject": (rec.get("subject") or "").strip(),
             "copy": CLINIC_NOTIFY_COPY,
         })
     db.execute(
@@ -6450,6 +6465,109 @@ def find_recent_duplicate_lead(email, nct, minutes=15):
         "SELECT * FROM leads WHERE lower(email) = ? AND upper(nct) = ? "
         "AND created_at >= ? ORDER BY id DESC LIMIT 1",
         (email, nct, cutoff)).fetchone()
+
+
+def append_clinic_notify(lead_id, recipients):
+    """Add recipients to a lead's clinic handoff record without dropping the
+    ones already there (a re-send named by an out-of-office reply)."""
+    lead = get_lead(lead_id)
+    if not lead:
+        return False
+    existing = lead_clinic_notify(lead)
+    have = {(r.get("email") or "").lower() for r in existing}
+    payload = list(existing)
+    for rec in recipients or []:
+        email = (rec.get("email") or "").strip()
+        if not email or email.lower() in have:
+            continue
+        have.add(email.lower())
+        payload.append({
+            "email": email,
+            "facility": (rec.get("facility") or "").strip(),
+            "city": (rec.get("city") or "").strip(),
+            "source": (rec.get("source") or "").strip(),
+            "name": (rec.get("name") or "").strip(),
+            "subject": (rec.get("subject") or "").strip(),
+            "copy": CLINIC_NOTIFY_COPY,
+        })
+    db = get_db()
+    db.execute("UPDATE leads SET clinic_notify_json = ?, updated_at = ? WHERE id = ?",
+               (json.dumps(payload, ensure_ascii=False), now(), lead_id))
+    db.commit()
+    return True
+
+
+def lead_clinic_label(lead):
+    """The site named on the lead's handoff, else the site they chose."""
+    for r in lead_clinic_notify(lead):
+        if (r.get("facility") or "").strip() and r.get("source") != "central":
+            return r["facility"].strip()
+    try:
+        return ((lead["site"] or "").split(",")[0]).strip()
+    except (KeyError, IndexError, TypeError):
+        return ""
+
+
+def find_lead_by_clinic_recipient(email, subject_core=""):
+    """The application a reply is about: the newest lead whose handoff went
+    to `email`, preferring one whose stamped subject matches the reply's."""
+    email = (email or "").strip().lower()
+    if not email:
+        return None
+    rows = get_db().execute(
+        "SELECT * FROM leads WHERE clinic_notify_json LIKE ? ORDER BY id DESC",
+        (f"%{email}%",)).fetchall()
+    want = (subject_core or "").strip().lower()
+    best = None
+    for row in rows:
+        recs = [r for r in lead_clinic_notify(row)
+                if (r.get("email") or "").lower() == email]
+        if not recs:
+            continue
+        if want and any((r.get("subject") or "").strip().lower() == want
+                        for r in recs):
+            return row
+        best = best or row
+    return best
+
+
+def record_inbound_email(provider_id, sender, subject, lead_id, kind,
+                         forwarded_to=None):
+    """One row per inbound message. Returns False when this provider id was
+    already recorded (a redelivered webhook), so callers act only once."""
+    db = get_db()
+    if provider_id:
+        hit = db.execute("SELECT 1 FROM inbound_emails WHERE provider_id = ?",
+                         (provider_id,)).fetchone()
+        if hit:
+            return False
+    db.execute(
+        "INSERT INTO inbound_emails (provider_id, sender, subject, lead_id, "
+        "kind, forwarded_to, created_at) VALUES (?,?,?,?,?,?,?)",
+        (provider_id or None, (sender or "")[:200], (subject or "")[:300],
+         lead_id, kind or "reply", json.dumps(list(forwarded_to or [])), now()))
+    db.commit()
+    return True
+
+
+def update_inbound_email(provider_id, lead_id=None, kind=None, forwarded_to=None):
+    """Fill in what was done with an inbound message after it was claimed."""
+    if not provider_id:
+        return
+    db = get_db()
+    db.execute(
+        "UPDATE inbound_emails SET lead_id = COALESCE(?, lead_id), "
+        "kind = COALESCE(?, kind), forwarded_to = ? WHERE provider_id = ?",
+        (lead_id, kind, json.dumps(list(forwarded_to or [])), provider_id))
+    db.commit()
+
+
+def add_lead_event(lead_id, note, status="prescreen", actor="system"):
+    db = get_db()
+    db.execute(
+        "INSERT INTO lead_events (lead_id, status, note, actor, created_at) "
+        "VALUES (?,?,?,?,?)", (lead_id, status, (note or "")[:500], actor, now()))
+    db.commit()
 
 
 def lead_clinic_notify_only_reached(lead, addresses, copy=CLINIC_NOTIFY_COPY):

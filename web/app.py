@@ -92,6 +92,7 @@ import trends  # noqa: E402
 import ctis  # noqa: E402
 import copilot  # noqa: E402
 import omni_hub  # noqa: E402
+import replies  # noqa: E402
 import token_crypto  # noqa: E402
 
 app = Flask(__name__)
@@ -1429,6 +1430,7 @@ def _notify_site_new_candidate_sync(token, trial=None, lat=None, lon=None,
         lead, None, clinic=clinic, reach=db.count_inbound_applications())
     delivered = []
     for rec in recipients:
+        rec["subject"] = subject
         ok = _notify(rec["email"], subject, body)
         print(
             f"clinic-notify lead={lead['id']} nct={lead['nct']} "
@@ -2639,7 +2641,7 @@ def _csrf_guard():
                             "instagram_webhook", "instagram_deauthorize",
                             "instagram_data_deletion",
                             "ops_verify_claim", "inbound_email_webhook",
-                            "inbound_lead_webhook"}:
+                            "inbound_lead_webhook", "resend_webhook"}:
         return None
     sent = (request.form.get("_csrf_token", "")
             or request.headers.get("X-CSRF-Token", ""))
@@ -7960,6 +7962,83 @@ def inbound_email_webhook():
     # Always 200 on a well-formed but unroutable message so the provider doesn't
     # retry forever; 200 with ok=false tells us it was dropped on purpose.
     return jsonify(result), 200
+
+
+def _svix_ok(secret, headers, raw):
+    """Verify a Svix-signed webhook (what Resend sends). The signed content is
+    "<id>.<timestamp>.<body>", the secret is base64 after "whsec_", and the
+    header may carry several space-separated "v1,<sig>" values."""
+    try:
+        sid = headers.get("svix-id", "")
+        ts = headers.get("svix-timestamp", "")
+        sigs = headers.get("svix-signature", "")
+        if not (sid and ts and sigs):
+            return False
+        if abs(time.time() - int(ts)) > 300:
+            return False
+        key = base64.b64decode(secret.split("_", 1)[1] if secret.startswith("whsec_")
+                               else secret)
+        want = base64.b64encode(hmac.new(
+            key, f"{sid}.{ts}.".encode() + raw, hashlib.sha256).digest()).decode()
+        return any(hmac.compare_digest(want, part.split(",", 1)[1])
+                   for part in sigs.split() if "," in part)
+    except Exception:
+        return False
+
+
+def _resend_get(path):
+    key = os.environ.get("RESEND_API_KEY", "").strip()
+    if not key:
+        raise RuntimeError("RESEND_API_KEY not set")
+    req = urllib.request.Request("https://api.resend.com" + path,
+                                 headers={"Authorization": f"Bearer {key}"})
+    with urllib.request.urlopen(req, timeout=30) as r:
+        return json.load(r)
+
+
+def _send_reply_mail(to_addr, subject, body, reply_to=None):
+    """Outbound for the reply handler: same gate as every other email (go-live
+    on and SMTP configured), with an optional Reply-To."""
+    if not notifications_ready():
+        return False
+    ok, _ = mailer.send_email(to_addr, subject, body, reply_to=reply_to)
+    return bool(ok)
+
+
+@app.route("/hooks/resend", methods=["POST"])
+def resend_webhook():
+    """Resend posts here for every email received on reply.bridgemd.health.
+    Signature-checked with RESEND_WEBHOOK_SECRET; fails closed without it. The
+    full message is fetched from Resend and handled off the request thread:
+    forwarded to the operator, and if it is an out-of-office reply naming
+    someone else, the application is re-sent to them (replies.py)."""
+    secret = os.environ.get("RESEND_WEBHOOK_SECRET", "").strip()
+    if not secret:
+        abort(403)
+    if not _svix_ok(secret, request.headers, request.get_data()):
+        abort(403)
+    event = request.get_json(silent=True) or {}
+    if event.get("type") != "email.received":
+        return jsonify({"ok": True, "ignored": event.get("type")}), 200
+    email_id = ((event.get("data") or {}).get("email_id")
+                or (event.get("data") or {}).get("id") or "")
+    if not email_id:
+        return jsonify({"ok": False, "error": "no email id"}), 200
+
+    def _run():
+        with app.app_context():
+            try:
+                msg = _resend_get(f"/emails/receiving/{email_id}")
+                msg["id"] = msg.get("id") or email_id
+                res = replies.handle_received(
+                    msg, _send_reply_mail, OWNER_NOTIFY_EMAIL.split(",")[0].strip(),
+                    reach=db.count_inbound_applications())
+                print(f"inbound reply {email_id}: {res}", flush=True)
+            except Exception:
+                app.logger.exception("inbound reply handling failed for %s", email_id)
+
+    threading.Thread(target=_run, daemon=True).start()
+    return jsonify({"ok": True}), 200
 
 
 @app.route("/integrations/lead", methods=["POST"])
