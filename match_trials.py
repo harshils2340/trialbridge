@@ -17,8 +17,8 @@ confidently-wrong match, so calibration matters more than coverage here.
 Usage:
   1. Put a de-identified patient summary in matcher/patient_case.txt
      (a leading "AGE: 42 / SEX: female" header makes the gate most reliable).
-  2. export LLM_API_KEY="sk-..."           # OpenAI or any OpenAI-compatible API
-     export LLM_MODEL="gpt-4o-mini"        # or whatever model you use
+  2. export LLM_API_KEY="gsk_..."          # Groq (default) or any OpenAI-compatible API
+     export LLM_MODEL="openai/gpt-oss-120b"      # LLM_BASE_URL picks the provider
   3. python3 match_trials.py --condition "lupus nephritis" --country Canada
      Add --require-site to keep only trials with a site in --country.
 
@@ -90,8 +90,26 @@ def _first_env(*names):
 LLM_API_KEY = _first_env(
     "LLM_API_KEY", "OPENAI_API_KEY", "OPENAI_KEY",
     "OPEN_API_KEY", "OPEN_AI_KEY", "OPEN_AI_API_KEY")
-LLM_BASE_URL = os.environ.get("LLM_BASE_URL", "https://api.openai.com/v1")
-LLM_MODEL = os.environ.get("LLM_MODEL", "gpt-4o-mini")
+# Groq by default: an OpenAI-compatible endpoint whose free tier covers this
+# app's real volume (short summaries, four yes/no questions, small rewrites)
+# and which does not train on submitted data. Any OpenAI-compatible provider
+# works by changing these three variables.
+LLM_BASE_URL = os.environ.get("LLM_BASE_URL", "https://api.groq.com/openai/v1")
+LLM_MODEL = os.environ.get("LLM_MODEL", "openai/gpt-oss-120b")
+# Models that think before they answer (gpt-oss, o-series) spend part of
+# max_tokens on that thinking. Our calls are short and structured, so keep the
+# thinking short or a 350-token JSON reply comes back empty.
+LLM_REASONING_EFFORT = os.environ.get("LLM_REASONING_EFFORT", "").strip()
+# Providers sit behind Cloudflare, which refuses urllib's default agent outright.
+LLM_USER_AGENT = "BridgeMD/1.0 (+https://bridgemd.health)"
+
+
+def _llm_extras():
+    """Provider-specific request fields for the configured model."""
+    m = (LLM_MODEL or "").lower()
+    effort = LLM_REASONING_EFFORT or (
+        "low" if ("gpt-oss" in m or m.startswith(("o1", "o3", "o4"))) else "")
+    return {"reasoning_effort": effort} if effort else {}
 DO_MATCH = os.environ.get("MATCH", "1") != "0"
 
 VERDICT_RANK = {"likely_eligible": 0, "possible": 1, "unlikely": 2, "error": 3}
@@ -622,6 +640,7 @@ def llm_chat(system, user, retries=2):
         "messages": [{"role": "system", "content": system},
                      {"role": "user", "content": user}],
         "temperature": 0,
+        **_llm_extras(),
     }).encode()
     last = None
     for attempt in range(retries):
@@ -629,7 +648,8 @@ def llm_chat(system, user, retries=2):
             req = urllib.request.Request(
                 f"{LLM_BASE_URL}/chat/completions", data=body,
                 headers={"Authorization": f"Bearer {LLM_API_KEY}",
-                         "Content-Type": "application/json"})
+                         "Content-Type": "application/json",
+                         "User-Agent": LLM_USER_AGENT})
             with urllib.request.urlopen(req, timeout=60) as r:
                 raw = json.load(r)["choices"][0]["message"]["content"].strip()
                 out = sanitize_copy(raw)
@@ -678,6 +698,7 @@ def llm_match(patient, trial, retries=3):
         ],
         "response_format": {"type": "json_object"},
         "temperature": 0,
+        **_llm_extras(),
     }).encode()
     last = None
     for attempt in range(retries):
@@ -685,7 +706,8 @@ def llm_match(patient, trial, retries=3):
             req = urllib.request.Request(
                 f"{LLM_BASE_URL}/chat/completions", data=body,
                 headers={"Authorization": f"Bearer {LLM_API_KEY}",
-                         "Content-Type": "application/json"})
+                         "Content-Type": "application/json",
+                         "User-Agent": LLM_USER_AGENT})
             with urllib.request.urlopen(req, timeout=90) as r:
                 resp = json.load(r)
             return normalize_match(_extract_json(
@@ -845,6 +867,7 @@ def prescreen_questions(trial, max_q=None, retries=2):
         "response_format": {"type": "json_object"},
         "temperature": 0,
         "max_tokens": PRESCREEN_MAX_TOKENS,
+        **_llm_extras(),
     }).encode()
     last = None
     for attempt in range(retries):
@@ -852,7 +875,8 @@ def prescreen_questions(trial, max_q=None, retries=2):
             req = urllib.request.Request(
                 f"{LLM_BASE_URL}/chat/completions", data=body,
                 headers={"Authorization": f"Bearer {LLM_API_KEY}",
-                         "Content-Type": "application/json"})
+                         "Content-Type": "application/json",
+                         "User-Agent": LLM_USER_AGENT})
             with urllib.request.urlopen(req, timeout=60) as r:
                 resp = json.load(r)
             return _normalize_prescreen(_extract_json(

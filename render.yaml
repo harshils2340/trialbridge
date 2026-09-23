@@ -41,7 +41,11 @@ services:
       - key: WEB_MAX_MATCH
         value: "6"               # LLM calls per search
       - key: LLM_API_KEY
-        sync: false              # set this yourself in the dashboard (kept secret)
+        sync: false              # Groq key (gsk_...), set in the dashboard (kept secret)
+      - key: LLM_BASE_URL
+        value: https://api.groq.com/openai/v1
+      - key: LLM_MODEL
+        value: openai/gpt-oss-120b
       - key: PYTHON_VERSION
         value: "3.11.9"
       - key: NO_LOGIN
