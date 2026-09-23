@@ -81,7 +81,8 @@ THREAD_LINK = re.compile(r"https?://\S*/a/[A-Za-z0-9_-]+")
 
 def _get(path, key):
     req = urllib.request.Request(API + path,
-                                 headers={"Authorization": f"Bearer {key}"})
+                                 headers={"Authorization": f"Bearer {key}",
+                                          "User-Agent": "BridgeMD/1.0 (+https://bridgemd.health)"})
     with urllib.request.urlopen(req, timeout=30) as r:
         return json.loads(r.read().decode("utf-8"))
 

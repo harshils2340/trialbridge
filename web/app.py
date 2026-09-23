@@ -7990,8 +7990,11 @@ def _resend_get(path):
     key = os.environ.get("RESEND_API_KEY", "").strip()
     if not key:
         raise RuntimeError("RESEND_API_KEY not set")
+    # Resend sits behind Cloudflare, which refuses urllib's default
+    # User-Agent outright (error 1010), so name ourselves.
     req = urllib.request.Request("https://api.resend.com" + path,
-                                 headers={"Authorization": f"Bearer {key}"})
+                                 headers={"Authorization": f"Bearer {key}",
+                                          "User-Agent": "BridgeMD/1.0 (+https://bridgemd.health)"})
     with urllib.request.urlopen(req, timeout=30) as r:
         return json.load(r)
 
