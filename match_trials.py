@@ -700,6 +700,11 @@ def llm_match(patient, trial, retries=3):
         "temperature": 0,
         **_llm_extras(),
     }).encode()
+    # A search matches many trials in a row. Once the provider says 429, every
+    # remaining trial must fall back at once instead of retrying into the
+    # same wall with sleeps, or one search takes minutes.
+    if time.time() < LLM_COOLDOWN_UNTIL:
+        raise LLMCoolingDown("provider asked us to back off")
     last = None
     for attempt in range(retries):
         try:
@@ -712,7 +717,14 @@ def llm_match(patient, trial, retries=3):
                 resp = json.load(r)
             return normalize_match(_extract_json(
                 resp["choices"][0]["message"]["content"]))
-        except Exception as e:  # network, rate-limit, JSON - back off and retry
+        except urllib.error.HTTPError as e:
+            last = e
+            if e.code == 429:
+                _note_429(e)
+                break
+            if attempt < retries - 1:
+                time.sleep(2 ** attempt)
+        except Exception as e:  # network, JSON - back off and retry
             last = e
             if attempt < retries - 1:
                 time.sleep(2 ** attempt)
@@ -869,6 +881,8 @@ def prescreen_questions(trial, max_q=None, retries=2):
         "max_tokens": PRESCREEN_MAX_TOKENS,
         **_llm_extras(),
     }).encode()
+    if time.time() < LLM_COOLDOWN_UNTIL:
+        raise LLMCoolingDown("provider asked us to back off")
     last = None
     for attempt in range(retries):
         try:
@@ -881,6 +895,13 @@ def prescreen_questions(trial, max_q=None, retries=2):
                 resp = json.load(r)
             return _normalize_prescreen(_extract_json(
                 resp["choices"][0]["message"]["content"]), max_q)
+        except urllib.error.HTTPError as e:
+            last = e
+            if e.code == 429:
+                _note_429(e)
+                break
+            if attempt < retries - 1:
+                time.sleep(2 ** attempt)
         except Exception as e:
             last = e
             if attempt < retries - 1:
