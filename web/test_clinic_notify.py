@@ -265,10 +265,10 @@ def test_applicant_email_in_body_not_as_recipient():
     s2, b2 = mailer.build_dm_message(lead, "Can I come Tuesday?", "https://x/c/1", to="site")
     assert s2 == "Alex sent you a message about the type 2 diabetes study"
     assert "https://x/c/1" not in b2 and "patient@secret.test" in b2
-    # Applicant-facing subjects are human too, and their thread link stays.
+    # Applicant-facing subjects are human too, and they carry no links.
     s3, b3 = mailer.build_apply_confirmation(lead, "https://bridgemd.health/a/t1")
     assert s3 == "Your application to the type 2 diabetes study"
-    assert "https://bridgemd.health/a/t1" in b3
+    assert "http" not in b3 and "reply to this email" in b3.lower()
     assert mailer.age_from_dob("1990-06-01").isdigit()
     assert mailer.age_from_dob("2999-01-01") == "" and mailer.age_from_dob("nope") == ""
     print("PASS: clinic letter carries the whole application, no link, human subject")

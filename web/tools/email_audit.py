@@ -4,7 +4,7 @@
 Produces one Markdown document that answers, per applicant: what study they
 applied to, where they are, what they entered, which emails we sent them and
 to the clinic, whether those emails were delivered, and whether the content
-follows the current rules (thread link, no booking or calendar links, no em
+follows the current rules (no application, booking or calendar links, no em
 dashes, right study in the subject).
 
 Inputs:
@@ -61,8 +61,8 @@ SUBJECT_KINDS = [
 def _is_candidate_subject(subject):
     return " applied to your " in (subject or "")
 
-# Content rules. An applicant email must carry the /a/<token> thread link and
-# must not carry a booking or calendar link (commit f1fbb84), an em dash, or
+# Content rules. An applicant email must not carry an application link, a
+# booking or calendar link (commit f1fbb84), an em dash, or
 # an instruction to email the clinic themselves (commit 7254e79).
 FORBIDDEN = [
     ("calendly link", re.compile(r"calendly\.com", re.I)),
@@ -271,8 +271,8 @@ def main():
             if key:
                 body = fetch_body(key, row.get("id"))
                 problems = check_body(body)
-                if k.endswith("(to applicant)") and not THREAD_LINK.search(body):
-                    problems.append("no /a/<token> thread link")
+                if k.endswith("(to applicant)") and THREAD_LINK.search(body):
+                    problems.append("carries an application link (removed Sep 28)")
                 if problems:
                     lines.append(f"|  |  | problems: {', '.join(problems)} |  |")
                     findings.append(f"{name}: '{subj}' - {', '.join(problems)}.")

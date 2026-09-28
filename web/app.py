@@ -5941,8 +5941,8 @@ def interest():
     if new_lead:
         db.add_message(
             new_lead["id"], "system",
-            "Thanks for applying. We emailed you a link to message the study "
-            "team. They will reply on that same thread.")
+            "Thanks for applying. Your application was sent to the study team. "
+            "Reply to the email from BridgeMD with any questions.")
     _notify_applicant_apply_confirmation(token)
     if FOUNDER_CONNECT:
         _notify_applicant_founder_connect_async(token)

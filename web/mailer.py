@@ -521,8 +521,7 @@ def build_applicant_message(lead, kind, link):
         "",
         f"Trial: {title}",
         "",
-        "See this application and message the study team here (no sign-in):",
-        link,
+        "Reply to this email with any questions and it reaches the team.",
         "",
         "This isn't medical advice and you can talk to your own doctor first.",
         "",
@@ -531,27 +530,24 @@ def build_applicant_message(lead, kind, link):
     return subj, "\n".join(lines)
 
 
-def build_apply_confirmation(lead, link, clinic_contacts=None):
-    """BridgeMD emails the applicant their thread. They reply there, not by
-    writing the clinic themselves. clinic_contacts is unused (kept for callers)."""
-    _ = clinic_contacts
+def build_apply_confirmation(lead, link=None, clinic_contacts=None):
+    """Receipt to the applicant. No links: questions come back as a reply to
+    this email, which reaches the operator and is noted on the application.
+    `link` and `clinic_contacts` are unused (kept for callers)."""
+    _ = (link, clinic_contacts)
     title = lead["title"] or lead["nct"] or "a clinical trial"
     subject = human_subject("apply_confirmation", lead)
     lines = [
         f"Hi {lead['name'] or 'there'},",
         "",
         "Thanks for applying. Your application was sent to the study team. "
-        "Message them here - no account needed. They will write you back on "
-        "this same thread.",
+        "If you have a question, reply to this email and I will get it to them.",
         "",
         f"Trial: {title}",
     ]
     if lead["nct"]:
         lines.append(f"Reference number: {lead['nct']}")
     lines += [
-        "",
-        "Open your application:",
-        link,
         "",
         "This isn't medical advice and you can talk to your own doctor first.",
         "",
@@ -560,9 +556,9 @@ def build_apply_confirmation(lead, link, clinic_contacts=None):
     return subject, "\n".join(lines)
 
 
-def build_clinic_connect_message(lead, link, clinic_contacts=None):
-    """BridgeMD emails the applicant their thread. No clinic address to write."""
-    _ = clinic_contacts
+def build_clinic_connect_message(lead, link=None, clinic_contacts=None):
+    """Follow-up to an existing applicant. No links: they reply to this email."""
+    _ = (link, clinic_contacts)
     title = lead["title"] or lead["nct"] or "a clinical trial"
     subject = human_subject("clinic_connect", lead)
     lines = [
@@ -570,19 +566,15 @@ def build_clinic_connect_message(lead, link, clinic_contacts=None):
         "",
         "Your application is with the study team. Please disregard any "
         "earlier email asking you to pick a screening time - that was sent "
-        "by mistake and the link does not work.",
+        "by mistake.",
         "",
-        "Message the study team here. No sign-in. They will reply on this "
-        "same thread.",
+        "If you have a question, reply to this email and I will get it to them.",
         "",
         f"Trial: {title}",
     ]
     if lead["nct"]:
         lines.append(f"Reference number: {lead['nct']}")
     lines += [
-        "",
-        "Open your application:",
-        link,
         "",
         "This isn't medical advice and you can talk to your own doctor first.",
         "",
@@ -730,7 +722,7 @@ def build_dm_message(lead, body, link, to="patient", clinic_contacts=None):
         opener = (f"Hi {lead['name'] or 'there'},\n\nThe study team sent you a "
                   f"message about {title}:")
         lines = [opener, "", f"  \"{body.strip()}\"", "",
-                 "Reply here (no sign-in needed):", link,
+                 "Reply to this email to answer them.",
                  "", "Sent via BridgeMD."]
         return subject, "\n".join(lines)
     # To the study team: the message and the person's contact details are in
@@ -751,12 +743,13 @@ def build_dm_message(lead, body, link, to="patient", clinic_contacts=None):
 
 def build_dm_sms(lead, link, to="patient"):
     """Short SMS for new direct-message notifications."""
+    _ = link
     if to == "patient":
         trial = lead["nct"] or "your application"
         return (f"BridgeMD: New message from the study team about {trial}. "
-                f"Reply here: {link}")
+                "Reply to the email from BridgeMD to answer.")
     trial = lead["nct"] or "application"
-    return f"BridgeMD: New applicant message about {trial}. Reply here: {link}"
+    return f"BridgeMD: New applicant message about {trial}. The details are in your email."
 
 
 def _prep_lines(prep):
@@ -789,15 +782,11 @@ def build_visit_message(lead, when, location, link, invite_url="", prep=""):
     if location:
         lines.append(f"  Where: {location}")
     lines += _prep_lines(prep)
-    if invite_url:
-        lines += ["", "Add to calendar (.ics):", invite_url]
+    _ = (invite_url, link)
     lines += [
         "",
-        "We'll remind you before it. See details any time here:",
-        link,
-        "",
-        "If the time doesn't work, reply to the study team from your applications "
-        "page and they'll reschedule.",
+        "We'll remind you before it. If the time doesn't work, reply to this "
+        "email and the team will reschedule.",
         "",
         "Sent via BridgeMD.",
     ]
@@ -821,8 +810,7 @@ def build_reminder_message(lead, when, location, link, prep=""):
     lines += [
         "",
         "Showing up to this visit is the most important step - it's how the team "
-        "confirms you can join. See details or message the team here:",
-        link,
+        "confirms you can join. If anything changes, reply to this email.",
         "",
         "Sent via BridgeMD.",
     ]
@@ -832,10 +820,11 @@ def build_reminder_message(lead, when, location, link, prep=""):
 def build_reminder_sms(lead, when, location, link):
     """Short SMS sent before an upcoming visit."""
     trial = lead["nct"] or "your trial"
+    _ = link
     msg = f"BridgeMD reminder: your {trial} visit is on {when}"
     if location:
         msg += f" at {location}"
-    return f"{msg}. Details: {link}"
+    return f"{msg}. Details are in the email from BridgeMD."
 
 
 def build_clinic_checkin_message(lead, prior=0):
