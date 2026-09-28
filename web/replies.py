@@ -68,6 +68,29 @@ def is_auto_reply(subject, headers=None):
     return any(m in s for m in AUTO_SUBJECT_MARKERS)
 
 
+_NCT = re.compile(r"\bNCT\d{8}\b", re.I)
+
+
+def is_bulk(headers=None):
+    """Newsletters and marketing: a List-Unsubscribe header or bulk precedence."""
+    h = {str(k).lower(): str(v).lower() for k, v in (headers or {}).items()}
+    return bool(h.get("list-unsubscribe") or h.get("list-id")
+                or h.get("precedence") in ("bulk", "list"))
+
+
+def is_about_an_application(subject, headers, lead, applicant):
+    """True for a study team's reply (sender we wrote to), an applicant
+    writing in, or a subject that names one of our letters or a registry
+    number. Bulk mail never qualifies on subject alone."""
+    if lead is not None or applicant is not None:
+        return True
+    if is_bulk(headers):
+        return False
+    core = subject_core(subject).lower()
+    return bool(_NCT.search(core) or " applied to your " in core
+                or "application" in core or "status check" in core)
+
+
 def subject_core(subject):
     """Our original subject, with the reply and auto-reply prefixes removed."""
     return _REPLY_PREFIX.sub("", subject or "").strip()
@@ -144,6 +167,17 @@ def handle_received(msg, send_fn, owner_email, reach=0):
         return {"ok": True, "duplicate": True}
     lead = db.find_lead_by_clinic_recipient(sender, subject_core(subject)) \
         if sender else None
+    applicant = db.lead_by_applicant_email(sender) if (sender and not lead) else None
+
+    # Only mail about an application reaches the operator: a study team's
+    # reply, an applicant writing in, or anything that names one of our
+    # letters or a registry number. Newsletters and cold mail sent to hello@
+    # stay in the provider's inbox and are recorded here, never forwarded.
+    if not is_about_an_application(subject, msg.get("headers"), lead, applicant):
+        db.update_inbound_email(msg.get("id") or "", None, "unrelated", [])
+        return {"ok": True, "ignored": "not about an application"}
+    if applicant:
+        db.add_lead_event(applicant["id"], f"Applicant wrote to hello@: {subject[:80]}")
 
     forwarded_to = []
     if auto and lead:
@@ -204,11 +238,18 @@ def handle_received(msg, send_fn, owner_email, reach=0):
         fwd_subject = f"{sender_name or sender} replied: {subject_core(subject) or subject}"
     else:
         # Ordinary mail to the inbox, not about an application: pass it
-        # through under its own subject.
-        fwd_subject = subject or f"Email from {sender_name or sender}"
-    fwd_body = "\n".join(context + ["", f"From: {msg.get('from') or sender}",
-                                    "", body])
-    copied = send_fn(owner_email, fwd_subject, fwd_body, reply_to=sender or None)
+        # through as a forward under its own subject.
+        fwd_subject = "Fwd: " + (subject or f"Email from {sender_name or sender}")
+    header = ["Forwarded from hello@bridgemd.health.",
+              f"From: {msg.get('from') or sender}",
+              f"To: {', '.join(msg.get('to') or ['hello@bridgemd.health'])}",
+              f"Subject: {subject}"]
+    fwd_body = "\n".join(context + ([""] if context else []) + header
+                         + ["", "----------", "", body])
+    # Text only, no letterhead or signature, and the real sender's name on
+    # the From line: a forward must never read as something we wrote.
+    copied = send_fn(owner_email, fwd_subject, fwd_body, reply_to=sender or None,
+                     plain=True, from_name=sender_name or sender)
     return {"ok": True, "kind": kind, "lead_id": lead["id"] if lead else None,
             "forwarded_to": forwarded_to, "operator_copy": bool(copied),
             "operator": owner_email}

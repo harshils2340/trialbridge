@@ -8010,13 +8010,14 @@ def _resend_get(path):
         return json.load(r)
 
 
-def _send_reply_mail(to_addr, subject, body, reply_to=None):
+def _send_reply_mail(to_addr, subject, body, reply_to=None, **kw):
     """Outbound for the reply handler: same gate as every other email (go-live
-    on and SMTP configured), with an optional Reply-To."""
+    on and SMTP configured). Extra keywords (plain, from_name) pass through to
+    mailer.send_email so a forward looks like a forward."""
     if not notifications_ready():
         print(f"inbound forward skipped (notify not live) to={to_addr}", flush=True)
         return False
-    ok, why = mailer.send_email(to_addr, subject, body, reply_to=reply_to)
+    ok, why = mailer.send_email(to_addr, subject, body, reply_to=reply_to, **kw)
     if not ok:
         print(f"inbound forward failed to={to_addr}: {why}", flush=True)
     return bool(ok)

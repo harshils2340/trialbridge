@@ -868,10 +868,16 @@ def build_clinic_checkin_message(lead, prior=0):
     return subject, "\n".join(lines)
 
 
-def send_email(to_addr, subject, body, reply_to=None):
-    """Send via SMTP. Returns (ok, message). `reply_to` overrides the default
-    Reply-To (used when forwarding a clinic's reply to the operator, so their
-    answer goes back to the clinic)."""
+def send_email(to_addr, subject, body, reply_to=None, plain=False,
+               from_name=None):
+    """Send via SMTP. Returns (ok, message).
+
+    `reply_to` overrides the default Reply-To (a forwarded reply answers back
+    to the clinic). `plain=True` sends text only, with no BridgeMD letterhead
+    or signature: a forwarded third-party email must not look like we wrote
+    it. `from_name` puts the original sender's name on the From line ("Vanta
+    via BridgeMD") while the address stays ours, so the inbox shows who
+    really wrote it."""
     if not smtp_configured():
         return False, "SMTP is not configured."
     if not to_addr:
@@ -881,6 +887,10 @@ def send_email(to_addr, subject, body, reply_to=None):
     user = os.environ.get("SMTP_USER", "")
     pw = os.environ.get("SMTP_PASS", "")
     sender = from_header()
+    if from_name:
+        addr = sender.split("<", 1)[1].rstrip(">").strip() if "<" in sender else sender
+        clean = str(from_name).replace('"', "").replace("<", "").replace(">", "").strip()
+        sender = f'"{clean} via BridgeMD" <{addr}>'
     use_tls = os.environ.get("SMTP_TLS", "1") == "1"
 
     # Coordinators asked for no em dashes anywhere, and an email is the copy
@@ -894,7 +904,8 @@ def send_email(to_addr, subject, body, reply_to=None):
     msg["To"] = to_addr
     # Applicant is never Cc/Bcc. Their address, if any, lives in the body.
     msg.set_content(body)
-    msg.add_alternative(branded_html(body), subtype="html")
+    if not plain:
+        msg.add_alternative(branded_html(body), subtype="html")
     try:
         with smtplib.SMTP(host, port, timeout=20) as s:
             if use_tls:

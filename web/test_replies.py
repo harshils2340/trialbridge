@@ -70,8 +70,8 @@ def test_reads_the_out_of_office():
 def test_auto_reply_resends_the_application_and_tells_the_operator():
     sent = []
 
-    def send(to, subject, body, reply_to=None):
-        sent.append({"to": to, "subject": subject, "body": body, "reply_to": reply_to})
+    def send(to, subject, body, reply_to=None, **kw):
+        sent.append({"to": to, "subject": subject, "body": body, "reply_to": reply_to, **kw})
         return True
 
     with webapp.app.app_context():
@@ -94,6 +94,9 @@ def test_auto_reply_resends_the_application_and_tells_the_operator():
         # The operator got a copy that says what happened, replying to the clinic.
         copy = [m for m in sent if m["to"] == "hello@bridgemd.health"]
         assert len(copy) == 1 and copy[0]["reply_to"] == "pschrader@linear.org.au"
+        # A forward looks like a forward: text only, the sender's name on From.
+        assert copy[0]["plain"] is True and copy[0]["from_name"] == "Peter Schrader"
+        assert "Forwarded from hello@bridgemd.health." in copy[0]["body"]
         assert "re-sent to rps@linear.org.au" in copy[0]["body"]
         assert copy[0]["subject"].startswith("Auto-reply from Peter Schrader")
         # It is on the record: the lead's handoff list and timeline.
@@ -118,7 +121,7 @@ def test_human_reply_is_forwarded_and_logged_only():
                "subject": "RE: Nathan in Western Australia applied to your healthy volunteer study",
                "text": "Thanks, we will call Nathan tomorrow. Peter", "headers": {}}
         res = replies.handle_received(
-            msg, lambda to, s, b, reply_to=None: sent.append((to, s, reply_to)) or True,
+            msg, lambda to, s, b, reply_to=None, **kw: sent.append((to, s, reply_to)) or True,
             "hello@bridgemd.health")
         assert res["kind"] == "reply" and res["forwarded_to"] == []
         assert sent == [("hello@bridgemd.health",
@@ -128,6 +131,38 @@ def test_human_reply_is_forwarded_and_logged_only():
             "SELECT note FROM lead_events WHERE lead_id = ? ORDER BY id", (lead["id"],))]
         assert any("study team replied" in n for n in events), events
     print("PASS: a human reply is forwarded to the operator and logged on the lead")
+
+
+def test_unrelated_mail_is_not_forwarded_but_applicants_are():
+    """A newsletter to hello@ stays put; an applicant writing in is forwarded
+    and noted on their record."""
+    sent = []
+    send = lambda to, s, b, reply_to=None, **kw: sent.append({"to": to, "subject": s, **kw}) or True
+    with webapp.app.app_context():
+        lead = _lead()
+        news = {"id": "rcv-news", "from": "Vanta <vantateam@vanta.com>",
+                "subject": "The audit question most teams can't answer",
+                "text": "Read the report", "headers": {"List-Unsubscribe": "<mailto:x>"}}
+        res = replies.handle_received(news, send, "me@gmail.test")
+        assert res.get("ignored") == "not about an application" and not sent
+        cold = {"id": "rcv-cold", "from": "joseph@trysupademo.com",
+                "subject": "Your account is frozen. Activate it?", "text": "Click", "headers": {}}
+        assert replies.handle_received(cold, send, "me@gmail.test").get("ignored") and not sent
+        # An applicant writing to hello@ is about an application.
+        me = {"id": "rcv-app", "from": "Nathan Cappa <nathan@x.test>",
+              "subject": "Any update on my application?", "text": "Hi, any news?", "headers": {}}
+        res = replies.handle_received(me, send, "me@gmail.test")
+        assert res.get("operator_copy") and sent[-1]["subject"].startswith("Fwd: ")
+        assert sent[-1]["from_name"] == "Nathan Cappa" and sent[-1]["plain"] is True
+        events = [e["note"] for e in db.get_db().execute(
+            "SELECT note FROM lead_events WHERE lead_id = ?", (lead["id"],))]
+        assert any("Applicant wrote to hello@" in n for n in events), events
+        # A reply that names a registry number counts even from a new address.
+        colleague = {"id": "rcv-col", "from": "assistant@linear.org.au",
+                     "subject": "RE: Status check: Nathan's application (NCT07526519)",
+                     "text": "We will call him.", "headers": {}}
+        assert replies.handle_received(colleague, send, "me@gmail.test").get("operator_copy")
+    print("PASS: newsletters and cold mail stay put; applicants and replies come through")
 
 
 def test_webhook_is_signature_checked():
@@ -160,9 +195,10 @@ def main():
     for t in (test_reads_the_out_of_office,
               test_auto_reply_resends_the_application_and_tells_the_operator,
               test_human_reply_is_forwarded_and_logged_only,
+              test_unrelated_mail_is_not_forwarded_but_applicants_are,
               test_webhook_is_signature_checked):
         t()
-    print("All 4 reply tests passed")
+    print("All 5 reply tests passed")
 
 
 if __name__ == "__main__":

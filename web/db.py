@@ -6508,6 +6508,16 @@ def lead_clinic_label(lead):
         return ""
 
 
+def lead_by_applicant_email(email):
+    """The newest application from this address, if the sender is an applicant."""
+    email = (email or "").strip().lower()
+    if not email:
+        return None
+    return get_db().execute(
+        "SELECT * FROM leads WHERE lower(email) = ? ORDER BY id DESC LIMIT 1",
+        (email,)).fetchone()
+
+
 def find_lead_by_clinic_recipient(email, subject_core=""):
     """The application a reply is about: the newest lead whose handoff went
     to `email`, preferring one whose stamped subject matches the reply's."""
