@@ -8,11 +8,14 @@
 {% block og_description %}{{ blurb or _title }}{% endblock %}
 {% block og_url %}{{ canonical_url|default(request.url) }}{% endblock %}
 
+{# One canonical only. The base layout emits a self-referencing one by default
+   and this page used to add a second, which search engines treat as no
+   canonical at all. #}
+{% block canonical %}{% if indexable %}<link rel="canonical" href="{{ canonical_url|default(request.url) }}">{% endif %}{% endblock %}
+
 {% block head_extra %}
 {% set _canon = canonical_url|default(request.url) %}
-{% if indexable %}
-<link rel="canonical" href="{{ _canon }}">
-{% else %}
+{% if not indexable %}
 <meta name="robots" content="noindex,follow">
 {% endif %}
 <script type="application/ld+json">
