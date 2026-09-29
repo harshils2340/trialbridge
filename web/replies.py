@@ -88,7 +88,17 @@ def is_about_an_application(subject, headers, lead, applicant):
         return False
     core = subject_core(subject).lower()
     return bool(_NCT.search(core) or " applied to your " in core
-                or "application" in core or "status check" in core)
+                or "application" in core or "status check" in core
+                or "trial update" in core or core.startswith("unsubscribe"))
+
+
+def asks_to_unsubscribe(subject, body):
+    """A person replying 'unsubscribe' (or 'stop') to an alert email."""
+    first = (body or "").strip().splitlines()[0].strip().lower() if (body or "").strip() else ""
+    core = subject_core(subject).lower()
+    return core.startswith("unsubscribe") or first.rstrip(".!") in (
+        "unsubscribe", "stop", "unsubscribe me", "please unsubscribe me",
+        "stop emailing me")
 
 
 def subject_core(subject):
@@ -178,6 +188,10 @@ def handle_received(msg, send_fn, owner_email, reach=0):
         return {"ok": True, "ignored": "not about an application"}
     if applicant:
         db.add_lead_event(applicant["id"], f"Applicant wrote to hello@: {subject[:80]}")
+    if sender and not lead and asks_to_unsubscribe(subject, body):
+        n = db.unsubscribe_alert_email(sender)
+        if n:
+            body = (f"[BridgeMD turned off trial alert email for {sender}.]\n\n" + body)
 
     forwarded_to = []
     if auto and lead:

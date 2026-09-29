@@ -559,10 +559,26 @@
       sendBtn.disabled = false;
       if (d && d.ok) {
         if (d.already_verified) { markVerified(); return; }
-        sendBtn.textContent = 'Resend code';
         if (codeRow) codeRow.hidden = false;
-        say('We emailed a 6-digit code. Enter it below.', false);
+        say('We sent a 6-digit code to ' + email + '. It can take a minute. ' +
+            'If you do not see it, check your spam or promotions folder.', false);
         codeEl && codeEl.focus();
+        // Hold Resend for 30 seconds: the first email is usually on its way,
+        // and every resend repeats the same code anyway.
+        var wait = 30;
+        sendBtn.disabled = true;
+        sendBtn.textContent = 'Resend code (' + wait + 's)';
+        var t = setInterval(function () {
+          wait -= 1;
+          if (wait <= 0) {
+            clearInterval(t);
+            sendBtn.disabled = false;
+            sendBtn.textContent = 'Resend code';
+          } else {
+            sendBtn.textContent = 'Resend code (' + wait + 's)';
+          }
+        }, 1000);
+        return;
       } else {
         say((d && d.message) || 'Could not send the code. Try again.', true);
       }
@@ -577,7 +593,12 @@
     post(verifyUrl, { email: email, code: code }).then(function (d) {
       confirmBtn.disabled = false;
       if (d && d.ok) { markVerified(); }
-      else { say((d && d.message) || 'Invalid code.', true); codeEl && codeEl.focus(); }
+      else {
+        say((d && d.error === 'bad_code')
+            ? 'That code did not match. Check the digits in the email from BridgeMD and try again.'
+            : ((d && d.message) || 'Invalid code.'), true);
+        codeEl && codeEl.focus();
+      }
     }).catch(function () { confirmBtn.disabled = false; say('Network error. Try again.', true); });
   });
 

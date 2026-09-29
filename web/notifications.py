@@ -128,6 +128,7 @@ class Notifier:
         sms_body: str = "",
         allow_email: bool = True,
         allow_sms: bool = True,
+        headers: dict | None = None,
     ) -> bool:
         """Try allowed channels and succeed if any send succeeds."""
         if not self.live:
@@ -140,5 +141,9 @@ class Notifier:
 
         # Safe fallback: if SMS isn't sent (or unavailable), email can still send.
         if allow_email and to_email and subject and email_body and self.email_ready():
-            ok_email, _ = self._send_email_fn(to_email, subject, email_body)
+            if headers:
+                ok_email, _ = self._send_email_fn(to_email, subject, email_body,
+                                                  headers=headers)
+            else:
+                ok_email, _ = self._send_email_fn(to_email, subject, email_body)
         return bool(ok_sms or ok_email)

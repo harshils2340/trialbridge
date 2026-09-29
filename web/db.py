@@ -1616,6 +1616,14 @@ _MIGRATIONS = {
         "notify_min_days": "INTEGER DEFAULT 7",
         "strong_only": "INTEGER DEFAULT 1",
     },
+    "alert_matches": {
+        # When ClinicalTrials.gov first posted the trial. Only a recently
+        # posted trial is news; an old one that drifted into the result
+        # window is recorded as seen, never emailed as "new".
+        "first_posted": "TEXT DEFAULT ''",
+        # When this trial was put in an alert email. A trial is emailed once.
+        "emailed_at": "TEXT DEFAULT ''",
+    },
     "leads": {
         "applicant_token": "TEXT DEFAULT ''",
         "site_token": "TEXT DEFAULT ''",
@@ -1767,6 +1775,12 @@ def _migrate(con):
         for col, decl in cols.items():
             if col not in have:
                 con.execute(f"ALTER TABLE {table} ADD COLUMN {col} {decl}")
+                if table == "alert_matches" and col == "emailed_at":
+                    # Before this column existed nothing recorded what was
+                    # emailed, so the same "new" trials went out every week.
+                    # Treat everything already stored as sent.
+                    con.execute("UPDATE alert_matches SET emailed_at = ? "
+                                "WHERE is_new = 1", (now(),))
     # Backfill tokens for any pre-existing referrals.
     for row in con.execute("SELECT id FROM referrals WHERE token IS NULL").fetchall():
         con.execute("UPDATE referrals SET token = ? WHERE id = ?",
@@ -4745,22 +4759,33 @@ def create_user_code(user_id, purpose, code, expires_ts):
 
 
 def verify_patient_code(patient_id, purpose, code, now_ts):
-    """True if a live unused code exists; marks it used atomically."""
+    """True if the code matches any live unused code for this purpose; then
+    every live code for it is spent. Any unexpired code works, not only the
+    newest: people who press Resend often type the code from an earlier
+    email, and email clients group identical messages so the older one is
+    what they see first."""
     db = get_db()
+    code = (code or "").strip()
+    if not code:
+        return False
     row = db.execute(
-        "SELECT id, code, expires_ts FROM patient_auth_codes WHERE patient_id = ? "
-        "AND purpose = ? AND used_at = '' ORDER BY id DESC LIMIT 1",
-        (patient_id, purpose)).fetchone()
+        "SELECT id FROM patient_auth_codes WHERE patient_id = ? AND purpose = ? "
+        "AND used_at = '' AND expires_ts >= ? AND code = ? LIMIT 1",
+        (patient_id, purpose, int(now_ts), code)).fetchone()
     if not row:
         return False
-    if int(row["expires_ts"]) < int(now_ts):
-        return False
-    if (code or "").strip() != (row["code"] or "").strip():
-        return False
-    db.execute("UPDATE patient_auth_codes SET used_at = ? WHERE id = ?",
-               (now(), row["id"]))
+    db.execute("UPDATE patient_auth_codes SET used_at = ? WHERE patient_id = ? "
+               "AND purpose = ? AND used_at = ''", (now(), patient_id, purpose))
     db.commit()
     return True
+
+
+def live_patient_code(patient_id, purpose, now_ts):
+    """The newest unused, unexpired code for this purpose, or None."""
+    return get_db().execute(
+        "SELECT code, expires_ts FROM patient_auth_codes WHERE patient_id = ? "
+        "AND purpose = ? AND used_at = '' AND expires_ts >= ? "
+        "ORDER BY id DESC LIMIT 1", (patient_id, purpose, int(now_ts))).fetchone()
 
 
 def verify_user_code(user_id, purpose, code, now_ts):
@@ -11984,22 +12009,73 @@ def alert_seen_ncts(alert_id):
 
 
 def add_alert_matches(alert_id, matches, is_new):
-    """matches: iterable of (nct, title). Skips NCTs already recorded."""
+    """matches: iterable of (nct, title) or (nct, title, first_posted).
+    Skips NCTs already recorded."""
     db = get_db()
     seen = alert_seen_ncts(alert_id)
     ts = now()
     added = 0
-    for nct, title in matches:
+    for m in matches:
+        nct, title = m[0], m[1]
+        first_posted = m[2] if len(m) > 2 else ""
         if not nct or nct in seen:
             continue
         db.execute(
-            "INSERT INTO alert_matches (alert_id, nct, title, is_new, created_at) "
-            "VALUES (?,?,?,?,?)",
-            (alert_id, nct, title or "", 1 if is_new else 0, ts))
+            "INSERT INTO alert_matches (alert_id, nct, title, is_new, created_at, "
+            "first_posted) VALUES (?,?,?,?,?,?)",
+            (alert_id, nct, title or "", 1 if is_new else 0, ts,
+             first_posted or ""))
         seen.add(nct)
         added += 1
     db.commit()
     return added
+
+
+def unemailed_alert_matches(alert_id, limit=150):
+    """New matches for this alert that have not been put in an email yet."""
+    return get_db().execute(
+        "SELECT * FROM alert_matches WHERE alert_id = ? AND is_new = 1 "
+        "AND COALESCE(emailed_at, '') = '' ORDER BY id DESC LIMIT ?",
+        (alert_id, limit)).fetchall()
+
+
+def emailed_ncts_for(email):
+    """Every trial already emailed to this address, on any of its alerts."""
+    rows = get_db().execute(
+        "SELECT DISTINCT m.nct FROM alert_matches m JOIN alerts a "
+        "ON a.id = m.alert_id WHERE lower(a.email) = lower(?) "
+        "AND COALESCE(m.emailed_at, '') != ''", (email or "",)).fetchall()
+    return {r["nct"] for r in rows}
+
+
+def mark_alert_matches_emailed(alert_ids, ncts):
+    """Stamp these trials as emailed on every one of the person's alerts, so
+    none of them is sent again from a sibling alert."""
+    if not alert_ids or not ncts:
+        return
+    db = get_db()
+    ts = now()
+    for aid in alert_ids:
+        for nct in ncts:
+            db.execute("UPDATE alert_matches SET emailed_at = ? WHERE alert_id = ? "
+                       "AND nct = ? AND COALESCE(emailed_at, '') = ''",
+                       (ts, aid, nct))
+    db.commit()
+
+
+def unsubscribe_alert_email(email):
+    """Turn off alert email for every account and alert using this address.
+    Returns how many alerts were switched off."""
+    email = (email or "").strip().lower()
+    if not email:
+        return 0
+    db = get_db()
+    db.execute("UPDATE patient_users SET email_alerts = 0 WHERE lower(email) = ? "
+               "OR lower(COALESCE(notify_email, '')) = ?", (email, email))
+    cur = db.execute("UPDATE alerts SET active = 0 WHERE lower(email) = ? "
+                     "AND active = 1", (email,))
+    db.commit()
+    return cur.rowcount
 
 
 def mark_alert_checked(alert_id):

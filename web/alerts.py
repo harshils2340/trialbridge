@@ -11,6 +11,7 @@ filter) - no per-trial LLM - so it scales across many alerts. In production the
 loop can be replaced by cron hitting /alerts/run; the daemon here means it works
 with zero extra infrastructure too.
 """
+import datetime as dt
 import os
 import re
 import threading
@@ -36,16 +37,23 @@ def configure(app, notifier=None):
         threading.Thread(target=_loop, daemon=True).start()
 
 
-def _match_ncts(alert):
-    """Current recruiting, interventional trials matching this alert.
-    Returns [(nct, title)]."""
+# A trial counts as news only if ClinicalTrials.gov first posted it this
+# recently. Older trials that drift into the result window (CT.gov returns a
+# few hundred matches and we read the newest 100) are recorded as seen.
+NEW_WITHIN_DAYS = max(1, int(os.environ.get("ALERTS_NEW_WITHIN_DAYS", "60")))
+
+
+def _match_trials(alert):
+    """Current recruiting, interventional trials matching this alert, newest
+    first. Returns [(nct, title, first_posted)]."""
     geo = None
     if alert["lat"] is not None and alert["lon"] is not None and alert["radius"]:
         unit = alert["unit"] or "km"
         geo = f"distance({alert['lat']},{alert['lon']},{int(alert['radius'])}{unit})"
     try:
         trials = mt.fetch_trials(alert["condition"] or "", max_n=100, geo=geo,
-                                 intervention=alert["intervention"] or "")
+                                 intervention=alert["intervention"] or "",
+                                 sort="StudyFirstPostDate:desc")
     except Exception:
         return []
     out = []
@@ -56,8 +64,23 @@ def _match_ncts(alert):
             continue
         nct = t.get("nctId")
         if nct:
-            out.append((nct, t.get("title", "")))
+            out.append((nct, t.get("title", ""), t.get("firstPosted", "")))
     return out
+
+
+def _match_ncts(alert):
+    """[(nct, title)] for callers that only need the id and title."""
+    return [(n, t) for (n, t, _p) in _match_trials(alert)]
+
+
+def _recent(first_posted, days=None):
+    """True if the trial was first posted within the last `days` days."""
+    days = days or NEW_WITHIN_DAYS
+    try:
+        posted = dt.date.fromisoformat((first_posted or "")[:10])
+    except ValueError:
+        return False
+    return (dt.date.today() - posted).days <= days
 
 
 def _tokens(*parts):
@@ -171,34 +194,95 @@ def seed_baseline(alert_id):
     alert = db.get_alert(alert_id)
     if not alert:
         return 0
-    return db.add_alert_matches(alert_id, _match_ncts(alert), is_new=False)
+    return db.add_alert_matches(alert_id, _match_trials(alert), is_new=False)
 
 
 def check_alert(alert):
-    """Find trials not seen before -> record as new + notify. Returns new count."""
-    matches = _match_ncts(alert)
+    """Record trials this alert has not seen. Only a recently posted trial is
+    marked new; the rest are recorded as seen. Returns the new count. Sending
+    happens per person in send_digests, not here."""
+    matches = _match_trials(alert)
     seen = db.alert_seen_ncts(alert["id"])
-    new = [(n, t) for (n, t) in matches if n not in seen]
+    unseen = [m for m in matches if m[0] not in seen]
+    new = [m for m in unseen if _recent(m[2])]
+    old = [m for m in unseen if not _recent(m[2])]
     if new:
         db.add_alert_matches(alert["id"], new, is_new=True)
-    if _notifier and db.alert_notify_due(alert, min_days=NOTIFY_MIN_DAYS):
-        pending = db.get_new_alert_matches(alert["id"], limit=150)
-        curated = _curate_for_email(alert, pending)
-        if curated:
-            try:
-                _notifier(alert, curated)
-                db.mark_alert_notified(alert["id"])
-            except Exception:
-                if _app is not None:
-                    _app.logger.exception("alert notify failed")
+    if old:
+        db.add_alert_matches(alert["id"], old, is_new=False)
     db.mark_alert_checked(alert["id"])
     return len(new)
 
 
+def _last_notified(alerts):
+    """The most recent alert email sent to this person, on any alert."""
+    best = ""
+    for a in alerts:
+        v = _alert_val(a, "last_notified_at", "") or ""
+        if v > best:
+            best = v
+    return best
+
+
+def send_digests(alerts):
+    """At most one alert email per person per NOTIFY_MIN_DAYS, however many
+    alerts they saved. Each trial is emailed once. Returns emails sent."""
+    if not _notifier:
+        return 0
+    people = {}
+    for a in alerts:
+        email = (_alert_val(a, "email", "") or "").strip().lower()
+        if email:
+            people.setdefault(email, []).append(a)
+    sent = 0
+    for email, mine in people.items():
+        # The weekly gate is per person: the latest email on any of their
+        # alerts counts, so a second alert never means a second email.
+        latest = {"last_notified_at": _last_notified(mine),
+                  "notify_min_days": max(
+                      int(_alert_val(a, "notify_min_days", 0) or 0)
+                      for a in mine) or NOTIFY_MIN_DAYS}
+        if not db.alert_notify_due(latest, min_days=NOTIFY_MIN_DAYS):
+            continue
+        already = db.emailed_ncts_for(email)
+        picks, labels = [], []
+        for a in mine:
+            rows = [r for r in db.unemailed_alert_matches(a["id"])
+                    if r["nct"] not in already]
+            for p in _curate_for_email(a, rows):
+                if p["nct"] not in {x["nct"] for x in picks}:
+                    picks.append(p)
+                    label = _alert_val(a, "label") or _alert_val(a, "condition") or ""
+                    if label and label not in labels:
+                        labels.append(label)
+        if not picks:
+            continue
+        picks.sort(key=lambda x: (-x["score"], x["nct"]))
+        picks = picks[:EMAIL_MAX_MATCHES]
+        head = dict(mine[0])
+        head["label"] = " and ".join(labels[:2]) or head.get("label") or ""
+        if len(mine) > 1:
+            head["location"] = ""
+        try:
+            ok = _notifier(head, picks)
+        except Exception:
+            ok = False
+            if _app is not None:
+                _app.logger.exception("alert notify failed")
+        if ok is False:
+            continue
+        db.mark_alert_matches_emailed([a["id"] for a in mine],
+                                      [p["nct"] for p in picks])
+        for a in mine:
+            db.mark_alert_notified(a["id"])
+        sent += 1
+    return sent
+
+
 def check_all():
-    """Check every active alert once. Safe to call from a request or a cron.
-    One failing alert (transient CT.gov / DB-lock hiccup) must not abort the
-    whole sweep, so each alert is guarded independently."""
+    """Check every active alert once, then send at most one email per person.
+    Safe to call from a request or a cron. One failing alert (transient CT.gov
+    or DB-lock hiccup) must not abort the whole sweep."""
     if _app is None:
         return 0
     total = 0
@@ -206,7 +290,6 @@ def check_all():
         alerts = db.list_notifiable_alerts()
         if not alerts:
             # Nobody has an account with alerts enabled -> nothing to sweep.
-            # Skip all CT.gov calls and writes; the cron becomes a cheap no-op.
             return 0
         for alert in alerts:
             try:
@@ -214,6 +297,10 @@ def check_all():
             except Exception:
                 _app.logger.exception(
                     "alert check failed for id=%s", _alert_val(alert, "id"))
+        try:
+            send_digests(db.list_notifiable_alerts())
+        except Exception:
+            _app.logger.exception("alert digests failed")
     return total
 
 

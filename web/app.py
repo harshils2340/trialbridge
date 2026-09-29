@@ -2044,13 +2044,38 @@ def _notify_applicant_visit(lead, when, location, invite_url=""):
     return True
 
 
+def _unsubscribe_token(email):
+    """Signed token for the one-click unsubscribe link, so the link works
+    without signing in and cannot be forged for someone else's address."""
+    key = (app.secret_key or "").encode() if isinstance(app.secret_key, str) \
+        else (app.secret_key or b"")
+    return hmac.new(key, ("alerts-unsub:" + (email or "").strip().lower()).encode(),
+                    hashlib.sha256).hexdigest()[:32]
+
+
+def _unsubscribe_url(email):
+    base = (PUBLIC_BASE_URL or "").rstrip("/") or \
+        "https://" + (CANONICAL_HOST or "bridgemd.health").strip()
+    q = urllib.parse.urlencode({"e": (email or "").strip().lower(),
+                                "t": _unsubscribe_token(email)})
+    return f"{base}/alerts/unsubscribe?{q}"
+
+
 def _notify_alert(alert, new_matches):
-    """Push new matching trials to the patient who saved this alert."""
+    """Push new matching trials to the patient who saved this alert, with a
+    one-click unsubscribe (RFC 8058) so mail providers show an Unsubscribe
+    button instead of people reaching for Report spam."""
     if not alert["email"]:
         return False
     link = _abs_url("alerts")
-    subject, body = mailer.build_alert_message(alert, new_matches, link)
-    return _notify(alert["email"], subject, body)
+    unsub = _unsubscribe_url(alert["email"])
+    subject, body = mailer.build_alert_message(alert, new_matches, link,
+                                               unsubscribe_url=unsub)
+    return _NOTIFIER.send(
+        to_email=alert["email"], subject=subject, email_body=body,
+        allow_sms=False,
+        headers={"List-Unsubscribe": f"<{unsub}>",
+                 "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"})
 
 
 # Watch ClinicalTrials.gov in the background and push new matches to patients.
@@ -2637,7 +2662,7 @@ def _csrf_guard():
     _csrf_token()
     if request.method != "POST":
         return None
-    if request.endpoint in {"alerts_run", "reminders_run", "redcap_webhook",
+    if request.endpoint in {"alerts_run", "alerts_unsubscribe", "reminders_run", "redcap_webhook",
                             "instagram_webhook", "instagram_deauthorize",
                             "instagram_data_deletion",
                             "ops_verify_claim", "inbound_email_webhook",
@@ -2718,15 +2743,22 @@ def _issue_patient_code(patient, purpose):
     """Create and send a short-lived email verification/login code."""
     if not mailer.smtp_configured():
         return False, "Email verification is unavailable right now."
-    db.invalidate_patient_codes(patient["id"], purpose)
-    code = _gen_code()
-    exp = int(time.time()) + (10 * 60)  # 10 minutes
-    db.create_patient_code(patient["id"], purpose, code, exp)
+    # A resend repeats the code that is still live, so every email in the
+    # inbox shows the same code and none of them is a dead end. A fresh code
+    # is made only when the live one has under 3 minutes left.
+    now_ts = int(time.time())
+    live = db.live_patient_code(patient["id"], purpose, now_ts)
+    if live and int(live["expires_ts"]) - now_ts >= 3 * 60:
+        code = live["code"]
+    else:
+        code = _gen_code()
+        db.create_patient_code(patient["id"], purpose, code, now_ts + (10 * 60))
     action = {
         "signup": "sign-up verification",
         "apply": "email verification",
     }.get(purpose, "login verification")
-    subject = f"Your BridgeMD {action} code"
+    # The code in the subject lets people read it from the notification.
+    subject = f"{code} is your BridgeMD verification code"
     body = "\n".join([
         f"Hi {patient['full_name'] or 'there'},",
         "",
@@ -2734,7 +2766,8 @@ def _issue_patient_code(patient, purpose):
         "",
         f"  {code}",
         "",
-        "It expires in 10 minutes.",
+        "It works for 10 minutes. If you asked for more than one email, they all",
+        "show the same code.",
         "",
         "If you didn't request this, ignore this email.",
     ])
@@ -8394,6 +8427,26 @@ def alerts_delete(alert_id):
     else:
         flash("Couldn't remove that alert.", "error")
     return redirect(url_for("alerts"))
+
+
+@app.route("/alerts/unsubscribe", methods=["GET", "POST"])
+def alerts_unsubscribe():
+    """Stop alert email for one address. GET shows a confirm button (link
+    scanners open links, so a GET must never unsubscribe); POST, from that
+    button or from a mail provider's one-click Unsubscribe, does it."""
+    email = (request.values.get("e", "") or "").strip().lower()
+    token = request.values.get("t", "") or ""
+    valid = bool(email) and hmac.compare_digest(token, _unsubscribe_token(email))
+    if request.method == "POST":
+        if not valid:
+            return ("That unsubscribe link is not valid.", 400)
+        n = db.unsubscribe_alert_email(email)
+        app.logger.info("alert unsubscribe: %s (%d alerts off)", email, n)
+        if request.form.get("List-Unsubscribe") == "One-Click":
+            return ("", 200)
+        return render_template("alerts_unsubscribe.html", done=True, email=email)
+    return render_template("alerts_unsubscribe.html", done=False, email=email,
+                           token=token, valid=valid)
 
 
 @app.route("/alerts/run")

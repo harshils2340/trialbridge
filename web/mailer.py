@@ -631,7 +631,7 @@ def build_founder_connect_message(lead, sites, central):
     return subject, "\n".join(lines)
 
 
-def build_alert_message(alert, new_matches, link):
+def build_alert_message(alert, new_matches, link, unsubscribe_url=""):
     """Notify a patient with a concise, useful weekly digest.
     `new_matches` accepts either [(nct, title)] or [{"nct","title"}, ...]."""
     what = alert["label"] or alert["condition"] or alert["intervention"] or "your interests"
@@ -674,10 +674,13 @@ def build_alert_message(alert, new_matches, link):
         "Review these and apply from your alerts page:",
         link,
         "",
-        "We keep this to a weekly cadence and only include high-signal new matches.",
+        "You get at most one of these a week, and only for newly posted trials.",
         "You're receiving this because you created a trial alert on BridgeMD.",
-        "You can manage or turn alerts off from the link above.",
     ]
+    if unsubscribe_url:
+        lines += ["To stop these emails, open this link:", unsubscribe_url]
+    else:
+        lines += ["You can manage or turn alerts off from the link above."]
     return subject, "\n".join(lines)
 
 
@@ -858,7 +861,7 @@ def build_clinic_checkin_message(lead, prior=0):
 
 
 def send_email(to_addr, subject, body, reply_to=None, plain=False,
-               from_name=None):
+               from_name=None, headers=None):
     """Send via SMTP. Returns (ok, message).
 
     `reply_to` overrides the default Reply-To (a forwarded reply answers back
@@ -866,7 +869,8 @@ def send_email(to_addr, subject, body, reply_to=None, plain=False,
     or signature: a forwarded third-party email must not look like we wrote
     it. `from_name` puts the original sender's name on the From line ("Vanta
     via BridgeMD") while the address stays ours, so the inbox shows who
-    really wrote it."""
+    really wrote it. `headers` adds extra headers, such as List-Unsubscribe
+    on alert email."""
     if not smtp_configured():
         return False, "SMTP is not configured."
     if not to_addr:
@@ -891,6 +895,9 @@ def send_email(to_addr, subject, body, reply_to=None, plain=False,
     msg["From"] = sender
     msg["Reply-To"] = (reply_to or "").strip() or reply_to_header()
     msg["To"] = to_addr
+    for k, v in (headers or {}).items():
+        if k and v and k not in msg:
+            msg[k] = v
     # Applicant is never Cc/Bcc. Their address, if any, lives in the body.
     msg.set_content(body)
     if not plain:

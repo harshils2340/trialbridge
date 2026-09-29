@@ -1,0 +1,23 @@
+{% extends "public_base.html" %}
+{% block title %}Stop trial alert emails · BridgeMD{% endblock %}
+{% block head_extra %}<meta name="robots" content="noindex">{% endblock %}
+{% block body %}
+<section class="find-wrap">
+  {% if done %}
+  <h1 class="find-title">You are unsubscribed</h1>
+  <p class="find-lead">We will not send trial alert emails to {{ email }} again. Your applications are not affected.</p>
+  <a class="btn btn-ghost" href="{{ url_for('home') }}">Back to BridgeMD</a>
+  {% elif valid %}
+  <h1 class="find-title">Stop trial alert emails?</h1>
+  <p class="find-lead">This turns off the weekly trial alerts for {{ email }}. Your applications are not affected.</p>
+  <form method="post">
+    <input type="hidden" name="e" value="{{ email }}">
+    <input type="hidden" name="t" value="{{ token }}">
+    <button class="btn btn-primary" type="submit">Unsubscribe</button>
+  </form>
+  {% else %}
+  <h1 class="find-title">This link is not valid</h1>
+  <p class="find-lead">Reply to any alert email with "unsubscribe" and we will turn them off for you.</p>
+  {% endif %}
+</section>
+{% endblock %}

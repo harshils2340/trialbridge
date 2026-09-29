@@ -127,7 +127,7 @@ OPEN_STATUSES = "RECRUITING,NOT_YET_RECRUITING"
 
 
 def fetch_trials(condition, max_n=300, geo=None, intervention="", term="",
-                 statuses=OPEN_STATUSES):
+                 statuses=OPEN_STATUSES, sort=""):
     """Fetch open trials (recruiting + not-yet-recruiting), paginating so we
     don't silently miss trials.
 
@@ -139,7 +139,8 @@ def fetch_trials(condition, max_n=300, geo=None, intervention="", term="",
     whole study record - including the eligibility criteria - so a symptom like
     "trouble sleeping" surfaces trials that mention it even when it isn't the
     trial's condition label. `statuses` is a comma-separated CT.gov
-    overallStatus filter (default recruiting + not-yet-recruiting).
+    overallStatus filter (default recruiting + not-yet-recruiting). `sort`,
+    if given, is a CT.gov sort such as "StudyFirstPostDate:desc".
     """
     trials, token = [], None
     while len(trials) < max_n:
@@ -156,6 +157,8 @@ def fetch_trials(condition, max_n=300, geo=None, intervention="", term="",
             params["query.term"] = term
         if geo:
             params["filter.geo"] = geo
+        if sort:
+            params["sort"] = sort
         if token:
             params["pageToken"] = token
         url = f"{CT_API}?{urllib.parse.urlencode(params)}"
@@ -231,6 +234,7 @@ def extract_trial(study):
         "enrollment": p.get("designModule", {})
                        .get("enrollmentInfo", {}).get("count", ""),
         "startDate": status_mod.get("startDateStruct", {}).get("date", ""),
+        "firstPosted": status_mod.get("studyFirstPostDateStruct", {}).get("date", ""),
         "completionDate": status_mod.get("primaryCompletionDateStruct", {})
                            .get("date", ""),
         "conditions": p.get("conditionsModule", {}).get("conditions", []),
