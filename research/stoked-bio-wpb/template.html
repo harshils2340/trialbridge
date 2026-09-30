@@ -1,0 +1,236 @@
+<title>SyntheMol Generative Chemistry Landscape</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: single reading column (~72ch) for findings; full-width bands for the map and database table. */
+:root {
+  --bg: #f5f7f6; --surface: #ffffff; --ink: #14272b; --muted: #5a6b6e; --line: #d8e0de;
+  --accent: #0e6f68; --focal: #b0265c;
+  --c-direct: #0e6f68; --c-funded: #5a55b8; --c-incumbent: #8a6a1f; --c-indirect: #3f7fb0; --c-emerging: #7d8a8c; --c-niche: #c2551d;
+  --hi-bg: #f7d9d6; --hi-fg: #8e1f16; --med-bg: #f8ebc6; --med-fg: #6d4f00; --low-bg: #dcefd9; --low-fg: #25602a; --comp-bg: #d7e7f4; --comp-fg: #1f4f78;
+  --zone: rgba(14,111,104,.07);
+  --f-display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --f-body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0f1a1c; --surface: #16262a; --ink: #e3ecea; --muted: #97a8a8; --line: #2a3d41;
+  --accent: #4fc2b6; --focal: #f06d9b;
+  --c-direct: #4fc2b6; --c-funded: #9d98f0; --c-incumbent: #d8b25a; --c-indirect: #7cb5e0; --c-emerging: #9aa7a9; --c-niche: #f08c55;
+  --hi-bg: #4a1f1c; --hi-fg: #f6b7b0; --med-bg: #43370f; --med-fg: #f1d98b; --low-bg: #1d3a22; --low-fg: #a9dcab; --comp-bg: #1b3348; --comp-fg: #a8cdea;
+  --zone: rgba(79,194,182,.08); color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #0f1a1c; --surface: #16262a; --ink: #e3ecea; --muted: #97a8a8; --line: #2a3d41;
+  --accent: #4fc2b6; --focal: #f06d9b;
+  --c-direct: #4fc2b6; --c-funded: #9d98f0; --c-incumbent: #d8b25a; --c-indirect: #7cb5e0; --c-emerging: #9aa7a9; --c-niche: #f08c55;
+  --hi-bg: #4a1f1c; --hi-fg: #f6b7b0; --med-bg: #43370f; --med-fg: #f1d98b; --low-bg: #1d3a22; --low-fg: #a9dcab; --comp-bg: #1b3348; --comp-fg: #a8cdea;
+  --zone: rgba(79,194,182,.08); color-scheme: dark }
+
+* { box-sizing: border-box }
+body { background: var(--bg); color: var(--ink); font: 15px/1.6 var(--f-body); padding-inline: 16px; padding-block: 0 64px }
+.wrap { max-width: 1180px; margin: 0 auto; display: grid; gap: 56px }
+.col { max-width: 72ch }
+h1, h2, h3 { font-family: var(--f-display); text-wrap: balance; line-height: 1.15; margin: 0 }
+h1 { font-size: clamp(30px, 5vw, 46px); letter-spacing: -.01em }
+h2 { font-size: 26px; margin-bottom: 12px }
+h3 { font-size: 17px; margin-bottom: 6px }
+p { margin: 0 0 12px }
+a { color: var(--accent) }
+a:focus-visible, button:focus-visible { outline: 2px solid var(--focal); outline-offset: 2px }
+.eyebrow { font: 500 12px/1 var(--f-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted) }
+header { padding-top: 40px; display: grid; gap: 14px }
+header .lede { font-size: 17px; color: var(--muted); max-width: 70ch }
+.formula { font-family: var(--f-mono); font-size: 13px; color: var(--muted) }
+.formula b { color: var(--focal); font-weight: 500 }
+section { display: grid; gap: 12px; min-width: 0 }
+.findings { list-style: none; padding: 0; margin: 0; display: grid; gap: 14px; counter-reset: f }
+.findings li { display: grid; grid-template-columns: 34px 1fr; gap: 12px; counter-increment: f }
+.findings li::before { content: counter(f); font: 600 15px/28px var(--f-mono); color: var(--accent); border: 1px solid var(--line); border-radius: 50%; width: 30px; height: 30px; text-align: center; background: var(--surface) }
+.findings b { font-weight: 600 }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 20px; min-width: 0 }
+.two { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 24px; align-items: start }
+@media (max-width: 860px) { .two { grid-template-columns: 1fr } }
+.map-box { overflow-x: auto }
+.map { width: 100%; min-width: 560px; height: auto; display: block }
+.map .grid { stroke: var(--line); stroke-width: 1 }
+.map .tick { fill: var(--muted); font: 11px var(--f-mono) }
+.map .axis { fill: var(--ink); font: 500 12px var(--f-body) }
+.map .zone { fill: var(--zone) }
+.map .zone-label { fill: var(--accent); font: 500 11px var(--f-mono) }
+.map .pt circle { fill-opacity: .28; stroke-width: 1.5 }
+.map .pt text { font: 500 11.5px var(--f-body); fill: var(--ink) }
+.map .t-client circle { fill: var(--focal); stroke: var(--focal); fill-opacity: .9 }
+.map .t-client text { fill: var(--focal); font-weight: 600; font-size: 13px }
+.map .arrow { stroke: var(--focal); stroke-width: 1.5; stroke-dasharray: 4 3 }
+.map .arrowhead { fill: var(--focal) }
+.map .arrow-label { fill: var(--focal); font: 11px var(--f-mono) }
+.t-direct { --c: var(--c-direct) } .t-funded { --c: var(--c-funded) } .t-incumbent { --c: var(--c-incumbent) }
+.t-indirect { --c: var(--c-indirect) } .t-emerging { --c: var(--c-emerging) } .t-niche { --c: var(--c-niche) } .t-client { --c: var(--focal) }
+.map .pt:not(.t-client) circle { fill: var(--c); stroke: var(--c) }
+.legend { display: flex; flex-wrap: wrap; gap: 8px 16px; font-size: 13px; color: var(--muted) }
+.legend span { display: inline-flex; align-items: center; gap: 6px }
+.legend i, .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--c); display: inline-block; flex: none }
+.note { font-size: 13px; color: var(--muted) }
+.bars { display: grid; gap: 6px }
+.bar-row { display: grid; grid-template-columns: 110px 1fr 64px; gap: 10px; align-items: center; font-size: 13px }
+.bar-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+.bar-track { height: 12px; background: var(--bg); border-radius: 3px; overflow: hidden }
+.bar { display: block; height: 100%; background: var(--c); border-radius: 3px }
+.bar-val { font: 12px var(--f-mono); text-align: right; font-variant-numeric: tabular-nums }
+.t-client .bar-name, .t-client .bar-val { color: var(--focal); font-weight: 600 }
+.filters { display: flex; flex-wrap: wrap; gap: 8px }
+.filter { font: 500 13px var(--f-body); color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 5px 12px; cursor: pointer }
+.filter[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink) }
+.table-box { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--surface) }
+table { border-collapse: collapse; width: 100%; font-size: 13.5px }
+th, td { text-align: left; vertical-align: top; padding: 10px 12px; border-bottom: 1px solid var(--line) }
+thead th { font: 500 11.5px var(--f-mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); background: var(--surface); position: sticky; top: 0 }
+tbody th { font-weight: 600; min-width: 170px }
+tbody th .dot { margin-right: 7px; vertical-align: 1px }
+td small, th small { display: block; color: var(--muted); font-weight: 400; font-size: 12px; margin-top: 4px }
+.db td { min-width: 150px } .db td:nth-child(3), .db td:nth-child(8) { min-width: 240px }
+.chip { font: 11.5px var(--f-mono); color: var(--c); white-space: nowrap }
+.threat { font: 500 12px var(--f-mono); padding: 2px 8px; border-radius: 4px; white-space: nowrap }
+.threat.hi { background: var(--hi-bg); color: var(--hi-fg) } .threat.med { background: var(--med-bg); color: var(--med-fg) }
+.threat.low { background: var(--low-bg); color: var(--low-fg) } .threat.comp { background: var(--comp-bg); color: var(--comp-fg) }
+tr.t-client { background: color-mix(in srgb, var(--focal) 7%, transparent) }
+.num { font-family: var(--f-mono); font-variant-numeric: tabular-nums; white-space: nowrap }
+.conf { font: 12px var(--f-mono); color: var(--muted) }
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px }
+.cards ul, .col ul, .col ol { margin: 0; padding-left: 20px; display: grid; gap: 6px }
+.slide { border: 1px solid var(--line); border-radius: 10px; background: var(--surface); padding: 22px; display: grid; gap: 10px; max-width: 72ch }
+.slide h3 { font-size: 21px }
+.sources { font-size: 12.5px; columns: 2 320px; padding-left: 18px; word-break: break-all }
+.sources li { margin-bottom: 4px }
+@media (prefers-reduced-motion: no-preference) { .filter { transition: background .15s, color .15s } }
+</style>
+
+<div class="wrap">
+<header>
+  <p class="eyebrow">BIOMEDDC 701 × Stoked Bio · Work package B · Generative chemistry · Dhruv · research as of 30 Sep 2026</p>
+  <h1>Who else makes AI molecules you can actually make?</h1>
+  <p class="lede">Competitive landscape for SyntheMol in small-molecule generative chemistry: {{N}} competitors and substitutes, their funding, how they price, and where SyntheMol sits.</p>
+  <p class="formula">SyntheMol = <b>building blocks</b> (~46B Enamine REAL space) + <b>13 known reactions</b> + activity model → molecule <b>and</b> its synthesis recipe</p>
+</header>
+
+<section class="col" id="findings">
+  <h2>Bottom line</h2>
+  <ol class="findings">
+    <li><div><b>"Synthesizable by design" is no longer unique.</b> Iktos, PostEra, Onepot, Chemify and XtalPi all sell it, and at least four open-source models (SynFormer, RxnFlow, SynFlowNet, ReaSyn) copy the building-block-plus-reaction idea. SyntheMol's own code is public. The pitch has to move from the method to the proof.</div></li>
+    <li><div><b>SyntheMol's proof is strong for its size.</b> Two peer-reviewed rounds with wet-lab hits: 6 novel <i>A. baumannii</i> actives from 58 made (2024), then 13 potent from 79 made with 7 novel and in vivo MRSA efficacy for synthecin (2026). Few direct competitors publish hit rates plus animal data for generated molecules.</div></li>
+    <li><div><b>Money is in programs, not software.</b> Insilico sold only $4.9M of software in 2025 against $56M total revenue. Schrödinger ($199.5M software) is the exception after 30 years. Platform deals pay $12–115M upfront, usually 2–5% of the headline value.</div></li>
+    <li><div><b>Capital gap is extreme.</b> Stoked closed C$2.5M. Isomorphic has ~$2.7B, Lila $550M, Genesis $400M+. SyntheMol cannot win as a horizontal platform. It can win a niche.</div></li>
+    <li><div><b>Model access is being given away.</b> NVIDIA GenMol, Boltz-2 (MIT licence), REINVENT 4 and Lilly TuneLab are free. Tamarind hosts 200+ models without code. Charging for "access to a model" will be hard.</div></li>
+    <li><div><b>The best-defended position is biology-first, low-data, anti-infective design.</b> The only focused rival is Phare Bio, a grant-funded non-profit. Stokes-lab phenotypic data plus validated in vivo hits is the moat to argue (hand-off to Sithum, WP-H).</div></li>
+  </ol>
+</section>
+
+<section id="map">
+  <div class="col"><h2>Positioning map</h2>
+  <p>Horizontal: how tightly each player ties designs to a real synthesis route. Vertical: whether it earns money selling tools or owning drug programs. Bubble size tracks capital raised (log scale). Scores are our judgement calls from public information.</p></div>
+  <div class="panel map-box">{{MAP}}</div>
+  <div class="legend">
+    <span class="t-client"><i></i>SyntheMol (client)</span><span class="t-direct"><i></i>Direct</span><span class="t-funded"><i></i>Well-funded AI designer</span>
+    <span class="t-incumbent"><i></i>Incumbent software</span><span class="t-indirect"><i></i>Indirect / complementor</span>
+    <span class="t-emerging"><i></i>Emerging / open</span><span class="t-niche"><i></i>Niche: AI antibiotics</span>
+  </div>
+  <p class="note col">Reading it: SyntheMol's current spot (synthesis-first and owning its programs) is shared mainly with PostEra. The big pipeline companies sit to the left, with weaker synthesis grounding. The bottom-right is crowded with make-on-demand suppliers, retrosynthesis tools and free synthesizable models. If Stoked licenses SyntheMol as a platform, it moves down toward Iktos, Chemify and Onepot with far less capital, so a licence play needs a partner such as Enamine, Chemspace or Tamarind for reach.</p>
+</section>
+
+<section class="two">
+  <div class="panel">
+    <h3>Capital raised, US$M (log scale)</h3>
+    <p class="note">Private rounds or IPO raise. Public companies with no single figure are left out.</p>
+    <div class="bars">{{BARS}}</div>
+  </div>
+  <div class="col" style="display:grid;gap:14px">
+    <div><h3>Where SyntheMol can win</h3>
+      <ul>
+        <li>Every molecule ships with a recipe from purchasable blocks, so a chemist can order it right away (~3–4 weeks, >80% success at Enamine).</li>
+        <li>Works with small, phenotypic datasets (whole-cell growth inhibition), where structure-based tools like Isomorphic's or Boltz have no target structure to use.</li>
+        <li>Published, repeated wet-lab and in vivo validation in antibiotics, an area big AI players avoid.</li>
+        <li>Multi-objective RL (activity + solubility) in the 2026 version.</li>
+      </ul></div>
+    <div><h3>Where it is exposed</h3>
+      <ul>
+        <li>Public code plus a crowded academic field make the algorithm easy to copy.</li>
+        <li>Depends on Enamine's space. Onepot and Chemify own their "make" step.</li>
+        <li>Chemistry limited to 13 reactions, so scaffolds are less diverse than free-form generators.</li>
+        <li>Antibiotic market economics are weak, so buyers are few and pay little.</li>
+      </ul></div>
+  </div>
+</section>
+
+<section id="database">
+  <div class="col"><h2>Competitor database</h2>
+  <p>The same data is in the spreadsheet (<span class="formula">WP-B_GenChem_Competitor_Database.xlsx</span>), with pricing and deal tabs. Filter by tier:</p></div>
+  <div class="filters" role="group" aria-label="Filter by tier"><button type="button" class="filter" data-tier="all" aria-pressed="true">All</button>{{FILTERS}}</div>
+  <div class="table-box">
+  <table class="db">
+    <thead><tr><th scope="col">Company</th><th scope="col">Tier</th><th scope="col">Approach</th><th scope="col">Business model</th><th scope="col">Funding</th><th scope="col">Deals / evidence</th><th scope="col">Threat</th><th scope="col">Why it matters</th></tr></thead>
+    <tbody id="rows">{{TABLE}}</tbody>
+  </table></div>
+  <p class="note">Left out as generative <em>biologics</em> (Sophia's AI drug discovery slide): Chai Discovery ($400M Series C, Jul 2026), Converge Bio, Earendil Labs.</p>
+</section>
+
+<section id="pricing">
+  <div class="col"><h2>Pricing and deal benchmarks</h2>
+  <p>Stoked said pricing matters. These are the public reference points for a generative chemistry offering.</p></div>
+  <div class="table-box"><table>
+    <thead><tr><th scope="col">Item</th><th scope="col">Figure</th><th scope="col">Source</th><th scope="col">Confidence</th></tr></thead>
+    <tbody>{{PRICE}}</tbody></table></div>
+  <div class="table-box"><table>
+    <thead><tr><th scope="col">Platform deal</th><th scope="col">Year</th><th scope="col">Upfront</th><th scope="col">Headline</th><th scope="col">Upfront share</th><th scope="col">Notes</th></tr></thead>
+    <tbody>{{DEAL}}</tbody></table></div>
+</section>
+
+<section id="slide">
+  <div class="col"><h2>Slide 14 draft: generative chemistry</h2>
+  <p>Four points to say in the teleconference.</p></div>
+  <div class="slide">
+    <p class="eyebrow">Competitive intelligence · Generative chemistry · Dhruv</p>
+    <h3>Synthesizability is now table stakes. Validated biology is the edge.</h3>
+    <ul>
+      <li><b>Direct rivals:</b> Iktos (Servier €1B+ deal, 2026), PostEra (Pfizer AI Lab), Onepot (3.4B-molecule space + own lab), Chemify, Insilico Chemistry42, XtalPi.</li>
+      <li><b>Capital gap:</b> Stoked C$2.5M seed vs Isomorphic ~$2.7B, Genesis $400M+, Chemify ~$145M.</li>
+      <li><b>Pricing signal:</b> software alone earns little (Insilico: $4.9M of $56M); value is in partnered programs with $12–115M upfronts.</li>
+      <li><b>SyntheMol's angle:</b> recipe-included designs, low-data phenotypic models, and in vivo antibiotic proof (synthecin vs MRSA). Nearest niche rival: Phare Bio (non-profit, $27M ARPA-H).</li>
+    </ul>
+  </div>
+</section>
+
+<section class="col" id="questions">
+  <h2>Open questions for Stoked</h2>
+  <ol>
+    <li>Who owns SyntheMol IP? The first paper came out of Stanford (Swanson, Zou) with McMaster (Stokes). Does Stoked hold an exclusive licence, and what licence covers the public GitHub code?</li>
+    <li>Is SyntheMol-RL (2026) code public too, and is there an unreleased internal version?</li>
+    <li>Which proprietary datasets (phenotypic screens, in vivo results) come with SyntheMol if it is spun out or licensed?</li>
+    <li>Does Stoked have a relationship with Enamine or Chemspace (supply terms, co-marketing)?</li>
+    <li>Target buyer: pharma anti-infective groups, AMR-focused biotechs, or non-profits and funders (CARB-X, ARPA-H, Wellcome)?</li>
+  </ol>
+  <p class="note">Items to verify before the final report: Schrödinger and Chemistry42 list prices (third-party estimates), Model Medicines funding, the PostEra "$610M" total Pfizer value, and Enamine per-compound cost.</p>
+</section>
+
+<section id="sources">
+  <h2>Sources</h2>
+  <ul class="sources">{{SRC}}</ul>
+</section>
+</div>
+
+<script>
+(function () {
+  var buttons = document.querySelectorAll('.filter');
+  var rows = document.querySelectorAll('#rows tr');
+  buttons.forEach(function (b) {
+    b.addEventListener('click', function () {
+      var t = b.getAttribute('data-tier');
+      buttons.forEach(function (x) { x.setAttribute('aria-pressed', x === b ? 'true' : 'false'); });
+      rows.forEach(function (r) {
+        var rt = r.getAttribute('data-tier');
+        r.hidden = !(t === 'all' || rt === t || rt === 'Client');
+      });
+    });
+  });
+})();
+</script>
