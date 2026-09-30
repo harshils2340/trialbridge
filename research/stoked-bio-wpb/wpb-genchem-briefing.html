@@ -103,6 +103,25 @@ tr.t-client { background: color-mix(in srgb, var(--focal) 7%, transparent) }
 .slide h3 { font-size: 21px }
 .sources { font-size: 12.5px; columns: 2 320px; padding-left: 18px; word-break: break-all }
 .sources li { margin-bottom: 4px }
+@media print {
+  @page { size: Letter landscape; margin: 12mm }
+  :root { color-scheme: light }
+  body { padding: 0; font-size: 11px }
+  .wrap { gap: 22px; max-width: none }
+  header { padding-top: 0 }
+  .filters, #database .col p:last-child { display: none }
+  .table-box, .map-box { overflow: visible; border-radius: 0 }
+  .map { min-width: 0; max-height: 150mm }
+  table { font-size: 9.5px }
+  th, td { padding: 5px 6px }
+  tbody th, .db td, .db td:nth-child(3), .db td:nth-child(8) { min-width: 0 }
+  thead th { position: static }
+  thead { display: table-header-group }
+  tr, .slide, .panel, .findings li { break-inside: avoid }
+  #map, #slide, #pricing { break-before: page }
+  a { color: var(--ink); text-decoration: none }
+  .sources { columns: 2 }
+}
 @media (prefers-reduced-motion: no-preference) { .filter { transition: background .15s, color .15s } }
 </style>
 
@@ -111,16 +130,16 @@ tr.t-client { background: color-mix(in srgb, var(--focal) 7%, transparent) }
   <p class="eyebrow">BIOMEDDC 701 × Stoked Bio · Work package B · Generative chemistry · Dhruv · research as of 30 Sep 2026</p>
   <h1>Who else makes AI molecules you can actually make?</h1>
   <p class="lede">Competitive landscape for SyntheMol in small-molecule generative chemistry: 26 competitors and substitutes, their funding, how they price, and where SyntheMol sits.</p>
-  <p class="formula">SyntheMol = <b>building blocks</b> (~46B Enamine REAL space) + <b>13 known reactions</b> + activity model → molecule <b>and</b> its synthesis recipe</p>
+  <p class="formula">SyntheMol = <b>purchasable building blocks</b> (~30B-molecule space in 2024, ~46B in 2026) + <b>known reactions</b> + activity model → molecule <b>and</b> its synthesis recipe</p>
 </header>
 
 <section class="col" id="findings">
   <h2>Bottom line</h2>
   <ol class="findings">
-    <li><div><b>"Synthesizable by design" is no longer unique.</b> Iktos, PostEra, Onepot, Chemify and XtalPi all sell it, and at least four open-source models (SynFormer, RxnFlow, SynFlowNet, ReaSyn) copy the building-block-plus-reaction idea. SyntheMol's own code is public. The pitch has to move from the method to the proof.</div></li>
+    <li><div><b>"Synthesizable by design" is no longer unique.</b> Iktos, PostEra, Onepot, Chemify and XtalPi all sell it, and several academic models (SynFormer, RxnFlow, SynFlowNet, ReaSyn) use the same building-block-plus-reaction idea. SyntheMol's own code is public. The pitch has to move from the method to the proof.</div></li>
     <li><div><b>SyntheMol's proof is strong for its size.</b> Two peer-reviewed rounds with wet-lab hits: 6 novel <i>A. baumannii</i> actives from 58 made (2024), then 13 potent from 79 made with 7 novel and in vivo MRSA efficacy for synthecin (2026). Few direct competitors publish hit rates plus animal data for generated molecules.</div></li>
     <li><div><b>Money is in programs, not software.</b> Insilico sold only $4.9M of software in 2025 against $56M total revenue. Schrödinger ($199.5M software) is the exception after 30 years. Platform deals pay $12–115M upfront, usually 2–5% of the headline value.</div></li>
-    <li><div><b>Capital gap is extreme.</b> Stoked closed C$2.5M. Isomorphic has ~$2.7B, Lila $550M, Genesis $400M+. SyntheMol cannot win as a horizontal platform. It can win a niche.</div></li>
+    <li><div><b>Capital gap is extreme.</b> Stoked closed a $2.5M seed. Isomorphic has ~$2.7B, Lila $550M, Genesis $400M+. SyntheMol cannot win as a horizontal platform. It can win a niche.</div></li>
     <li><div><b>Model access is being given away.</b> NVIDIA GenMol, Boltz-2 (MIT licence), REINVENT 4 and Lilly TuneLab are free. Tamarind hosts 200+ models without code. Charging for "access to a model" will be hard.</div></li>
     <li><div><b>The best-defended position is biology-first, low-data, anti-infective design.</b> The only focused rival is Phare Bio, a grant-funded non-profit. Stokes-lab phenotypic data plus validated in vivo hits is the moat to argue (hand-off to Sithum, WP-H).</div></li>
   </ol>
@@ -161,7 +180,7 @@ tr.t-client { background: color-mix(in srgb, var(--focal) 7%, transparent) }
 <text x="400.0" y="508" class="axis" text-anchor="middle">Synthesis grounding → (0 = none, 10 = every design has a make-able route or is made in-house)</text>
 <text transform="translate(16 243.0) rotate(-90)" class="axis" text-anchor="middle">Sells tools ← → Owns drug programs</text>
 <g class="pt t-direct"><circle cx="601.6" cy="243.0" r="8.8"/><text x="615.4" y="247.0" text-anchor="start">Iktos</text></g>
-<g class="pt t-direct"><circle cx="601.6" cy="155.4" r="11.7"/><text x="618.3" y="159.4" text-anchor="start">PostEra</text></g>
+<g class="pt t-direct"><circle cx="601.6" cy="155.4" r="9.2"/><text x="615.8" y="159.4" text-anchor="start">PostEra</text></g>
 <g class="pt t-direct"><circle cx="702.4" cy="330.6" r="8.0"/><text x="689.4" y="334.6" text-anchor="end">Onepot</text></g>
 <g class="pt t-direct"><circle cx="668.8" cy="286.8" r="12.5"/><text x="686.3" y="290.8" text-anchor="start">Chemify</text></g>
 <g class="pt t-direct"><circle cx="400.0" cy="107.2" r="13.8"/><text x="418.8" y="99.2" text-anchor="start">Insilico</text></g>
@@ -186,7 +205,7 @@ tr.t-client { background: color-mix(in srgb, var(--focal) 7%, transparent) }
 <g class="pt t-emerging"><circle cx="265.6" cy="418.2" r="8.2"/><text x="278.8" y="428.2" text-anchor="start">Tamarind</text></g>
 <g class="pt t-emerging"><circle cx="547.8" cy="177.3" r="15.1"/><text x="527.8" y="181.3" text-anchor="end">Lila</text></g>
 <g class="pt t-niche"><circle cx="440.3" cy="137.9" r="9.4"/><text x="454.7" y="141.9" text-anchor="start">Phare Bio</text></g>
-<g class="pt t-client"><circle cx="702.4" cy="111.6" r="5.0"/><text x="692.4" y="97.6" text-anchor="end">SyntheMol</text></g>
+<g class="pt t-client"><circle cx="702.4" cy="111.6" r="5.4"/><text x="692.0" y="97.6" text-anchor="end">SyntheMol</text></g>
 <line x1="698.4" y1="121.60000000000001" x2="682.24" y2="225.48" class="arrow" marker-end="url(#ah)"/>
 <text x="736.0" y="241.48" class="arrow-label" text-anchor="end">if licensed</text>
 <text x="736.0" y="255.48" class="arrow-label" text-anchor="end">as a platform</text>
@@ -210,15 +229,15 @@ tr.t-client { background: color-mix(in srgb, var(--focal) 7%, transparent) }
 <div class="bar-row t-direct"><span class="bar-name">Insilico</span><span class="bar-track"><span class="bar" style="width:70.8%"></span></span><span class="bar-val">$290M</span></div>
 <div class="bar-row t-funded"><span class="bar-name">Terray</span><span class="bar-track"><span class="bar" style="width:66.2%"></span></span><span class="bar-val">$200M</span></div>
 <div class="bar-row t-direct"><span class="bar-name">Chemify</span><span class="bar-track"><span class="bar" style="width:62.2%"></span></span><span class="bar-val">$145M</span></div>
-<div class="bar-row t-direct"><span class="bar-name">PostEra</span><span class="bar-track"><span class="bar" style="width:56.5%"></span></span><span class="bar-val">$92M</span></div>
 <div class="bar-row t-funded"><span class="bar-name">Aqemia</span><span class="bar-track"><span class="bar" style="width:52.1%"></span></span><span class="bar-val">$65M</span></div>
 <div class="bar-row t-emerging"><span class="bar-name">Boltz</span><span class="bar-track"><span class="bar" style="width:41.6%"></span></span><span class="bar-val">$28M</span></div>
 <div class="bar-row t-niche"><span class="bar-name">Phare Bio</span><span class="bar-track"><span class="bar" style="width:41.2%"></span></span><span class="bar-val">$27M</span></div>
+<div class="bar-row t-direct"><span class="bar-name">PostEra</span><span class="bar-track"><span class="bar" style="width:39.7%"></span></span><span class="bar-val">$24M</span></div>
 <div class="bar-row t-direct"><span class="bar-name">Iktos</span><span class="bar-track"><span class="bar" style="width:37.4%"></span></span><span class="bar-val">$20M</span></div>
 <div class="bar-row t-emerging"><span class="bar-name">Tamarind</span><span class="bar-track"><span class="bar" style="width:33.0%"></span></span><span class="bar-val">$14M</span></div>
 <div class="bar-row t-direct"><span class="bar-name">Onepot</span><span class="bar-track"><span class="bar" style="width:32.0%"></span></span><span class="bar-val">$13M</span></div>
 <div class="bar-row t-direct"><span class="bar-name">Variational AI</span><span class="bar-track"><span class="bar" style="width:27.4%"></span></span><span class="bar-val">$9.0M</span></div>
-<div class="bar-row t-client"><span class="bar-name">SyntheMol</span><span class="bar-track"><span class="bar" style="width:7.3%"></span></span><span class="bar-val">$1.8M</span></div></div>
+<div class="bar-row t-client"><span class="bar-name">SyntheMol</span><span class="bar-track"><span class="bar" style="width:11.4%"></span></span><span class="bar-val">$2.5M</span></div></div>
   </div>
   <div class="col" style="display:grid;gap:14px">
     <div><h3>Where SyntheMol can win</h3>
@@ -232,7 +251,7 @@ tr.t-client { background: color-mix(in srgb, var(--focal) 7%, transparent) }
       <ul>
         <li>Public code plus a crowded academic field make the algorithm easy to copy.</li>
         <li>Depends on Enamine's space. Onepot and Chemify own their "make" step.</li>
-        <li>Chemistry limited to 13 reactions, so scaffolds are less diverse than free-form generators.</li>
+        <li>Chemistry limited to a fixed set of reactions (13 in the 2024 paper), so scaffolds are less diverse than free-form generators.</li>
         <li>Antibiotic market economics are weak, so buyers are few and pay little.</li>
       </ul></div>
   </div>
@@ -250,7 +269,7 @@ tr.t-client { background: color-mix(in srgb, var(--focal) 7%, transparent) }
 <td><span class="chip">Client</span></td>
 <td>Assembles molecules from commercial building blocks + known reactions (Enamine REAL, ~30B then ~46B space); every output ships with its synthesis recipe. RL version does multi-objective optimisation (activity + solubility).<small>SyntheMol (MCTS, Nat Mach Intell 2024); SyntheMol-RL (RL, Mol Syst Biol 2026)</small></td>
 <td>Internal pipeline (anti-infectives, microbiome, GBM, Parkinson&#x27;s); commercial model under evaluation</td>
-<td>C$2.5M seed (closed May 2026; angel-led, oversubscribed, 99% Ontario investors)</td>
+<td>$2.5M seed (announced 1 May 2026; angel-led with insiders, oversubscribed, 99% from Ontario; currency not stated, likely CAD)</td>
 <td>Exclusive McMaster licence for Enterololin (Crohn&#x27;s), Feb 2026<small>v1: 58 made, 6 potent novel A. baumannii actives. RL: 79 made, 13 potent, 7 structurally novel; synthecin effective in MRSA mouse wound model</small></td>
 <td><span class="threat none">—</span></td>
 <td>Baseline for comparison. <a href="https://www.biospace.com/press-releases/stoked-bio-announces-the-closing-of-seed-financing-round" target="_blank" rel="noopener">source</a></td>
@@ -266,17 +285,17 @@ tr.t-client { background: color-mix(in srgb, var(--focal) 7%, transparent) }
 <td>Closest commercial analogue: sells both the generative tool and the synthesis route, and now closes the make loop with robots. <a href="https://pharmaphorum.com/news/servier-signs-eu1bn-plus-ai-pact-iktos" target="_blank" rel="noopener">source</a></td>
 </tr>
 <tr data-tier="Direct" class="t-direct">
-<th scope="row"><span class="dot"></span>PostEra<small>South San Francisco, CA</small></th>
+<th scope="row"><span class="dot"></span>PostEra<small>United States</small></th>
 <td><span class="chip">Direct</span></td>
 <td>Synthesis-aware generative chemistry; ML retrosynthesis; origin in COVID Moonshot open-science programme.<small>Proton platform; Manifold (synthesis-aware search/design)</small></td>
 <td>Partnered &#x27;AI Lab&#x27; deals + internal programs (small molecules, ADC payloads)</td>
-<td>$24M Series A (Jan 2022, Clermont Group); $68M NIH grant (2022, antivirals)</td>
-<td>Pfizer AI Lab: $13M upfront / $260M (2022); expanded Jan 2025 with $12M upfront; total Pfizer value reported ~$610M<small>Partnered programs; antiviral work via NIH AViDD</small></td>
+<td>$24M Series A (Jan 2022, Clermont Group). Also co-leads the NIH-funded ASAP antiviral consortium ($68M initial funding, shared with MSKCC and DNDi)</td>
+<td>Pfizer AI Lab: $13M upfront, up to $260M (Jan 2022); expanded Jan 2025 with a further $12M upfront<small>Partnered programs; antiviral work via NIH AViDD</small></td>
 <td><span class="threat hi">High</span></td>
 <td>Same pitch (AI molecules chemists can actually make) and a proven pharma buyer in Pfizer. <a href="https://www.pharmtech.com/view/postera-expands-pfizer-partnership-ai-lab-adc-collaborations" target="_blank" rel="noopener">source</a></td>
 </tr>
 <tr data-tier="Direct" class="t-direct">
-<th scope="row"><span class="dot"></span>Onepot AI<small>San Francisco, CA</small></th>
+<th scope="row"><span class="dot"></span>Onepot AI<small>United States</small></th>
 <td><span class="chip">Direct</span></td>
 <td>Enumerated make-on-demand space tied to its own automated synthesis lab; claims molecules delivered 6–10x faster.<small>onepot CORE (3.4B enumerated space), POT-1 automated lab, &#x27;Phil&#x27; AI chemist</small></td>
 <td>Sells molecules / synthesis-as-a-service to discovery teams</td>
@@ -301,7 +320,7 @@ tr.t-client { background: color-mix(in srgb, var(--focal) 7%, transparent) }
 <td>Ensemble of generative models with synthetic-accessibility scoring and filters; strongest clinical proof of any generative-chemistry company.<small>Pharma.AI: Chemistry42 (generative chemistry), Biology42, Medicine42</small></td>
 <td>Pipeline + out-licensing dominate; software is a small line</td>
 <td>HK IPO 30 Dec 2025, ~HK$2.28B raised (largest HK biotech IPO of 2025)</td>
-<td>Lilly up to $2.75B ($115M upfront); SK Biopharm up to $2.5B; ~$10B aggregate headline value<small>Rentosertib (TNIK, IPF) entered global Phase 3 Jul 2026. FY2025 revenue $56.2M, of which software only $4.9M; net loss $352M</small></td>
+<td>Lilly: $115M upfront, up to $2.75B (Mar 2026); SK Biopharm up to $2.5B; ~$10B aggregate headline value<small>Rentosertib (TNIK, IPF): Phase 3 launched Jul 2026, first patient dosed 9 Sep 2026. FY2025 revenue $56.2M, of which software only $4.9M; net loss $352M</small></td>
 <td><span class="threat med">Medium</span></td>
 <td>Sets buyer expectations for generative chemistry and publishes list pricing (~$3K/month entry, third-party estimate). Its software revenue shows how small a pure tool business is. <a href="https://www.itiger.com/news/1172056437" target="_blank" rel="noopener">source</a></td>
 </tr>
@@ -320,7 +339,7 @@ tr.t-client { background: color-mix(in srgb, var(--focal) 7%, transparent) }
 <td><span class="chip">Direct</span></td>
 <td>Generative foundation model for hit/lead design; synthesizability handled as a design objective.<small>Enki foundation model for small-molecule design</small></td>
 <td>Platform access for biopharma chemistry teams</td>
-<td>$5.5M seed extension (Feb 2025; Nimbus Synergies lead, Merck GHIF)</td>
+<td>$3.5M seed (2021) + $5.5M seed extension (Feb 2025; Nimbus Synergies lead, Merck GHIF)</td>
 <td>Undisclosed pharma users<small>Early commercial</small></td>
 <td><span class="threat med">Medium</span></td>
 <td>Only Canadian pure-play generative-chemistry startup; competes for the same Canadian investors and grants. <a href="https://www.biospace.com/press-releases/variational-ai-announces-oversubscribed-5-5-million-financing-to-launch-foundation-model-for-small-molecule-drug-discovery" target="_blank" rel="noopener">source</a></td>
@@ -351,7 +370,7 @@ tr.t-client { background: color-mix(in srgb, var(--focal) 7%, transparent) }
 <td>AI + automated chemistry; NVIDIA-backed.<small>NeuralPLexer (structure), Enchant (property prediction), generative design</small></td>
 <td>Clinical-stage oncology pipeline + partnerships</td>
 <td>&gt;$100M (Nov 2025) + $20M (Jan 2026); filed for $100M Nasdaq IPO (IAM), Sep 2026</td>
-<td>Lundbeck (migraine), Takeda<small>Phase 1 oncology assets</small></td>
+<td>Takeda: up to $1.7B in milestones, 3 targets (Feb 2026); Lundbeck (migraine, 2024)<small>Phase 1 oncology assets</small></td>
 <td><span class="threat low">Low</span></td>
 <td>Comparable for &#x27;AI platform to clinic&#x27; valuation; not a tool competitor. <a href="https://www.renaissancecapital.com/IPO-Center/News/121805/small-molecule-biotech-iambic-therapeutics-files-for-a-100-million-ipo" target="_blank" rel="noopener">source</a></td>
 </tr>
@@ -361,7 +380,7 @@ tr.t-client { background: color-mix(in srgb, var(--focal) 7%, transparent) }
 <td>Generative + predictive AI with physics; moving toward platform licensing.<small>GEMS platform; Pearl structure model</small></td>
 <td>Platform deals + pipeline</td>
 <td>$200M Series B (2023); &gt;$400M total</td>
-<td>Incyte: $80M cash + $40M equity, ~$232M milestones/program; Gilead (2024)<small>Preclinical</small></td>
+<td>Incyte expansion (May 2026): $80M cash + $40M equity, up to $232M milestones per program, 5+ targets; Gilead (2024)<small>Preclinical</small></td>
 <td><span class="threat low">Low</span></td>
 <td>Shows pharma will pay nine-figure upfronts for platform access plus data rights. <a href="https://fiercebiotech.com/biotech/incyte-pays-genesis-80m-expand-ai-fueled-drug-discovery-pact" target="_blank" rel="noopener">source</a></td>
 </tr>
@@ -391,7 +410,7 @@ tr.t-client { background: color-mix(in srgb, var(--focal) 7%, transparent) }
 <td>Generates designs scored by physics, so it needs little experimental training data.<small>Generative AI + quantum/statistical physics scoring</small></td>
 <td>Pipeline + pharma partnership</td>
 <td>€60M Series A (Wendel, Bpifrance, Eurazeo)</td>
-<td>Sanofi up to $140M<small>Preclinical</small></td>
+<td>Sanofi up to $140M (Dec 2023; expanded Jul 2026)<small>Preclinical</small></td>
 <td><span class="threat low">Low</span></td>
 <td>Low-data pitch overlaps with SyntheMol&#x27;s low-data antibiotic story. <a href="https://www.fiercebiotech.com/biotech/sanofi-spins-ai-pact-inking-140m-deal-apply-aqemias-physics-algorithms-drug-discovery" target="_blank" rel="noopener">source</a></td>
 </tr>
@@ -403,7 +422,7 @@ tr.t-client { background: color-mix(in srgb, var(--focal) 7%, transparent) }
 <td>Public; FY2025 revenue $255.9M, software $199.5M (+10.6%)</td>
 <td>Many pharma site licences<small>Established standard in pharma comp-chem</small></td>
 <td><span class="threat med">Medium</span></td>
-<td>The default budget line a SyntheMol licence would have to displace; entry pricing ~$10K/seat/yr (third-party estimate). Overlaps with Jonathan&#x27;s comp-chem slide. <a href="https://www.biospace.com/press-releases/schrodinger-reports-fourth-quarter-and-full-year-2025-financial-results" target="_blank" rel="noopener">source</a></td>
+<td>The default budget line a SyntheMol licence would have to displace. Prices are quote-only (not published). Overlaps with Jonathan&#x27;s comp-chem slide. <a href="https://www.biospace.com/press-releases/schrodinger-reports-fourth-quarter-and-full-year-2025-financial-results" target="_blank" rel="noopener">source</a></td>
 </tr>
 <tr data-tier="Indirect / complementor" class="t-indirect">
 <th scope="row"><span class="dot"></span>Enamine REAL / Chemspace<small>Kyiv, Ukraine / Riga</small></th>
@@ -438,12 +457,12 @@ tr.t-client { background: color-mix(in srgb, var(--focal) 7%, transparent) }
 <tr data-tier="Emerging / open" class="t-emerging">
 <th scope="row"><span class="dot"></span>Open-source synthesizable generators (SynFormer, RxnFlow, SynFlowNet, ReaSyn)<small>Academic (MIT, KAIST, Cambridge, etc.)</small></th>
 <td><span class="chip">Emerging / open</span></td>
-<td>Same building-block + reaction-template idea as SyntheMol, using transformers, diffusion or GFlowNets; field grew rapidly from mid-2024.<small>Research code</small></td>
+<td>Build molecules from building blocks and reaction templates, the same basic idea as SyntheMol, using transformers, diffusion or GFlowNets; the field grew rapidly from mid-2024.<small>Research code</small></td>
 <td>Free</td>
 <td>Academic grants</td>
 <td>—<small>Benchmark papers; limited wet-lab validation</small></td>
 <td><span class="threat hi">High</span></td>
-<td>The core algorithmic idea is now widely replicated and free. SyntheMol&#x27;s own code is public on GitHub/PyPI. <a href="https://arxiv.org/pdf/2405.01155" target="_blank" rel="noopener">source</a></td>
+<td>The core idea is now common in academic work, much of it with public code. SyntheMol&#x27;s own code is also public on GitHub/PyPI. <a href="https://arxiv.org/pdf/2405.01155" target="_blank" rel="noopener">source</a></td>
 </tr>
 <tr data-tier="Emerging / open" class="t-emerging">
 <th scope="row"><span class="dot"></span>NVIDIA BioNeMo (GenMol NIM)<small>Santa Clara, CA</small></th>
@@ -524,22 +543,23 @@ tr.t-client { background: color-mix(in srgb, var(--focal) 7%, transparent) }
   <p>Stoked said pricing matters. These are the public reference points for a generative chemistry offering.</p></div>
   <div class="table-box"><table>
     <thead><tr><th scope="col">Item</th><th scope="col">Figure</th><th scope="col">Source</th><th scope="col">Confidence</th></tr></thead>
-    <tbody><tr><th scope="row">Schrödinger seat licence</th><td>~$10K per seat per year entry (academic from ~$7.5K)</td><td>Third-party estimate (Capterra/IntuitionLabs)</td><td><span class="conf">List price, verify</span></td></tr>
-<tr><th scope="row">Insilico Pharma.AI / Chemistry42</th><td>From ~$3K per month; annual plan 16% off; also SaaS, on-prem, or &#x27;discovery sprints&#x27;</td><td>Third-party estimate + Insilico site</td><td><span class="conf">List price, verify</span></td></tr>
+    <tbody><tr><th scope="row">Schrödinger licence</th><td>Quote-only; not published. One third-party site estimates ~$10K per seat per year</td><td>Third-party estimate (IntuitionLabs); Schrödinger site shows no prices</td><td><span class="conf">Unverified</span></td></tr>
+<tr><th scope="row">Insilico Pharma.AI / Chemistry42</th><td>Monthly or yearly plans (yearly 16% off); SaaS, on-prem, or &#x27;discovery sprints&#x27;. One third-party site says from ~$3K per month</td><td>Insilico site (plans); third-party (price)</td><td><span class="conf">Price unverified</span></td></tr>
 <tr><th scope="row">Insilico software revenue</th><td>$4.9M in FY2025 (9% of $56.2M revenue)</td><td>FY2025 results</td><td><span class="conf">Reported</span></td></tr>
 <tr><th scope="row">Schrödinger software revenue</th><td>$199.5M in FY2025; software ACV $198M</td><td>FY2025 results</td><td><span class="conf">Reported</span></td></tr>
-<tr><th scope="row">Enamine REAL compound</th><td>~$400–700 per compound incl. basic assays; 3–4 weeks; &gt;80% success</td><td>PostEra forum estimate / Enamine</td><td><span class="conf">Estimate</span></td></tr>
+<tr><th scope="row">Enamine REAL compound</th><td>3–4 weeks, &gt;80% success (Enamine). Cost: one forum estimate of ~$400–700 per compound including basic assays</td><td>Enamine / BioSolveIT; PostEra forum post</td><td><span class="conf">Cost unverified</span></td></tr>
 <tr><th scope="row">Pharma platform deal upfront</th><td>$12M–$115M upfront; typically 2–5% of headline value</td><td>Isomorphic, Insilico, XtalPi, PostEra, Genesis deals</td><td><span class="conf">Reported</span></td></tr>
 <tr><th scope="row">Free alternatives</th><td>REINVENT 4, SynFormer/RxnFlow, NVIDIA GenMol, Boltz-2, Lilly TuneLab: $0 for model access</td><td>Public</td><td><span class="conf">Reported</span></td></tr></tbody></table></div>
   <div class="table-box"><table>
     <thead><tr><th scope="col">Platform deal</th><th scope="col">Year</th><th scope="col">Upfront</th><th scope="col">Headline</th><th scope="col">Upfront share</th><th scope="col">Notes</th></tr></thead>
-    <tbody><tr><th scope="row">Insilico → Lilly</th><td class="num">2025</td><td class="num">$115M</td><td class="num">$2,750M</td><td class="num">4.2%</td><td>Generative small molecules</td></tr>
+    <tbody><tr><th scope="row">Insilico → Lilly</th><td class="num">2026</td><td class="num">$115M</td><td class="num">$2,750M</td><td class="num">4.2%</td><td>Generative small molecules</td></tr>
 <tr><th scope="row">XtalPi → DoveTree</th><td class="num">2025</td><td class="num">$51M</td><td class="num">$5,890M</td><td class="num">0.9%</td><td>AI + robotics, multi-TA</td></tr>
 <tr><th scope="row">Isomorphic → Lilly</th><td class="num">2024</td><td class="num">$45M</td><td class="num">$1,700M</td><td class="num">2.6%</td><td>Small molecules</td></tr>
 <tr><th scope="row">Isomorphic → Novartis</th><td class="num">2024</td><td class="num">$37.5M</td><td class="num">$1,200M</td><td class="num">3.1%</td><td>Small molecules</td></tr>
-<tr><th scope="row">Genesis → Incyte (expansion)</th><td class="num">2025</td><td class="num">$80M</td><td class="num">$1,160M</td><td class="num">6.9%</td><td>Plus $40M equity; ~$232M/program × 5</td></tr>
-<tr><th scope="row">PostEra → Pfizer</th><td class="num">2022</td><td class="num">$13M</td><td class="num">$260M</td><td class="num">5.0%</td><td>AI Lab; expanded 2025 with $12M upfront</td></tr>
-<tr><th scope="row">Iktos → Servier</th><td class="num">2026</td><td class="num">—</td><td class="num">$1,080M</td><td class="num">—</td><td>€1B+; upfront undisclosed</td></tr>
+<tr><th scope="row">Genesis → Incyte (expansion)</th><td class="num">2026</td><td class="num">$80M</td><td class="num">$1,160M</td><td class="num">6.9%</td><td>Plus $40M equity; headline = up to $232M/program × 5 targets</td></tr>
+<tr><th scope="row">PostEra → Pfizer</th><td class="num">2022</td><td class="num">$13M</td><td class="num">$260M</td><td class="num">5.0%</td><td>AI Lab; expanded Jan 2025 with $12M more upfront</td></tr>
+<tr><th scope="row">Iktos → Servier</th><td class="num">2026</td><td class="num">—</td><td class="num">$1,080M</td><td class="num">—</td><td>€1B+ (≈$1.08B); upfront undisclosed</td></tr>
+<tr><th scope="row">Iambic → Takeda</th><td class="num">2026</td><td class="num">—</td><td class="num">$1,700M</td><td class="num">—</td><td>Milestones only; upfront undisclosed</td></tr>
 <tr><th scope="row">Aqemia → Sanofi</th><td class="num">2023</td><td class="num">—</td><td class="num">$140M</td><td class="num">—</td><td>Upfront undisclosed</td></tr></tbody></table></div>
 </section>
 
@@ -551,7 +571,7 @@ tr.t-client { background: color-mix(in srgb, var(--focal) 7%, transparent) }
     <h3>Synthesizability is now table stakes. Validated biology is the edge.</h3>
     <ul>
       <li><b>Direct rivals:</b> Iktos (Servier €1B+ deal, 2026), PostEra (Pfizer AI Lab), Onepot (3.4B-molecule space + own lab), Chemify, Insilico Chemistry42, XtalPi.</li>
-      <li><b>Capital gap:</b> Stoked C$2.5M seed vs Isomorphic ~$2.7B, Genesis $400M+, Chemify ~$145M.</li>
+      <li><b>Capital gap:</b> Stoked $2.5M seed vs Isomorphic ~$2.7B, Genesis $400M+, Chemify ~$145M.</li>
       <li><b>Pricing signal:</b> software alone earns little (Insilico: $4.9M of $56M); value is in partnered programs with $12–115M upfronts.</li>
       <li><b>SyntheMol's angle:</b> recipe-included designs, low-data phenotypic models, and in vivo antibiotic proof (synthecin vs MRSA). Nearest niche rival: Phare Bio (non-profit, $27M ARPA-H).</li>
     </ul>
@@ -567,7 +587,7 @@ tr.t-client { background: color-mix(in srgb, var(--focal) 7%, transparent) }
     <li>Does Stoked have a relationship with Enamine or Chemspace (supply terms, co-marketing)?</li>
     <li>Target buyer: pharma anti-infective groups, AMR-focused biotechs, or non-profits and funders (CARB-X, ARPA-H, Wellcome)?</li>
   </ol>
-  <p class="note">Items to verify before the final report: Schrödinger and Chemistry42 list prices (third-party estimates), Model Medicines funding, the PostEra "$610M" total Pfizer value, and Enamine per-compound cost.</p>
+  <p class="note">Still unverified: Schrödinger and Chemistry42 prices (third-party estimates only), Enamine per-compound cost (one forum estimate), Model Medicines funding (not found). Map positions and threat ratings are our own judgement.</p>
 </section>
 
 <section id="sources">

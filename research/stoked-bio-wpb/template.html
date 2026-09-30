@@ -103,6 +103,25 @@ tr.t-client { background: color-mix(in srgb, var(--focal) 7%, transparent) }
 .slide h3 { font-size: 21px }
 .sources { font-size: 12.5px; columns: 2 320px; padding-left: 18px; word-break: break-all }
 .sources li { margin-bottom: 4px }
+@media print {
+  @page { size: Letter landscape; margin: 12mm }
+  :root { color-scheme: light }
+  body { padding: 0; font-size: 11px }
+  .wrap { gap: 22px; max-width: none }
+  header { padding-top: 0 }
+  .filters, #database .col p:last-child { display: none }
+  .table-box, .map-box { overflow: visible; border-radius: 0 }
+  .map { min-width: 0; max-height: 150mm }
+  table { font-size: 9.5px }
+  th, td { padding: 5px 6px }
+  tbody th, .db td, .db td:nth-child(3), .db td:nth-child(8) { min-width: 0 }
+  thead th { position: static }
+  thead { display: table-header-group }
+  tr, .slide, .panel, .findings li { break-inside: avoid }
+  #map, #slide, #pricing { break-before: page }
+  a { color: var(--ink); text-decoration: none }
+  .sources { columns: 2 }
+}
 @media (prefers-reduced-motion: no-preference) { .filter { transition: background .15s, color .15s } }
 </style>
 
@@ -111,16 +130,16 @@ tr.t-client { background: color-mix(in srgb, var(--focal) 7%, transparent) }
   <p class="eyebrow">BIOMEDDC 701 × Stoked Bio · Work package B · Generative chemistry · Dhruv · research as of 30 Sep 2026</p>
   <h1>Who else makes AI molecules you can actually make?</h1>
   <p class="lede">Competitive landscape for SyntheMol in small-molecule generative chemistry: {{N}} competitors and substitutes, their funding, how they price, and where SyntheMol sits.</p>
-  <p class="formula">SyntheMol = <b>building blocks</b> (~46B Enamine REAL space) + <b>13 known reactions</b> + activity model → molecule <b>and</b> its synthesis recipe</p>
+  <p class="formula">SyntheMol = <b>purchasable building blocks</b> (~30B-molecule space in 2024, ~46B in 2026) + <b>known reactions</b> + activity model → molecule <b>and</b> its synthesis recipe</p>
 </header>
 
 <section class="col" id="findings">
   <h2>Bottom line</h2>
   <ol class="findings">
-    <li><div><b>"Synthesizable by design" is no longer unique.</b> Iktos, PostEra, Onepot, Chemify and XtalPi all sell it, and at least four open-source models (SynFormer, RxnFlow, SynFlowNet, ReaSyn) copy the building-block-plus-reaction idea. SyntheMol's own code is public. The pitch has to move from the method to the proof.</div></li>
+    <li><div><b>"Synthesizable by design" is no longer unique.</b> Iktos, PostEra, Onepot, Chemify and XtalPi all sell it, and several academic models (SynFormer, RxnFlow, SynFlowNet, ReaSyn) use the same building-block-plus-reaction idea. SyntheMol's own code is public. The pitch has to move from the method to the proof.</div></li>
     <li><div><b>SyntheMol's proof is strong for its size.</b> Two peer-reviewed rounds with wet-lab hits: 6 novel <i>A. baumannii</i> actives from 58 made (2024), then 13 potent from 79 made with 7 novel and in vivo MRSA efficacy for synthecin (2026). Few direct competitors publish hit rates plus animal data for generated molecules.</div></li>
     <li><div><b>Money is in programs, not software.</b> Insilico sold only $4.9M of software in 2025 against $56M total revenue. Schrödinger ($199.5M software) is the exception after 30 years. Platform deals pay $12–115M upfront, usually 2–5% of the headline value.</div></li>
-    <li><div><b>Capital gap is extreme.</b> Stoked closed C$2.5M. Isomorphic has ~$2.7B, Lila $550M, Genesis $400M+. SyntheMol cannot win as a horizontal platform. It can win a niche.</div></li>
+    <li><div><b>Capital gap is extreme.</b> Stoked closed a $2.5M seed. Isomorphic has ~$2.7B, Lila $550M, Genesis $400M+. SyntheMol cannot win as a horizontal platform. It can win a niche.</div></li>
     <li><div><b>Model access is being given away.</b> NVIDIA GenMol, Boltz-2 (MIT licence), REINVENT 4 and Lilly TuneLab are free. Tamarind hosts 200+ models without code. Charging for "access to a model" will be hard.</div></li>
     <li><div><b>The best-defended position is biology-first, low-data, anti-infective design.</b> The only focused rival is Phare Bio, a grant-funded non-profit. Stokes-lab phenotypic data plus validated in vivo hits is the moat to argue (hand-off to Sithum, WP-H).</div></li>
   </ol>
@@ -156,7 +175,7 @@ tr.t-client { background: color-mix(in srgb, var(--focal) 7%, transparent) }
       <ul>
         <li>Public code plus a crowded academic field make the algorithm easy to copy.</li>
         <li>Depends on Enamine's space. Onepot and Chemify own their "make" step.</li>
-        <li>Chemistry limited to 13 reactions, so scaffolds are less diverse than free-form generators.</li>
+        <li>Chemistry limited to a fixed set of reactions (13 in the 2024 paper), so scaffolds are less diverse than free-form generators.</li>
         <li>Antibiotic market economics are weak, so buyers are few and pay little.</li>
       </ul></div>
   </div>
@@ -193,7 +212,7 @@ tr.t-client { background: color-mix(in srgb, var(--focal) 7%, transparent) }
     <h3>Synthesizability is now table stakes. Validated biology is the edge.</h3>
     <ul>
       <li><b>Direct rivals:</b> Iktos (Servier €1B+ deal, 2026), PostEra (Pfizer AI Lab), Onepot (3.4B-molecule space + own lab), Chemify, Insilico Chemistry42, XtalPi.</li>
-      <li><b>Capital gap:</b> Stoked C$2.5M seed vs Isomorphic ~$2.7B, Genesis $400M+, Chemify ~$145M.</li>
+      <li><b>Capital gap:</b> Stoked $2.5M seed vs Isomorphic ~$2.7B, Genesis $400M+, Chemify ~$145M.</li>
       <li><b>Pricing signal:</b> software alone earns little (Insilico: $4.9M of $56M); value is in partnered programs with $12–115M upfronts.</li>
       <li><b>SyntheMol's angle:</b> recipe-included designs, low-data phenotypic models, and in vivo antibiotic proof (synthecin vs MRSA). Nearest niche rival: Phare Bio (non-profit, $27M ARPA-H).</li>
     </ul>
@@ -209,7 +228,7 @@ tr.t-client { background: color-mix(in srgb, var(--focal) 7%, transparent) }
     <li>Does Stoked have a relationship with Enamine or Chemspace (supply terms, co-marketing)?</li>
     <li>Target buyer: pharma anti-infective groups, AMR-focused biotechs, or non-profits and funders (CARB-X, ARPA-H, Wellcome)?</li>
   </ol>
-  <p class="note">Items to verify before the final report: Schrödinger and Chemistry42 list prices (third-party estimates), Model Medicines funding, the PostEra "$610M" total Pfizer value, and Enamine per-compound cost.</p>
+  <p class="note">Still unverified: Schrödinger and Chemistry42 prices (third-party estimates only), Enamine per-compound cost (one forum estimate), Model Medicines funding (not found). Map positions and threat ratings are our own judgement.</p>
 </section>
 
 <section id="sources">
