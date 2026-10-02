@@ -1824,7 +1824,7 @@ def _boot_area_label_backfill():
 
 
 _boot_area_label_backfill()
-print(f"llm boot key={bool(mt.LLM_API_KEY)} model={mt.LLM_MODEL} "
+print(f"llm boot key={bool(mt.LLM_API_KEY)} models={','.join(mt.LLM_MODELS)} "
       f"base={mt.LLM_BASE_URL}", flush=True)
 
 
