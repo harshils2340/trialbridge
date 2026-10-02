@@ -89,6 +89,7 @@ import reminders as reminders_mod  # noqa: E402
 import sites_features  # noqa: E402
 import summarize  # noqa: E402
 import trends  # noqa: E402
+import trial_warm  # noqa: E402
 import ctis  # noqa: E402
 import copilot  # noqa: E402
 import omni_hub  # noqa: E402
@@ -5179,16 +5180,46 @@ def _structured_prescreen(trial):
         return []
 
 
+def _remember_prescreen(nct, questions):
+    """Write-through: the fast in-process LRU first, the durable DB copy second
+    (db.py's trial_prescreens, the restart-proof twin). Shared by the live path
+    below and by the background warm job (web/trial_warm.py) so both leave a
+    trial in the same state."""
+    _PRESCREEN_CACHE[nct] = {"questions": questions, "ts": time.time()}
+    _PRESCREEN_CACHE.move_to_end(nct)
+    while len(_PRESCREEN_CACHE) > _PRESCREEN_CACHE_MAX:
+        _PRESCREEN_CACHE.popitem(last=False)
+    db.set_trial_prescreen(nct, questions)
+
+
+def _prescreen_from_cache(nct):
+    """Read-through: the fast in-process LRU, then the durable DB copy (which
+    survives a restart or a deploy, and is what the warm job writes to ahead of
+    any visitor arriving). Returns None on a full miss. Promotes a DB hit into
+    the LRU so the next read for this trial on this worker skips the DB too."""
+    hit = _PRESCREEN_CACHE.get(nct)
+    if hit and (time.time() - float(hit.get("ts") or 0)) <= _PRESCREEN_TTL_SECONDS:
+        _PRESCREEN_CACHE.move_to_end(nct)
+        return hit["questions"]
+    persisted = db.get_trial_prescreen(nct)
+    if persisted is not None:
+        _PRESCREEN_CACHE[nct] = {"questions": persisted, "ts": time.time()}
+        _PRESCREEN_CACHE.move_to_end(nct)
+        while len(_PRESCREEN_CACHE) > _PRESCREEN_CACHE_MAX:
+            _PRESCREEN_CACHE.popitem(last=False)
+        return persisted
+    return None
+
+
 def _prescreen_for_trial(trial):
     """Return cached/generated patient-answerable pre-screen questions for a
     trial. Prefers the LLM list, then structured CT.gov fields, then []."""
     nct = (trial or {}).get("nctId") or ""
     if not nct:
         return _structured_prescreen(trial)
-    hit = _PRESCREEN_CACHE.get(nct)
-    if hit and (time.time() - float(hit.get("ts") or 0)) <= _PRESCREEN_TTL_SECONDS:
-        _PRESCREEN_CACHE.move_to_end(nct)
-        return hit["questions"]
+    cached = _prescreen_from_cache(nct)
+    if cached is not None:
+        return cached
     questions = []
     # Only a person on the apply form earns a model call. Crawlers hitting
     # study pages were burning the provider quota (429s) and taking the
@@ -5207,26 +5238,21 @@ def _prescreen_for_trial(trial):
         # next visitor should get another try at the tailored questions. Serve
         # the structured fallback now without caching it.
         return _structured_prescreen(trial)
-    _PRESCREEN_CACHE[nct] = {"questions": questions, "ts": time.time()}
-    _PRESCREEN_CACHE.move_to_end(nct)
-    while len(_PRESCREEN_CACHE) > _PRESCREEN_CACHE_MAX:
-        _PRESCREEN_CACHE.popitem(last=False)
+    _remember_prescreen(nct, questions)
     return questions
 
 
 def _prescreen_cached(trial):
-    """Non-blocking peek at the pre-screen cache. Returns the cached questions
-    when they've already been generated for this trial, else None. Used to keep
-    the trial detail page fast: we never trigger the (slow) LLM call on the
-    render path - that happens asynchronously via `trial_prescreen`."""
+    """Non-blocking peek at the pre-screen cache (in-process, then the durable
+    DB copy - see _prescreen_from_cache). Returns the cached questions when
+    they've already been generated or warmed for this trial, else None. Used
+    to keep the trial detail page fast: we never trigger the (slow) LLM call
+    on the render path - that happens asynchronously via `trial_prescreen`,
+    or ahead of time via the warm job in web/trial_warm.py."""
     nct = (trial or {}).get("nctId") or ""
     if not nct:
         return None
-    hit = _PRESCREEN_CACHE.get(nct)
-    if hit and (time.time() - float(hit.get("ts") or 0)) <= _PRESCREEN_TTL_SECONDS:
-        _PRESCREEN_CACHE.move_to_end(nct)
-        return hit["questions"]
-    return None
+    return _prescreen_from_cache(nct)
 
 
 def _cache_search(results, ctx):
@@ -8483,6 +8509,27 @@ def reminders_run():
     except Exception:
         app.logger.exception("reminders sweep failed")
         return jsonify({"checked": False, "error": "sweep_failed"}), 200
+
+
+@app.route("/trials/warm")
+def trials_warm():
+    """Pre-generate summaries and pre-screen questions for trials surfaced by
+    recent searches (cron or manual testing), so a patient's first real view
+    usually finds them already cached instead of waiting on the model - see
+    web/trial_warm.py for why. Keyed by ALERTS_CRON_KEY when set, else
+    no-login/testing only, same as /alerts/run and /seo/warm above."""
+    key = os.environ.get("ALERTS_CRON_KEY", "").strip()
+    if key:
+        if request.args.get("key", "") != key:
+            abort(403)
+    elif not NO_LOGIN:
+        abort(403)
+    try:
+        return jsonify(trial_warm.warm_recent())
+    except Exception:
+        app.logger.exception("trial warm sweep failed")
+        return jsonify({"warmed_summary": 0, "warmed_prescreen": 0,
+                        "error": "warm_failed"}), 200
 
 
 @app.route("/applications/connect-records/<token>", methods=["POST"])
