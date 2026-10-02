@@ -5558,6 +5558,28 @@ def find():
         flash("Search failed unexpectedly. Please try again.", "error")
         return redirect(url_for("home", condition=condition_label, location=location))
 
+    # Free text with no AI available (rate limit, outage, no key): the model
+    # never turned "I have chronic back pain" into a condition, so nothing was
+    # searched. Pull the medical words out of the sentence and search those,
+    # then let the widening stage below run on them too.
+    if (freeform and not results and not intervention and not location_only
+            and not condition_label and about):
+        kw = _describe_keywords(about)
+        if kw:
+            try:
+                det_k, res_k = run_search(
+                    note, kw, "", False, coords, radius, unit,
+                    interventional_only=True, assess=bool(about.strip()),
+                    evidence_terms=[kw], evidence_kind="condition")
+            except Exception:
+                det_k, res_k = "", []
+                app.logger.exception("describe keyword search failed")
+            condition_label = kw
+            if res_k:
+                results = res_k
+                detected = det_k or kw
+                label = kw
+
     # Stage 1 - spelling / phrasing correction via ClinicalTrials.gov's own
     # suggest (fast + accurate: "brian"->"brain", "diabetis"->"diabetes"). The
     # actual search (query.cond) does NOT self-correct, so a single-word typo
@@ -5676,6 +5698,14 @@ def find():
                 results = [pinned] + results
                 widened = True
 
+    # A widened search is a full-text match, so it also catches trials that
+    # only mention the words in passing (a dementia study that excludes
+    # people with back pain). Put trials whose title or conditions carry the
+    # searched words first, and drop the ones that carry none when enough
+    # real matches exist.
+    if widened and results and condition_label:
+        results = _rank_by_words(results, condition_label)
+
     # Location-only browse: give it a readable label for the results page + logs.
     if location_only:
         label = "Trials near " + location
@@ -5683,7 +5713,7 @@ def find():
     # Free-text search: adopt the condition the matcher extracted so results,
     # caching, and analytics have a real label instead of a raw sentence.
     if not label:
-        label = (detected or "").strip() or "your search"
+        label = (detected or "").strip() or condition_label or "your search"
 
     # Record the search so "trending" reflects real site traffic. Drug-name
     # queries go through the intervention field; everything else is a condition.
@@ -5707,7 +5737,10 @@ def find():
            "q_condition": condition_label or (label if freeform else ""),
            "q_intervention": intervention, "widened": widened,
            "location_only": location_only,
-           "q_age": age, "q_sex": sex, "q_about": about, "q_radius": radius,
+           "q_age": age, "q_sex": sex, "q_about": about,
+           # A widened search holds trials beyond the typed distance; showing
+           # it filtered to that distance would hide them again.
+           "q_radius": 0 if widened else radius,
            "q_lat": lat_in, "q_lon": lon_in, "q_cc": cc_in}
     search_id = _cache_search(results, ctx)
     # Only memoize non-empty result sets. A transient upstream hiccup (CT.gov
@@ -5723,6 +5756,69 @@ def find():
 def find_results(search_id):
     """GET endpoint for one cached result set (PRG target from POST /find)."""
     return _render_cached_results(search_id)
+
+
+_DESCRIBE_FILLER = set("""
+i i'm im i've ive me my mine am is are was were be been being have has had
+having do does did a an the and or but so of to in on at for with from by
+about as into like just really very quite pretty bit lot lots kind sort
+some any all this that these those it its there here get got getting
+looking look find finding want wanted need needs needed help trial trials
+study studies research clinical treatment treatments option options new
+suffer suffering suffered dealing deal living live diagnosed diagnosis
+years year months month weeks week days day since ago time now
+son daughter wife husband mother father mom dad child children kid kids
+parent parents partner friend brother sister grandmother grandfather baby
+currently recently past still always often sometimes also too
+""".split())
+
+
+_RANK_GENERIC = {"chronic", "acute", "severe", "mild", "disease", "disorder",
+                 "syndrome", "condition", "stage", "type"}
+
+
+def _rank_by_words(results, phrase):
+    """Order results by how many of the searched words appear in the trial's
+    title or listed conditions, nearest first within a score. Trials scoring
+    zero are dropped when at least three trials score above zero."""
+    words = {w for w in re.findall(r"[a-z0-9]+", (phrase or "").lower())
+             if len(w) >= 3 and w not in _RANK_GENERIC}
+    if not words:
+        return results
+
+    def score(r):
+        t = r.get("trial") or {}
+        hay = " ".join([t.get("title") or "", t.get("officialTitle") or ""]
+                       + list(t.get("conditions") or [])).lower()
+        found = set(re.findall(r"[a-z0-9]+", hay))
+        return len(words & found)
+
+    scored = [(score(r), r) for r in results]
+    if sum(1 for sc, _ in scored if sc > 0) >= 3:
+        scored = [(sc, r) for sc, r in scored if sc > 0]
+    scored.sort(key=lambda x: (-x[0], x[1].get("distance")
+                               if x[1].get("distance") is not None else 1e9))
+    return [r for _, r in scored]
+
+
+def _describe_keywords(text):
+    """The medical words in a free-text description, for a plain search when
+    the AI cannot read it: "I have had chronic back pain for 3 years" ->
+    "chronic back pain". Keeps the first run of meaningful words, at most 5."""
+    words = re.findall(r"[a-z0-9][a-z0-9'-]*", (text or "").lower())
+    out = []
+    for w in words:
+        # A number belongs to the phrase it sits in ("type 1 diabetes").
+        keep = (w not in _DESCRIBE_FILLER and
+                (len(w) >= 3 and not w.isdigit() or (out and w.isdigit())))
+        if not keep:
+            if out:
+                break
+            continue
+        out.append(w)
+        if len(out) >= 5:
+            break
+    return " ".join(out)
 
 
 @app.route("/trial/<search_id>/<nct>")
