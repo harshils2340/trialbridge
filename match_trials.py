@@ -104,8 +104,14 @@ LLM_MODEL = os.environ.get("LLM_MODEL", "openai/gpt-oss-120b")
 # no extra cost, not a workaround - every model still only ever does the same
 # short, structured calls within its own posted limit. Comma-separated, most
 # preferred first; LLM_MODEL alone (the common case) behaves exactly as before.
+# The list is accepted in either variable: a comma list typed into LLM_MODEL
+# (which is what happened on 2 October) works the same as LLM_MODELS.
 LLM_MODELS = [m.strip() for m in
-              os.environ.get("LLM_MODELS", LLM_MODEL).split(",") if m.strip()] or [LLM_MODEL]
+              os.environ.get("LLM_MODELS", LLM_MODEL).split(",") if m.strip()] or [
+                  "openai/gpt-oss-120b"]
+# Code that sends one request with one model (ingest.py's image read, the boot
+# log) must never send the whole comma list as a name: Groq answers 404.
+LLM_MODEL = LLM_MODELS[0]
 # Models that think before they answer (gpt-oss, o-series) spend part of
 # max_tokens on that thinking. Our calls are short and structured, so keep the
 # thinking short or a 350-token JSON reply comes back empty.
@@ -675,6 +681,32 @@ def _note_429(model, err):
           flush=True)
 
 
+# 404 means the provider has no such model: a typo, or a model it retired
+# (llama-3.1-8b-instant was gone from Groq by 2 October and every call to it
+# 404ed). Retrying it can never succeed, so it is parked for a day and the
+# next model in LLM_MODELS is tried at once. The boot log names it so the
+# list can be corrected.
+_DEAD_MODEL_SECONDS = 24 * 3600
+
+
+def _is_dead_model(err):
+    if getattr(err, "code", None) == 404:
+        return True
+    if getattr(err, "code", None) == 400:
+        try:
+            body = (err.read() or b"").decode("utf-8", "replace").lower()
+        except Exception:
+            return False
+        return "model_decommissioned" in body or "does not exist" in body
+    return False
+
+
+def _note_dead(model):
+    LLM_COOLDOWN_UNTIL[model] = time.time() + _DEAD_MODEL_SECONDS
+    print(f"llm model {model!r} does not exist at {LLM_BASE_URL}: skipped for "
+          f"24h - remove it from LLM_MODEL/LLM_MODELS", flush=True)
+
+
 def llm_chat(system, user, retries=2):
     """Minimal single-turn chat call (plain text out). Tries each model in
     LLM_MODELS that isn't currently cooling down, in order, moving to the next
@@ -708,6 +740,9 @@ def llm_chat(system, user, retries=2):
                     return out
             except urllib.error.HTTPError as e:
                 last = e
+                if _is_dead_model(e):
+                    _note_dead(model)
+                    break  # no such model: next one, never a retry
                 if e.code == 429:
                     _note_429(model, e)
                     break  # try the next model, not another attempt at this one
@@ -771,6 +806,9 @@ def llm_match(patient, trial, retries=3):
                     resp["choices"][0]["message"]["content"]))
             except urllib.error.HTTPError as e:
                 last = e
+                if _is_dead_model(e):
+                    _note_dead(model)
+                    break  # no such model: next one, never a retry
                 if e.code == 429:
                     _note_429(model, e)
                     break  # try the next model, not another attempt at this one
@@ -951,6 +989,9 @@ def prescreen_questions(trial, max_q=None, retries=2):
                     resp["choices"][0]["message"]["content"]), max_q)
             except urllib.error.HTTPError as e:
                 last = e
+                if _is_dead_model(e):
+                    _note_dead(model)
+                    break  # no such model: next one, never a retry
                 if e.code == 429:
                     _note_429(model, e)
                     break  # try the next model, not another attempt at this one

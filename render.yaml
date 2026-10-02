@@ -29,12 +29,21 @@ services:
     # crawler load (the OOM trigger). Bump to --workers 2 only after upgrading
     # the instance memory.
     #
-    # Litestream wraps gunicorn rather than running beside it: it restores the latest
-    # snapshot to DB_PATH first if the file is missing (true on every boot once phase 2
-    # drops the disk), then execs gunicorn as its child so replication keeps streaming
-    # writes for as long as the app runs. litestream.yml has the replica config.
+    # PHASE 1: Litestream runs BESIDE gunicorn, not in front of it. The disk is still
+    # the source of truth, so if replication ever fails to start (bad key, R2 down)
+    # the site keeps serving and only the backup stops - the app's uptime never
+    # depends on the backup. -config is required: without it Litestream looks for
+    # /etc/litestream.yml and exits.
+    # PHASE 2 (no disk) will put `./litestream restore -config litestream.yml
+    # -if-db-not-exists -if-replica-exists "$DB_PATH"` in front, so a fresh box
+    # pulls the database down from R2 before gunicorn opens it. See LITESTREAM.md.
+    #
+    # NOTE: this file is not synced to the live `trialbridge` service (it was made
+    # in the dashboard, not from this Blueprint). Copy buildCommand/startCommand
+    # into the service's Settings when changing them.
     startCommand: >-
-      ./litestream replicate -exec "gunicorn app:app --workers 1 --threads 8 --max-requests 300 --max-requests-jitter 60 --timeout 120 --bind 0.0.0.0:$PORT"
+      (./litestream replicate -config litestream.yml &) ;
+      exec gunicorn app:app --workers 1 --threads 8 --max-requests 300 --max-requests-jitter 60 --timeout 120 --bind 0.0.0.0:$PORT
     envVars:
       - key: SECRET_KEY
         generateValue: true      # Render generates a stable random secret
