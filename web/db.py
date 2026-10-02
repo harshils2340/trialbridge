@@ -726,6 +726,17 @@ CREATE TABLE IF NOT EXISTS trial_summaries (
     updated_at  TEXT NOT NULL
 );
 
+-- AI pre-screen questions per trial (see web/app.py _prescreen_for_trial and
+-- the warm job in web/trial_warm.py), the durable twin of app.py's in-process
+-- LRU cache. Written once a question set is generated, live or by the warm
+-- job, and read before ever calling the model again, so a restart or a new
+-- gunicorn worker doesn't forget what was already paid for.
+CREATE TABLE IF NOT EXISTS trial_prescreens (
+    nct         TEXT PRIMARY KEY,
+    data        TEXT NOT NULL,
+    updated_at  TEXT NOT NULL
+);
+
 -- Ranked patient-search results, keyed by a short id. Persisted (not in-process
 -- memory) so a trial detail page opened on a DIFFERENT gunicorn worker than the
 -- one that ran the search can still read it. Pruned by age/count on write.
@@ -11664,6 +11675,53 @@ def set_trial_summary(nct, data):
         "updated_at = excluded.updated_at",
         (nct, json.dumps(data), now()))
     db.commit()
+
+
+# --------------------------------------------------------------------------- #
+# AI pre-screen questions, persisted (see web/app.py _prescreen_for_trial and
+# the warm job in web/trial_warm.py)
+# --------------------------------------------------------------------------- #
+def get_trial_prescreen(nct):
+    if not nct:
+        return None
+    row = get_db().execute(
+        "SELECT data FROM trial_prescreens WHERE nct = ?", (nct,)).fetchone()
+    if not row:
+        return None
+    try:
+        return json.loads(row["data"])
+    except (ValueError, TypeError):
+        return None
+
+
+def set_trial_prescreen(nct, questions):
+    if not nct:
+        return
+    db = get_db()
+    db.execute(
+        "INSERT INTO trial_prescreens (nct, data, updated_at) VALUES (?,?,?) "
+        "ON CONFLICT(nct) DO UPDATE SET data = excluded.data, "
+        "updated_at = excluded.updated_at",
+        (nct, json.dumps(questions), now()))
+    db.commit()
+
+
+def recent_search_payloads(limit=40):
+    """The most recent cached searches, newest first, parsed from JSON. Used
+    only by the warm job (web/trial_warm.py) to find trials patients have
+    actually just been shown, so pre-generation targets real interest rather
+    than the whole catalog. Rows a patient's browser can no longer reach
+    (expired by TTL) are still fine to warm from; nothing here is deleted."""
+    rows = get_db().execute(
+        "SELECT payload FROM search_cache ORDER BY created_at DESC LIMIT ?",
+        (max(1, int(limit)),)).fetchall()
+    out = []
+    for row in rows:
+        try:
+            out.append(json.loads(row["payload"]))
+        except (ValueError, TypeError):
+            continue
+    return out
 
 
 # --------------------------------------------------------------------------- #

@@ -96,6 +96,16 @@ LLM_API_KEY = _first_env(
 # works by changing these three variables.
 LLM_BASE_URL = os.environ.get("LLM_BASE_URL", "https://api.groq.com/openai/v1")
 LLM_MODEL = os.environ.get("LLM_MODEL", "openai/gpt-oss-120b")
+# A provider's free tier meters tokens-per-day PER MODEL, not per account (seen
+# directly in a Groq 429: "Rate limit reached for model `openai/gpt-oss-120b`
+# ... tokens per day (TPD): Limit 200000, Used 199334"). A second model on the
+# same key and the same free tier has its own, completely separate budget, so
+# listing more than one here is a real second (and third) daily allowance at
+# no extra cost, not a workaround - every model still only ever does the same
+# short, structured calls within its own posted limit. Comma-separated, most
+# preferred first; LLM_MODEL alone (the common case) behaves exactly as before.
+LLM_MODELS = [m.strip() for m in
+              os.environ.get("LLM_MODELS", LLM_MODEL).split(",") if m.strip()] or [LLM_MODEL]
 # Models that think before they answer (gpt-oss, o-series) spend part of
 # max_tokens on that thinking. Our calls are short and structured, so keep the
 # thinking short or a 350-token JSON reply comes back empty.
@@ -104,9 +114,12 @@ LLM_REASONING_EFFORT = os.environ.get("LLM_REASONING_EFFORT", "").strip()
 LLM_USER_AGENT = "BridgeMD/1.0 (+https://bridgemd.health)"
 
 
-def _llm_extras():
-    """Provider-specific request fields for the configured model."""
-    m = (LLM_MODEL or "").lower()
+def _llm_extras(model=None):
+    """Provider-specific request fields for the model actually being called.
+    Takes the model explicitly (rather than reading LLM_MODEL) because a 429
+    fallback may be calling a different model than the configured default -
+    gpt-oss needs reasoning_effort, a plain Llama model does not."""
+    m = (model if model is not None else LLM_MODEL or "").lower()
     effort = LLM_REASONING_EFFORT or (
         "low" if ("gpt-oss" in m or m.startswith(("o1", "o3", "o4"))) else "")
     return {"reasoning_effort": effort} if effort else {}
@@ -599,78 +612,111 @@ MATCH_SCHEMA = (
 )
 
 
-# When the provider answers 429 the right move is to stop asking for a while,
-# not to retry every request into the same wall: a quota that is out stays
-# out, and a burst limit clears in a minute. While the cooldown runs every
-# caller gets its deterministic fallback at once instead of a slow failure.
-LLM_COOLDOWN_UNTIL = 0.0
+# When the provider answers 429 the right move is to stop asking that MODEL
+# for a while, not to retry every request into the same wall: a quota that is
+# out stays out, and a burst limit clears in a minute. Cooldown is tracked per
+# model (a dict, not one flag) because a daily token cap is per model - one
+# model cooling down says nothing about whether the next one in LLM_MODELS is
+# fine. While every model in the list is cooling down, every caller gets its
+# deterministic fallback at once instead of a slow failure.
+LLM_COOLDOWN_UNTIL = {}  # model -> epoch seconds until it's worth trying again
 LLM_LAST_429 = ""
+_RETRY_AFTER_RE = re.compile(
+    r"try again in\s+(?:(\d+)m)?\s*([\d.]+)s", re.IGNORECASE)
 
 
 class LLMCoolingDown(RuntimeError):
-    """Raised without a network call while a 429 cooldown is in effect."""
+    """Raised without a network call while every model is in a 429 cooldown."""
+
+
+def _cooldown_until(model):
+    return LLM_COOLDOWN_UNTIL.get(model, 0.0)
 
 
 def llm_available():
-    """False while the provider has told us to back off (429)."""
-    return bool(LLM_API_KEY) and time.time() >= LLM_COOLDOWN_UNTIL
+    """False only while every configured model is cooling down after a 429."""
+    if not LLM_API_KEY:
+        return False
+    now = time.time()
+    return any(now >= _cooldown_until(m) for m in LLM_MODELS)
 
 
-def _note_429(err):
-    """Read the provider's reason and set the cooldown: a spent quota or
-    billing problem waits 30 minutes, a burst limit 90 seconds."""
-    global LLM_COOLDOWN_UNTIL, LLM_LAST_429
+def _available_models():
+    """LLM_MODELS, in priority order, minus whichever are still cooling down."""
+    now = time.time()
+    return [m for m in LLM_MODELS if now >= _cooldown_until(m)]
+
+
+def _note_429(model, err):
+    """Read the provider's reason and set that model's cooldown. Groq states
+    its own wait ("... Please try again in 3m18.72s") when the cause is a
+    rolling tokens-per-day window running dry - honoring that exact figure
+    beats guessing, since the window frees up gradually rather than at a fixed
+    reset time. Fall back to a heuristic (30 min for a hard quota/billing
+    problem, 90 seconds for an ordinary burst limit) when no figure is given."""
     reason = ""
     try:
         reason = (err.read() or b"").decode("utf-8", "replace")[:300]
     except Exception:
         pass
-    LLM_LAST_429 = reason
-    quota = any(k in reason.lower() for k in ("insufficient_quota", "billing",
-                                              "exceeded your current quota"))
-    LLM_COOLDOWN_UNTIL = time.time() + (1800 if quota else 90)
-    print(f"llm 429: cooling down {'30m (quota)' if quota else '90s (rate)'}"
-          f" reason={reason[:160]!r}", flush=True)
+    global LLM_LAST_429
+    LLM_LAST_429 = f"{model}: {reason}"
+    m = _RETRY_AFTER_RE.search(reason)
+    if m:
+        wait = (int(m.group(1) or 0) * 60) + float(m.group(2))
+        label = f"{wait:.0f}s (provider-stated)"
+    else:
+        quota = any(k in reason.lower() for k in (
+            "insufficient_quota", "billing", "exceeded your current quota"))
+        wait = 1800 if quota else 90
+        label = f"{'30m (quota)' if quota else '90s (rate)'}"
+    LLM_COOLDOWN_UNTIL[model] = time.time() + wait
+    print(f"llm 429 on {model}: cooling down {label} reason={reason[:160]!r}",
+          flush=True)
 
 
 def llm_chat(system, user, retries=2):
-    """Minimal single-turn chat call (plain text out)."""
+    """Minimal single-turn chat call (plain text out). Tries each model in
+    LLM_MODELS that isn't currently cooling down, in order, moving to the next
+    one the moment a 429 comes back - see _available_models/_note_429."""
     from copy_sanitize import sanitize_copy, contains_em_dash
 
-    if time.time() < LLM_COOLDOWN_UNTIL:
-        raise LLMCoolingDown("provider asked us to back off")
-    body = json.dumps({
-        "model": LLM_MODEL,
-        "messages": [{"role": "system", "content": system},
-                     {"role": "user", "content": user}],
-        "temperature": 0,
-        **_llm_extras(),
-    }).encode()
+    models = _available_models()
+    if not models:
+        raise LLMCoolingDown("provider asked us to back off on every model")
     last = None
-    for attempt in range(retries):
-        try:
-            req = urllib.request.Request(
-                f"{LLM_BASE_URL}/chat/completions", data=body,
-                headers={"Authorization": f"Bearer {LLM_API_KEY}",
-                         "Content-Type": "application/json",
-                         "User-Agent": LLM_USER_AGENT})
-            with urllib.request.urlopen(req, timeout=60) as r:
-                raw = json.load(r)["choices"][0]["message"]["content"].strip()
-                out = sanitize_copy(raw)
-                if contains_em_dash(out):
-                    out = sanitize_copy(out)
-                return out
-        except urllib.error.HTTPError as e:
-            last = e
-            if e.code == 429:
-                _note_429(e)
-                break
-            if attempt < retries - 1:
-                time.sleep(1)
-        except Exception as e:
-            last = e
-            if attempt < retries - 1:
-                time.sleep(1)
+    for model in models:
+        body = json.dumps({
+            "model": model,
+            "messages": [{"role": "system", "content": system},
+                         {"role": "user", "content": user}],
+            "temperature": 0,
+            **_llm_extras(model),
+        }).encode()
+        for attempt in range(retries):
+            try:
+                req = urllib.request.Request(
+                    f"{LLM_BASE_URL}/chat/completions", data=body,
+                    headers={"Authorization": f"Bearer {LLM_API_KEY}",
+                             "Content-Type": "application/json",
+                             "User-Agent": LLM_USER_AGENT})
+                with urllib.request.urlopen(req, timeout=60) as r:
+                    raw = json.load(r)["choices"][0]["message"]["content"].strip()
+                    out = sanitize_copy(raw)
+                    if contains_em_dash(out):
+                        out = sanitize_copy(out)
+                    return out
+            except urllib.error.HTTPError as e:
+                last = e
+                if e.code == 429:
+                    _note_429(model, e)
+                    break  # try the next model, not another attempt at this one
+                if attempt < retries - 1:
+                    time.sleep(1)
+            except Exception as e:
+                last = e
+                if attempt < retries - 1:
+                    time.sleep(1)
     raise last
 
 
@@ -694,44 +740,46 @@ def llm_match(patient, trial, retries=3):
         f"ELIGIBILITY CRITERIA:\n{trial['criteria'][:6000]}\n\n"
         f"Return JSON exactly in this shape:\n{MATCH_SCHEMA}"
     )
-    body = json.dumps({
-        "model": LLM_MODEL,
-        "messages": [
-            {"role": "system", "content": MATCH_SYSTEM},
-            {"role": "user", "content": prompt},
-        ],
-        "response_format": {"type": "json_object"},
-        "temperature": 0,
-        **_llm_extras(),
-    }).encode()
-    # A search matches many trials in a row. Once the provider says 429, every
-    # remaining trial must fall back at once instead of retrying into the
-    # same wall with sleeps, or one search takes minutes.
-    if time.time() < LLM_COOLDOWN_UNTIL:
-        raise LLMCoolingDown("provider asked us to back off")
+    # A search matches many trials in a row. Once every model is cooling down,
+    # every remaining trial must fall back at once instead of retrying into
+    # the same wall with sleeps, or one search takes minutes.
+    models = _available_models()
+    if not models:
+        raise LLMCoolingDown("provider asked us to back off on every model")
     last = None
-    for attempt in range(retries):
-        try:
-            req = urllib.request.Request(
-                f"{LLM_BASE_URL}/chat/completions", data=body,
-                headers={"Authorization": f"Bearer {LLM_API_KEY}",
-                         "Content-Type": "application/json",
-                         "User-Agent": LLM_USER_AGENT})
-            with urllib.request.urlopen(req, timeout=90) as r:
-                resp = json.load(r)
-            return normalize_match(_extract_json(
-                resp["choices"][0]["message"]["content"]))
-        except urllib.error.HTTPError as e:
-            last = e
-            if e.code == 429:
-                _note_429(e)
-                break
-            if attempt < retries - 1:
-                time.sleep(2 ** attempt)
-        except Exception as e:  # network, JSON - back off and retry
-            last = e
-            if attempt < retries - 1:
-                time.sleep(2 ** attempt)
+    for model in models:
+        body = json.dumps({
+            "model": model,
+            "messages": [
+                {"role": "system", "content": MATCH_SYSTEM},
+                {"role": "user", "content": prompt},
+            ],
+            "response_format": {"type": "json_object"},
+            "temperature": 0,
+            **_llm_extras(model),
+        }).encode()
+        for attempt in range(retries):
+            try:
+                req = urllib.request.Request(
+                    f"{LLM_BASE_URL}/chat/completions", data=body,
+                    headers={"Authorization": f"Bearer {LLM_API_KEY}",
+                             "Content-Type": "application/json",
+                             "User-Agent": LLM_USER_AGENT})
+                with urllib.request.urlopen(req, timeout=90) as r:
+                    resp = json.load(r)
+                return normalize_match(_extract_json(
+                    resp["choices"][0]["message"]["content"]))
+            except urllib.error.HTTPError as e:
+                last = e
+                if e.code == 429:
+                    _note_429(model, e)
+                    break  # try the next model, not another attempt at this one
+                if attempt < retries - 1:
+                    time.sleep(2 ** attempt)
+            except Exception as e:  # network, JSON - back off and retry
+                last = e
+                if attempt < retries - 1:
+                    time.sleep(2 ** attempt)
     raise last
 
 
@@ -874,42 +922,44 @@ def prescreen_questions(trial, max_q=None, retries=2):
         f"Produce at most {max_q} questions.\n"
         f"Return JSON exactly in this shape:\n{PRESCREEN_SCHEMA}"
     )
-    body = json.dumps({
-        "model": LLM_MODEL,
-        "messages": [
-            {"role": "system", "content": PRESCREEN_SYSTEM},
-            {"role": "user", "content": prompt},
-        ],
-        "response_format": {"type": "json_object"},
-        "temperature": 0,
-        "max_tokens": PRESCREEN_MAX_TOKENS,
-        **_llm_extras(),
-    }).encode()
-    if time.time() < LLM_COOLDOWN_UNTIL:
-        raise LLMCoolingDown("provider asked us to back off")
+    models = _available_models()
+    if not models:
+        raise LLMCoolingDown("provider asked us to back off on every model")
     last = None
-    for attempt in range(retries):
-        try:
-            req = urllib.request.Request(
-                f"{LLM_BASE_URL}/chat/completions", data=body,
-                headers={"Authorization": f"Bearer {LLM_API_KEY}",
-                         "Content-Type": "application/json",
-                         "User-Agent": LLM_USER_AGENT})
-            with urllib.request.urlopen(req, timeout=60) as r:
-                resp = json.load(r)
-            return _normalize_prescreen(_extract_json(
-                resp["choices"][0]["message"]["content"]), max_q)
-        except urllib.error.HTTPError as e:
-            last = e
-            if e.code == 429:
-                _note_429(e)
-                break
-            if attempt < retries - 1:
-                time.sleep(2 ** attempt)
-        except Exception as e:
-            last = e
-            if attempt < retries - 1:
-                time.sleep(2 ** attempt)
+    for model in models:
+        body = json.dumps({
+            "model": model,
+            "messages": [
+                {"role": "system", "content": PRESCREEN_SYSTEM},
+                {"role": "user", "content": prompt},
+            ],
+            "response_format": {"type": "json_object"},
+            "temperature": 0,
+            "max_tokens": PRESCREEN_MAX_TOKENS,
+            **_llm_extras(model),
+        }).encode()
+        for attempt in range(retries):
+            try:
+                req = urllib.request.Request(
+                    f"{LLM_BASE_URL}/chat/completions", data=body,
+                    headers={"Authorization": f"Bearer {LLM_API_KEY}",
+                             "Content-Type": "application/json",
+                             "User-Agent": LLM_USER_AGENT})
+                with urllib.request.urlopen(req, timeout=60) as r:
+                    resp = json.load(r)
+                return _normalize_prescreen(_extract_json(
+                    resp["choices"][0]["message"]["content"]), max_q)
+            except urllib.error.HTTPError as e:
+                last = e
+                if e.code == 429:
+                    _note_429(model, e)
+                    break  # try the next model, not another attempt at this one
+                if attempt < retries - 1:
+                    time.sleep(2 ** attempt)
+            except Exception as e:
+                last = e
+                if attempt < retries - 1:
+                    time.sleep(2 ** attempt)
     raise last
 
 

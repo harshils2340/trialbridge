@@ -1,0 +1,30 @@
+## Continuous off-disk backup for the SQLite database, so the app can run on Render's
+## free web-service tier (no Render Disk) instead of the paid Starter plan it needed
+## purely to keep /var/data across redeploys.
+##
+## How it works: `litestream replicate -exec "gunicorn ..."` (see render.yaml) restores
+## the latest snapshot from the bucket to DB_PATH on boot if it's missing, then streams
+## every write to the bucket continuously while gunicorn runs as its child process. The
+## app's own code (db.py and friends) is untouched: it still opens the same local file
+## with the stdlib sqlite3 module exactly as before. Litestream is a sidecar, not a
+## database driver.
+##
+## Needs four env vars set in the Render dashboard (sync: false in render.yaml, never
+## committed): LITESTREAM_BUCKET, LITESTREAM_ENDPOINT, LITESTREAM_ACCESS_KEY_ID,
+## LITESTREAM_SECRET_ACCESS_KEY, from a free S3-compatible bucket (Cloudflare R2's free
+## tier is 10 GB storage and no egress fee, comfortably above this database's size).
+##
+## Rollout is two phases, see LITESTREAM.md: phase 1 runs this alongside the existing
+## paid disk so replication can be proven correct with zero risk to the live data; only
+## phase 2 drops the disk and moves to the free plan.
+dbs:
+  - path: ${DB_PATH}
+    replicas:
+      - type: s3
+        bucket: ${LITESTREAM_BUCKET}
+        path: bridgemd
+        endpoint: ${LITESTREAM_ENDPOINT}
+        region: auto
+        access-key-id: ${LITESTREAM_ACCESS_KEY_ID}
+        secret-access-key: ${LITESTREAM_SECRET_ACCESS_KEY}
+        sync-interval: 10s

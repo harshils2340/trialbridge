@@ -6,10 +6,20 @@ services:
   - type: web
     name: bridgemd
     runtime: python
-    plan: starter            # paid instance required for a persistent disk (below)
+    # PHASE 1 (this commit): still Starter with the disk below, unchanged. Litestream now
+    # replicates the same local DB_PATH to a free S3-compatible bucket continuously, with
+    # no change to how the app reads or writes it, so this can run for a few days purely
+    # as a second, independent backup with zero risk to the live data.
+    # PHASE 2 (only after a clean `python verify_litestream_restore.py`, see LITESTREAM.md):
+    # change this to `plan: free` and delete the `disk:` block below. The app keeps the
+    # exact same database because Litestream restores the latest snapshot into DB_PATH
+    # before gunicorn ever starts. Do not do this before phase 1 has verified.
+    plan: starter
     rootDir: web
     healthCheckPath: /healthz
-    buildCommand: pip install -r requirements.txt
+    buildCommand: >-
+      pip install -r requirements.txt &&
+      (test -x litestream || (curl -sL https://github.com/benbjohnson/litestream/releases/download/v0.3.13/litestream-v0.3.13-linux-amd64.tar.gz | tar -xz litestream))
     # 512 MB instance. Each gunicorn worker holds a FULL copy of the interpreter
     # + all in-memory caches, so on a small box 1 worker with many threads uses
     # far less RAM than 2 workers while keeping throughput: the workload is
@@ -18,7 +28,13 @@ services:
     # per-worker SEO/study/CT.gov caches can't accumulate past the limit under
     # crawler load (the OOM trigger). Bump to --workers 2 only after upgrading
     # the instance memory.
-    startCommand: gunicorn app:app --workers 1 --threads 8 --max-requests 300 --max-requests-jitter 60 --timeout 120 --bind 0.0.0.0:$PORT
+    #
+    # Litestream wraps gunicorn rather than running beside it: it restores the latest
+    # snapshot to DB_PATH first if the file is missing (true on every boot once phase 2
+    # drops the disk), then execs gunicorn as its child so replication keeps streaming
+    # writes for as long as the app runs. litestream.yml has the replica config.
+    startCommand: >-
+      ./litestream replicate -exec "gunicorn app:app --workers 1 --threads 8 --max-requests 300 --max-requests-jitter 60 --timeout 120 --bind 0.0.0.0:$PORT"
     envVars:
       - key: SECRET_KEY
         generateValue: true      # Render generates a stable random secret
@@ -110,6 +126,23 @@ services:
       # forever because the disk already has rows from the first boot.
       - key: DB_PATH
         value: /var/data/bridgemd-fieve11.db
+      # Litestream's continuous off-disk backup (see litestream.yml). Fill these in the
+      # dashboard from a free S3-compatible bucket, e.g. Cloudflare R2 (10 GB free, no
+      # egress fee): LITESTREAM_ENDPOINT is the account's R2 endpoint
+      # (https://<account-id>.r2.cloudflarestorage.com), LITESTREAM_BUCKET is the bucket
+      # name, and the key pair comes from an R2 API token scoped to that bucket only.
+      - key: LITESTREAM_BUCKET
+        sync: false
+      - key: LITESTREAM_ENDPOINT
+        sync: false
+      - key: LITESTREAM_ACCESS_KEY_ID
+        sync: false
+      - key: LITESTREAM_SECRET_ACCESS_KEY
+        sync: false
+    # PHASE 2 ONLY: delete this whole `disk:` block once verify_litestream_restore.py has
+    # passed against real traffic for a few days. Until then it stays, so phase 1 carries
+    # no risk at all: the paid disk keeps working exactly as it always has, Litestream is
+    # just also watching the same file.
     disk:
       name: bridgemd-data
       mountPath: /var/data
