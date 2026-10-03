@@ -2,9 +2,11 @@
 ## free web-service tier (no Render Disk) instead of the paid Starter plan it needed
 ## purely to keep /var/data across redeploys.
 ##
-## How it works: `litestream replicate -exec "gunicorn ..."` (see render.yaml) restores
-## the latest snapshot from the bucket to DB_PATH on boot if it's missing, then streams
-## every write to the bucket continuously while gunicorn runs as its child process. The
+## How it works: `litestream replicate` runs beside gunicorn (render.yaml's startCommand)
+## and streams every write to the bucket continuously. The paid Starter disk stays the
+## source of truth; this is an independent, verified off-site copy. On 3 October 2026
+## Harshil chose to stay on Starter, because the free plan sleeps after 15 idle minutes
+## and a visitor would wait 30 to 60 seconds for the first page. The
 ## app's own code (db.py and friends) is untouched: it still opens the same local file
 ## with the stdlib sqlite3 module exactly as before. Litestream is a sidecar, not a
 ## database driver.
@@ -28,3 +30,8 @@ dbs:
         access-key-id: ${LITESTREAM_ACCESS_KEY_ID}
         secret-access-key: ${LITESTREAM_SECRET_ACCESS_KEY}
         sync-interval: 10s
+        # A full snapshot every hour, so a boot restores one snapshot plus at most an
+        # hour of WAL. Without it Litestream snapshots only when retention rolls over,
+        # and the 3 October check had to replay ~2,500 WAL files (4 minutes) to restore.
+        snapshot-interval: 1h
+        retention: 72h
