@@ -4820,6 +4820,17 @@ def live_patient_code(patient_id, purpose, now_ts):
         "ORDER BY id DESC LIMIT 1", (patient_id, purpose, int(now_ts))).fetchone()
 
 
+def set_user_password(user_id, password_hash):
+    """New password for a study-team account; every outstanding code for the
+    account stops working with the old password."""
+    db = get_db()
+    db.execute("UPDATE users SET password_hash = ? WHERE id = ?",
+               (password_hash, user_id))
+    db.execute("UPDATE user_auth_codes SET used_at = ? WHERE user_id = ? "
+               "AND used_at = ''", (now(), user_id))
+    db.commit()
+
+
 def verify_user_code(user_id, purpose, code, now_ts):
     """True if a live unused clinician code exists; marks it used atomically."""
     db = get_db()

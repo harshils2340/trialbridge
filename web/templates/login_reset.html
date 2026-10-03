@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% import "_icons.html" as ic %}
+{% block title %}Choose a new password · BridgeMD{% endblock %}
+{% block container %}auth{% endblock %}
+{% block auth_body %}
+<div class="card">
+  <div class="auth-hero"><img class="hero-mark" src="{{ url_for('static', filename='logo.svg') }}" width="46" height="46" alt="BridgeMD"></div>
+  <h1>Choose a new password</h1>
+  <p class="sub">If <b>{{ email }}</b> has an account, we sent it a 6-digit code. It expires in 10 minutes.</p>
+  <form method="post" action="{{ url_for('user_reset') }}">
+    <div class="field">
+      <label for="code">Code</label>
+      <input id="code" name="code" type="text" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" required autocomplete="one-time-code" autofocus>
+    </div>
+    <div class="field">
+      <label for="password">New password</label>
+      <input id="password" name="password" type="password" minlength="8" autocomplete="new-password" required>
+    </div>
+    <button class="btn btn-primary btn-block" type="submit">Save and sign in{{ ic.icon('arrow-right') }}</button>
+  </form>
+  <p class="foot"><a href="{{ url_for('user_forgot') }}">Send a new code</a></p>
+</div>
+{% endblock %}

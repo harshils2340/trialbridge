@@ -2515,6 +2515,66 @@ def user_verify_resend():
     return redirect(url_for("user_verify"))
 
 
+USER_RESET_EMAIL_KEY = "user_reset_email"
+
+
+@app.route("/login/forgot", methods=["GET", "POST"])
+def user_forgot():
+    """Step 1 of a password reset: email a 6-digit code. The reply is the
+    same whether or not the address has an account, so this page can't be
+    used to find out who has one."""
+    if request.method == "POST":
+        blocked = _guard_ip_rate_limit("user_verify_resend",
+                                       template_name="login_forgot.html")
+        if blocked:
+            return blocked
+        email = request.form.get("email", "").strip().lower()
+        user = db.get_user_by_email(email) if email else None
+        if user:
+            ok, msg = _issue_user_code(user, "reset")
+            if not ok:
+                flash(msg, "error")
+                return render_template("login_forgot.html")
+        session[USER_RESET_EMAIL_KEY] = email
+        flash("If that email has an account, we sent it a 6-digit code.",
+              "success")
+        return redirect(url_for("user_reset"))
+    return render_template("login_forgot.html")
+
+
+@app.route("/login/reset", methods=["GET", "POST"])
+def user_reset():
+    """Step 2: the emailed code plus a new password. Signs the person in."""
+    email = session.get(USER_RESET_EMAIL_KEY, "")
+    if not email:
+        return redirect(url_for("user_forgot"))
+    if request.method == "POST":
+        blocked = _guard_ip_rate_limit("user_verify",
+                                       template_name="login_reset.html",
+                                       email=email)
+        if blocked:
+            return blocked
+        code = request.form.get("code", "").strip()
+        pw = request.form.get("password", "")
+        user = db.get_user_by_email(email)
+        if len(pw) < 8:
+            flash("Use a password of at least 8 characters.", "error")
+        elif user and db.verify_user_code(user["id"], "reset", code,
+                                          int(time.time())):
+            db.set_user_password(
+                user["id"], generate_password_hash(pw, method="pbkdf2:sha256"))
+            db.mark_user_verified(user["id"])
+            session.pop(USER_RESET_EMAIL_KEY, None)
+            session.pop(USER_PENDING_KEY, None)
+            session.pop(USER_PENDING_PURPOSE_KEY, None)
+            session[USER_SESSION_KEY] = user["id"]
+            flash("Password changed. You're signed in.", "success")
+            return _post_user_login_redirect()
+        else:
+            flash("Invalid or expired code. Request a new one.", "error")
+    return render_template("login_reset.html", email=email)
+
+
 @app.route("/login/google")
 def user_google_start():
     if g.user:
@@ -2784,7 +2844,8 @@ def _issue_user_code(user, purpose):
     code = _gen_code()
     exp = int(time.time()) + (10 * 60)  # 10 minutes
     db.create_user_code(user["id"], purpose, code, exp)
-    action = "sign-up verification" if purpose == "signup" else "login verification"
+    action = {"signup": "sign-up verification",
+              "reset": "password reset"}.get(purpose, "login verification")
     subject = f"Your BridgeMD {action} code"
     body = "\n".join([
         f"Hi {user['name'] or 'there'},",
