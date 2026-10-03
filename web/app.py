@@ -2840,13 +2840,21 @@ def _issue_user_code(user, purpose):
     """Create and send a short-lived clinician verification/login code."""
     if not mailer.smtp_configured():
         return False, "Email verification is unavailable right now."
-    db.invalidate_user_codes(user["id"], purpose)
-    code = _gen_code()
-    exp = int(time.time()) + (10 * 60)  # 10 minutes
-    db.create_user_code(user["id"], purpose, code, exp)
+    # Same rules as the patient codes: a resend repeats the code that is still
+    # live, so every email in the (Gmail-threaded) inbox shows the same code
+    # and none of them is a dead end. A fresh code is made only when the live
+    # one has under 3 minutes left.
+    now_ts = int(time.time())
+    live = db.live_user_code(user["id"], purpose, now_ts)
+    if live and int(live["expires_ts"]) - now_ts >= 3 * 60:
+        code = live["code"]
+    else:
+        code = _gen_code()
+        db.create_user_code(user["id"], purpose, code, now_ts + (10 * 60))
     action = {"signup": "sign-up verification",
               "reset": "password reset"}.get(purpose, "login verification")
-    subject = f"Your BridgeMD {action} code"
+    # The code in the subject lets people read it from the notification.
+    subject = f"{code} is your BridgeMD {action} code"
     body = "\n".join([
         f"Hi {user['name'] or 'there'},",
         "",
@@ -2854,7 +2862,8 @@ def _issue_user_code(user, purpose):
         "",
         f"  {code}",
         "",
-        "It expires in 10 minutes.",
+        "It works for 10 minutes. If you asked for more than one email, they all",
+        "show the same code.",
         "",
         "If you didn't request this, ignore this email.",
     ])

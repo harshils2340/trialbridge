@@ -4832,22 +4832,32 @@ def set_user_password(user_id, password_hash):
 
 
 def verify_user_code(user_id, purpose, code, now_ts):
-    """True if a live unused clinician code exists; marks it used atomically."""
+    """True if the code matches any live unused code for this purpose; then
+    every live code for it is spent. Any unexpired code works, not only the
+    newest, for the same reason as verify_patient_code: Gmail threads the
+    code emails and shows the oldest first."""
     db = get_db()
+    code = (code or "").strip()
+    if not code:
+        return False
     row = db.execute(
-        "SELECT id, code, expires_ts FROM user_auth_codes WHERE user_id = ? "
-        "AND purpose = ? AND used_at = '' ORDER BY id DESC LIMIT 1",
-        (user_id, purpose)).fetchone()
+        "SELECT id FROM user_auth_codes WHERE user_id = ? AND purpose = ? "
+        "AND used_at = '' AND expires_ts >= ? AND code = ? LIMIT 1",
+        (user_id, purpose, int(now_ts), code)).fetchone()
     if not row:
         return False
-    if int(row["expires_ts"]) < int(now_ts):
-        return False
-    if (code or "").strip() != (row["code"] or "").strip():
-        return False
-    db.execute("UPDATE user_auth_codes SET used_at = ? WHERE id = ?",
-               (now(), row["id"]))
+    db.execute("UPDATE user_auth_codes SET used_at = ? WHERE user_id = ? "
+               "AND purpose = ? AND used_at = ''", (now(), user_id, purpose))
     db.commit()
     return True
+
+
+def live_user_code(user_id, purpose, now_ts):
+    """The newest unused, unexpired code for this purpose, or None."""
+    return get_db().execute(
+        "SELECT code, expires_ts FROM user_auth_codes WHERE user_id = ? "
+        "AND purpose = ? AND used_at = '' AND expires_ts >= ? "
+        "ORDER BY id DESC LIMIT 1", (user_id, purpose, int(now_ts))).fetchone()
 
 
 def invalidate_patient_codes(patient_id, purpose):

@@ -39,8 +39,12 @@ def test_reset():
 
     c.post("/login/forgot", data={"_csrf_token": csrf, "email": "Owner@site.org"})
     assert len(sent) == 1 and sent[0][0] == "owner@site.org"
-    assert sent[0][1] == "Your BridgeMD password reset code"
     code = [w for w in sent[0][2].split() if w.isdigit() and len(w) == 6][0]
+    assert sent[0][1] == f"{code} is your BridgeMD password reset code"
+    # Asking again repeats the same live code, so whichever email Gmail
+    # shows first in the thread still works.
+    c.post("/login/forgot", data={"_csrf_token": csrf, "email": "owner@site.org"})
+    assert len(sent) == 2 and code in sent[1][2]
 
     def reset(code_, pw):
         return c.post("/login/reset", data={"_csrf_token": csrf, "code": code_,
