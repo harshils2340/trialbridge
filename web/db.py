@@ -1454,6 +1454,27 @@ CREATE TABLE IF NOT EXISTS portal_access (
     FOREIGN KEY (created_by) REFERENCES users(id)
 );
 CREATE INDEX IF NOT EXISTS idx_portal_token ON portal_access(token, status);
+
+-- Applicant feedback: one row per person (by email), created when the founder
+-- asks how BridgeMD worked for them. The token is the only key in the emailed
+-- links, so no address or name ever sits in a URL. quote_ok is the person's
+-- own opt-in to be quoted (first name only); without it a comment is private.
+CREATE TABLE IF NOT EXISTS feedback (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    token           TEXT UNIQUE NOT NULL,
+    email           TEXT UNIQUE NOT NULL,
+    name            TEXT DEFAULT '',
+    first_name      TEXT DEFAULT '',             -- greeting the owner corrected
+    lead_id         INTEGER,
+    asked_at        TEXT DEFAULT '',
+    stars           INTEGER DEFAULT 0,
+    outcome         TEXT DEFAULT '',
+    comment         TEXT DEFAULT '',
+    quote_ok        INTEGER DEFAULT 0,
+    responded_at    TEXT DEFAULT '',
+    updated_at      TEXT DEFAULT '',
+    created_at      TEXT NOT NULL
+);
 """
 
 # Recognized team roles + display labels. 'coordinator' is the admin role.
@@ -12240,3 +12261,100 @@ def enrolled_count(user_id):
         "SELECT COUNT(*) AS n FROM referrals WHERE user_id = ? AND status = ?",
         (user_id, "enrolled")).fetchone()
     return row["n"] if row else 0
+
+
+# --------------------------------------------------------------------------- #
+# Applicant feedback (the founder's "how did it go?" email)
+# --------------------------------------------------------------------------- #
+FEEDBACK_OUTCOMES = {
+    "enrolled": "I'm enrolled in a trial",
+    "screening": "I'm being screened or have a visit booked",
+    "waiting": "I haven't heard back yet",
+    "no": "It didn't work out",
+}
+
+
+def feedback_by_email(email):
+    email = (email or "").strip().lower()
+    if not email:
+        return None
+    return get_db().execute(
+        "SELECT * FROM feedback WHERE email = ?", (email,)).fetchone()
+
+
+def feedback_by_token(token):
+    if not token:
+        return None
+    return get_db().execute(
+        "SELECT * FROM feedback WHERE token = ?", (token,)).fetchone()
+
+
+def ensure_feedback(email, name="", lead_id=None):
+    """The person's feedback row, created on first ask. Keyed by email so
+    someone who applied to three studies is asked once."""
+    email = (email or "").strip().lower()
+    row = feedback_by_email(email)
+    if row:
+        return row
+    db = get_db()
+    db.execute(
+        "INSERT OR IGNORE INTO feedback (token, email, name, lead_id, created_at) "
+        "VALUES (?,?,?,?,?)", (gen_token(), email, (name or "").strip(),
+                               lead_id, now()))
+    db.commit()
+    return feedback_by_email(email)
+
+
+def set_feedback_first_name(email, first_name, name="", lead_id=None):
+    """The owner's correction of how to greet someone ("William", not the
+    "Willism." they typed). Blank goes back to the name they gave."""
+    row = ensure_feedback(email, name=name, lead_id=lead_id)
+    db = get_db()
+    db.execute("UPDATE feedback SET first_name = ?, updated_at = ? WHERE id = ?",
+               ((first_name or "").strip()[:60], now(), row["id"]))
+    db.commit()
+    return feedback_by_email(email)
+
+
+def mark_feedback_asked(feedback_id):
+    db = get_db()
+    db.execute("UPDATE feedback SET asked_at = ?, updated_at = ? WHERE id = ?",
+               (now(), now(), feedback_id))
+    db.commit()
+
+
+def save_feedback(token, stars=None, outcome=None, comment=None, quote_ok=None):
+    """Store what the person told us. Only the fields passed are changed, so
+    the one-tap star from the email and the full form can both save."""
+    row = feedback_by_token(token)
+    if not row:
+        return None
+    sets, args = [], []
+    if stars is not None and 1 <= int(stars) <= 5:
+        sets.append("stars = ?")
+        args.append(int(stars))
+    if outcome is not None and (outcome == "" or outcome in FEEDBACK_OUTCOMES):
+        sets.append("outcome = ?")
+        args.append(outcome)
+    if comment is not None:
+        sets.append("comment = ?")
+        args.append(comment.strip()[:4000])
+    if quote_ok is not None:
+        sets.append("quote_ok = ?")
+        args.append(1 if quote_ok else 0)
+    if not sets:
+        return row
+    ts = now()
+    sets += ["updated_at = ?", "responded_at = CASE WHEN responded_at = '' "
+             "THEN ? ELSE responded_at END"]
+    args += [ts, ts, row["id"]]
+    db = get_db()
+    db.execute(f"UPDATE feedback SET {', '.join(sets)} WHERE id = ?", args)
+    db.commit()
+    return feedback_by_token(token)
+
+
+def list_feedback():
+    return get_db().execute(
+        "SELECT * FROM feedback ORDER BY COALESCE(NULLIF(responded_at, ''), "
+        "asked_at, created_at) DESC").fetchall()

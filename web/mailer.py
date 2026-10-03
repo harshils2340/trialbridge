@@ -101,7 +101,10 @@ def reply_to_header():
 def _first_name(lead):
     """First name as a person would write it: "MONICA" and "monica" both
     become "Monica"; mixed case ("McKenna") is left as typed."""
-    first = (_lead_text(lead, "name") or "there").split()[0]
+    words = _lead_text(lead, "name").split()
+    first = words[0].rstrip(".,;:") if words else ""
+    if not first:
+        return "there"
     if first.isupper() or first.islower():
         first = first.capitalize()
     return first
@@ -631,6 +634,116 @@ def build_founder_connect_message(lead, sites, central):
     return subject, "\n".join(lines)
 
 
+# A personal ask from the founder carries the founder's own LinkedIn, not the
+# company page the automated mail uses.
+FOUNDER_LINKEDIN_URL = "https://www.linkedin.com/in/harshils23/"
+_MONTHS = ["January", "February", "March", "April", "May", "June", "July",
+           "August", "September", "October", "November", "December"]
+
+
+def _with_article(phrase):
+    return ("an " if phrase[:1].lower() in "aeiou" else "a ") + phrase
+
+
+def _applied_sentence(leads):
+    """"In August you applied to a long COVID study through our site." The
+    person's own applications, oldest first, in plain words."""
+    leads = sorted(leads, key=lambda r: _lead_text(r, "created_at"))
+    months = []
+    for r in leads:
+        try:
+            m = _MONTHS[int(_lead_text(r, "created_at")[5:7]) - 1]
+        except (ValueError, IndexError):
+            continue
+        if m not in months:
+            months.append(m)
+    phrases = []
+    for r in leads:
+        p = _condition_phrase(r)
+        if p not in phrases:
+            phrases.append(p)
+    if len(phrases) == 1:
+        what = _with_article(phrases[0])
+    elif len(phrases) == 2:
+        what = f"{_with_article(phrases[0])} and {_with_article(phrases[1])}"
+    else:
+        what = f"{len(phrases)} studies"
+    if not months:
+        return f"You applied to {what} through our site."
+    when = months[0] if len(months) == 1 else f"{months[0]} and {months[-1]}"
+    return f"In {when} you applied to {what} through our site."
+
+
+def build_feedback_request(leads, page_url, first=None):
+    """The founder asking one applicant how BridgeMD worked for them.
+
+    `leads` is every live application this person made (they get one email,
+    however many studies they applied to). `page_url` is their feedback page;
+    each star links to it with ?stars=N so a single tap is a rating.
+    Returns (subject, text_body, html_body). The HTML looks like an email
+    typed in Gmail, with the founder's signature as the only branding.
+    `first` is the owner's corrected greeting, when they set one."""
+    latest = max(leads, key=lambda r: _lead_text(r, "created_at"))
+    first = (first or "").strip() or _first_name(latest)
+    subject = "How did your trial application go?"
+    intro = (f"I'm Harshil, the founder of BridgeMD. {_applied_sentence(leads)} "
+             "We're new, so I'd like to hear how it went and what we should "
+             "do better.")
+    after = ("After you tap, a short page asks whether you got into a trial "
+             "and lets you leave a comment. It takes about a minute.")
+    reply = "Or just reply to this email. I read every reply myself."
+    text = "\n".join([
+        f"Hi {first},", "", intro, "",
+        f"How would you rate BridgeMD from 1 to 5? {page_url}", "",
+        after, "", reply, "", "Thanks,", "Harshil", "",
+        FOUNDER_NAME, FOUNDER_TITLE, BRAND_HOME, HELLO_EMAIL,
+        f"LinkedIn: {FOUNDER_LINKEDIN_URL}",
+    ])
+    subject, text = sanitize_copy(subject), sanitize_copy(text)
+
+    def p(s, extra=""):
+        return (f"<p style=\"margin:0 0 14px;{extra}\">"
+                f"{html.escape(sanitize_copy(s))}</p>")
+
+    cells = "".join(
+        f"<td align=\"center\" style=\"padding:0 6px 0 0;\">"
+        f"<a href=\"{html.escape(page_url)}?stars={n}\" title=\"{n} of 5\" "
+        "style=\"text-decoration:none;color:#f2a900;font-size:34px;"
+        f"line-height:1;\">&#9733;</a>"
+        f"<div style=\"font-size:12px;color:#80868b;padding-top:2px;\">{n}</div>"
+        "</td>" for n in range(1, 6))
+    stars = (
+        "<table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" "
+        f"style=\"margin:0 0 6px;\"><tr>{cells}</tr></table>"
+        "<p style=\"margin:0 0 18px;font-size:12px;color:#80868b;\">"
+        "1 is not helpful, 5 is very helpful</p>")
+    link = "color:#1a73e8;text-decoration:none;"
+    footer = (
+        "<div style=\"margin-top:26px;padding-top:14px;border-top:1px solid "
+        "#e0e0e0;font-size:13px;line-height:1.5;color:#5f6368;\">"
+        "<table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\"><tr>"
+        f"<td style=\"padding-right:12px;vertical-align:top;\">"
+        f"<img src=\"{LOGO_URL}\" width=\"36\" height=\"36\" alt=\"BridgeMD\" "
+        "style=\"display:block;border:0;border-radius:8px;\"></td><td>"
+        f"<div style=\"color:#202124;font-weight:700;\">{FOUNDER_NAME}</div>"
+        f"<div>{html.escape(FOUNDER_TITLE)}</div>"
+        f"<div><a href=\"{BRAND_HOME}\" style=\"{link}\">bridgemd.health</a>"
+        f" &middot; <a href=\"mailto:{HELLO_EMAIL}\" style=\"{link}\">"
+        f"{HELLO_EMAIL}</a> &middot; <a href=\"{FOUNDER_LINKEDIN_URL}\" "
+        f"style=\"{link}\">LinkedIn</a></div>"
+        "</td></tr></table></div>")
+    body_html = (
+        "<!doctype html><html><body style=\"margin:0;padding:0;\">"
+        "<div style=\"font-family:Arial,Helvetica,sans-serif;font-size:14px;"
+        "line-height:1.5;color:#202124;\">"
+        + p(f"Hi {first},") + p(intro)
+        + p("How would you rate BridgeMD? Tap a star:", "margin-bottom:8px;")
+        + stars + p(after) + p(reply)
+        + "<p style=\"margin:0 0 14px;\">Thanks,<br>Harshil</p>"
+        + footer + "</div></body></html>")
+    return subject, text, body_html
+
+
 def build_alert_message(alert, new_matches, link, unsubscribe_url=""):
     """Notify a patient with a concise, useful weekly digest.
     `new_matches` accepts either [(nct, title)] or [{"nct","title"}, ...]."""
@@ -861,7 +974,7 @@ def build_clinic_checkin_message(lead, prior=0):
 
 
 def send_email(to_addr, subject, body, reply_to=None, plain=False,
-               from_name=None, headers=None):
+               from_name=None, headers=None, html_body=None):
     """Send via SMTP. Returns (ok, message).
 
     `reply_to` overrides the default Reply-To (a forwarded reply answers back
@@ -870,7 +983,8 @@ def send_email(to_addr, subject, body, reply_to=None, plain=False,
     it. `from_name` puts the original sender's name on the From line ("Vanta
     via BridgeMD") while the address stays ours, so the inbox shows who
     really wrote it. `headers` adds extra headers, such as List-Unsubscribe
-    on alert email."""
+    on alert email. `html_body` replaces the branded card with HTML the caller
+    built, for a personal note that should look typed, not templated."""
     if not smtp_configured():
         return False, "SMTP is not configured."
     if not to_addr:
@@ -900,7 +1014,9 @@ def send_email(to_addr, subject, body, reply_to=None, plain=False,
             msg[k] = v
     # Applicant is never Cc/Bcc. Their address, if any, lives in the body.
     msg.set_content(body)
-    if not plain:
+    if html_body:
+        msg.add_alternative(html_body, subtype="html")
+    elif not plain:
         msg.add_alternative(branded_html(body), subtype="html")
     try:
         with smtplib.SMTP(host, port, timeout=20) as s:

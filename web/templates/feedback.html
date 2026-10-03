@@ -1,0 +1,73 @@
+{% extends "public_base.html" %}
+{% block title %}How did BridgeMD work for you? · BridgeMD{% endblock %}
+{% block head_extra %}<meta name="robots" content="noindex,nofollow">{% endblock %}
+{% block body %}
+<section class="find-wrap fb-wrap">
+  {% if invalid %}
+  <h1 class="find-title">This link is not valid</h1>
+  <p class="find-lead">You can reply to the email instead. It goes straight to Harshil at hello@bridgemd.health.</p>
+  {% elif done %}
+  <h1 class="find-title">Thank you, {{ first }}</h1>
+  <p class="find-lead">I read every one of these. If you want to tell me more, reply to my email any time.</p>
+  <p class="fb-sign">Harshil Shah<br>Founder, BridgeMD</p>
+  {% else %}
+  {% if preview %}<p class="fb-preview">Preview. Nothing you enter here is saved.</p>{% endif %}
+  <h1 class="find-title">How did BridgeMD work for you?</h1>
+  <p class="find-lead">{% if tapped %}Thanks, {{ first }}. Your rating is saved. Two more questions if you have a minute.{% else %}Hi {{ first }}. Three quick questions, all optional.{% endif %}</p>
+
+  <form class="fb-form" method="post" action="{{ request.path }}" data-fb-form
+        data-autosave="{{ tapped if tapped and not preview else '' }}">
+    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+
+    <fieldset class="fb-q">
+      <legend>Your rating</legend>
+      <div class="fb-stars" role="radiogroup" aria-label="Rating from 1 to 5">
+        {% for n in range(5, 0, -1) %}
+        <input type="radio" id="fb-s{{ n }}" name="stars" value="{{ n }}"{% if stars == n %} checked{% endif %}>
+        <label for="fb-s{{ n }}" title="{{ n }} of 5"><span aria-hidden="true">&#9733;</span><span class="sr-only">{{ n }} of 5</span></label>
+        {% endfor %}
+      </div>
+      <p class="find-hint">1 is not helpful, 5 is very helpful</p>
+    </fieldset>
+
+    <fieldset class="fb-q">
+      <legend>Where did things end up?</legend>
+      <div class="fb-options">
+        {% for key, label in outcomes.items() %}
+        <label class="fb-option">
+          <input type="radio" name="outcome" value="{{ key }}"{% if outcome == key %} checked{% endif %}>
+          <span>{{ label }}</span>
+        </label>
+        {% endfor %}
+      </div>
+    </fieldset>
+
+    <fieldset class="fb-q">
+      <legend><label for="fb-comment">Anything you'd tell us?</label></legend>
+      <textarea id="fb-comment" name="comment" rows="4"
+                placeholder="What helped, what was confusing, what we should fix">{{ comment }}</textarea>
+      <label class="fb-check">
+        <input type="checkbox" name="quote_ok" value="1"{% if quote_ok %} checked{% endif %}>
+        <span>BridgeMD can share what I wrote on its website, with my first name only.</span>
+      </label>
+    </fieldset>
+
+    <button class="btn btn-primary" type="submit">Send</button>
+  </form>
+  {% endif %}
+</section>
+<script>
+(function () {
+  /* The star tapped in the email counts even if the page is closed right
+     away. Saved here, not on the GET, because mail scanners open links. */
+  var f = document.querySelector('[data-fb-form]');
+  if (!f || !f.dataset.autosave) return;
+  var body = new URLSearchParams({ stars: f.dataset.autosave });
+  fetch(location.pathname, {
+    method: 'POST', credentials: 'same-origin', body: body,
+    headers: { 'X-Requested-With': 'XMLHttpRequest',
+               'X-CSRF-Token': f.querySelector('[name=_csrf_token]').value }
+  }).catch(function () {});
+})();
+</script>
+{% endblock %}

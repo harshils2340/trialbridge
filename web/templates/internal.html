@@ -41,6 +41,13 @@
        under-filled age/sex buckets are obvious before they stall enrollment.</p>
     <span class="internal-card-go">Open tracker {{ ic.icon('arrow-right') }}</span>
   </a>
+  <a class="app-card internal-card" href="{{ url_for('internal_feedback') }}">
+    <span class="internal-card-ico">{{ ic.icon('chat') }}</span>
+    <h2>Applicant feedback</h2>
+    <p>Ask applicants how BridgeMD worked for them and whether they got into a
+       trial. Ratings, comments, and quotes they allowed you to use.</p>
+    <span class="internal-card-go">Open feedback {{ ic.icon('arrow-right') }}</span>
+  </a>
   <a class="app-card internal-card" href="{{ url_for('owner_analytics') }}">
     <span class="internal-card-ico">{{ ic.icon('activity') }}</span>
     <h2>Analytics</h2>

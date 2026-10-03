@@ -34,6 +34,7 @@
   --ok-bg: var(--green-bg);
   --amber: #97620f;
   --amber-bg: #f7efe0;
+  --star: #f2a900;               /* rating stars only */
   --red: #b42a1f;
   --red-bg: #fbeceb;
   --violet: var(--info);
@@ -3699,6 +3700,7 @@ main:focus { outline: none; }
   --green-bg: #10261e;
   --amber: #e2ab55;
   --amber-bg: #2a2210;
+  --star: #f2b632;
   --red: #f3897c;
   --red-bg: #2d1613;
   --violet: #e392b8;
@@ -11459,3 +11461,59 @@ textarea.is-bridget-writing, input.is-bridget-writing {
   /* The landing-page frame hides Bridget at phone width altogether. */
   body[data-embed="1"] .apptop-bridget { display: none; }
 }
+
+/* Applicant feedback page (/feedback/<token>) */
+.fb-wrap { max-width: 560px; }
+.fb-preview { margin: 0 0 18px; padding: 8px 12px; border-radius: var(--radius-sm);
+  background: var(--amber-bg); color: var(--amber); font-size: var(--text-sm); }
+.fb-form { display: flex; flex-direction: column; gap: 26px; align-items: flex-start; }
+.fb-q { border: 0; margin: 0; padding: 0; min-width: 0; width: 100%; }
+.fb-q legend { padding: 0; margin: 0 0 10px; font-size: 15px; font-weight: 600;
+  color: var(--ink); }
+.fb-q legend label { margin: 0; font-size: inherit; }
+.fb-stars { display: inline-flex; flex-direction: row-reverse; gap: 2px; }
+.fb-stars input { position: absolute; opacity: 0; pointer-events: none; }
+.fb-stars label { margin: 0; font-size: 38px; line-height: 1; cursor: pointer;
+  color: var(--border-strong); padding: 0 2px; transition: color .1s; }
+.fb-stars input:checked ~ label { color: var(--star); }
+.fb-stars:hover label { color: var(--border-strong); }
+.fb-stars label:hover, .fb-stars label:hover ~ label { color: var(--star); }
+.fb-stars input:focus-visible + label { outline: 2px solid var(--accent);
+  outline-offset: 2px; border-radius: 6px; }
+.fb-options { display: flex; flex-direction: column; gap: 8px; }
+.fb-option { display: flex; align-items: center; gap: 10px; margin: 0;
+  padding: 12px 14px; border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm); background: var(--surface); cursor: pointer;
+  font-size: 15px; font-weight: 500; color: var(--ink); }
+.fb-option input { margin: 0; accent-color: var(--accent); }
+.fb-option:has(input:checked) { border-color: var(--accent);
+  background: var(--accent-soft); }
+.fb-q textarea { min-height: 110px; }
+.fb-check { display: flex; align-items: flex-start; gap: 10px; margin: 12px 0 0;
+  font-size: 14px; font-weight: 400; color: var(--ink-soft); line-height: 1.45;
+  cursor: pointer; }
+.fb-check input { margin: 3px 0 0; accent-color: var(--accent); }
+.fb-sign { color: var(--ink-soft); font-size: 15px; line-height: 1.5; }
+
+/* Owner feedback page (/internal/feedback) */
+.fbi-card { margin-bottom: 18px; }
+.fbi-head { display: flex; justify-content: space-between; align-items: flex-start;
+  gap: 16px; flex-wrap: wrap; margin-bottom: 14px; }
+.fbi-head h2 { margin: 0 0 4px; font-size: 17px; letter-spacing: -.01em; }
+.fbi-head p { margin: 0; color: var(--muted); font-size: var(--text-sm); max-width: 620px; }
+.fbi-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.fbi-actions form { margin: 0; }
+.fbi-note { margin: 0 0 14px; padding: 8px 12px; border-radius: var(--radius-sm);
+  background: var(--amber-bg); color: var(--amber); font-size: var(--text-sm); }
+.fbi-table td { vertical-align: top; }
+.fbi-date { white-space: nowrap; color: var(--muted); font-size: 12px; }
+.fbi-stars { white-space: nowrap; letter-spacing: 1px; color: var(--border-strong); }
+.fbi-stars .on { color: var(--star); }
+.fbi-comment { max-width: 420px; white-space: pre-wrap; }
+.fbi-none { color: var(--faint); }
+.fbi-skipped { margin-top: 14px; }
+.fbi-skipped summary { cursor: pointer; color: var(--muted); font-size: var(--text-sm);
+  margin-bottom: 8px; }
+.fbi-greet { display: flex; align-items: center; gap: 6px; margin: 0; }
+.fbi-greet span { color: var(--muted); font-size: var(--text-sm); }
+.fbi-greet input[type=text] { width: 120px; padding: 6px 9px; font-size: var(--text-sm); }

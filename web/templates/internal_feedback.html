@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% block title %}Applicant feedback · BridgeMD{% endblock %}
+{% import "_icons.html" as ic %}
+{% import "_ui.html" as ui %}
+
+{% macro star_row(n) -%}
+  <span class="fbi-stars" title="{{ n }} of 5">{% for i in range(1, 6) %}<span class="{{ 'on' if i <= n else '' }}">&#9733;</span>{% endfor %}</span>
+{%- endmacro %}
+
+{% macro ask_card() %}
+<div class="app-card pad fbi-card">
+  <div class="fbi-head">
+    <div>
+      <h2>{% if send %}{{ send|length }} {{ 'person' if send|length == 1 else 'people' }} will get the feedback email{% else %}Nobody is waiting for the feedback email{% endif %}</h2>
+      <p>One email per person, from you at hello@. Live applicants only, who applied at least {{ min_days }} days ago and were never asked before.</p>
+    </div>
+    <div class="fbi-actions">
+      {{ ui.btn('Preview email', 'ghost', 'sm', href=url_for('internal_feedback_preview'), extra='target="_blank" rel="noopener"') }}
+      <form method="post" action="{{ url_for('internal_feedback_test') }}">
+        <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+        {{ ui.btn('Send a test to me', 'ghost', 'sm', type='submit', disabled=not email_live) }}
+      </form>
+      {% if send %}
+      <form method="post" action="{{ url_for('internal_feedback_send') }}"
+            onsubmit="return confirm('Send the feedback email to {{ send|length }} {{ 'person' if send|length == 1 else 'people' }} now?');">
+        <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="count" value="{{ send|length }}">
+        {{ ui.btn('Send to ' ~ send|length, 'primary', 'sm', type='submit', disabled=not email_live) }}
+      </form>
+      {% endif %}
+    </div>
+  </div>
+  {% if not email_live %}
+  <p class="fbi-note">Email sending is off on this server (NOTIFY_LIVE and SMTP), so the send buttons are disabled.</p>
+  {% endif %}
+
+  {% if send %}
+  <table class="app-table fbi-table">
+    <thead><tr><th>Name</th><th>Greeting</th><th>Email</th><th>Applied to</th><th>Applied</th><th></th></tr></thead>
+    <tbody>
+      {% for e in send %}
+      <tr>
+        <td><b>{{ e.name or 'No name' }}</b></td>
+        <td>
+          <form class="fbi-greet" method="post" action="{{ url_for('internal_feedback_greeting') }}">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="email" value="{{ e.email }}">
+            <span>Hi</span>
+            <input type="text" name="first_name" value="{{ e.greet }}" aria-label="First name to greet {{ e.email }}">
+            {{ ui.btn('Save', 'ghost', 'sm', type='submit') }}
+          </form>
+        </td>
+        <td>{{ e.email }}</td>
+        <td>{% for s in e.studies %}<div>{{ s.condition or 'Unknown condition' }}{% if s.nct %} <span class="study-sub">{{ s.nct }}</span>{% endif %}</div>{% endfor %}</td>
+        <td class="fbi-date">{{ e.last_applied }}</td>
+        <td style="text-align:right;">{{ ui.btn('Preview', 'ghost', 'sm', href=url_for('internal_feedback_preview', email=e.email), extra='target="_blank" rel="noopener"') }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  {% if skipped %}
+  <details class="fbi-skipped">
+    <summary>Left out: {{ skipped|length }}</summary>
+    <table class="app-table fbi-table">
+      <thead><tr><th>Name</th><th>Email</th><th>Why</th><th>Applied</th></tr></thead>
+      <tbody>
+        {% for e in skipped %}
+        <tr><td>{{ e.name or 'No name' }}</td><td>{{ e.email }}</td><td>{{ e.why }}</td><td class="fbi-date">{{ e.last_applied }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </details>
+  {% endif %}
+</div>
+{% endmacro %}
+
+{% macro responses_card() %}
+<div class="app-card pad fbi-card">
+  <div class="fbi-head"><div><h2>Responses</h2>
+    <p>Only quote a comment on the site when "Can quote" says yes, and then with the first name only.</p></div></div>
+  {% if responses %}
+  <table class="app-table fbi-table">
+    <thead><tr><th>Person</th><th>Rating</th><th>Where it ended up</th><th>Comment</th><th>Can quote</th><th>Date</th></tr></thead>
+    <tbody>
+      {% for r in responses %}
+      <tr>
+        <td><b>{{ r.name or 'No name' }}</b>{% if r.test %} {{ ui.badge('Test', 'neutral') }}{% endif %}<span class="study-sub">{{ r.email }}</span></td>
+        <td>{% if r.stars %}{{ star_row(r.stars) }}{% else %}<span class="fbi-none">No rating</span>{% endif %}</td>
+        <td>{{ r.outcome or '' }}</td>
+        <td class="fbi-comment">{{ r.comment }}</td>
+        <td>{{ ui.badge('Yes', 'ok') if r.quote_ok else '' }}</td>
+        <td class="fbi-date">{{ r.when }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  {{ ui.empty('No responses yet', 'Ratings and comments show up here as people answer.', 'inbox') }}
+  {% endif %}
+</div>
+{% endmacro %}
+
+{% block body %}
+<div class="app-head">
+  <div>
+    <h1>Applicant feedback</h1>
+    <p>Owner-only. Ask the people who applied how BridgeMD worked for them, and read what they said.</p>
+  </div>
+</div>
+
+<div class="app-stats">
+  <div class="app-stat"><div class="l">Asked</div><div class="n">{{ stats.asked }}</div></div>
+  <div class="app-stat"><div class="l">Responses</div><div class="n">{{ stats.responses }}</div></div>
+  <div class="app-stat accent"><div class="l">Average rating</div><div class="n">{{ stats.avg }}</div></div>
+  <div class="app-stat ok"><div class="l">Enrolled</div><div class="n">{{ stats.enrolled }}</div></div>
+  <div class="app-stat"><div class="l">Can quote</div><div class="n">{{ stats.quotable }}</div></div>
+</div>
+
+{% if responses %}{{ responses_card() }}{{ ask_card() }}{% else %}{{ ask_card() }}{{ responses_card() }}{% endif %}
+{% endblock %}

@@ -9935,6 +9935,262 @@ def internal_registry_opt_out():
     return redirect(url_for("internal_registry"))
 
 
+# --- Applicant feedback: the founder asks each live applicant how it went ---- #
+# Nobody can say how an application went the week they sent it.
+FEEDBACK_MIN_DAYS = 7
+
+
+def _feedback_page_url(token):
+    base = (PUBLIC_BASE_URL or "").rstrip("/") or \
+        "https://" + (CANONICAL_HOST or "bridgemd.health").strip()
+    return f"{base}/feedback/{token}"
+
+
+def _feedback_audience():
+    """Who the feedback email would go to right now, one entry per person
+    however many studies they applied to, plus everyone left out and why.
+    Reads only; nothing is created or stamped."""
+    live = db.live_apply_index()
+    people = {}
+    for r in db.list_leads():
+        if not _is_live_application(r, live):
+            continue
+        email = (r["email"] or "").strip().lower()
+        if email:
+            people.setdefault(email, []).append(r)
+    cutoff = (dt.datetime.now() - dt.timedelta(days=FEEDBACK_MIN_DAYS)
+              ).strftime("%Y-%m-%d %H:%M")
+    send, skipped = [], []
+    for email, leads in people.items():
+        leads.sort(key=lambda r: r["created_at"] or "")
+        latest = leads[-1]
+        row = db.feedback_by_email(email)
+        entry = {
+            "email": email,
+            "name": (latest["name"] or "").strip(),
+            "leads": leads,
+            "studies": [{"nct": r["nct"] or "",
+                         "condition": (r["condition"] or "").strip(),
+                         "applied": (r["created_at"] or "")[:10]}
+                        for r in leads],
+            "first_applied": (leads[0]["created_at"] or "")[:10],
+            "last_applied": (latest["created_at"] or "")[:10],
+            "greet": ((row["first_name"] if row else "")
+                      or mailer._first_name(latest)),
+        }
+        if email in OWNER_EMAILS:
+            entry["why"] = "A BridgeMD team address"
+        elif email.rsplit("@", 1)[-1] in db.PLACEHOLDER_SITE_DOMAINS:
+            entry["why"] = "Demo address"
+        elif row and row["asked_at"]:
+            entry["why"] = f"Already asked on {row['asked_at'][:10]}"
+        elif (leads[0]["created_at"] or "") > cutoff:
+            entry["why"] = f"Applied less than {FEEDBACK_MIN_DAYS} days ago"
+        if entry.get("why"):
+            skipped.append(entry)
+        else:
+            send.append(entry)
+    send.sort(key=lambda e: e["last_applied"], reverse=True)
+    skipped.sort(key=lambda e: e["last_applied"], reverse=True)
+    return send, skipped
+
+
+def _send_feedback_ask(entry, to_addr=None, token_email=None):
+    """Email one person the feedback ask. `to_addr` and `token_email` let a
+    test copy go to the owner with links that record into the owner's own row,
+    never the real applicant's. Returns (ok, why)."""
+    if not notifications_ready():
+        return False, "Email sending is off here (NOTIFY_LIVE and SMTP)."
+    row = db.ensure_feedback(token_email or entry["email"],
+                             name=entry["name"], lead_id=entry["leads"][-1]["id"])
+    subject, text, html_body = mailer.build_feedback_request(
+        entry["leads"], _feedback_page_url(row["token"]), first=entry.get("greet"))
+    if to_addr:
+        subject = f"[Test] {subject}"
+    ok, why = mailer.send_email(to_addr or entry["email"], subject, text,
+                                html_body=html_body)
+    if ok and not to_addr:
+        db.mark_feedback_asked(row["id"])
+    return ok, why
+
+
+def _feedback_sample_entry():
+    """Stand-in applicant for previews when nobody is eligible yet."""
+    lead = {"id": None, "name": "Rachel", "condition": "Long COVID",
+            "created_at": dt.datetime.now().strftime("%Y-%m-%d %H:%M"),
+            "nct": ""}
+    return {"email": "", "name": "Rachel", "leads": [lead], "greet": "Rachel"}
+
+
+@app.route("/internal/feedback")
+@owner_required
+def internal_feedback():
+    """Owner-only: what applicants said, and who the next ask goes to. The
+    recipient list is computed live, so what you see is exactly who gets it."""
+    send, skipped = _feedback_audience()
+    rows = [r for r in db.list_feedback() if r["responded_at"]]
+    responses = [{
+        "name": r["name"], "email": r["email"], "stars": r["stars"],
+        "outcome": db.FEEDBACK_OUTCOMES.get(r["outcome"], ""),
+        "comment": r["comment"], "quote_ok": bool(r["quote_ok"]),
+        "when": (r["responded_at"] or "")[:10],
+        "test": r["email"] in OWNER_EMAILS,
+    } for r in rows]
+    real = [r for r in responses if not r["test"]]
+    rated = [r["stars"] for r in real if r["stars"]]
+    asked = sum(1 for r in db.list_feedback()
+                if r["asked_at"] and r["email"] not in OWNER_EMAILS)
+    stats = {
+        "asked": asked,
+        "responses": len(real),
+        "avg": (f"{sum(rated) / len(rated):.1f}" if rated else "-"),
+        "enrolled": sum(1 for r in rows if r["outcome"] == "enrolled"
+                        and r["email"] not in OWNER_EMAILS),
+        "quotable": sum(1 for r in real if r["quote_ok"] and r["comment"]),
+    }
+    return render_template(
+        "internal_feedback.html", send=send, skipped=skipped,
+        responses=responses, stats=stats, min_days=FEEDBACK_MIN_DAYS,
+        email_live=notifications_ready())
+
+
+@app.route("/internal/feedback/preview")
+@owner_required
+def internal_feedback_preview():
+    """The email exactly as one person would get it. Links point at a preview
+    page that saves nothing."""
+    send, skipped = _feedback_audience()
+    want = (request.args.get("email") or "").strip().lower()
+    entry = next((e for e in send + skipped if e["email"] == want), None) \
+        or (send[0] if send else _feedback_sample_entry())
+    subject, _text, html_body = mailer.build_feedback_request(
+        entry["leads"], _feedback_page_url("preview"), first=entry.get("greet"))
+    banner = (
+        "<div style=\"font:13px Arial,sans-serif;background:#f1f3f4;"
+        "padding:10px 14px;margin:0 0 18px;color:#3c4043;\">"
+        f"Preview for {html.escape(entry['email'] or 'a sample applicant')}. "
+        f"Subject: <b>{html.escape(subject)}</b>. "
+        "From: Harshil Shah at BridgeMD. Replies go to hello@bridgemd.health."
+        "</div>")
+    return html_body.replace("<body style=\"margin:0;padding:0;\">",
+                             "<body style=\"margin:0;padding:16px;\">" + banner, 1)
+
+
+@app.route("/internal/feedback/greeting", methods=["POST"])
+@owner_required
+def internal_feedback_greeting():
+    """Correct how one person is greeted ("Hi William," when they typed
+    "Willism."). Only people on the current list can be changed."""
+    send, skipped = _feedback_audience()
+    email = (request.form.get("email") or "").strip().lower()
+    entry = next((e for e in send + skipped if e["email"] == email), None)
+    if not entry:
+        abort(404)
+    first = (request.form.get("first_name") or "").strip()
+    db.set_feedback_first_name(email, first, name=entry["name"],
+                               lead_id=entry["leads"][-1]["id"])
+    flash(f"{entry['email']} will be greeted \"Hi "
+          f"{first or mailer._first_name(entry['leads'][-1])},\"", "success")
+    return redirect(url_for("internal_feedback"))
+
+
+@app.route("/internal/feedback/test", methods=["POST"])
+@owner_required
+def internal_feedback_test():
+    """Send one copy to the signed-in owner, built from a real applicant's
+    details, with links that record into the owner's own feedback row."""
+    send, _skipped = _feedback_audience()
+    entry = send[0] if send else _feedback_sample_entry()
+    me = (g.user["email"] or "").strip().lower()
+    ok, why = _send_feedback_ask(entry, to_addr=me, token_email=me)
+    flash(f"Test sent to {me}." if ok else why, "success" if ok else "error")
+    return redirect(url_for("internal_feedback"))
+
+
+@app.route("/internal/feedback/send", methods=["POST"])
+@owner_required
+def internal_feedback_send():
+    """Send the ask to everyone on the list. The page posts the count it
+    showed; if the list changed since, nothing is sent and the page reloads
+    with the new list to check again."""
+    send, _skipped = _feedback_audience()
+    try:
+        shown = int(request.form.get("count") or -1)
+    except ValueError:
+        shown = -1
+    if shown != len(send):
+        flash("The list changed since you opened this page. Check it again "
+              "before sending.", "error")
+        return redirect(url_for("internal_feedback"))
+    if not notifications_ready():
+        flash("Email sending is off here (NOTIFY_LIVE and SMTP).", "error")
+        return redirect(url_for("internal_feedback"))
+
+    def _run(entries):
+        with app.app_context():
+            for e in entries:
+                try:
+                    ok, why = _send_feedback_ask(e)
+                    print(f"feedback-ask {'sent' if ok else 'failed'} "
+                          f"to={e['email']} {'' if ok else why}", flush=True)
+                except Exception:
+                    app.logger.exception("feedback ask failed for %s", e["email"])
+                time.sleep(0.6)  # stay under the mail provider's rate limit
+
+    threading.Thread(target=_run, args=(send,), daemon=True).start()
+    flash(f"Sending to {len(send)} people now. Reload in a minute to see "
+          "who it went to.", "success")
+    return redirect(url_for("internal_feedback"))
+
+
+@app.route("/feedback/<token>", methods=["GET", "POST"])
+def applicant_feedback(token):
+    """The page each star in the feedback email opens. A GET never writes
+    (mail scanners open links); the page saves the tapped star itself, and the
+    form saves the rest. token "preview" is the owner's preview and saves
+    nothing."""
+    preview = token == "preview"
+    row = None if preview else db.feedback_by_token(token)
+    if not preview and not row:
+        return render_template("feedback.html", invalid=True), 404
+    first = ((row["first_name"] if row else "")
+             or mailer._first_name({"name": row["name"] if row else ""}))
+    if request.method == "POST":
+        def _stars():
+            try:
+                # The form, never the ?stars= the page was opened with, or
+                # changing the rating on the page would be ignored.
+                n = int(request.form.get("stars") or 0)
+            except ValueError:
+                return None
+            return n if 1 <= n <= 5 else None
+        if not preview:
+            if _is_json_request():
+                db.save_feedback(token, stars=_stars())
+            else:
+                db.save_feedback(
+                    token, stars=_stars(),
+                    outcome=(request.form.get("outcome") or "").strip(),
+                    comment=request.form.get("comment") or "",
+                    quote_ok=bool(request.form.get("quote_ok")))
+        if _is_json_request():
+            return jsonify({"ok": True})
+        return render_template("feedback.html", done=True, first=first,
+                               preview=preview)
+    try:
+        tapped = int(request.args.get("stars") or 0)
+    except ValueError:
+        tapped = 0
+    tapped = tapped if 1 <= tapped <= 5 else 0
+    return render_template(
+        "feedback.html", first=first, preview=preview, token=token,
+        tapped=tapped, stars=tapped or (row["stars"] if row else 0),
+        outcome=(row["outcome"] if row else ""),
+        comment=(row["comment"] if row else ""),
+        quote_ok=bool(row["quote_ok"]) if row else False,
+        outcomes=db.FEEDBACK_OUTCOMES)
+
+
 # --- Recruitment tracker: source mix + demographic quota balance ------------- #
 # Coordinators are graded on hitting an enrollment target with a BALANCED sample
 # (e.g. not all applicants in 18-40 and none in 40-64). This view makes target vs
