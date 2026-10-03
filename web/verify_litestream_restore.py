@@ -44,9 +44,9 @@ def main() -> None:
 
     with tempfile.TemporaryDirectory() as tmp:
         restored = pathlib.Path(tmp) / "restored.db"
-        # `litestream restore` reads the same env vars litestream.yml's ${...} placeholders
-        # expand from, so no extra flags are needed beyond where to put the result.
-        subprocess.run(["litestream", "restore", "-o", str(restored), str(live_path)], check=True)
+        # -config is required: without it Litestream looks for /etc/litestream.yml and finds
+        # no replica. Run from web/, where the build puts the litestream binary.
+        subprocess.run([os.environ.get("LITESTREAM_BIN", "./litestream"), "restore", "-config", "litestream.yml", "-o", str(restored), str(live_path)], check=True)
         restored_counts = _counts(restored)
 
     live_counts = _counts(live_path)
