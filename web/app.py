@@ -15609,12 +15609,22 @@ def _indexnow_post(payload):
 def _indexnow_loop():
     time.sleep(300)  # let boot and the first crawl-cache warm finish
     while True:
+        failed = False
         try:
             with app.app_context():
-                indexnow_sweep()
+                # A refused batch (a brand-new key is briefly "not valid"
+                # while Bing verifies it) stops the sweep; try again soon.
+                indexnow_sweep(post=lambda p: _indexnow_post(p)
+                               or _indexnow_failed.append(1))
         except Exception:
+            failed = True
             app.logger.exception("indexnow sweep failed")
-        time.sleep(12 * 3600)
+        failed = failed or bool(_indexnow_failed)
+        _indexnow_failed.clear()
+        time.sleep(1800 if failed else 12 * 3600)
+
+
+_indexnow_failed = []
 
 
 if INDEXNOW_ON:
