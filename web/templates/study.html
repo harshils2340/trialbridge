@@ -1,11 +1,11 @@
 {% extends "public_base.html" %}
 {% import "_icons.html" as ic %}
 {% set _title = trial.title or (condition ~ ' clinical trial') %}
-{% block title %}{{ _title }}{% if condition %} · {{ condition }} trial{% endif %} · BridgeMD{% endblock %}
-{% block description %}{{ blurb or _title }}{% if recruiting %} Recruiting now - check your eligibility and apply online, free.{% endif %}{% endblock %}
+{% block title %}{% if seo and seo.title %}{{ seo.title }}{% else %}{{ _title }}{% if condition %} · {{ condition }} trial{% endif %}{% endif %} · BridgeMD{% endblock %}
+{% block description %}{% if seo and seo.description %}{{ seo.description }}{% else %}{{ blurb or _title }}{% if recruiting %} Recruiting now - check your eligibility and apply online, free.{% endif %}{% endif %}{% endblock %}
 
-{% block og_title %}{{ _title }}{% endblock %}
-{% block og_description %}{{ blurb or _title }}{% endblock %}
+{% block og_title %}{{ seo.title if seo and seo.title else _title }}{% endblock %}
+{% block og_description %}{{ seo.description if seo and seo.description else (blurb or _title) }}{% endblock %}
 {% block og_url %}{{ canonical_url|default(request.url) }}{% endblock %}
 
 {# One canonical only. The base layout emits a self-referencing one by default
@@ -75,8 +75,9 @@
       {% if facts.phase %}<span class="pr-phase">{{ facts.phase }}</span>{% endif %}
       {% if condition %}<span class="study-cond">{{ condition }}</span>{% endif %}
     </div>
-    <h1>{{ plain_title or _title }}</h1>
-    {% if trial.title and trial.title != (plain_title or _title) %}
+    {% set _h1 = (seo.heading if seo and seo.heading else '') or plain_title or _title %}
+    <h1>{{ _h1 }}</h1>
+    {% if trial.title and trial.title != _h1 %}
     <p class="study-official"><span>Official title</span> {{ trial.title }}</p>{% endif %}
     <p class="study-id">{{ source_name }} ID: <strong>{{ study_id }}</strong></p>
   </header>

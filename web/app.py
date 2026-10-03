@@ -4462,7 +4462,7 @@ SEO_CITIES = [
     # Canada
     "Toronto, ON", "Vancouver, BC", "Montreal, QC", "Calgary, AB", "Edmonton, AB",
     "Ottawa, ON", "Winnipeg, MB", "Quebec City, QC", "Hamilton, ON",
-    "Kitchener, ON", "London, ON", "Halifax, NS",
+    "Kitchener, ON", "Waterloo, ON", "London, ON", "Halifax, NS",
     # United States
     "New York, NY", "Los Angeles, CA", "Chicago, IL", "Houston, TX",
     "Phoenix, AZ", "Philadelphia, PA", "San Antonio, TX", "San Diego, CA",
@@ -4481,6 +4481,7 @@ SEO_CITY_COORDS = {
     "Edmonton, AB": (53.5461, -113.4938), "Ottawa, ON": (45.4215, -75.6972),
     "Winnipeg, MB": (49.8951, -97.1384), "Quebec City, QC": (46.8139, -71.2080),
     "Hamilton, ON": (43.2557, -79.8711), "Kitchener, ON": (43.4516, -80.4925),
+    "Waterloo, ON": (43.4643, -80.5204),
     "London, ON": (42.9849, -81.2453), "Halifax, NS": (44.6488, -63.5752),
     "New York, NY": (40.7128, -74.0060), "Los Angeles, CA": (34.0522, -118.2437),
     "Chicago, IL": (41.8781, -87.6298), "Houston, TX": (29.7604, -95.3698),
@@ -9018,16 +9019,146 @@ def study_page(nct):
     facts = _study_facts(trial)
     faqs = _study_faqs(trial, facts, condition, recruiting, pay, support,
                        plain_terms.get("time", ""))
+    seo = _study_seo(trial, condition, pay, facts) if source == "ctgov" else {}
     return render_template(
         "study.html", trial=trial, nct=study_id, study_id=study_id,
         source=source, source_name=source_name, source_url=source_url,
         recruiting=recruiting, indexable=indexable, condition=condition,
         blurb=blurb, plain_title=plain_title, summary=summary,
         summary_text=summary_text, plain_terms=plain_terms, facts=facts,
-        faqs=faqs, pay=pay, support=support,
+        faqs=faqs, pay=pay, support=support, seo=seo,
         related=_related_conditions(condition) if condition else [],
         slugify=slugify, applied=applied,
         canonical_url=_abs_url("study_page", nct=study_id))
+
+
+_SEO_SKIP_INTERVENTION = re.compile(
+    r"placebo|standard of care|standard care|usual|control|sham|no intervention|"
+    r"wait-?list|monitoring|education only|questionnaire|survey|blood draw|"
+    r"sample", re.I)
+
+
+def _seo_interventions(trial):
+    """The treatments a trial tests, as a short phrase: "Zenagamtide vs
+    Semaglutide", "Semaglutide", or "" when nothing short and specific."""
+    names = []
+    for iv in trial.get("interventions") or []:
+        name = (iv.get("name") or "").strip()
+        if not name or _SEO_SKIP_INTERVENTION.search(name):
+            continue
+        kind = (iv.get("type") or "").upper()
+        if kind not in ("DRUG", "BIOLOGICAL", "DEVICE", "GENETIC",
+                        "COMBINATION_PRODUCT", "RADIATION"):
+            # A behavioural or "other" arm earns a title only when it reads as
+            # a proper name ("Pain Reprocessing Therapy"), not a phrase
+            # ("High frequency", "Real TBS to the mPFC").
+            words = re.sub(r"^[A-Za-z ]+:\s*", "", name).split()
+            if not words or any(not w[:1].isupper() for w in words):
+                continue
+        # "Semaglutide 2.4 mg" -> "Semaglutide"; "Drug: X" -> "X"
+        name = re.sub(r"^[A-Za-z ]+:\s*", "", name)
+        name = re.split(r"\s+\d|\s*\(|,", name)[0].strip()
+        if not name or len(name) > 28:
+            continue
+        if name.lower() not in [n.lower() for n in names]:
+            names.append(name[:1].upper() + name[1:])
+    if len(names) == 1:
+        return names[0]
+    if len(names) == 2:
+        return f"{names[0]} vs {names[1]}"
+    return ""
+
+
+def _seo_places(trial):
+    """Where a trial runs, for a title: "Houston, Texas", "Houston and 3
+    other cities", "120 sites", or ""."""
+    locs = trial.get("locations") or []
+    open_locs = [l for l in locs if (l.get("status") or "").upper()
+                 in ("RECRUITING", "NOT_YET_RECRUITING")] or locs
+    cities = []
+    for l in open_locs:
+        city = (l.get("city") or "").strip()
+        if city and city not in [c[0] for c in cities]:
+            cities.append((city, (l.get("state") or l.get("country") or "").strip()))
+    if not cities:
+        return ""
+    if len(cities) == 1:
+        c, st = cities[0]
+        return f"{c}, {st}" if st else c
+    if len(cities) <= 4:
+        return f"{cities[0][0]} and {len(cities) - 1} other cit" + \
+            ("y" if len(cities) == 2 else "ies")
+    return f"{len(open_locs)} sites"
+
+
+def _clip(text, limit):
+    text = " ".join((text or "").split())
+    if len(text) <= limit:
+        return text
+    return text[:limit].rsplit(" ", 1)[0].rstrip(" ,.;:") + "..."
+
+
+def _study_seo(trial, condition, pay, facts):
+    """Search title, description, and page heading for a study page.
+
+    Titles lead with what people search ("Obesity clinical trial") and add the
+    treatment and place when they fit, so Google shows the whole line instead
+    of cutting off a 130-character official title. "Paid" appears only when
+    the listing itself states an amount."""
+    # "Chronic Low Back Pain (CLBP)" -> "Chronic Low Back Pain"
+    cond = re.sub(r"\s*\([^)]*\)\s*$", "", (condition or "").strip())
+    cond = cond[:1].upper() + cond[1:]
+    interv = _seo_interventions(trial)
+    place = _seo_places(trial)
+    paid = _pays_participants(trial)
+    lead = (("Paid " if paid else "") + (f"{cond} clinical trial" if cond
+                                          else "Clinical trial"))
+    lead = lead[:1].upper() + lead[1:]
+    options = []
+    if interv and place:
+        options.append(f"{lead}: {interv} in {place}" if not place.endswith("sites")
+                       else f"{lead}: {interv} at {place}")
+    if interv:
+        options.append(f"{lead}: {interv}")
+    if place:
+        options.append(f"{lead} in {place}" if not place.endswith("sites")
+                       else f"{lead} at {place}")
+    options.append(lead)
+    title = next((o for o in options if len(o) <= 62), options[-1])
+
+    heading = ""
+    if interv and cond:
+        heading = f"{cond} study: {interv}"
+    who = []
+    ages = (facts or {}).get("ages") or ""
+    if ages and ages != "Not specified":
+        who.append(f"ages {ages}")
+    sex = (facts or {}).get("sex") or ""
+    if sex in ("Female", "Male"):
+        who.append(f"{sex.lower()} participants only")
+    # Lowercase a plain condition mid-sentence, but keep acronyms ("HIV").
+    cond_mid = cond if any(w.isupper() and len(w) > 1 for w in cond.split()) \
+        else cond.lower()
+    what = f"A recruiting {cond_mid or 'clinical'} study"
+    if interv:
+        what += f" testing {interv}"
+    parts = [what + "."]
+    if paid:
+        parts.append("The listing mentions payment.")
+    if who:
+        parts.append("Open to " + ", ".join(who) + ".")
+    if place:
+        parts.append(("Runs at " if place.endswith("sites") else "Located in ")
+                     + place + ".")
+    # Whole sentences only, most useful first, always ending on the action.
+    cta = "Apply free on BridgeMD."
+    description = ""
+    for part in parts:
+        if len((description + " " + part + " " + cta).strip()) <= 158:
+            description = (description + " " + part).strip()
+    description = (description + " " + cta).strip() if description else \
+        _clip(parts[0] + " " + cta, 158)
+    return {"title": title, "description": description, "heading": heading}
 
 
 def _study_facts(trial):
@@ -15220,14 +15351,65 @@ def google_site_verification():
         mimetype="text/html")
 
 
+# SEO-tool and data-mining crawlers that send no visitors but crawl every
+# few seconds. On one small server their load was enough to time out the
+# health check, which made the site slow or unreachable for Google too.
+# Search engines and AI assistants stay fully allowed.
+_ROBOTS_BLOCKED = ("AhrefsBot", "SemrushBot", "MJ12bot", "DotBot", "PetalBot",
+                   "BLEXBot", "DataForSeoBot", "serpstatbot", "Barkrowler",
+                   "SeekportBot", "Bytespider", "ImagesiftBot", "Timpibot")
+_ROBOTS_SLOW = ("Amazonbot", "YandexBot", "Applebot")
+
+
 @app.route("/robots.txt")
 def robots():
-    body = ("User-agent: *\n"
-            "Disallow: /a/\n"
-            "Disallow: /c/\n"
-            "Allow: /\nSitemap: "
-            + url_for("sitemap", _external=True) + "\n")
+    private = "Disallow: /a/\nDisallow: /c/\nDisallow: /app/\nDisallow: /find/\n"
+    lines = []
+    for bot in _ROBOTS_BLOCKED:
+        lines.append(f"User-agent: {bot}\nDisallow: /\n")
+    for bot in _ROBOTS_SLOW:
+        lines.append(f"User-agent: {bot}\nCrawl-delay: 10\n{private}")
+    lines.append("User-agent: *\n" + private + "Allow: /\n")
+    body = "\n".join(lines) + "\nSitemap: " + url_for("sitemap", _external=True) + "\n"
     return app.response_class(body, mimetype="text/plain")
+
+
+@app.route("/llms.txt")
+def llms_txt():
+    """Plain-text guide for AI assistants (llmstxt.org): what BridgeMD is and
+    where its pages live, so an assistant answering "is there a clinical trial
+    for X near me" can point to the right page."""
+    base = (PUBLIC_BASE_URL or "https://bridgemd.health").rstrip("/")
+    conds = "\n".join(f"- [{c} clinical trials]({base}/trials/{slugify(c)})"
+                      for c in SEO_CONDITIONS[:40])
+    body = f"""# BridgeMD
+
+> BridgeMD is a free website where anyone can search recruiting clinical trials in plain English and apply in a few minutes. Each application goes directly to the study team running that trial. It is free for patients. Research sites pay for software that screens and ranks applicants.
+
+Trial information comes from ClinicalTrials.gov and is refreshed continuously. Only recruiting trials are listed for applying. BridgeMD does not give medical advice, and the study team always decides who can join.
+
+## How to use it
+
+- [Search trials by condition or description]({base}/find-trial): enter a condition, or describe your situation in your own words, plus a city or postal code.
+- [Browse all conditions]({base}/trials): every condition BridgeMD covers, with recruiting trial counts.
+- Condition pages: {base}/trials/<condition>, for example {base}/trials/obesity
+- Condition and city pages: {base}/trials/<condition>/<city>, for example {base}/trials/prediabetes/toronto-on
+- Study pages: {base}/study/<NCT number>, one page per recruiting trial with who can join, what it involves, locations, and an apply button.
+- [How BridgeMD works]({base}/how-it-works)
+
+## Coverage
+
+Trials in the United States, Canada, Australia, the UK, and other countries listed on ClinicalTrials.gov. Some study listings mention payment or travel support for participants; amounts vary and some offer none.
+
+## Conditions
+
+{conds}
+
+## Contact
+
+hello@bridgemd.health
+"""
+    return app.response_class(body, mimetype="text/plain; charset=utf-8")
 
 
 @app.route("/favicon.ico")
@@ -15341,6 +15523,124 @@ def sitemap_studies():
     except Exception:
         app.logger.exception("sitemap study list failed")
     return _sitemap_xml(urls)
+
+
+# --------------------------------------------------------------------------- #
+# IndexNow: tell Bing (and the other IndexNow engines; Bing's index also feeds
+# ChatGPT search and Copilot) about new and changed pages the day they appear,
+# instead of waiting for a crawl. The key is public by design: engines fetch
+# it from /<key>.txt to confirm the site is ours.
+INDEXNOW_KEY = os.environ.get("INDEXNOW_KEY", "3f9a545b5d0b84e0c789a5e268e92e0c").strip()
+INDEXNOW_ENDPOINT = "https://api.indexnow.org/indexnow"
+INDEXNOW_ON = os.environ.get("INDEXNOW", "1" if IS_PROD else "0") == "1"
+
+
+@app.route(f"/{INDEXNOW_KEY}.txt")
+def indexnow_key():
+    return app.response_class(INDEXNOW_KEY, mimetype="text/plain")
+
+
+def _sitemap_url_list():
+    """Every URL the sitemaps list, with its lastmod: [(url, lastmod)].
+    Runs inside a request context on the public address so page URLs build
+    exactly as they do in the live sitemap, even from a background thread."""
+    out = []
+    base = (PUBLIC_BASE_URL or "https://" + (CANONICAL_HOST or "bridgemd.health")).rstrip("/")
+    for view in (sitemap_static, sitemap_conditions, sitemap_cities,
+                 sitemap_studies):
+        try:
+            with app.test_request_context("/", base_url=base):
+                xml = view().get_data(as_text=True)
+        except Exception:
+            app.logger.exception("indexnow: sitemap read failed")
+            continue
+        for loc, lm in re.findall(
+                r"<loc>([^<]+)</loc>(?:<lastmod>([^<]*)</lastmod>)?", xml):
+            out.append((loc, lm or ""))
+    return out
+
+
+def indexnow_sweep(post=None):
+    """Send IndexNow every sitemap URL that is new or whose lastmod changed
+    since it was last sent. Returns the number of URLs sent."""
+    post = post or _indexnow_post
+    d = db.get_db()
+    d.execute("CREATE TABLE IF NOT EXISTS indexnow_sent (url TEXT PRIMARY KEY, "
+              "lastmod TEXT DEFAULT '', sent_at TEXT DEFAULT '')")
+    sent = {r[0]: r[1] for r in d.execute("SELECT url, lastmod FROM indexnow_sent")}
+    todo = [(u, lm) for u, lm in _sitemap_url_list() if sent.get(u) != lm]
+    host = urllib.parse.urlparse(PUBLIC_BASE_URL or "https://bridgemd.health").netloc \
+        or "bridgemd.health"
+    done = 0
+    for i in range(0, len(todo), 5000):
+        batch = todo[i:i + 5000]
+        payload = {"host": host, "key": INDEXNOW_KEY,
+                   "keyLocation": f"https://{host}/{INDEXNOW_KEY}.txt",
+                   "urlList": [u for u, _ in batch]}
+        if not post(payload):
+            break
+        now_s = time.strftime("%Y-%m-%d %H:%M:%S")
+        d.executemany("INSERT INTO indexnow_sent (url, lastmod, sent_at) VALUES (?,?,?) "
+                      "ON CONFLICT(url) DO UPDATE SET lastmod=excluded.lastmod, "
+                      "sent_at=excluded.sent_at", [(u, lm, now_s) for u, lm in batch])
+        d.commit()
+        done += len(batch)
+    return done
+
+
+def _indexnow_post(payload):
+    req = urllib.request.Request(
+        INDEXNOW_ENDPOINT, data=json.dumps(payload).encode(), method="POST",
+        headers={"Content-Type": "application/json; charset=utf-8",
+                 "User-Agent": "BridgeMD/1.0 (+https://bridgemd.health)"})
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:
+            ok = r.status in (200, 202)
+            print(f"indexnow: {len(payload['urlList'])} urls -> {r.status}", flush=True)
+            return ok
+    except urllib.error.HTTPError as e:
+        print(f"indexnow: {len(payload['urlList'])} urls -> HTTP {e.code}", flush=True)
+        return False
+    except Exception as e:  # noqa: BLE001
+        print(f"indexnow: failed {e}", flush=True)
+        return False
+
+
+def _indexnow_loop():
+    time.sleep(300)  # let boot and the first crawl-cache warm finish
+    while True:
+        try:
+            with app.app_context():
+                indexnow_sweep()
+        except Exception:
+            app.logger.exception("indexnow sweep failed")
+        time.sleep(12 * 3600)
+
+
+if INDEXNOW_ON:
+    threading.Thread(target=_indexnow_loop, daemon=True).start()
+
+
+_PARTICIPANT_PAY_RE = re.compile(
+    r"\b(?:participants?|subjects?|volunteers?|you|patients?|families|caregivers?)"
+    r"\s+(?:will|may|can|would|could)\s+(?:also\s+)?(?:be\s+|receive\s+|get\s+|earn\s+)"
+    r"(?:\w+\s+){0,3}?(?:compensat\w*|paid|reimbursed|reimbursement|a\s+stipend|"
+    r"stipends?|gift\s+cards?|honorari\w*|\$\s?\d)"
+    r"|\b(?:compensat\w*|paid|reimburs\w*|stipends?|gift\s+cards?|honorari\w*)\s+"
+    r"(?:\w+\s+){0,4}?for\s+(?:your|their|his|her)\s+(?:time|participation|"
+    r"travel|effort|involvement|parking)"
+    r"|\$\s?\d[\d,]*(?:\.\d+)?\s*(?:usd\s*)?(?:per|for\s+each|for\s+every|/)\s*"
+    r"(?:study\s+)?(?:visit|session|day|night|completed|survey|assessment)"
+    r"|\bup\s+to\s+\$\s?\d", re.I)
+
+
+def _pays_participants(trial):
+    """True only when the listing says participants get paid or reimbursed
+    (or names an amount per visit), not merely that a pay word appears."""
+    text = " ".join([trial.get("title", ""), trial.get("briefSummary", ""),
+                     trial.get("detailedDescription", ""),
+                     trial.get("criteria", "")])
+    return bool(_PARTICIPANT_PAY_RE.search(" ".join(text.split())))
 
 
 @app.route("/seo/warm")
@@ -15898,6 +16198,20 @@ _HIGH_BURDEN_KEYWORDS = (
 )
 _EARLY_PHASE_KEYWORDS = ("phase 1", "phase i", "early phase 1", "first in human")
 _PAY_MONEY_RE = re.compile(r"\$\s?\d[\d,]*(?:\.\d+)?")
+_MEDICAL_COMPENSATED_RE = re.compile(
+    r"\b(?:de)?compensat\w*(?:\s+\w+){0,3}?\s+(?:cirrhosis|liver|hepatic|"
+    r"heart|cardiac|disease|failure|state|stage|metabolic|acidosis|alkalosis|"
+    r"shock|hypogonadism)\w*"
+    r"|\b(?:cirrhosis|liver disease|heart failure)\w*(?:\s+\w+){0,3}?\s+"
+    r"\(?(?:de)?compensat\w*"
+    r"|\b(?:hepatic|liver|cardiac|renal|metabolic)\s+(?:de)?compensat\w*"
+    r"|\bdecompensat\w*")
+# "Paid employment", "a paid support worker", "government paid-for drug",
+# "co-payment": pay words that are not about paying participants.
+_PAY_NOISE_RE = re.compile(
+    r"\bunpaid\b|\bpaid-for\b|\bpaid for by\b|\bpaid\s+(?:employment|work|job|staff|"
+    r"position|personal|support|caregiver|care|leave|sick)\w*|\bco-?payments?\b|"
+    r"\b(?:insurance|out-of-pocket|bill)\s+payments?\b")
 
 
 def _pay_likelihood(trial):
@@ -15914,6 +16228,10 @@ def _pay_likelihood(trial):
         trial.get("criteria", ""),
     ])
     low = text.lower()
+    # "Compensated cirrhosis" and "decompensated heart failure" describe how
+    # sick an organ is, not payment. Remove those before looking for pay words.
+    low = _MEDICAL_COMPENSATED_RE.sub(" ", low)
+    low = _PAY_NOISE_RE.sub(" ", low)
     score, notes = 0, []
     if "no compensation" in low or "not compensated" in low:
         return {"score": 0, "tier": "none", "label": "", "notes": []}
