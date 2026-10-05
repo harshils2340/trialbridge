@@ -10016,10 +10016,13 @@ def _feedback_page_url(token):
     return f"{base}/feedback/{token}"
 
 
-def _feedback_audience():
+def _feedback_audience(min_days=None, since="first"):
     """Who the feedback email would go to right now, one entry per person
     however many studies they applied to, plus everyone left out and why.
-    Reads only; nothing is created or stamped."""
+    Reads only; nothing is created or stamped. `since` is "first" (the
+    manual page) or "last" (the automatic send: days since their newest
+    application, so nobody is asked about a study they applied to last week)."""
+    min_days = FEEDBACK_MIN_DAYS if min_days is None else min_days
     live = db.live_apply_index()
     people = {}
     for r in db.list_leads():
@@ -10028,7 +10031,7 @@ def _feedback_audience():
         email = (r["email"] or "").strip().lower()
         if email:
             people.setdefault(email, []).append(r)
-    cutoff = (dt.datetime.now() - dt.timedelta(days=FEEDBACK_MIN_DAYS)
+    cutoff = (dt.datetime.now() - dt.timedelta(days=min_days)
               ).strftime("%Y-%m-%d %H:%M")
     send, skipped = [], []
     for email, leads in people.items():
@@ -10054,8 +10057,8 @@ def _feedback_audience():
             entry["why"] = "Demo address"
         elif row and row["asked_at"]:
             entry["why"] = f"Already asked on {row['asked_at'][:10]}"
-        elif (leads[0]["created_at"] or "") > cutoff:
-            entry["why"] = f"Applied less than {FEEDBACK_MIN_DAYS} days ago"
+        elif ((latest if since == "last" else leads[0])["created_at"] or "") > cutoff:
+            entry["why"] = f"Applied less than {min_days} days ago"
         if entry.get("why"):
             skipped.append(entry)
         else:
@@ -10082,6 +10085,57 @@ def _send_feedback_ask(entry, to_addr=None, token_email=None):
     if ok and not to_addr:
         db.mark_feedback_asked(row["id"])
     return ok, why
+
+
+# Automatic ask: once a day, everyone whose newest application is at least
+# FEEDBACK_AUTO_DAYS old and who was never asked gets the same email the
+# manual page sends. Each person is asked once, ever (asked_at), and a run
+# is capped so a backlog never bursts past the mail provider's daily limit.
+FEEDBACK_AUTO_DAYS = int(os.environ.get("FEEDBACK_AUTO_DAYS", "14"))
+FEEDBACK_AUTO_MAX_PER_RUN = int(os.environ.get("FEEDBACK_AUTO_MAX_PER_RUN", "40"))
+FEEDBACK_AUTO = os.environ.get("FEEDBACK_AUTO", "1" if IS_PROD else "0") == "1"
+_feedback_lock = threading.Lock()
+
+
+def feedback_auto_run(send_fn=None, sleep=0.6):
+    """Send the ask to everyone due. Returns the emails sent. Safe to run
+    again at any time: anyone already asked is skipped."""
+    send_fn = send_fn or _send_feedback_ask
+    if not _feedback_lock.acquire(blocking=False):
+        return 0
+    try:
+        due, _skipped = _feedback_audience(min_days=FEEDBACK_AUTO_DAYS, since="last")
+        sent = 0
+        for e in due[:FEEDBACK_AUTO_MAX_PER_RUN]:
+            try:
+                ok, why = send_fn(e)
+            except Exception:
+                app.logger.exception("feedback auto ask failed for %s", e["email"])
+                continue
+            print(f"feedback-auto {'sent' if ok else 'failed'} to={e['email']}"
+                  f"{'' if ok else ' ' + str(why)}", flush=True)
+            sent += 1 if ok else 0
+            if sleep:
+                time.sleep(sleep)
+        return sent
+    finally:
+        _feedback_lock.release()
+
+
+def _feedback_auto_loop():
+    time.sleep(600)  # after boot work and the first IndexNow sweep
+    while True:
+        try:
+            with app.app_context():
+                if notifications_ready():
+                    feedback_auto_run()
+        except Exception:
+            app.logger.exception("feedback auto run failed")
+        time.sleep(24 * 3600)
+
+
+if FEEDBACK_AUTO:
+    threading.Thread(target=_feedback_auto_loop, daemon=True).start()
 
 
 def _feedback_sample_entry():
@@ -10121,6 +10175,7 @@ def internal_feedback():
     return render_template(
         "internal_feedback.html", send=send, skipped=skipped,
         responses=responses, stats=stats, min_days=FEEDBACK_MIN_DAYS,
+        auto_on=FEEDBACK_AUTO, auto_days=FEEDBACK_AUTO_DAYS,
         email_live=notifications_ready())
 
 
@@ -10197,7 +10252,7 @@ def internal_feedback_send():
         return redirect(url_for("internal_feedback"))
 
     def _run(entries):
-        with app.app_context():
+        with _feedback_lock, app.app_context():
             for e in entries:
                 try:
                     ok, why = _send_feedback_ask(e)

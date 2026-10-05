@@ -13,6 +13,7 @@
     <div>
       <h2>{% if send %}{{ send|length }} {{ 'person' if send|length == 1 else 'people' }} will get the feedback email{% else %}Nobody is waiting for the feedback email{% endif %}</h2>
       <p>One email per person, from you at hello@. Live applicants only, who applied at least {{ min_days }} days ago and were never asked before.</p>
+      {% if auto_on %}<p>It also sends by itself once a day to anyone whose most recent application is {{ auto_days }} days old.</p>{% endif %}
     </div>
     <div class="fbi-actions">
       {{ ui.btn('Preview email', 'ghost', 'sm', href=url_for('internal_feedback_preview'), extra='target="_blank" rel="noopener"') }}
