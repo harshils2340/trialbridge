@@ -417,6 +417,32 @@ def build_no_clinic_contact_alert(lead):
     return subject, "\n".join(lines)
 
 
+def build_clinic_found_note(lead, sent, earlier=()):
+    """Ops note: an application that first reached only the sponsor's central
+    inbox has now gone to the clinic's own address, found on its website. Says
+    where each address came from so a wrong find is caught quickly."""
+    who = _lead_text(lead, "name") or "Someone"
+    cond = _condition_phrase(lead)
+    facility = next((r.get("facility") for r in sent if r.get("facility")),
+                    "") or "the study clinic"
+    subject = f"{who}'s application also went to {facility}"
+    before = ", ".join(e for e in earlier if e) or "nobody"
+    lines = [
+        f"{who} applied to the {cond}. The listing has no email for "
+        f"{facility}, so the application first went only to {before}.",
+        "",
+        "BridgeMD found the clinic's own address on its website and sent the "
+        "same application there:",
+        "",
+    ]
+    for r in sent:
+        line = f"- {r.get('email')}"
+        if r.get("page"):
+            line += f", found on {r['page']}"
+        lines.append(line)
+    return subject, "\n".join(lines)
+
+
 def build_coordinator_forward(lead, elig=None, screener=None, flags=None,
                               to_name="", sender_name=""):
     """Draft the operator sends to a study coordinator to hand off a patient who

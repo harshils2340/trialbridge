@@ -271,6 +271,7 @@ def extract_trial(study):
         "locations": [
             {"facility": l.get("facility", ""), "city": l.get("city", ""),
              "state": l.get("state", ""), "country": l.get("country", ""),
+             "zip": l.get("zip", ""),
              "status": l.get("status", ""), "contacts": l.get("contacts", []),
              "lat": (l.get("geoPoint") or {}).get("lat"),
              "lon": (l.get("geoPoint") or {}).get("lon")}

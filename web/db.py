@@ -746,6 +746,15 @@ CREATE TABLE IF NOT EXISTS search_cache (
     created_at  REAL NOT NULL
 );
 
+-- What clinic_lookup found on a clinic's own website (or that it found
+-- nothing), so one clinic is searched and read once a month, not on every
+-- apply, worker restart and backfill.
+CREATE TABLE IF NOT EXISTS clinic_lookup_cache (
+    key         TEXT PRIMARY KEY,
+    payload     TEXT NOT NULL,
+    created_at  REAL NOT NULL
+);
+
 -- Patient-mediated health records, connected ONCE per applicant (see records.py).
 -- Stored against the applicant token so every future application auto-fills.
 CREATE TABLE IF NOT EXISTS records_profiles (
@@ -6482,6 +6491,7 @@ def record_clinic_notify(lead_id, recipients):
             "name": (rec.get("name") or "").strip(),
             "subject": (rec.get("subject") or "").strip(),
             "copy": CLINIC_NOTIFY_COPY,
+            **({"page": rec["page"]} if rec.get("page") else {}),
         })
     db.execute(
         "UPDATE leads SET clinic_notify_json = ?, updated_at = ? WHERE id = ?",
@@ -6567,6 +6577,7 @@ def append_clinic_notify(lead_id, recipients):
             "name": (rec.get("name") or "").strip(),
             "subject": (rec.get("subject") or "").strip(),
             "copy": CLINIC_NOTIFY_COPY,
+            **({"page": rec["page"]} if rec.get("page") else {}),
         })
     db = get_db()
     db.execute("UPDATE leads SET clinic_notify_json = ?, updated_at = ? WHERE id = ?",
@@ -6669,6 +6680,16 @@ def lead_clinic_notify_only_reached(lead, addresses, copy=CLINIC_NOTIFY_COPY):
         return False
     low = {a.strip().lower() for a in addresses if a}
     return all((r.get("email") or "").strip().lower() in low for r in saved)
+
+
+def lead_clinic_notify_reached_site(lead, not_site_sources=("central", "fallback")):
+    """True when the handoff reached a clinic-level address (a site's listed
+    contact, an address found on the clinic's website, a claimed or posted
+    study contact), not only the sponsor's central inbox or our fallback."""
+    return any(
+        (r.get("source") or "") not in not_site_sources
+        and not is_placeholder_site_email(r.get("email") or "")
+        for r in lead_clinic_notify(lead))
 
 
 def leads_missing_clinic_notify(copy=CLINIC_NOTIFY_COPY):
@@ -11662,6 +11683,34 @@ def get_search(sid):
     row = get_db().execute(
         "SELECT payload FROM search_cache WHERE sid = ?", (sid,)).fetchone()
     return row["payload"] if row else None
+
+
+def get_clinic_lookup(key, hit_ttl, miss_ttl):
+    """A clinic lookup's stored result (a list, maybe empty), or None when
+    there is none or it is older than its TTL (a miss expires sooner)."""
+    row = get_db().execute(
+        "SELECT payload, created_at FROM clinic_lookup_cache WHERE key = ?",
+        (key,)).fetchone()
+    if not row:
+        return None
+    try:
+        recs = json.loads(row["payload"])
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(recs, list):
+        return None
+    age = time.time() - float(row["created_at"] or 0)
+    if age > (hit_ttl if recs else miss_ttl):
+        return None
+    return recs
+
+
+def save_clinic_lookup(key, recs):
+    con = get_db()
+    con.execute(
+        "INSERT OR REPLACE INTO clinic_lookup_cache (key, payload, created_at) "
+        "VALUES (?,?,?)", (key, json.dumps(list(recs or [])), time.time()))
+    con.commit()
 
 
 # --------------------------------------------------------------------------- #

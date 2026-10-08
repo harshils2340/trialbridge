@@ -1362,7 +1362,7 @@ def _gcal_sync_async(lead, visit, invite_url):
 
 def _notify_site_new_candidate(token, trial=None, lat=None, lon=None,
                                radius=None, unit="km", wait=False,
-                               require_real=False):
+                               require_real=False, only_new_site=False):
     """Email local study clinics. Looks up public site/PI addresses when CT.gov
     only lists a name. Sponsor inboxes are skipped. Lookup can take a few
     seconds, so apply fires this in a background thread unless wait=True.
@@ -1370,7 +1370,7 @@ def _notify_site_new_candidate(token, trial=None, lat=None, lon=None,
     if wait:
         return _notify_site_new_candidate_sync(
             token, trial=trial, lat=lat, lon=lon, radius=radius, unit=unit,
-            require_real=require_real)
+            require_real=require_real, only_new_site=only_new_site)
 
     def _run():
         with app.app_context():
@@ -1385,7 +1385,11 @@ def _notify_site_new_candidate(token, trial=None, lat=None, lon=None,
 
 
 def _notify_site_new_candidate_sync(token, trial=None, lat=None, lon=None,
-                                    radius=None, unit="km", require_real=False):
+                                    radius=None, unit="km", require_real=False,
+                                    only_new_site=False):
+    """`only_new_site` sends only to clinic-level addresses this application
+    has not reached yet, adding them to its handoff record: the retry for a
+    handoff that only ever reached the sponsor's central inbox."""
     lead = db.get_lead_by_token(token)
     if not lead:
         return []
@@ -1396,6 +1400,18 @@ def _notify_site_new_candidate_sync(token, trial=None, lat=None, lon=None,
         lead, lat=lat, lon=lon, radius=radius, unit=unit)
     recipients = _resolve_clinic_notify_recipients(
         lead, trial=trial, lat=lat, lon=lon, radius=radius, unit=unit)
+    earlier = [r.get("email") or "" for r in db.lead_clinic_notify(lead)]
+    if only_new_site:
+        reached = {e.strip().lower() for e in earlier}
+        recipients = [r for r in recipients
+                      if r.get("source") not in _NOT_SITE_SOURCES
+                      and r["email"].strip().lower() not in reached]
+        if not recipients:
+            print(
+                f"clinic-notify lead={lead['id']} nct={lead['nct']} "
+                "still no clinic address",
+                flush=True)
+            return []
     if not recipients:
         print(
             f"clinic-notify lead={lead['id']} nct={lead['nct']} no recipients",
@@ -1446,13 +1462,30 @@ def _notify_site_new_candidate_sync(token, trial=None, lat=None, lon=None,
     if not delivered:
         return []
     try:
-        db.record_clinic_notify(lead["id"], delivered)
+        if only_new_site:
+            db.append_clinic_notify(lead["id"], delivered)
+            db.add_lead_event(lead["id"], "clinic notified: " + ", ".join(
+                (r.get("facility") or r["email"]) for r in delivered[:4]))
+        else:
+            db.record_clinic_notify(lead["id"], delivered)
     except Exception:
         app.logger.exception("record clinic notify failed")
+    if only_new_site:
+        # A send outside the apply itself: tell the owner where it went and
+        # where the address came from, so a wrong find is caught quickly.
+        subject, body = mailer.build_clinic_found_note(lead, delivered, earlier)
+        _notify(OWNER_NOTIFY_EMAIL, subject, body)
     return [rec["email"] for rec in delivered]
 
 
 _DEFAULT_NOTIFY_RADIUS_KM = 80
+# Handoff recipients that are not the study clinic itself.
+_NOT_SITE_SOURCES = ("central", "fallback")
+# Applications whose handoff reached only the sponsor's central inbox are
+# retried against the clinic's own website: those from this date on (when the
+# website lookup shipped), for a week after each one comes in.
+_CLINIC_SITE_RETRY_SINCE = "2026-10-07 00:00"
+_CLINIC_SITE_RETRY_DAYS = 7
 _clinic_backfill_started = False
 _clinic_backfill_lock = threading.Lock()
 
@@ -1505,12 +1538,31 @@ def _backfill_clinic_notify_existing():
         if _is_inbound_application(lead) and (lead["nct"] or "").strip()
         and db.lead_clinic_notify_only_reached(lead, fallbacks)
     ]
+    since = max(_CLINIC_SITE_RETRY_SINCE, (
+        dt.datetime.now() - dt.timedelta(days=_CLINIC_SITE_RETRY_DAYS)
+    ).strftime("%Y-%m-%d %H:%M"))
+    queued = {lead["id"] for lead in pending + retry}
+    # A handoff that reached the sponsor but no clinic: the listing had no
+    # site email. Look for the clinic's own website and send there too.
+    site_retry = [
+        lead for lead in db.list_leads()
+        if lead["id"] not in queued
+        and _is_inbound_application(lead) and (lead["nct"] or "").strip()
+        and (lead["created_at"] or "") >= since
+        and db.lead_clinic_notify(lead)
+        and not db.lead_clinic_notify_reached_site(lead, _NOT_SITE_SOURCES)
+    ]
     print(f"clinic-notify backfill pending {len(pending)} apply(s), "
-          f"{len(retry)} fallback-only to retry", flush=True)
-    for lead in pending + retry:
+          f"{len(retry)} fallback-only to retry, "
+          f"{len(site_retry)} sponsor-only to retry", flush=True)
+    retry_ids = {lead["id"] for lead in retry}
+    site_retry_ids = {lead["id"] for lead in site_retry}
+    for lead in pending + retry + site_retry:
         try:
             emails = _notify_site_new_candidate(
-                lead["token"], wait=True, require_real=lead in retry)
+                lead["token"], wait=True,
+                require_real=lead["id"] in retry_ids,
+                only_new_site=lead["id"] in site_retry_ids)
         except Exception:
             print(
                 f"clinic-notify backfill crash lead={lead['id']}",
@@ -1563,6 +1615,25 @@ def ops_clinic_notify_backfill():
     n = _backfill_clinic_notify_existing()
     return jsonify({"ok": True, "emailed": n,
                     "notify_live": notifications_ready()})
+
+
+@app.route("/ops/clinic-lookup")
+def ops_clinic_lookup():
+    """Owner check: run the clinic website lookup for one study site and show
+    each step (search results, sites read, addresses seen). Takes a site's
+    public listing fields only, never an applicant."""
+    if not _ops_key_ok():
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+    site = {k: (request.args.get(k) or "").strip()
+            for k in ("facility", "city", "state", "country", "zip")}
+    conditions = [c.strip() for c in
+                  (request.args.get("condition") or "").split(",") if c.strip()]
+    trail = []
+    found = clinic_lookup.lookup_site_emails(
+        site, sponsor=(request.args.get("sponsor") or "").strip(),
+        conditions=conditions, trail=trail,
+        use_cache=request.args.get("fresh") != "1")
+    return jsonify({"ok": True, "site": site, "found": found, "trail": trail})
 
 
 def _boot_clinic_notify_backfill():
@@ -6131,20 +6202,9 @@ def interest():
     apply_radius = _form_float("radius")
     apply_unit = (f.get("unit") or "km").strip() or "km"
     # Email every public study address we can find (clinic, then sponsor) in
-    # one send. No-op while NOTIFY_LIVE is off, but the chosen addresses are
-    # still stored on the lead.
+    # one send, in the background: finding a clinic's own website can take
+    # several seconds and the applicant should not wait on it.
     new_lead = db.get_lead_by_token(token)
-    clinic_recs = []
-    if new_lead:
-        geo_lat, geo_lon, geo_r, geo_u = _notify_geo_for_lead(
-            new_lead, lat=apply_lat, lon=apply_lon, radius=apply_radius,
-            unit=apply_unit)
-        try:
-            clinic_recs = _resolve_clinic_notify_recipients(
-                new_lead, lat=geo_lat, lon=geo_lon, radius=geo_r, unit=geo_u)
-        except Exception:
-            app.logger.exception("clinic resolve failed")
-            clinic_recs = []
     site_emails = _notify_site_new_candidate(
         token, lat=apply_lat, lon=apply_lon, radius=apply_radius, unit=apply_unit)
     # Internal heads-up so the operator can confirm real applications are landing.
@@ -9660,7 +9720,9 @@ def _forward_draft(lead, it):
     nct = (lead["nct"] or "").strip()
     if not nct:
         return None
-    recipients = _resolve_clinic_notify_recipients(lead)
+    # Owner page render: reuse what the on-apply send already found rather
+    # than searching and reading clinic websites while the page loads.
+    recipients = _resolve_clinic_notify_recipients(lead, cached_lookup=True)
     to_email = ", ".join(r["email"] for r in recipients if r.get("email"))
     to_name = (recipients[0].get("name") or "") if recipients else ""
     ctgov_url = (f"https://clinicaltrials.gov/study/{nct}"
@@ -17500,12 +17562,14 @@ def resolve_clinic_notify_recipients(lead, trial=None, *, claimed_email="",
                                      posted_email="", fallback="", lat=None,
                                      lon=None, radius=None, unit="km",
                                      max_clinics=_MAX_CLINIC_NOTIFY,
-                                     lookup_fn=None):
-    """Who gets the on-apply email: local clinic / PI addresses, not the sponsor.
+                                     lookup_fn=None, cached_lookup=False):
+    """Who gets the on-apply email: local clinic / PI addresses, then the
+    listing's central study contact.
 
-    CT.gov facility emails first. If a nearby site only lists a PI name, look
-    up the clinic's public recruitment email. Sponsor/central inboxes are
-    skipped. If nothing local is found, use fallback.
+    CT.gov facility emails first. If a nearby site lists no email, find the
+    clinic's own website and take its address from there. If nothing local is
+    found, use fallback. `cached_lookup` uses only what earlier lookups found,
+    for pages that render while someone waits.
     """
     def _one(email, facility="", source="", name="", city="", role=""):
         email = (email or "").strip()
@@ -17536,9 +17600,23 @@ def resolve_clinic_notify_recipients(lead, trial=None, *, claimed_email="",
         sponsor = (trial or {}).get("leadSponsor") or ""
     except (KeyError, IndexError, TypeError):
         sponsor = ""
+    # The study's conditions, and the applicant's own words for theirs, point
+    # the lookup at the clinic's page for this study (its obesity page, say).
+    conditions = []
+    try:
+        conditions = list((trial or {}).get("conditions") or [])
+    except (AttributeError, TypeError):
+        conditions = []
+    try:
+        if (lead["condition"] or "").strip():
+            conditions.append(lead["condition"].strip())
+    except (KeyError, IndexError, TypeError):
+        pass
     if lookup_fn is None and os.environ.get("CLINIC_LOOKUP", "1") != "0":
-        lookup_fn = lambda site, sponsor=sponsor: clinic_lookup.lookup_site_emails(
-            site, sponsor=sponsor)
+        find = (clinic_lookup.cached_site_emails if cached_lookup
+                else clinic_lookup.lookup_site_emails)
+        lookup_fn = lambda site, sponsor=sponsor: find(
+            site, sponsor=sponsor, conditions=conditions)
 
     lookup_tries = 0
     for site in sites_for_patient_area(
@@ -17587,7 +17665,8 @@ def resolve_clinic_notify_recipients(lead, trial=None, *, claimed_email="",
 
 
 def _resolve_clinic_notify_recipients(lead, trial=None, lat=None, lon=None,
-                                      radius=None, unit="km"):
+                                      radius=None, unit="km",
+                                      cached_lookup=False):
     """Load every public email for this apply: CT.gov clinic + sponsor + fallback."""
     nct = ""
     try:
@@ -17609,7 +17688,7 @@ def _resolve_clinic_notify_recipients(lead, trial=None, lat=None, lon=None,
     return resolve_clinic_notify_recipients(
         lead, trial=trial, claimed_email=claimed, posted_email=posted_email,
         fallback=SITE_NOTIFY_EMAIL, lat=lat, lon=lon, radius=radius,
-        unit=unit or "km")
+        unit=unit or "km", cached_lookup=cached_lookup)
 
 
 @app.route("/search", methods=["GET", "POST"])
