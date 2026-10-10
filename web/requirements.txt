@@ -3,6 +3,9 @@ cryptography>=43.0,<47.0
 python-dotenv>=1.0,<2.0
 pypdf>=4.0
 gunicorn>=21.2
+# Compresses HTML/JSON before it leaves Render. Cloudflare compresses for visitors, but
+# Render bills the uncompressed bytes it sends Cloudflare: 2.9 GB of October's 5 GB.
+Flask-Compress>=1.15
 # IANA timezone database for zoneinfo. Slim Linux images (Render) often ship
 # without system tz data, so ZoneInfo("America/New_York") would raise and the
 # calendar would silently fall back to server (UTC) time. This guarantees

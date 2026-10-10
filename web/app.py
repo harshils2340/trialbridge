@@ -97,6 +97,12 @@ import replies  # noqa: E402
 import token_crypto  # noqa: E402
 
 app = Flask(__name__)
+# Compress responses before they leave the server (October 2026: Render counted 2.9 GB of
+# uncompressed HTML sent to Cloudflare, most of it search and AI crawlers, against the
+# plan's 5 GB). Registered first so its after_request runs last, after every hook that
+# rewrites the body (_no_em_dashes and friends) has finished.
+from flask_compress import Compress  # noqa: E402
+Compress(app)
 trends.configure(app)
 # Right-rail assistant (grounded, scoped to the study team's own data).
 copilot.register(app)

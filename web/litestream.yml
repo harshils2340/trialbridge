@@ -27,4 +27,9 @@ dbs:
         region: auto
         access-key-id: ${LITESTREAM_ACCESS_KEY_ID}
         secret-access-key: ${LITESTREAM_SECRET_ACCESS_KEY}
-        sync-interval: 10s
+        # Once a minute, not every 10 seconds: the site rewrites the same cache pages many
+        # times a minute, and each sync uploads them again. With a weekly snapshot instead of
+        # Litestream's default daily one, this was ~200 MB a day of Render bandwidth in
+        # October 2026. The paid disk is still the live copy; this is the off-site backup.
+        sync-interval: 60s
+        retention: 168h
