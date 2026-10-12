@@ -1,0 +1,46 @@
+# Free scheduler for the Render web service (GitHub Actions is free for public repos).
+# - Every 10 minutes: hit /healthz so the free instance never sits 15 minutes without
+#   traffic and spins down. The app also pings itself (KEEPALIVE in app.py); this one
+#   still works if the instance ever does fall asleep, because a request wakes it.
+# - Every 30 minutes: the alert and reminder sweeps. These replace the two Render cron
+#   jobs, which bill at least $1 a month each.
+# Needs the repo secret ALERTS_CRON_KEY (same value as the Render service's env var).
+# GitHub may start a scheduled run a few minutes late; neither job needs exact timing.
+name: scheduler
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+    - cron: "7,37 * * * *"
+  workflow_dispatch:
+
+env:
+  BASE: https://trialbridge-61vy.onrender.com
+
+jobs:
+  keepalive:
+    if: github.event.schedule == '*/10 * * * *' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Ping the health check
+        run: curl -fsS -m 90 --retry 3 --retry-delay 15 "$BASE/healthz"
+
+  sweeps:
+    if: github.event.schedule == '7,37 * * * *' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Alert and reminder sweeps
+        env:
+          KEY: ${{ secrets.ALERTS_CRON_KEY }}
+        run: |
+          fail=0
+          for path in alerts/run reminders/run; do
+            code=$(curl -sS -m 280 -o out.json -w '%{http_code}' "$BASE/$path?key=$KEY" || echo 000)
+            echo "$path: HTTP $code $(head -c 300 out.json 2>/dev/null)"
+            # 503 means a deploy was handing off; the next run picks it up. A wrong or
+            # missing key (403) needs fixing, so that one fails the job.
+            [ "$code" = "403" ] && fail=1
+          done
+          exit $fail

@@ -16,24 +16,55 @@ durability comes from.
 
 ## Rollout, in two phases, with a real check between them
 
-**Phase 1, already in this branch, zero risk.** The Starter plan and its disk stay
-exactly as they are. `litestream.yml` and the build/start command changes in
-`render.yaml` make the app also stream every write to a free bucket, alongside the disk
-that's already working. Nothing about the live app changes behaviorally. This can sit
-here for a few days with no downside.
+**Phase 1, done (live since Oct 5 2026).** Starter plan and disk unchanged, Litestream
+streaming every write to the R2 bucket `outset`, path `bridgemd`. Its logs show snapshots
+and WAL segments uploading; the only errors are occasional `checkpoint: database is locked`,
+which Litestream retries on the next sync.
 
-**Verify before doing anything else.** Run `python verify_litestream_restore.py` (from a
-shell with the deployed env vars, e.g. `render ssh bridgemd`). It restores the bucket's
-latest snapshot to a temp file and compares row counts against the live database on the
-tables that matter (`users`, `patient_users`, `leads`, `lead_events`), the same tables
-`restore_drill.py` already checks for a local backup. It must say `PASS` with matching
-counts, more than once, on different days, before phase 2.
+**How it runs without a disk (`web/start.sh`, the service's start command).**
+- *Boot:* if `DB_PATH` is missing, restore it from R2 first. A missing or unreachable
+  backup stops the boot instead of starting on an empty database, which Litestream would
+  then back up as the newest copy.
+- *Deploys:* without a disk Render starts the new instance while the old one still serves,
+  so the new one first POSTs `/ops/handoff` to the old one. The old one holds every write
+  (POST and friends get a 307 back to the same URL after 10 seconds, which the browser
+  replays to whichever instance is live; the alert/reminder sweeps get a 503) and the new
+  one waits 75 seconds, one sync interval plus upload time, before restoring. Reads keep
+  working throughout. Writes made inside a GET on the old instance during those seconds
+  (search cache, page analytics) are the only thing not carried over.
+- *Stops:* gunicorn runs under `litestream replicate -exec`, so Render's SIGTERM reaches
+  both: gunicorn drains (15s graceful timeout) and Litestream then uploads the last writes.
+  Only a hard crash (out of memory, kernel kill) can lose up to the 60-second sync interval.
+- *Restore time:* a snapshot every 6 hours (`snapshot-interval`), so a boot replays at
+  most 6 hours of changes on top of a ~15 MB snapshot.
 
-**Phase 2, only after that.** In `render.yaml`: change `plan: starter` to `plan: free`
-and delete the `disk:` block. Nothing else changes; the comments in the file mark exactly
-these two edits. On the next deploy, Litestream restores the latest snapshot into
-`DB_PATH` before gunicorn starts, so the app comes up with the same data it had before,
-now on the free compute tier with no disk. The $7/month goes away.
+All four paths were tested end to end locally with the same Litestream release and a file
+replica: final upload on stop, handoff with a write made just before it, the 307 hold, and
+a failed restore refusing to start and releasing the old instance.
+
+**Verify before switching.** Run `python verify_litestream_restore.py` in the service's
+shell (`render ssh trialbridge`, then `cd /opt/render/project/src/web`). It restores the
+bucket's latest copy to a temp file and compares row counts on `users`, `patient_users`,
+`leads` and `lead_events` with the live file. It must say `PASS`. Free instances have no
+shell, so this is the last chance to run it; afterwards `/ops/readiness` (keyed) reports
+the same counts under `infra.core_rows`.
+
+**Phase 2, the switch** (dashboard, `trialbridge` service):
+1. Settings, Start Command: `bash start.sh`. Deploy. Nothing changes yet: with the disk
+   attached `DB_PATH` exists, so start.sh skips the restore.
+2. Environment: `DB_PATH=/opt/render/project/src/web/data/bridgemd.db`. Deploy. This
+   boot restores from R2 while the old file stays untouched on the disk, so it proves the
+   restore with a way back (set `DB_PATH` back). Compare `/ops/readiness` counts.
+3. Disks: delete `bridgemd-data`. Settings, Instance Type: Free.
+4. Delete the `trialbridge` and `trialbridge-1` cron jobs; `.github/workflows/scheduler.yml`
+   runs the same sweeps for free and pings `/healthz` every 10 minutes (needs the repo
+   secret `ALERTS_CRON_KEY`).
+
+**Free plan limits to keep in mind.** 750 instance hours a month per workspace covers this
+one service running 24/7 (744 hours in a 31-day month), so a second always-on free service
+would run the workspace out and Render suspends every free service until the 1st.
+0.1 CPU instead of 0.5: typical use is about 0.015, but every request takes up to five times
+longer. Bandwidth is billed the same on either plan.
 
 ## What you need to provide (I can't create this for you)
 

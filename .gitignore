@@ -44,3 +44,6 @@ web/static/shots/_preview/
 # Contains applicant PII, never commit.
 applicant_email_report.md
 web/live_applicants.json
+
+# Litestream binary, downloaded by the Render build command (see render.yaml)
+web/litestream

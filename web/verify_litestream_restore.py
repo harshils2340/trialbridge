@@ -44,9 +44,12 @@ def main() -> None:
 
     with tempfile.TemporaryDirectory() as tmp:
         restored = pathlib.Path(tmp) / "restored.db"
-        # `litestream restore` reads the same env vars litestream.yml's ${...} placeholders
-        # expand from, so no extra flags are needed beyond where to put the result.
-        subprocess.run(["litestream", "restore", "-o", str(restored), str(live_path)], check=True)
+        # Same config and binary as start.sh: the Render build downloads litestream next to
+        # this file, and litestream.yml's ${...} placeholders expand from the service's env.
+        here = pathlib.Path(__file__).resolve().parent
+        binary = str(here / "litestream") if (here / "litestream").exists() else "litestream"
+        config = os.environ.get("LITESTREAM_CONFIG") or str(here / "litestream.yml")
+        subprocess.run([binary, "restore", "-config", config, "-o", str(restored), str(live_path)], check=True)
         restored_counts = _counts(restored)
 
     live_counts = _counts(live_path)

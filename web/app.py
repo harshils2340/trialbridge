@@ -364,6 +364,83 @@ def healthz():
     return jsonify({"ok": True}), 200
 
 
+# Deploy handoff. Without a persistent disk (Render's free plan), each new instance
+# restores the database from the Litestream backup (start.sh) while the old instance is
+# still serving, so a write the old one takes after that restore would be lost. start.sh
+# therefore POSTs /ops/handoff to the old instance first: it stops taking writes and
+# reports how long Litestream needs to upload what it already has; the new instance waits
+# that long, then restores. A held write is answered with a 307 to the same URL, which
+# the browser replays with its body, landing on the new instance once traffic switches.
+# The flag is a file, not a global, so it survives gunicorn's --max-requests recycling.
+_HANDOFF_FLAG = pathlib.Path(os.environ.get("HANDOFF_FLAG", "/tmp/bridgemd-handoff"))
+# One litestream.yml sync-interval (60s) plus time for the upload itself.
+_HANDOFF_WAIT = int(os.environ.get("HANDOFF_WAIT_SECONDS", "75"))
+# A deploy that never goes live must not leave this instance holding writes forever.
+_HANDOFF_MAX_AGE = 8 * 60
+# Scheduled sweeps that write; the scheduler simply tries again next time.
+_HANDOFF_SWEEPS = {"/alerts/run", "/reminders/run", "/trials/warm", "/seo/warm"}
+
+
+def handoff_in_progress():
+    try:
+        return time.time() - _HANDOFF_FLAG.stat().st_mtime < _HANDOFF_MAX_AGE
+    except OSError:
+        return False
+
+
+@app.before_request
+def _hold_writes_during_handoff():
+    if request.path in ("/healthz", "/ops/handoff") or not handoff_in_progress():
+        return None
+    if request.path in _HANDOFF_SWEEPS:
+        return jsonify({"ok": False, "error": "deploy_in_progress"}), 503
+    if request.method in ("GET", "HEAD", "OPTIONS"):
+        return None
+    # Under gunicorn's 15s graceful timeout, so a held request still gets its 307 out
+    # when the old instance is told to stop.
+    deadline = time.time() + 10
+    while time.time() < deadline:
+        time.sleep(0.5)
+        if not handoff_in_progress():
+            return None
+    qs = request.query_string.decode("latin-1")
+    resp = redirect(request.path + ("?" + qs if qs else ""), code=307)
+    resp.headers["Retry-After"] = "1"
+    return resp
+
+
+@app.route("/ops/handoff", methods=["POST"])
+def ops_handoff():
+    if not _ops_key_ok():
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+    if request.args.get("cancel") == "1":
+        _HANDOFF_FLAG.unlink(missing_ok=True)
+        print("handoff: cancelled, taking writes again", flush=True)
+        return jsonify({"ok": True, "cancelled": True})
+    _HANDOFF_FLAG.touch()
+    print(f"handoff: holding writes for the new instance (wait {_HANDOFF_WAIT}s)", flush=True)
+    return jsonify({"ok": True, "wait": _HANDOFF_WAIT})
+
+
+# Keep the free instance awake. Render spins a free web service down after 15 minutes
+# without inbound traffic, and the next visitor then waits about a minute. A request to
+# the service's own public URL goes out and back through Render's router, so it counts
+# as inbound traffic. An external scheduler pings too (.github/workflows/scheduler.yml);
+# this one works even when that is late.
+def _keepalive_loop(url):
+    while True:
+        time.sleep(5 * 60)
+        try:
+            urllib.request.urlopen(url, timeout=30).read()
+        except Exception as e:  # noqa: BLE001
+            print(f"keepalive: {e}", flush=True)
+
+
+if os.environ.get("RENDER_EXTERNAL_URL") and os.environ.get("KEEPALIVE", "1") == "1":
+    threading.Thread(target=_keepalive_loop, daemon=True,
+                     args=(os.environ["RENDER_EXTERNAL_URL"].rstrip("/") + "/healthz",)).start()
+
+
 def _ops_key_ok():
     want = (os.environ.get("OPS_READINESS_KEY", "").strip()
             or os.environ.get("ALERTS_CRON_KEY", "").strip())
@@ -372,6 +449,16 @@ def _ops_key_ok():
     got = (request.args.get("key", "").strip()
            or request.headers.get("X-Ops-Key", "").strip())
     return bool(got and hmac.compare_digest(got, want))
+
+
+def _core_row_counts():
+    # The tables verify_litestream_restore.py compares.
+    try:
+        con = db.get_db()
+        return {t: con.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
+                for t in ("users", "patient_users", "leads", "lead_events")}
+    except Exception:  # noqa: BLE001
+        return None
 
 
 @app.route("/ops/readiness")
@@ -398,8 +485,13 @@ def ops_readiness():
         },
         "infra": {
             "db_path": db_path or str(db.DB_PATH),
+            # A disk, or the Litestream backup that start.sh restores from on boot.
             "persistent_db_hint": bool((db_path or "").startswith("/var/data/")
-                                       or (db_path or "").startswith("/data/")),
+                                       or (db_path or "").startswith("/data/")
+                                       or os.environ.get("LITESTREAM_BUCKET", "").strip()),
+            "db_on_disk": (db_path or "").startswith("/var/data/"),
+            # Row counts (no row data) to compare before and after a restore.
+            "core_rows": _core_row_counts(),
             "cron_key_set": bool(os.environ.get("ALERTS_CRON_KEY", "").strip()),
             "background_loops_disabled": (
                 os.environ.get("ALERTS_BACKGROUND", "0") == "0"
@@ -2804,7 +2896,7 @@ def _csrf_guard():
                             "instagram_webhook", "instagram_deauthorize",
                             "instagram_data_deletion",
                             "ops_verify_claim", "inbound_email_webhook",
-                            "inbound_lead_webhook", "resend_webhook"}:
+                            "inbound_lead_webhook", "resend_webhook", "ops_handoff"}:
         return None
     sent = (request.form.get("_csrf_token", "")
             or request.headers.get("X-CSRF-Token", ""))
@@ -10195,7 +10287,9 @@ def _feedback_auto_loop():
     while True:
         try:
             with app.app_context():
-                if notifications_ready():
+                # Mid-deploy, "already asked" would be recorded only in this
+                # instance's copy and the new one would ask again.
+                if notifications_ready() and not handoff_in_progress():
                     feedback_auto_run()
         except Exception:
             app.logger.exception("feedback auto run failed")

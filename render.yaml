@@ -6,15 +6,9 @@ services:
   - type: web
     name: bridgemd
     runtime: python
-    # PHASE 1 (this commit): still Starter with the disk below, unchanged. Litestream now
-    # replicates the same local DB_PATH to a free S3-compatible bucket continuously, with
-    # no change to how the app reads or writes it, so this can run for a few days purely
-    # as a second, independent backup with zero risk to the live data.
-    # PHASE 2 (only after a clean `python verify_litestream_restore.py`, see LITESTREAM.md):
-    # change this to `plan: free` and delete the `disk:` block below. The app keeps the
-    # exact same database because Litestream restores the latest snapshot into DB_PATH
-    # before gunicorn ever starts. Do not do this before phase 1 has verified.
-    plan: starter
+    # Free once the disk is gone (LITESTREAM.md, phase 2): Litestream backs the database
+    # up to R2 and start.sh restores it on every boot, so the paid disk is not needed.
+    plan: free
     rootDir: web
     healthCheckPath: /healthz
     buildCommand: >-
@@ -29,21 +23,15 @@ services:
     # crawler load (the OOM trigger). Bump to --workers 2 only after upgrading
     # the instance memory.
     #
-    # PHASE 1: Litestream runs BESIDE gunicorn, not in front of it. The disk is still
-    # the source of truth, so if replication ever fails to start (bad key, R2 down)
-    # the site keeps serving and only the backup stops - the app's uptime never
-    # depends on the backup. -config is required: without it Litestream looks for
-    # /etc/litestream.yml and exits.
-    # PHASE 2 (no disk) will put `./litestream restore -config litestream.yml
-    # -if-db-not-exists -if-replica-exists "$DB_PATH"` in front, so a fresh box
-    # pulls the database down from R2 before gunicorn opens it. See LITESTREAM.md.
+    # start.sh restores the database from R2 when DB_PATH is missing (every boot without
+    # a disk; never with one), handing off from the previous instance during a deploy so
+    # no write is lost, then runs gunicorn under `litestream replicate -exec` so the stop
+    # signal makes Litestream upload the last writes. See LITESTREAM.md.
     #
     # NOTE: this file is not synced to the live `trialbridge` service (it was made
     # in the dashboard, not from this Blueprint). Copy buildCommand/startCommand
     # into the service's Settings when changing them.
-    startCommand: >-
-      (./litestream replicate -config litestream.yml &) ;
-      exec gunicorn app:app --workers 1 --threads 8 --max-requests 300 --max-requests-jitter 60 --timeout 120 --bind 0.0.0.0:$PORT
+    startCommand: bash start.sh
     envVars:
       - key: SECRET_KEY
         generateValue: true      # Render generates a stable random secret
@@ -126,15 +114,11 @@ services:
         sync: false
       - key: SEO_WARM_LIMIT
         value: "80"              # pairs per /seo/warm call (kept under --timeout)
-      # Persist the SQLite DB on a Render disk so real applicants + the SEO warm
-      # flags survive redeploys (the free plan's filesystem is ephemeral and
-      # resets on every deploy). Requires the paid `plan: starter` set above.
-      # Bump this filename to force a clean reseed of the public demo on the
-      # persistent disk (the old file is left in place, untouched). Do this when
-      # the demo dataset changes materially — otherwise seed_demo_* no-ops
-      # forever because the disk already has rows from the first boot.
+      # The local copy of the database. The filesystem is wiped on every deploy and
+      # restart; start.sh restores this file from the Litestream backup (R2 path
+      # `bridgemd`) before the app opens it, so the filename itself no longer matters.
       - key: DB_PATH
-        value: /var/data/bridgemd-fieve11.db
+        value: /opt/render/project/src/web/data/bridgemd.db
       # Litestream's continuous off-disk backup (see litestream.yml). Fill these in the
       # dashboard from a free S3-compatible bucket, e.g. Cloudflare R2 (10 GB free, no
       # egress fee): LITESTREAM_ENDPOINT is the account's R2 endpoint
@@ -148,14 +132,8 @@ services:
         sync: false
       - key: LITESTREAM_SECRET_ACCESS_KEY
         sync: false
-    # PHASE 2 ONLY: delete this whole `disk:` block once verify_litestream_restore.py has
-    # passed against real traffic for a few days. Until then it stays, so phase 1 carries
-    # no risk at all: the paid disk keeps working exactly as it always has, Litestream is
-    # just also watching the same file.
-    disk:
-      name: bridgemd-data
-      mountPath: /var/data
-      sizeGB: 1
+    # No `disk:` block: a Render Disk needs a paid plan, and the database's durability
+    # now comes from the Litestream backup instead.
 
 # --------------------------------------------------------------------------- #
 # Weekly SEO warm: refresh which condition/city pages have LOCAL recruiting

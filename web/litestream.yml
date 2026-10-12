@@ -2,9 +2,9 @@
 ## free web-service tier (no Render Disk) instead of the paid Starter plan it needed
 ## purely to keep /var/data across redeploys.
 ##
-## How it works: `litestream replicate -exec "gunicorn ..."` (see render.yaml) restores
-## the latest snapshot from the bucket to DB_PATH on boot if it's missing, then streams
-## every write to the bucket continuously while gunicorn runs as its child process. The
+## How it works: start.sh restores the latest copy from the bucket to DB_PATH on boot if
+## it's missing, then `litestream replicate -exec "gunicorn ..."` streams every write to
+## the bucket while gunicorn runs as its child, and uploads the last writes on shutdown. The
 ## app's own code (db.py and friends) is untouched: it still opens the same local file
 ## with the stdlib sqlite3 module exactly as before. Litestream is a sidecar, not a
 ## database driver.
@@ -30,6 +30,11 @@ dbs:
         # Once a minute, not every 10 seconds: the site rewrites the same cache pages many
         # times a minute, and each sync uploads them again. With a weekly snapshot instead of
         # Litestream's default daily one, this was ~200 MB a day of Render bandwidth in
-        # October 2026. The paid disk is still the live copy; this is the off-site backup.
+        # October 2026. A clean shutdown still uploads everything (start.sh); only a hard
+        # crash can lose up to this much.
         sync-interval: 60s
+        # A restore is the newest snapshot plus every change since, so without a disk this
+        # sets how long a boot takes. Weekly meant replaying up to a week of changes; every
+        # 6 hours costs about 15 MB of bandwidth each and keeps a boot to minutes at most.
+        snapshot-interval: 6h
         retention: 168h
