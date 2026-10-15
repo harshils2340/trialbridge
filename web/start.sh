@@ -38,4 +38,4 @@ if [ ! -f "$DB_PATH" ]; then
   echo "restore: done"
 fi
 
-exec ./litestream replicate -config "$CONFIG" -exec "gunicorn app:app --workers 1 --threads 8 --max-requests 300 --max-requests-jitter 60 --timeout 120 --graceful-timeout 15 --bind 0.0.0.0:${PORT}"
+exec ./litestream replicate -config "$CONFIG" -exec "gunicorn -c gunicorn.conf.py app:app --workers 1 --threads 8 --max-requests 300 --max-requests-jitter 60 --timeout 120 --graceful-timeout 15 --bind 0.0.0.0:${PORT}"

@@ -635,8 +635,20 @@ LEGAL_CONTACT = os.environ.get("LEGAL_CONTACT", "hello@bridgemd.health").strip()
 LEGAL_UPDATED = os.environ.get("LEGAL_UPDATED", "July 2026").strip()
 
 
+_demo_identities_done = False
+_demo_identities_lock = threading.Lock()
+
+
 def _ensure_demo_user():
-    db.migrate_demo_staff_identities()
+    # Once per process, not per request: it rewrites several tables in one write
+    # transaction, so running it on every request held the write lock long enough for
+    # other requests to fail with "database is locked".
+    global _demo_identities_done
+    if not _demo_identities_done:
+        with _demo_identities_lock:
+            if not _demo_identities_done:
+                db.migrate_demo_staff_identities()
+                _demo_identities_done = True
     u = db.get_user_by_email(_DEMO_EMAIL)
     if not u:
         pw = generate_password_hash("demo-no-login", method="pbkdf2:sha256")
@@ -2337,6 +2349,10 @@ def _scope_label(active_nct, nav_studies):
 
 @app.context_processor
 def inject_globals():
+    # The error page renders through here too, including when load_user raised before
+    # setting these; without the defaults the 500 page itself crashed.
+    g.setdefault("user", None)
+    g.setdefault("patient_user", None)
     token = get_applicant_token()
     try:
         apps_n = db.count_applications(token)
