@@ -10357,6 +10357,24 @@ def internal_feedback():
         email_live=notifications_ready())
 
 
+@app.route("/ops/testimonials")
+def ops_testimonials():
+    """Ops-key only: the comments applicants agreed BridgeMD may share, as they
+    consented: their words and first name only, never an email or a condition."""
+    if not _ops_key_ok():
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+    rows = [r for r in db.list_feedback()
+            if r["responded_at"] and r["email"] not in OWNER_EMAILS]
+    quotes = [{
+        "first_name": (r["first_name"] or (r["name"] or "").split(" ")[0]).strip(),
+        "stars": r["stars"],
+        "outcome": db.FEEDBACK_OUTCOMES.get(r["outcome"], ""),
+        "comment": r["comment"].strip(),
+        "when": r["responded_at"][:10],
+    } for r in rows if r["quote_ok"] and (r["comment"] or "").strip()]
+    return jsonify({"ok": True, "responses": len(rows), "quotes": quotes})
+
+
 @app.route("/internal/feedback/preview")
 @owner_required
 def internal_feedback_preview():
