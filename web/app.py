@@ -5783,6 +5783,16 @@ def find():
         if geo:
             coords = (geo[0], geo[1])
             unit = units_for(geo[2])
+    if coords is None:
+        # Without coordinates there is no distance filter, so CT.gov would
+        # return trials from anywhere, listed under "Near <location>" with no
+        # distances (and cached that way for every repeat). Ask for a place we
+        # can find instead.
+        app.logger.warning("find: location could not be geocoded")
+        flash(f"We couldn't find “{location}” on the map. Try your postal or "
+              "ZIP code, or pick your city from the list as you type.", "error")
+        typed = request.form.get("condition", "").strip()
+        return redirect(url_for("home", condition=typed, location=location))
 
     note = build_patient_note(label, age, sex, about, pregnant, other_trial)
     # Fast path: identical recent search -> reuse cached result set instantly.
@@ -16419,9 +16429,67 @@ def _nominatim_suggest(query, limit=6):
         return []
 
 
+# Places already resolved, so a repeat search for the same place doesn't need a
+# geocoder to answer again. The public Nominatim server throttles busy server
+# IPs, and a search without coordinates has no distance filter at all.
+_GEOCODE_CACHE = OrderedDict()
+_GEOCODE_CACHE_MAX = 2000
+
+# Province / state names for the cities in SEO_CITY_COORDS, with the country
+# each is in, so a typed "Toronto, Ontario" matches "Toronto, ON".
+_REGION_NAMES = {
+    "on": ("ontario", "CA"), "bc": ("british columbia", "CA"),
+    "qc": ("quebec", "CA"), "ab": ("alberta", "CA"), "mb": ("manitoba", "CA"),
+    "ns": ("nova scotia", "CA"), "ny": ("new york", "US"),
+    "ca": ("california", "US"), "il": ("illinois", "US"), "tx": ("texas", "US"),
+    "az": ("arizona", "US"), "pa": ("pennsylvania", "US"),
+    "fl": ("florida", "US"), "ma": ("massachusetts", "US"),
+    "ga": ("georgia", "US"), "wa": ("washington", "US"),
+    "co": ("colorado", "US"), "dc": ("district of columbia", "US"),
+    "mn": ("minnesota", "US"), "mi": ("michigan", "US"), "or": ("oregon", "US"),
+    "tn": ("tennessee", "US"), "oh": ("ohio", "US"),
+}
+
+
 def geocode(place):
     """City / postal code / ZIP / address -> (lat, lon, country_code) or None.
-    Postal codes are handled first (Nominatim is unreliable for them)."""
+    Remembers each place it resolves, and when every geocoder fails it still
+    places the major cities we know (see _known_city)."""
+    key = " ".join((place or "").lower().split())
+    if not key:
+        return None
+    hit = _GEOCODE_CACHE.get(key) or _geocode_lookup(place) or _known_city(place)
+    if hit:
+        _GEOCODE_CACHE[key] = hit
+        _GEOCODE_CACHE.move_to_end(key)
+        while len(_GEOCODE_CACHE) > _GEOCODE_CACHE_MAX:
+            _GEOCODE_CACHE.popitem(last=False)
+    return hit
+
+
+def _known_city(place):
+    """(lat, lon, country_code) when the place names one of SEO_CITY_COORDS,
+    typed as "Toronto", "Toronto, ON" or "Toronto, Ontario, Canada", else
+    None. The last resort when the geocoders are down, so a search from a
+    major city still stays near the person instead of going worldwide."""
+    q = (place or "").lower().translate(str.maketrans("éè", "ee"))
+    q = " ".join(_re.sub(r"[^a-z]+", " ", q).split())
+    q = _re.sub(r" (canada|usa|us|united states)$", "", q)
+    for name, (lat, lon) in SEO_CITY_COORDS.items():
+        city, st = [x.strip().lower() for x in name.split(",")]
+        region, cc = _REGION_NAMES[st]
+        forms = {city + " " + st, city + " " + region}
+        # A bare "London" or "Washington" is as likely the UK or the state.
+        if city not in ("london", "washington"):
+            forms.add(city)
+        if q in forms:
+            return lat, lon, cc
+    return None
+
+
+def _geocode_lookup(place):
+    """Ask the geocoders. Postal codes are handled first (Nominatim is
+    unreliable for them)."""
     p = (place or "").strip()
     if not p:
         return None
@@ -17462,7 +17530,11 @@ def run_search(note, condition, country, require_site, coords=None, radius=50,
         dist_sort = r["distance"] if r["distance"] is not None else 1e9
         local = True if source == "site_posted" else (
             bool(mt.sites_in_country(t, country)) if country else True)
-        return (mt.VERDICT_RANK.get(m.get("verdict"), 3), round(dist_sort, 1),
+        # With a location, a result we can't place (a site-posted study with
+        # no coordinates) goes below every trial with a site in range.
+        unplaced = bool(coords) and r["distance"] is None
+        return (unplaced, mt.VERDICT_RANK.get(m.get("verdict"), 3),
+                round(dist_sort, 1),
                 0 if local else 1, 0 if not obs else 1, 0 if source == "ctgov" else 1,
                 -int(r.get("relevance") or 0),
                 len(m.get("not_met") or []), len(m.get("unknown") or []),
