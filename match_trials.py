@@ -648,9 +648,15 @@ def llm_available():
     return any(now >= _cooldown_until(m) for m in LLM_MODELS)
 
 
-def _available_models():
-    """LLM_MODELS, in priority order, minus whichever are still cooling down."""
+def _available_models(urgent=False):
+    """LLM_MODELS, in priority order, minus whichever are still cooling down.
+    An urgent call skips only models parked as missing (see _note_dead): a
+    rate cooldown is set by whichever request the provider refused, usually a
+    long eligibility read, and a short call often still fits the same window."""
     now = time.time()
+    if urgent:
+        return [m for m in LLM_MODELS
+                if _cooldown_until(m) - now < _DEAD_MODEL_SECONDS / 2]
     return [m for m in LLM_MODELS if now >= _cooldown_until(m)]
 
 
@@ -668,6 +674,11 @@ def _note_429(model, err):
         pass
     global LLM_LAST_429
     LLM_LAST_429 = f"{model}: {reason}"
+    if "request too large" in reason.lower():
+        # This one request is over the model's per-request limit (a long
+        # eligibility read). Shorter calls still fit, so no cooldown.
+        print(f"llm 429 on {model}: request too large, no cooldown", flush=True)
+        return
     m = _RETRY_AFTER_RE.search(reason)
     if m:
         wait = (int(m.group(1) or 0) * 60) + float(m.group(2))
@@ -677,7 +688,9 @@ def _note_429(model, err):
             "insufficient_quota", "billing", "exceeded your current quota"))
         wait = 1800 if quota else 90
         label = f"{'30m (quota)' if quota else '90s (rate)'}"
-    LLM_COOLDOWN_UNTIL[model] = time.time() + wait
+    # Never shorten a cooldown: an urgent short call's own wait is smaller
+    # than the one a long request was given.
+    LLM_COOLDOWN_UNTIL[model] = max(_cooldown_until(model), time.time() + wait)
     print(f"llm 429 on {model}: cooling down {label} reason={reason[:160]!r}",
           flush=True)
 
@@ -708,13 +721,15 @@ def _note_dead(model):
           f"24h - remove it from LLM_MODEL/LLM_MODELS", flush=True)
 
 
-def llm_chat(system, user, retries=2):
+def llm_chat(system, user, retries=2, urgent=False):
     """Minimal single-turn chat call (plain text out). Tries each model in
     LLM_MODELS that isn't currently cooling down, in order, moving to the next
-    one the moment a 429 comes back - see _available_models/_note_429."""
+    one the moment a 429 comes back - see _available_models/_note_429.
+    `urgent` is for a short call a page can't do without (reading the
+    condition out of a search): it tries cooling-down models too."""
     from copy_sanitize import sanitize_copy, contains_em_dash
 
-    models = _available_models()
+    models = _available_models(urgent)
     if not models:
         raise LLMCoolingDown("provider asked us to back off on every model")
     last = None

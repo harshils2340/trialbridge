@@ -5853,11 +5853,11 @@ def find():
     # Free text with no AI available (rate limit, outage, no key): the model
     # never turned "I have chronic back pain" into a condition, so nothing was
     # searched. Pull the medical words out of the sentence and search those,
-    # then let the widening stage below run on them too.
+    # most specific first ("recurrent breast cancer", then "breast cancer"),
+    # all inside the radius, then let the widening stage below run on the last.
     if (freeform and not results and not intervention and not location_only
             and not condition_label and about):
-        kw = _describe_keywords(about)
-        if kw:
+        for kw in _describe_tries(about):
             try:
                 det_k, res_k = run_search(
                     note, kw, "", False, coords, radius, unit,
@@ -5871,6 +5871,7 @@ def find():
                 results = res_k
                 detected = det_k or kw
                 label = kw
+                break
 
     # Stage 1 - spelling / phrasing correction via ClinicalTrials.gov's own
     # suggest (fast + accurate: "brian"->"brain", "diabetis"->"diabetes"). The
@@ -6062,7 +6063,20 @@ years year months month weeks week days day since ago time now
 son daughter wife husband mother father mom dad child children kid kids
 parent parents partner friend brother sister grandmother grandfather baby
 currently recently past still always often sometimes also too
+after before during following because when while despite again
+came come comes coming went keep keeps kept started began
 """.split())
+
+# Lay wording for how a condition is doing, and the word trials use for it.
+# The words are cut from the sentence (so the "back" in "came back" is not
+# kept as a body part) and the trial word goes in front of the condition:
+# "my breast cancer came back" -> "recurrent breast cancer".
+_DESCRIBE_STATE = (
+    (re.compile(r"\b(?:came|come|comes|coming) back\b|\b(?:returned|recurred|"
+                r"relapsed)\b"), "recurrent"),
+    (re.compile(r"\b(?:spread|spreading|metastasi[sz]ed)\b|"
+                r"\bstage (?:4|iv|four)\b"), "metastatic"),
+)
 
 
 _RANK_GENERIC = {"chronic", "acute", "severe", "mild", "disease", "disorder",
@@ -6096,8 +6110,15 @@ def _rank_by_words(results, phrase):
 def _describe_keywords(text):
     """The medical words in a free-text description, for a plain search when
     the AI cannot read it: "I have had chronic back pain for 3 years" ->
-    "chronic back pain". Keeps the first run of meaningful words, at most 5."""
-    words = re.findall(r"[a-z0-9][a-z0-9'-]*", (text or "").lower())
+    "chronic back pain". Keeps the first run of meaningful words, at most 5,
+    with the trial word for "came back" or "spread" in front (see
+    _DESCRIBE_STATE)."""
+    low, state = (text or "").lower(), ""
+    for pat, word in _DESCRIBE_STATE:
+        if pat.search(low):
+            state = state or word
+            low = pat.sub(" and ", low)     # ends the phrase like a filler word
+    words = re.findall(r"[a-z0-9][a-z0-9'-]*", low)
     out = []
     for w in words:
         # A number belongs to the phrase it sits in ("type 1 diabetes").
@@ -6110,7 +6131,26 @@ def _describe_keywords(text):
         out.append(w)
         if len(out) >= 5:
             break
+    if out and state and state not in out:
+        out = [state] + out[:4]
     return " ".join(out)
+
+
+def _describe_tries(text):
+    """The searches to try for a description the AI could not read, most
+    specific first: "breast cancer came back" -> ["recurrent breast cancer",
+    "breast cancer"]. After the condition without its trial word, each later
+    try drops a leading word, down to two words, and skips any that would
+    start with a number ("4 breast cancer")."""
+    words = _describe_keywords(text).split()
+    tries = [" ".join(words)] if words else []
+    if len(words) > 1 and words[0] in {w for _, w in _DESCRIBE_STATE}:
+        words = words[1:]
+        tries.append(" ".join(words))
+    for i in range(1, len(words) - 1):
+        if not words[i].isdigit():
+            tries.append(" ".join(words[i:]))
+    return tries
 
 
 @app.route("/trial/<search_id>/<nct>")
@@ -17222,7 +17262,8 @@ def run_search(note, condition, country, require_site, coords=None, radius=50,
                 "description may be vague or a symptom that fits several "
                 "conditions - list ALL the distinct conditions worth searching, "
                 "most likely first, not just one. Reply with 1-4 condition names, "
-                "comma-separated, no other text.", note[:4000]).strip()
+                "comma-separated, no other text.", note[:4000],
+                urgent=True).strip()
             cond_terms = [c.strip(" .").strip()
                           for c in raw.split(",") if c.strip(" .").strip()][:4]
         except Exception:
@@ -17431,7 +17472,9 @@ def run_search(note, condition, country, require_site, coords=None, radius=50,
     light_picks = picks[MAX_MATCH:] if assess else picks
 
     results = []
-    if mt.LLM_API_KEY and _llm_search_budget_ok():
+    # While every model is cooling down (the condition read above may still
+    # have gone through), each read would fail at once: use the light read.
+    if mt.llm_available() and _llm_search_budget_ok():
         max_workers = min(WEB_LLM_PARALLELISM, len(llm_picks))
         if max_workers <= 1:
             for t, near in llm_picks:
