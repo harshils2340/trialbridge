@@ -14,10 +14,13 @@ pages. It is deliberately NOT wired into the personalised "near me" ranked searc
 coverage without degrading the relevance of the core matcher.
 
 Everything here is best-effort and never raises: on any network/parse error we
-return empty results so callers (SEO pages hit by crawlers) never break.
+return empty results so callers (SEO pages hit by crawlers) never break. The one
+exception is fetch(strict=True), used by the study page to tell an outage apart
+from a trial that doesn't exist.
 """
 
 import json
+import urllib.error
 import urllib.parse
 import urllib.request
 
@@ -106,16 +109,24 @@ def search(query="", size=12):
     return cards
 
 
-def fetch(ct_number):
+def fetch(ct_number, strict=False):
     """Fetch one CTIS trial and normalise it to the same shape our study page
     uses for ClinicalTrials.gov trials (plus a few CTIS-specific extras).
-    Returns None if it can't be fetched/parsed."""
+    Returns None if it can't be fetched/parsed. With strict=True a network or
+    server failure re-raises instead, so the study page can answer "try again
+    later" rather than "this trial doesn't exist"."""
     ct = (ct_number or "").strip()
     if not is_ct_number(ct):
         return None
     try:
         d = _get("/retrieve/" + urllib.parse.quote(ct))
+    except urllib.error.HTTPError as e:
+        if strict and e.code not in (400, 404, 410):
+            raise
+        return None
     except Exception:
+        if strict:
+            raise
         return None
     if not isinstance(d, dict) or not d.get("ctNumber"):
         return None

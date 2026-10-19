@@ -1778,6 +1778,11 @@ _MIGRATIONS = {
     "org_invites": {
         "role_label": "TEXT DEFAULT ''",
     },
+    # The registry's own last-update date, so the study sitemap's lastmod says
+    # when the page's content changed rather than when we last saw the trial.
+    "seo_study_index": {
+        "registry_updated": "TEXT DEFAULT ''",
+    },
     "web_events": {
         # User-agent kept for bot auditing only (not PHI). Bot traffic is
         # filtered before insert, so this should only ever hold real browsers.
@@ -12051,18 +12056,23 @@ def list_active_alerts():
         "SELECT * FROM alerts WHERE active = 1 ORDER BY id").fetchall()
 
 
-def upsert_seo_study(nct, title="", condition=""):
-    """Record a trial as part of our indexable SEO surface (idempotent)."""
+def upsert_seo_study(nct, title="", condition="", registry_updated=""):
+    """Record a trial as part of our indexable SEO surface (idempotent).
+    `updated_at` is when we last saw it on one of our pages; `registry_updated`
+    is when its registry record last changed (kept if this sighting lacks it)."""
     nct = (nct or "").strip().upper()
     if not nct:
         return
     db = get_db()
     db.execute(
-        "INSERT INTO seo_study_index (nct, title, condition, updated_at) "
-        "VALUES (?, ?, ?, ?) "
+        "INSERT INTO seo_study_index (nct, title, condition, updated_at, "
+        "registry_updated) VALUES (?, ?, ?, ?, ?) "
         "ON CONFLICT(nct) DO UPDATE SET title=excluded.title, "
-        "condition=excluded.condition, updated_at=excluded.updated_at",
-        (nct, (title or "").strip(), (condition or "").strip(), now()))
+        "condition=excluded.condition, updated_at=excluded.updated_at, "
+        "registry_updated=COALESCE(NULLIF(excluded.registry_updated, ''), "
+        "registry_updated)",
+        (nct, (title or "").strip(), (condition or "").strip(), now(),
+         (registry_updated or "").strip()[:10]))
     db.commit()
 
 
@@ -12074,11 +12084,17 @@ def is_seo_study(nct):
         "SELECT 1 FROM seo_study_index WHERE nct = ?", (nct,)).fetchone() is not None
 
 
-def list_seo_studies(limit=5000):
-    """NCTs in our indexable SEO surface, most-recently-seen first."""
+def list_seo_studies(limit=5000, seen_within_days=30):
+    """NCTs in our indexable SEO surface, most-recently-seen first. A trial that
+    stopped recruiting drops off our pages and stops being seen, so after
+    `seen_within_days` it leaves the sitemap instead of lingering there while
+    its page says noindex."""
+    cutoff = (dt.datetime.now() - dt.timedelta(days=seen_within_days)) \
+        .strftime("%Y-%m-%d %H:%M")
     return get_db().execute(
-        "SELECT nct, title, condition, updated_at FROM seo_study_index "
-        "ORDER BY updated_at DESC, nct LIMIT ?", (limit,)).fetchall()
+        "SELECT nct, title, condition, updated_at, registry_updated "
+        "FROM seo_study_index WHERE updated_at >= ? "
+        "ORDER BY updated_at DESC, nct LIMIT ?", (cutoff, limit)).fetchall()
 
 
 def record_seo_city_page(slug, city_slug, is_local, trials):
@@ -12104,6 +12120,17 @@ def list_local_seo_city_pages():
     return get_db().execute(
         "SELECT slug, city_slug, updated_at FROM seo_city_page "
         "WHERE is_local = 1 AND trials > 0 ORDER BY updated_at DESC").fetchall()
+
+
+def local_seo_city_slugs(slug):
+    """City slugs whose page for this condition is indexable. None when no city
+    page for the condition has been checked yet (nothing known either way)."""
+    rows = get_db().execute(
+        "SELECT city_slug, is_local, trials FROM seo_city_page WHERE slug = ?",
+        ((slug or "").strip(),)).fetchall()
+    if not rows:
+        return None
+    return {r["city_slug"] for r in rows if r["is_local"] and r["trials"] > 0}
 
 
 def get_kv(key, default=None):

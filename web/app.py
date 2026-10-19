@@ -351,6 +351,23 @@ def gone(_e):
                            msg="This secure link has expired or was revoked."), 410
 
 
+class RegistryUnavailable(Exception):
+    """A trial registry (ClinicalTrials.gov, EU CTIS) couldn't be reached and
+    nothing usable is cached. Pages built from it answer 503, which tells search
+    engines to come back later; an empty page or a 404 would be recorded as the
+    page's real content or as the page no longer existing."""
+
+
+@app.errorhandler(RegistryUnavailable)
+def registry_unavailable(_e):
+    resp = app.make_response((render_template(
+        "error.html", code=503,
+        msg="We couldn't reach the trial registry just now. Please try again "
+            "in a few minutes."), 503))
+    resp.headers["Retry-After"] = "600"
+    return resp
+
+
 @app.errorhandler(500)
 def server_error(_e):
     app.logger.exception("Unhandled error")
@@ -8940,22 +8957,91 @@ _SEO_TRIAL_TTL = 6 * 3600      # refresh a condition's trials at most every 6h
 _SEO_TRIAL_MAX = int(os.environ.get("SEO_TRIAL_CACHE_MAX", "200"))
 
 
-def _fetch_recruiting(condition, geo=None, limit=12):
-    raw = mt.fetch_trials(condition, max_n=40, geo=geo)
+# A condition/city page earns indexing only when trials actually run in that
+# metro: at least SEO_LOCAL_MIN of them with an active site within
+# SEO_LOCAL_MILES of the city. "Within 100 miles" alone gave neighbouring
+# cities the same 12 trials (Kitchener, Waterloo, Hamilton and Toronto pages
+# were identical), which Google reads as duplicates and stops crawling.
+SEO_LOCAL_MILES = 30
+SEO_LOCAL_MIN = 2
+_CA_PROVINCES = {"AB", "BC", "MB", "NB", "NL", "NS", "NT", "NU", "ON", "PE",
+                 "QC", "SK", "YT"}
+
+
+def _nearest_site(trial, lat, lon):
+    """(miles, site) for the trial's closest active site, or None."""
+    best = None
+    for s in trial.get("locations") or []:
+        if s.get("lat") is None or s.get("lon") is None or not _is_active_site(s):
+            continue
+        d = haversine(lat, lon, s["lat"], s["lon"], "mi")
+        if best is None or d < best[0]:
+            best = (d, s)
+    return best
+
+
+def _fetch_recruiting(condition, geo=None, limit=12, near=None):
+    """Recruiting interventional trials. With `near` (lat, lon) they come back
+    nearest first, each carrying `nearSite`: its closest active site and how
+    many miles away it is. CT.gov can't sort by distance, so we take a full
+    page (same single request) and sort it here."""
+    raw = mt.fetch_trials(condition, max_n=100 if near else 40, geo=geo)
     raw = [t for t in raw
            if (t.get("overallStatus") or "RECRUITING").upper() == "RECRUITING"
            and (t.get("studyType") or "").upper() != "OBSERVATIONAL"]
+    if near:
+        ranked = []
+        for t in raw:
+            hit = _nearest_site(t, near[0], near[1])
+            if hit:
+                # Sponsor site codes ("... Hospital /ID# 270659") mean nothing to a reader.
+                facility = re.sub(r"\s*/\s*ID#\s*\d+\s*$", "", hit[1].get("facility") or "")
+                t = dict(t, nearSite={"facility": facility,
+                                      "city": hit[1].get("city") or "",
+                                      "miles": hit[0]})
+            ranked.append(t)
+        ranked.sort(key=lambda t: (t.get("nearSite") or {}).get("miles", float("inf")))
+        raw = ranked
     return raw[:limit]
+
+
+def _seo_local_count(trials):
+    return sum(1 for t in trials
+               if (t.get("nearSite") or {}).get("miles", float("inf")) <= SEO_LOCAL_MILES)
+
+
+def _seo_city_indexable(trials, is_local):
+    return bool(is_local) and _seo_local_count(trials) >= SEO_LOCAL_MIN
+
+
+def _seo_city_links(condition, exclude=None):
+    """Cities to link from a condition's pages: the ones whose page for this
+    condition is indexable, in SEO_CITIES order, so every city page in the
+    sitemap is also reachable by a link. Until any has been checked for this
+    condition, the first 16 as before."""
+    try:
+        known = db.local_seo_city_slugs(slugify(condition))
+    except Exception:
+        known = None
+    cities = (SEO_CITIES[:16] if known is None
+              else [c for c in SEO_CITIES if slugify(c) in known])
+    return [c for c in cities if c != exclude]
 
 
 def _seo_trials(condition, city=None, limit=12):
     """Recruiting trials for an SEO page, cached per (condition, city).
 
-    Returns (trials, is_local). When a city is given we geo-filter to trials near
-    it so each city page has UNIQUE local content. If none are local we fall back
-    to the national list but return is_local=False - the city page then noindexes
-    and labels these as the nearest studies, so we never publish near-duplicate
-    'doorway' pages (which Google penalizes across the whole programmatic surface).
+    Returns (trials, is_local). When a city is given we take trials within 100
+    miles, nearest first, so each city page leads with its own metro's trials.
+    If none are within 100 miles we fall back to the national list and return
+    is_local=False. Either way the page is indexed only when it clears
+    SEO_LOCAL_MIN / SEO_LOCAL_MILES (_seo_city_indexable), so we never publish
+    near-duplicate 'doorway' pages (which Google penalizes across the whole
+    programmatic surface).
+
+    If the registry can't be reached we serve the last list we had, or raise
+    RegistryUnavailable (a 503). A failure is never cached or recorded: that
+    used to serve an empty page for 6 hours and drop it from the sitemap.
     """
     cond_key = (condition or "").strip().lower()
     if not cond_key:
@@ -8966,27 +9052,32 @@ def _seo_trials(condition, city=None, limit=12):
     if hit and (now_ts - hit[0]) < _SEO_TRIAL_TTL:
         _SEO_TRIAL_CACHE.move_to_end(key)
         return hit[1][:limit], hit[2]
-    trials = []
     is_local = True
+    coords = SEO_CITY_COORDS.get(city) if city else None
     try:
-        geo = None
-        coords = SEO_CITY_COORDS.get(city) if city else None
         if coords:
-            geo = f"distance({coords[0]},{coords[1]},100mi)"
-        trials = _fetch_recruiting(condition, geo=geo, limit=limit)
-        if not trials and geo:                      # no local trials -> national
+            trials = _fetch_recruiting(
+                condition, geo=f"distance({coords[0]},{coords[1]},100mi)",
+                limit=limit, near=coords)
+        else:
+            trials = _fetch_recruiting(condition, limit=limit)
+        if not trials and coords:                   # none within 100mi -> national
             trials = _fetch_recruiting(condition, geo=None, limit=limit)
             is_local = False                        # -> city page will noindex
-        # Record these trials as part of our indexable SEO surface so each gets a
-        # crawlable /study/<nct> page and a sitemap entry (scoped to on-topic,
-        # recruiting trials - never the whole of ClinicalTrials.gov).
-        for t in trials:
-            try:
-                db.upsert_seo_study(t.get("nctId"), t.get("title"), condition)
-            except Exception:
-                pass
     except Exception:
         app.logger.exception("seo trials fetch failed for %s", condition)
+        if hit:                                     # an older list beats no page
+            return hit[1][:limit], hit[2]
+        raise RegistryUnavailable(condition)
+    # Record these trials as part of our indexable SEO surface so each gets a
+    # crawlable /study/<nct> page and a sitemap entry (scoped to on-topic,
+    # recruiting trials - never the whole of ClinicalTrials.gov).
+    for t in trials:
+        try:
+            db.upsert_seo_study(t.get("nctId"), t.get("title"), condition,
+                                t.get("lastUpdated") or "")
+        except Exception:
+            pass
     _SEO_TRIAL_CACHE[key] = (now_ts, trials, is_local)
     _SEO_TRIAL_CACHE.move_to_end(key)
     while len(_SEO_TRIAL_CACHE) > _SEO_TRIAL_MAX:
@@ -8997,7 +9088,8 @@ def _seo_trials(condition, city=None, limit=12):
     if city:
         try:
             db.record_seo_city_page(slugify(condition), slugify(city),
-                                    is_local and bool(trials), len(trials))
+                                    _seo_city_indexable(trials, is_local),
+                                    _seo_local_count(trials))
         except Exception:
             app.logger.exception("seo city page record failed")
     return trials[:limit], is_local
@@ -9174,7 +9266,8 @@ def condition_page(slug):
     trials, _ = _seo_trials(condition)
     return render_template(
         "condition.html", condition=condition, city=None, local=True,
-        trials=trials, trial_count=_seo_trial_count(condition), cities=SEO_CITIES[:16],
+        trials=trials, trial_count=_seo_trial_count(condition),
+        cities=_seo_city_links(condition),
         eu_trials=_seo_ctis_trials(condition), faqs=_condition_faqs(condition),
         conditions=_related_conditions(condition), slugify=slugify,
         canonical_url=_abs_url("condition_page", slug=slugify(condition)))
@@ -9189,10 +9282,13 @@ def condition_city_page(slug, city_slug):
         abort(404)
     trials, local = _seo_trials(condition, city=city)
     trial_count = _seo_trial_count(condition, city=city) if local else 0
+    unit = "km" if city.rsplit(", ", 1)[-1] in _CA_PROVINCES else "mi"
     return render_template(
         "condition.html", condition=condition, city=city, local=local,
+        indexable=_seo_city_indexable(trials, local), unit=unit,
         trials=trials, trial_count=trial_count,
-        cities=SEO_CITIES[:16], faqs=_condition_faqs(condition, city),
+        cities=_seo_city_links(condition, exclude=city),
+        faqs=_condition_faqs(condition, city),
         conditions=_related_conditions(condition), slugify=slugify,
         canonical_url=_abs_url("condition_city_page",
                                slug=slugify(condition), city_slug=city_slug))
@@ -9206,8 +9302,11 @@ _STUDY_MAX = int(os.environ.get("STUDY_CACHE_MAX", "250"))
 _NCT_RE = re.compile(r"^NCT\d{8}$")
 
 
-def _get_study(nct):
-    """Fetch one CT.gov study (cached). Returns the extracted trial dict or None."""
+def _get_study(nct, strict=False):
+    """Fetch one CT.gov study (cached). Returns the extracted trial dict or None.
+    If CT.gov is down, an older cached copy is returned when there is one;
+    otherwise strict=True raises RegistryUnavailable, so the study page answers
+    "try again later" instead of telling Google the study doesn't exist."""
     nct = (nct or "").strip().upper()
     if not _NCT_RE.match(nct):
         return None
@@ -9216,22 +9315,30 @@ def _get_study(nct):
     if hit and (now_ts - hit[0]) < _STUDY_TTL:
         _STUDY_CACHE.move_to_end(nct)
         return hit[1]
+    down = False
     try:
         trial = mt.fetch_study(nct)
+    except urllib.error.HTTPError as e:
+        trial, down = None, e.code not in (400, 404, 410)
     except Exception:
-        trial = None
+        trial, down = None, True
     if trial and trial.get("nctId"):
         _STUDY_CACHE[nct] = (now_ts, trial)
         _STUDY_CACHE.move_to_end(nct)
         while len(_STUDY_CACHE) > _STUDY_MAX:
             _STUDY_CACHE.popitem(last=False)
         return trial
+    if down and hit:
+        return hit[1]
+    if down and strict:
+        raise RegistryUnavailable(nct)
     return None
 
 
-def _get_ctis_study(ct):
+def _get_ctis_study(ct, strict=False):
     """Fetch one EU CTIS trial (cached, same store as CT.gov - keys never clash
-    since CT numbers aren't NCT ids). Returns a normalised trial dict or None."""
+    since CT numbers aren't NCT ids). Returns a normalised trial dict or None;
+    on an outage, an older cached copy or (strict) RegistryUnavailable."""
     ct = (ct or "").strip()
     if not ctis.is_ct_number(ct):
         return None
@@ -9240,7 +9347,12 @@ def _get_ctis_study(ct):
     if hit and (now_ts - hit[0]) < _STUDY_TTL:
         _STUDY_CACHE.move_to_end(ct)
         return hit[1]
-    trial = ctis.fetch(ct)
+    try:
+        trial = ctis.fetch(ct, strict=strict)
+    except Exception:
+        if hit:
+            return hit[1]
+        raise RegistryUnavailable(ct)
     if trial and trial.get("ctNumber"):
         _STUDY_CACHE[ct] = (now_ts, trial)
         _STUDY_CACHE.move_to_end(ct)
@@ -9265,7 +9377,7 @@ def study_page(nct):
         abort(404)
 
     if source == "ctgov":
-        trial = _get_study(key)
+        trial = _get_study(key, strict=True)
         if not trial:
             abort(404)
         study_id = key
@@ -9282,7 +9394,7 @@ def study_page(nct):
         applied = key in db.applied_ncts(get_applicant_token())
     else:  # EU CTIS - discovery/content only (no LLM/pay enrichment, no geo match)
         study_id = raw
-        trial = _get_ctis_study(study_id)
+        trial = _get_ctis_study(study_id, strict=True)
         if not trial:
             abort(404)
         recruiting = bool(trial.get("_recruiting"))
@@ -16019,9 +16131,9 @@ Trial information comes from ClinicalTrials.gov and is refreshed continuously. O
 
 - [Search trials by condition or description]({base}/find-trial): enter a condition, or describe your situation in your own words, plus a city or postal code.
 - [Browse all conditions]({base}/trials): every condition BridgeMD covers, with recruiting trial counts.
-- Condition pages: {base}/trials/<condition>, for example {base}/trials/obesity
-- Condition and city pages: {base}/trials/<condition>/<city>, for example {base}/trials/prediabetes/toronto-on
-- Study pages: {base}/study/<NCT number>, one page per recruiting trial with who can join, what it involves, locations, and an apply button.
+- Condition pages: one per condition, for example {base}/trials/obesity
+- Condition and city pages: one per condition and city, for example {base}/trials/prediabetes/toronto-on
+- Study pages: one per recruiting trial, at /study/ followed by its NCT number. Each covers who can join, what it involves, locations, and an apply button.
 - [How BridgeMD works]({base}/how-it-works)
 
 ## Coverage
@@ -16120,8 +16232,8 @@ def sitemap_conditions():
 
 @app.route("/sitemap-cities.xml")
 def sitemap_cities():
-    """Only condition/city pages with CONFIRMED local recruiting trials. A page
-    with no local trials self-noindexes, so listing the full condition x city
+    """Only condition/city pages that clear the local bar (_seo_city_indexable).
+    Any other city page self-noindexes, so listing the full condition x city
     grid just feeds Google thousands of 'discovered - currently not indexed'
     URLs and drags down the whole surface. Populated as pages render + by the
     /seo/warm cron (below); empty until then, which is the correct default."""
@@ -16139,13 +16251,17 @@ def sitemap_cities():
 
 @app.route("/sitemap-studies.xml")
 def sitemap_studies():
-    """Per-study pages, scoped to trials surfaced by our condition/city pages.
-    These keep their real last-seen date (recruiting status is time-sensitive)."""
+    """Per-study pages, scoped to trials our condition/city pages showed in the
+    last 30 days. lastmod is the registry's own last-update date: "last seen by
+    us" changed on every crawl, which teaches Google to ignore lastmod (and sent
+    every study to IndexNow daily)."""
     today = time.strftime("%Y-%m-%d")
     urls = []
     try:
         for s in db.list_seo_studies(limit=5000):
-            lm = ((s["updated_at"] or today)[:10]) or today
+            reg = s["registry_updated"] or ""
+            lm = (reg if re.fullmatch(r"\d{4}-\d{2}-\d{2}", reg)
+                  else (s["updated_at"] or today)[:10] or today)
             urls.append((_sitemap_loc("study_page", nct=s["nct"]), lm))
     except Exception:
         app.logger.exception("sitemap study list failed")
@@ -16321,7 +16437,7 @@ def seo_warm():
     for c, city in pairs[offset:offset + limit]:
         try:
             trials, is_local = _seo_trials(c, city=city)
-            if is_local and trials:
+            if _seo_city_indexable(trials, is_local):
                 local += 1
         except Exception:
             app.logger.exception("seo warm failed for %s / %s", c, city)

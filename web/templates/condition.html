@@ -10,11 +10,11 @@
 
 {% block head_extra %}
 {% set _canon = canonical_url|default(request.url) %}
-{# A city page only earns indexing when it has genuinely LOCAL trials. If it fell
-   back to the national list (not local) or has none at all, it's near-duplicate /
-   thin - noindex,follow keeps it out of the index (no doorway penalty) while
-   still passing link equity to the studies it links to. #}
-{% if city and (not local or not trials) %}<meta name="robots" content="noindex,follow">{% endif %}
+{# A city page only earns indexing when trials run in that metro (see
+   _seo_city_indexable). Otherwise it repeats a nearby city's page or the
+   national list - noindex,follow keeps it out of the index (no doorway penalty)
+   while still passing link equity to the studies it links to. #}
+{% if city and not indexable %}<meta name="robots" content="noindex,follow">{% endif %}
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
@@ -250,6 +250,9 @@
         <div class="cond-item-main">
           <h3>{{ t.title }}</h3>
           {% if t.briefSummary %}<p>{{ t.briefSummary[:180] }}{{ '…' if t.briefSummary|length > 180 }}</p>{% endif %}
+          {% if city and t.nearSite %}{% set ns = t.nearSite %}{% set d = ns.miles * (1.609 if unit == 'km' else 1) %}
+          <p class="cond-site">{{ ic.icon('pin') }} {{ ns.facility or ns.city }}{% if ns.facility and ns.city %}, {{ ns.city }}{% endif %} · {{ [d|round|int, 1]|max }} {{ unit }}</p>
+          {% endif %}
         </div>
         <div class="cond-item-meta">
           {% if t.phase %}<span class="pr-phase">{{ t.phase }}</span>{% endif %}
@@ -305,6 +308,7 @@
 </section>
 {% endif %}
 
+{% if cities %}
 <section class="cond-cities">
   <h2>{{ condition }} trials by city</h2>
   <div class="chip-grid">
@@ -313,6 +317,7 @@
     {% endfor %}
   </div>
 </section>
+{% endif %}
 
 <section class="cond-cities">
   <h2>Other conditions</h2>

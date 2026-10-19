@@ -254,6 +254,7 @@ def extract_trial(study):
                        .get("enrollmentInfo", {}).get("count", ""),
         "startDate": status_mod.get("startDateStruct", {}).get("date", ""),
         "firstPosted": status_mod.get("studyFirstPostDateStruct", {}).get("date", ""),
+        "lastUpdated": status_mod.get("lastUpdatePostDateStruct", {}).get("date", ""),
         "completionDate": status_mod.get("primaryCompletionDateStruct", {})
                            .get("date", ""),
         "conditions": p.get("conditionsModule", {}).get("conditions", []),
