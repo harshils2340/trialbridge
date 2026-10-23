@@ -66,6 +66,9 @@ def test_robots_llms_indexnow():
     for allowed in ("Googlebot", "Bingbot", "GPTBot", "ClaudeBot", "PerplexityBot"):
         assert allowed not in robots, allowed
     assert "Sitemap:" in robots
+    qlyze = {"User-Agent": "Mozilla/5.0 (compatible; QlyzeBot/1.0; +https://app.qlyze.io/bot)"}
+    assert c.get("/trials/obesity/toronto-on", headers=qlyze).status_code == 403
+    assert c.get("/robots.txt", headers=qlyze).status_code == 200
     llms = c.get("/llms.txt")
     assert llms.status_code == 200 and b"# BridgeMD" in llms.data
     key = c.get(f"/{app.INDEXNOW_KEY}.txt")
@@ -122,6 +125,9 @@ def test_city_pages_lead_with_their_own_metro():
     assert order == sorted(order), "nearest site first, no-site trials last"
     assert "Clinic 1, Town 1 · 5 km" in html, "nearest site and distance shown"
     assert 'content="noindex' not in html
+    cached = app._SEO_TRIAL_CACHE[("obesity", "toronto, on")][1]
+    assert all("locations" not in t for t in cached), "cache holds cards, not full trials"
+    assert cached[0]["nearSite"]["city"] == "Town 1"
     assert tuple(_city_row("obesity", "toronto-on")) == (1, 2)
     sm = app.app.test_client().get("/sitemap-cities.xml").data.decode()
     assert "/trials/obesity/toronto-on<" in sm

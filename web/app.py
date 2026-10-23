@@ -9028,6 +9028,21 @@ def _seo_city_links(condition, exclude=None):
     return [c for c in cities if c != exclude]
 
 
+# What a condition/city page shows of each trial. A full trial dict carries
+# every site the trial runs at (over 1,000 for big cancer trials), about 1.5 MB
+# per cached page, so a crawler walking the city grid filled the 200-slot cache
+# toward 300 MB and ran the 512 MB instance out of memory. A card is ~4 KB.
+_SEO_CARD_KEYS = ("nctId", "title", "briefSummary", "phase", "lastUpdated",
+                  "nearSite")
+
+
+def _seo_card(trial):
+    card = {k: trial[k] for k in _SEO_CARD_KEYS if trial.get(k) is not None}
+    if card.get("briefSummary"):
+        card["briefSummary"] = card["briefSummary"][:200]   # the page shows 180
+    return card
+
+
 def _seo_trials(condition, city=None, limit=12):
     """Recruiting trials for an SEO page, cached per (condition, city).
 
@@ -9078,6 +9093,7 @@ def _seo_trials(condition, city=None, limit=12):
                                 t.get("lastUpdated") or "")
         except Exception:
             pass
+    trials = [_seo_card(t) for t in trials]
     _SEO_TRIAL_CACHE[key] = (now_ts, trials, is_local)
     _SEO_TRIAL_CACHE.move_to_end(key)
     while len(_SEO_TRIAL_CACHE) > _SEO_TRIAL_MAX:
@@ -16096,8 +16112,20 @@ def google_site_verification():
 # Search engines and AI assistants stay fully allowed.
 _ROBOTS_BLOCKED = ("AhrefsBot", "SemrushBot", "MJ12bot", "DotBot", "PetalBot",
                    "BLEXBot", "DataForSeoBot", "serpstatbot", "Barkrowler",
-                   "SeekportBot", "Bytespider", "ImagesiftBot", "Timpibot")
+                   "SeekportBot", "Bytespider", "ImagesiftBot", "Timpibot",
+                   "QlyzeBot")
 _ROBOTS_SLOW = ("Amazonbot", "YandexBot", "Applebot")
+
+
+@app.before_request
+def _refuse_blocked_crawlers():
+    # robots.txt asks these crawlers to stay out; this turns away the ones that
+    # crawl anyway. QlyzeBot walked the condition x city grid every 3 seconds
+    # on Oct 23 2026 and the instance ran out of memory twice.
+    ua = request.headers.get("User-Agent", "")
+    if request.path != "/robots.txt" and any(b in ua for b in _ROBOTS_BLOCKED):
+        return app.response_class("", status=403)
+    return None
 
 
 @app.route("/robots.txt")
