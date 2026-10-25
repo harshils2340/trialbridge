@@ -359,6 +359,13 @@ def test_demo_records_and_checklist():
     assert _post(
         client, f"/marketing-hub/threads/{thread_id}/stage",
         {"stage": "screening"}).status_code == 302
+    # The open conversation's stage tag is the stage menu, and the header says
+    # at a glance that this person's records are in.
+    page = client.get(f"/app/inbox?thread={thread_id}").get_data(as_text=True)
+    assert 'class="appmenu mh-stage-menu"' in page
+    assert 'title="Change stage">Screening' in page
+    assert 'name="stage" value="disqualified"' in page
+    assert "Records connected" in page
     with webapp.app.app_context():
         task = db.list_tasks(lead_id)[0]
     assert _post(

@@ -9633,6 +9633,11 @@ html.fs-motion .fsx-proof-stat:nth-child(4) { transition-delay:.18s; }
   width:100%; margin-top:6px; }
 .mh-read-from { flex-wrap:wrap; }
 .mh-read-tags .mh-tag.is-study { max-width:min(38vw,340px); }
+/* The stage tag in an open conversation doubles as the stage menu. */
+.mh-stage-menu > summary.mh-tag { cursor:pointer; }
+.mh-stage-menu > summary.mh-tag:hover { box-shadow:0 0 0 2px var(--accent-soft); }
+.mh-stage-menu > summary.mh-tag .ico { width:10px; height:10px; }
+.mh-stage-menu .appmenu-panel { left:0; right:auto; min-width:190px; }
 
 .mh-conversation { min-width:0; background:var(--bg); overflow:hidden;
   container-type:inline-size; container-name:mh-conv; }

@@ -279,11 +279,26 @@
              where a reply gets written against the wrong protocol. #}
           <span class="mh-read-tags">
             {% set open_stage = active.pipeline_stage or 'new' %}
-            <span class="mh-tag is-stage tone-{{ stage_tones.get(open_stage, 'neutral') }}">{{ stage_labels.get(open_stage, 'New') }}</span>
+            {# The stage tag is the control: click it to move this person to
+               another stage. A separate Stage dropdown in the header was
+               removed as clutter; the tag was already on screen. #}
+            <details class="appmenu mh-stage-menu">
+              <summary class="mh-tag is-stage tone-{{ stage_tones.get(open_stage, 'neutral') }}" title="Change stage">{{ stage_labels.get(open_stage, 'New') }}{{ ic.icon('chevron-down') }}</summary>
+              <form class="appmenu-panel" role="menu" method="post" action="{{ url_for('marketing_thread_stage', thread_id=active.id) }}">
+                <div class="appmenu-h">Move to</div>
+                {% for key in ['new','outreach','prescreen','screening','enrolled','disqualified'] %}
+                <button type="submit" name="stage" value="{{ key }}" role="menuitemradio" aria-checked="{{ 'true' if open_stage == key else 'false' }}"
+                        class="appmenu-item simple mh-filter-opt {{ 'is-on' if open_stage == key }}"><span>{{ stage_labels[key] }}</span></button>
+                {% endfor %}
+              </form>
+            </details>
             {% if active.study_label or active.nct %}
             <span class="mh-tag is-study" title="{{ active.study_label }}{% if active.nct %} ({{ active.nct }}){% endif %}">{{ ic.icon('award') }}<span class="mh-tag-label">{{ active.study_label or active.nct }}</span></span>
             {% endif %}
             {% if applicant %}
+            {# Whether this person's medical records are in, readable at a glance;
+               it opens the Records card in the Applicant tab. #}
+            <a class="mh-tag is-link {{ 'tone-ok' if records_profile else 'tone-neutral' }}" href="#records" data-show-records>{{ ic.icon('file-check' if records_profile else 'file') }}{{ 'Records connected' if records_profile else 'No records yet' }}</a>
             <a class="mh-tag is-link" href="{{ url_for('applicant_detail', lead_id=applicant.id) }}">{{ ic.icon('user') }}Applicant record</a>
             {% endif %}
           </span>
@@ -855,6 +870,9 @@
       || window.location.hash === '#portal') {
     showDetailPanel('applicant');
   }
+  document.querySelectorAll('[data-show-records]').forEach(function (link) {
+    link.addEventListener('click', function () { showDetailPanel('applicant'); });
+  });
 
   // Name the teammate in the summary as soon as one is chosen, so the dialog
   // describes the handoff you are actually about to make rather than a generic
