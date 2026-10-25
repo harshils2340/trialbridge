@@ -7625,9 +7625,41 @@ def marketing_thread_create_applicant(thread_id):
     return redirect(_marketing_thread_url(thread_id))
 
 
+# Synthetic records for the demo inbox, matched to the trial the person wrote
+# in about. The sandbox's random sample patient often had nothing to do with
+# the study (COVID-19 on a depression trial), which made the step read as noise.
+_DEMO_RECORDS = (
+    (("depress", "mdd"), {
+        "conditions": ["Major depressive disorder, recurrent"],
+        "meds": ["Sertraline 100 mg daily"],
+        "labs": ["PHQ-9 score 19 (moderately severe)"]}),
+    (("migraine",), {
+        "conditions": ["Migraine without aura"],
+        "meds": ["Sumatriptan 50 mg as needed"],
+        "labs": ["6 migraine days a month (headache diary)"]}),
+)
+
+
+def _demo_records_profile(thread, applicant_token):
+    label = f"{thread['study_label'] or ''} {thread['nct'] or ''}".lower()
+    for keys, record in _DEMO_RECORDS:
+        if any(key in label for key in keys):
+            prof = {"age": 38, "sex": "", **record}
+            prof.update({
+                "provider": records_mod.provider_label(),
+                "summary": "Synthetic demo record, age 38.",
+                "sync_status": "connected", "source_status": "sandbox_ready",
+                "external_patient_id": f"demo-{applicant_token[:8]}",
+                "external_query_id": "", "last_sync_at": db.now(),
+                "last_sync_error": "", "completeness_score": 100})
+            return prof
+    return records_mod.connect(None, applicant_token)
+
+
 @app.route("/marketing-hub/threads/<int:thread_id>/records", methods=["POST"])
 @login_required
 def marketing_thread_records(thread_id):
+    """Demo account only: pull a synthetic record for the linked applicant."""
     thread = db.get_marketing_thread(g.user["id"], thread_id)
     if not thread or not thread["linked_lead_id"]:
         abort(404)
@@ -7641,7 +7673,7 @@ def marketing_thread_records(thread_id):
         return redirect(_marketing_thread_url(thread_id, "records"))
     db.authorize_lead_records(lead["id"])
     try:
-        prof = records_mod.connect(None, lead["applicant_token"])
+        prof = _demo_records_profile(thread, lead["applicant_token"])
         db.set_records_profile(lead["applicant_token"], prof)
         summary = records_mod.summary_text(prof)
         db.attach_records_to_open_leads(lead["applicant_token"], summary)
