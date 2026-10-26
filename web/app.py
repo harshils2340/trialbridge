@@ -16232,10 +16232,16 @@ def apple_touch_icon_root():
 
 @app.route("/deck")
 def pitch_deck():
-    # The pitch deck for investors: public, no login, kept out of search.
-    # Built from the Slides deck (speaker notes removed); each product video
-    # starts when its slide scrolls into view.
+    # The investor deck: public, no login, kept out of search. Each product
+    # video starts when its slide scrolls into view.
     return send_file(os.path.join(app.static_folder, "deck", "index.html"),
+                     mimetype="text/html")
+
+
+@app.route("/pitch")
+def pitch_competition_deck():
+    # The live pitch-competition deck, same player as /deck.
+    return send_file(os.path.join(app.static_folder, "deck", "pitch.html"),
                      mimetype="text/html")
 
 

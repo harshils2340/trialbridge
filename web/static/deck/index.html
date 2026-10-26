@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
 <title>BridgeMD</title>
-<meta name="description" content="Helping the right people join the right trials, faster.">
+<meta name="description" content="AI to accelerate clinical trials so life-saving drugs reach patients faster.">
 <meta property="og:title" content="BridgeMD">
-<meta property="og:description" content="Helping the right people join the right trials, faster.">
+<meta property="og:description" content="AI to accelerate clinical trials so life-saving drugs reach patients faster.">
 <meta property="og:image" content="https://bridgemd.health/static/og-default.png">
 <link rel="icon" href="/static/favicon-32.png" sizes="32x32">
 <link rel="preload" href="/static/deck/figtree.woff2" as="font" type="font/woff2" crossorigin>
@@ -19,158 +19,248 @@ body { padding: 24px 16px; }
 .frame { position: relative; width: var(--w, 960px); height: calc(var(--w, 960px) * 0.5625); margin: 0 auto 24px; overflow: hidden;
   border-radius: 12px; box-shadow: 0 1px 3px rgba(14, 27, 51, .12), 0 10px 28px rgba(14, 27, 51, .10); }
 .frame > section { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; overflow: hidden;
-  font-family: Figtree, Arial, sans-serif; transform: scale(var(--s, .5)); transform-origin: 0 0; }
-.frame a { color: inherit; }
+  font-family: Figtree, Arial, sans-serif; transform: scale(var(--s, .5)); transform-origin: 0 0;
+  background: #f4f6fa; color: #0e1b33; }
+.frame > section.navy { background: #0e1b33; color: #f4f6fa; }
+.frame a { color: inherit; text-decoration: none; }
+section > * { position: absolute; }
+h2 { left: 128px; width: 1664px; font-size: 72px; font-weight: 800; line-height: 1.1; letter-spacing: -1px; }
+.src { left: 128px; bottom: 56px; width: 1664px; font-size: 24px; color: #566174; }
+.navy .src { color: #9aa7bd; }
+.pair { left: 128px; width: 1664px; display: flex; gap: 96px; }
+.pair > div { flex: 1; }
+.pair .big { font-size: 180px; font-weight: 800; line-height: 1; letter-spacing: -5px; color: #8ab4e6; }
+.pair .cap { margin-top: 28px; font-size: 48px; font-weight: 700; line-height: 1.2; }
+.label { font-size: 24px; font-weight: 800; letter-spacing: 3px; text-transform: uppercase; }
 </style>
 </head>
 <body>
+
 <div class="frame">
-<section id="cover" style="background:#0e1b33">
-  <div style="position:absolute; top:300px; left:128px; width:1664px; display:flex; flex-direction:row; gap:56px; align-items:center; justify-content:center">
-    <svg xmlns="http://www.w3.org/2000/svg" aria-label="BridgeMD logo" viewBox="0 0 512 512" style="width:240px; height:240px; flex:0 0 auto"><rect width="512" height="512" rx="116" fill="#1257b0"/><g transform="translate(256 256) scale(0.84) translate(-256 -256)" fill-rule="evenodd"><path fill="#8ab4e6" d="M142 96 H254 A46 46 0 0 1 300 142 V254 A46 46 0 0 1 254 300 H142 A46 46 0 0 1 96 254 V142 A46 46 0 0 1 142 96 Z M258 212 H300 V254 A46 46 0 0 1 254 300 H212 V258 A46 46 0 0 1 258 212 Z"/><path fill="#ffffff" d="M258 212 H370 A46 46 0 0 1 416 258 V370 A46 46 0 0 1 370 416 H258 A46 46 0 0 1 212 370 V258 A46 46 0 0 1 258 212 Z M258 212 H300 V254 A46 46 0 0 1 254 300 H212 V258 A46 46 0 0 1 258 212 Z"/></g></svg>
-    <h1 style="font-family:Figtree, Arial, sans-serif; font-size:176px; font-weight:800; line-height:1; letter-spacing:-4px; color:#f4f6fa">BridgeMD</h1>
+<section id="cover" class="navy">
+  <div style="top:280px; left:128px; width:1664px; display:flex; gap:56px; align-items:center; justify-content:center">
+    <svg xmlns="http://www.w3.org/2000/svg" aria-label="BridgeMD logo" viewBox="0 0 512 512" style="width:240px; height:240px; flex:0 0 auto"><rect width="512" height="512" rx="116" fill="#1257b0"/><g transform="translate(256 256) scale(0.84) translate(-256 -256)" fill-rule="evenodd"><path fill="#8ab4e6" d="M142 96 H254 A46 46 0 0 1 300 142 V254 A46 46 0 0 1 254 300 H142 A46 46 0 0 1 96 254 V142 A46 46 0 0 1 142 96 Z M258 212 H300 V254 A46 46 0 0 1 254 300 H212 V258 A46 46 0 0 1 258 212 Z"/><path fill="#f4f6fa" d="M258 212 H370 A46 46 0 0 1 416 258 V370 A46 46 0 0 1 370 416 H258 A46 46 0 0 1 212 370 V258 A46 46 0 0 1 258 212 Z M258 212 H300 V254 A46 46 0 0 1 254 300 H212 V258 A46 46 0 0 1 258 212 Z"/></g></svg>
+    <h1 style="font-size:176px; font-weight:800; line-height:1; letter-spacing:-4px">BridgeMD</h1>
   </div>
-  <p style="position:absolute; top:610px; left:128px; width:1664px; font-family:Figtree, Arial, sans-serif; font-size:60px; font-weight:700; line-height:1.2; text-align:center; color:#8ab4e6">Helping the right people join<br>the right trials, faster.</p>
-  <p style="position:absolute; top:880px; left:128px; width:1664px; font-family:Figtree, Arial, sans-serif; font-size:34px; font-weight:600; text-align:center; color:#b8c4d9">Harshil Shah · Founder and CEO</p>
+  <p style="top:592px; left:128px; width:1664px; font-size:64px; font-weight:700; line-height:1.2; text-align:center; color:#8ab4e6">AI to accelerate clinical trials so life&#8209;saving<br>drugs reach patients faster.</p>
+  <p style="top:880px; left:128px; width:1664px; font-size:34px; font-weight:600; text-align:center; color:#b8c4d9">Harshil Shah · Founder and CEO · bridgemd.health</p>
 </section>
 </div>
+
 <div class="frame">
-<section id="apply" style="background:#f4f6fa">
-  <p style="position:absolute; top:28px; left:128px; width:1664px; font-family:Figtree, Arial, sans-serif; font-size:24px; font-weight:700; letter-spacing:3px; text-transform:uppercase; color:#1257b0">Step 1 of 3</p>
-  <h2 style="position:absolute; top:62px; left:128px; width:1664px; font-family:Figtree, Arial, sans-serif; font-size:56px; font-weight:800; line-height:1.1; letter-spacing:-1px; color:#0e1b33">Sarah finds a trial and applies</h2>
-  <video src="/static/deck/step1-apply.mp4" poster="/static/deck/step1-apply.png" aria-label="Animation: Sarah searches lung cancer came back near Toronto, sees recruiting trials for lung cancer recurrence, opens a new targeted drug for lung cancer that came back, answers its questions, fills in her details, and her request is sent" muted playsinline preload="auto" loop style="position:absolute; top:144px; left:128px; width:1664px; height:936px; border-top:1px solid #dce3ee; border-right:1px solid #dce3ee; border-left:1px solid #dce3ee; border-radius:24px 24px 0 0; box-shadow:0 24px 56px #0e1b3329; object-fit:cover"></video>
+<section id="problem" class="navy">
+  <h2 style="top:128px; width:1480px; font-size:80px">Clinical trials run late because the right patients are hard to find.</h2>
+  <div class="pair" style="top:500px">
+    <div>
+      <p class="big">2 in 3</p>
+      <p class="cap">trials miss their enrollment target</p>
+    </div>
+    <div>
+      <p class="big">$800K</p>
+      <p class="cap">in lost drug sales for every day a trial runs late</p>
+    </div>
+  </div>
+  <p class="src">Sources · McDonald et al., Trials, 2006 · Tufts Center for the Study of Drug Development, 2024</p>
 </section>
 </div>
+
 <div class="frame">
-<section id="verify" style="background:#f4f6fa">
-  <p style="position:absolute; top:28px; left:128px; width:1664px; font-family:Figtree, Arial, sans-serif; font-size:24px; font-weight:700; letter-spacing:3px; text-transform:uppercase; color:#1257b0">Step 2 of 3</p>
-  <h2 style="position:absolute; top:62px; left:128px; width:1664px; font-family:Figtree, Arial, sans-serif; font-size:56px; font-weight:800; line-height:1.1; letter-spacing:-1px; color:#0e1b33">Sarah shares her records once</h2>
-  <video src="/static/deck/step2-records.mp4" poster="/static/deck/step2-records.png" aria-label="Animation: Sarah agrees to share her records with this study team only; her family doctor, hospital, pharmacy and lab records come back; each requirement is checked and met, she is likely eligible, and her application is sent to the study team" muted playsinline preload="auto" loop style="position:absolute; top:144px; left:128px; width:1664px; height:936px; border-top:1px solid #dce3ee; border-right:1px solid #dce3ee; border-left:1px solid #dce3ee; border-radius:24px 24px 0 0; box-shadow:0 24px 56px #0e1b3329; object-fit:cover"></video>
+<section id="product">
+  <h2 style="top:200px; width:600px; font-size:64px">We bring the patients. AI gets the right ones enrolled.</h2>
+  <div style="top:470px; left:128px; width:560px; display:flex; flex-direction:column; gap:32px">
+    <div style="display:flex; gap:20px"><p style="flex:0 0 44px; font-size:40px; font-weight:800; line-height:1.1; color:#1257b0">1</p><p style="font-size:34px; font-weight:600; line-height:1.25">Patients find a trial on Google and apply</p></div>
+    <div style="display:flex; gap:20px"><p style="flex:0 0 44px; font-size:40px; font-weight:800; line-height:1.1; color:#1257b0">2</p><p style="font-size:34px; font-weight:600; line-height:1.25">AI checks every applicant against the trial</p></div>
+    <div style="display:flex; gap:20px"><p style="flex:0 0 44px; font-size:40px; font-weight:800; line-height:1.1; color:#1257b0">3</p><p style="font-size:34px; font-weight:600; line-height:1.25">The best fits get booked for a visit</p></div>
+  </div>
+  <a href="https://bridgemd.health/app/inbox" style="top:820px; left:128px; padding:18px 32px; border:3px solid #1257b0; border-radius:999px; font-size:30px; font-weight:800; color:#1257b0">Try the live demo</a>
+  <video src="/static/deck/step3-inbox.mp4" poster="/static/deck/step3-inbox-end.png" aria-label="Animation: applicants arrive in one inbox from the website, ClinicalTrials.gov, Instagram, email and a doctor referral; they are sorted by fit with Sarah first; a drafted reply to Sarah is sent, she replies, and her screening visit is booked" muted playsinline preload="auto" loop style="top:245px; left:744px; width:1048px; height:590px; object-fit:cover; border:1px solid #dce3ee; border-radius:24px; box-shadow:0 24px 64px #0e1b3329"></video>
 </section>
 </div>
+
 <div class="frame">
-<section id="prioritize" style="background:#f4f6fa">
-  <p style="position:absolute; top:28px; left:128px; width:1664px; font-family:Figtree, Arial, sans-serif; font-size:24px; font-weight:700; letter-spacing:3px; text-transform:uppercase; color:#1257b0">Step 3 of 3</p>
-  <h2 style="position:absolute; top:62px; left:128px; width:1664px; font-family:Figtree, Arial, sans-serif; font-size:56px; font-weight:800; line-height:1.1; letter-spacing:-1px; color:#0e1b33">Sarah hears back the same day</h2>
-  <video src="/static/deck/step3-inbox.mp4" poster="/static/deck/step3-inbox.png" aria-label="Animation: applicants arrive in one inbox from the website, ClinicalTrials.gov, Instagram, email and a doctor referral; they are sorted by fit with Sarah first; a drafted reply to Sarah is sent, she replies, and her screening visit is booked" muted playsinline preload="auto" loop style="position:absolute; top:144px; left:128px; width:1664px; height:936px; object-fit:cover; border:1px solid #dce3ee; border-bottom:none; border-radius:24px 24px 0 0; box-shadow:0 24px 56px #0e1b3329"></video>
+<section id="why-now">
+  <h2 style="top:128px">Why this works now</h2>
+  <div style="top:330px; left:128px; width:1664px; height:520px; display:flex; gap:32px">
+    <div style="flex:1; padding:56px 48px; background:#fcfdfe; border:1px solid #dce3ee; border-radius:28px">
+      <p class="label" style="color:#1257b0">AI can screen</p>
+      <p style="margin-top:36px; font-size:150px; font-weight:800; line-height:1; letter-spacing:-4px">42.6%</p>
+      <p style="margin-top:28px; font-size:40px; font-weight:600; line-height:1.3; color:#3b4b66">less screening time when AI reads the patient's records</p>
+    </div>
+    <div style="flex:1; padding:56px 48px; background:#fcfdfe; border:1px solid #dce3ee; border-radius:28px">
+      <p class="label" style="color:#1257b0">Records are open</p>
+      <p style="margin-top:36px; font-size:150px; font-weight:800; line-height:1; letter-spacing:-4px">2023</p>
+      <p style="margin-top:28px; font-size:40px; font-weight:600; line-height:1.3; color:#3b4b66">US law opened health records to the apps patients choose</p>
+    </div>
+    <div style="flex:1; padding:56px 48px; background:#fcfdfe; border:1px solid #dce3ee; border-radius:28px">
+      <p class="label" style="color:#1257b0">Sites are buying</p>
+      <p style="margin-top:36px; font-size:150px; font-weight:800; line-height:1; letter-spacing:-4px">46%</p>
+      <p style="margin-top:28px; font-size:40px; font-weight:600; line-height:1.3; color:#3b4b66">of research sites are looking at AI tools this year</p>
+    </div>
+  </div>
+  <p class="src">Sources · Jin et al. (NIH), Nature Communications, 2024 · 21st Century Cures Act Final Rule · SCRS Site Landscape Survey, 2026</p>
 </section>
 </div>
+
 <div class="frame">
-<section id="compare" style="background:#f4f6fa">
-  <h2 style="position:absolute; top:180px; left:128px; width:1664px; font-family:Figtree, Arial, sans-serif; font-size:72px; font-weight:800; line-height:1.1; letter-spacing:-1px; color:#0e1b33">Average time from applying to enrolling</h2>
-  <p style="position:absolute; top:400px; left:128px; width:1000px; font-family:Figtree, Arial, sans-serif; font-size:40px; font-weight:700; color:#566174">Without BridgeMD</p>
-  <div style="position:absolute; top:462px; left:128px; width:1300px; height:110px; display:flex; flex-direction:column; background:#b8c4d9; border-radius:20px">
+<section id="traction">
+  <h2 style="top:96px">Clinics pay, and patients keep coming</h2>
+  <div style="top:240px; left:128px; width:1664px; height:580px; background:#fcfdfe; border:1px solid #dce3ee; border-radius:28px"></div>
+  <svg xmlns="http://www.w3.org/2000/svg" aria-label="Since launch on August 11, 2026: patients applied rose from 0 to 250 by August 31 and to over 1,100 today; monthly revenue went from $0 on August 31 to $1,140 today" viewBox="0 0 1664 580" style="top:240px; left:128px; width:1664px; height:580px"><line x1="120" y1="500" x2="1400" y2="500" stroke="#B8C4D9" stroke-width="2"/><path d="M140 500 L466 414 L1380 120" fill="none" stroke="#1257B0" stroke-width="9" stroke-linejoin="round" stroke-linecap="round"/><path d="M140 500 L466 500 L1380 214" fill="none" stroke="#D9822B" stroke-width="9" stroke-linejoin="round" stroke-linecap="round"/><circle cx="466" cy="414" r="11" fill="#1257B0" stroke="#FCFDFE" stroke-width="4"/><circle cx="1380" cy="120" r="15" fill="#1257B0" stroke="#FCFDFE" stroke-width="4"/><circle cx="466" cy="500" r="11" fill="#D9822B" stroke="#FCFDFE" stroke-width="4"/><circle cx="1380" cy="214" r="15" fill="#D9822B" stroke="#FCFDFE" stroke-width="4"/><circle cx="140" cy="500" r="11" fill="#0E1B33" stroke="#FCFDFE" stroke-width="4"/></svg>
+  <div style="top:276px; left:184px; display:flex; gap:40px; align-items:center; font-size:28px; font-weight:700">
+    <div style="display:flex; gap:12px; align-items:center"><span style="width:40px; height:9px; background:#1257b0; border-radius:4px"></span>Patients applied</div>
+    <div style="display:flex; gap:12px; align-items:center"><span style="width:40px; height:9px; background:#d9822b; border-radius:4px"></span>Monthly revenue</div>
   </div>
-  <p style="position:absolute; top:481px; left:1468px; width:330px; font-family:Figtree, Arial, sans-serif; font-size:72px; font-weight:800; line-height:1; letter-spacing:-2px; color:#566174">5 weeks</p>
-  <p style="position:absolute; top:670px; left:128px; width:1000px; font-family:Figtree, Arial, sans-serif; font-size:40px; font-weight:800; color:#1257b0">With BridgeMD</p>
-  <div style="position:absolute; top:732px; left:128px; width:520px; height:110px; display:flex; flex-direction:column; background:#1257b0; border-radius:20px">
-  </div>
-  <p style="position:absolute; top:751px; left:688px; width:600px; font-family:Figtree, Arial, sans-serif; font-size:72px; font-weight:800; line-height:1; letter-spacing:-2px; color:#1257b0">2 weeks</p>
-</section>
-</div>
-<div class="frame">
-<section id="traction" style="background:#f4f6fa">
-  <h2 style="position:absolute; top:69.84px; left:128px; width:1664px; font-family:Figtree, Arial, sans-serif; font-size:72px; font-weight:800; line-height:1.1; letter-spacing:-1px; color:#0e1b33">Where we are at</h2>
-  <div style="position:absolute; top:220px; left:128px; width:1664px; height:600px; display:flex; flex-direction:column; background:#fcfdfe; border:1px solid #dce3ee; border-radius:28px">
-  </div>
-  <svg xmlns="http://www.w3.org/2000/svg" aria-label="Two lines since launch on August 11: patients applied rose from 0 to 250 by August 31, when BridgeMD entered the competition, and to over 1,100 today; monthly revenue went from $0 on August 31, when the clinic partners used BridgeMD for free, to $1,600 today" viewBox="0 0 1664 600" style="position:absolute; top:220px; left:128px; width:1664px; height:600px"><line x1="120" y1="520" x2="1400" y2="520" stroke="#B8C4D9" stroke-width="2"/><line x1="560" y1="80" x2="560" y2="520" stroke="#9AA5B5" stroke-width="3" stroke-dasharray="10 10"/><line x1="1380" y1="80" x2="1380" y2="520" stroke="#9AA5B5" stroke-width="3" stroke-dasharray="10 10"/><path d="M140 520 L560 432 L1380 133" fill="none" stroke="#1257B0" stroke-width="9" stroke-linejoin="round" stroke-linecap="round"/><path d="M140 520 L560 520 L1380 227" fill="none" stroke="#D9822B" stroke-width="9" stroke-linejoin="round" stroke-linecap="round"/><circle cx="560" cy="432" r="12" fill="#1257B0" stroke="#FCFDFE" stroke-width="4"/><circle cx="1380" cy="133" r="15" fill="#1257B0" stroke="#FCFDFE" stroke-width="4"/><circle cx="560" cy="520" r="12" fill="#D9822B" stroke="#FCFDFE" stroke-width="4"/><circle cx="1380" cy="227" r="15" fill="#D9822B" stroke="#FCFDFE" stroke-width="4"/><circle cx="140" cy="520" r="11" fill="#0E1B33" stroke="#FCFDFE" stroke-width="4"/></svg>
-  <div style="position:absolute; top:250px; left:168px; width:900px; display:flex; flex-direction:row; gap:40px; align-items:center">
-    <div style="display:flex; flex-direction:row; gap:12px; align-items:center">
-      <div style="width:40px; height:9px; display:flex; flex-direction:column; background:#1257b0; border-radius:4px">
-      </div>
-      <p style="font-family:Figtree, Arial, sans-serif; font-size:28px; font-weight:700; color:#0e1b33">Patients applied</p>
-    </div>
-    <div style="display:flex; flex-direction:row; gap:12px; align-items:center">
-      <div style="width:40px; height:9px; display:flex; flex-direction:column; background:#d9822b; border-radius:4px">
-      </div>
-      <p style="font-family:Figtree, Arial, sans-serif; font-size:28px; font-weight:700; color:#0e1b33">Monthly revenue</p>
-    </div>
-  </div>
-  <p style="position:absolute; top:320px; left:700px; width:420px; font-family:Figtree, Arial, sans-serif; font-size:26px; font-weight:700; color:#566174">Applied to CIBC Biz Pitch</p>
-  <p style="position:absolute; top:284px; left:1528px; width:260px; font-family:Figtree, Arial, sans-serif; font-size:64px; font-weight:800; color:#1257b0">1,100+</p>
-  <p style="position:absolute; top:360px; left:1528px; width:260px; font-family:Figtree, Arial, sans-serif; font-size:26px; font-weight:400; color:#475569">patients applied</p>
-  <p style="position:absolute; top:416px; left:1528px; width:260px; font-family:Figtree, Arial, sans-serif; font-size:64px; font-weight:800; color:#d9822b">$1,600</p>
-  <p style="position:absolute; top:492px; left:1528px; width:260px; font-family:Figtree, Arial, sans-serif; font-size:26px; font-weight:400; color:#475569">a month in revenue</p>
-  <p style="position:absolute; top:566px; left:706px; width:160px; font-family:Figtree, Arial, sans-serif; font-size:40px; font-weight:800; color:#1257b0">250</p>
-  <p style="position:absolute; top:658px; left:706px; width:160px; font-family:Figtree, Arial, sans-serif; font-size:40px; font-weight:800; color:#d9822b">$0</p>
-  <p style="position:absolute; top:758px; left:138px; width:260px; font-family:Figtree, Arial, sans-serif; font-size:26px; font-weight:700; text-align:center; color:#0e1b33">Launched Aug 11</p>
-  <p style="position:absolute; top:758px; left:628px; width:120px; font-family:Figtree, Arial, sans-serif; font-size:26px; font-weight:400; text-align:center; color:#566174">Aug 31</p>
-  <p style="position:absolute; top:758px; left:1448px; width:120px; font-family:Figtree, Arial, sans-serif; font-size:26px; font-weight:700; text-align:center; color:#0e1b33">Today</p>
-  <div style="position:absolute; bottom:69.61px; left:380.14px; width:1664px; display:flex; flex-direction:row; gap:40px">
-    <div style="display:flex; flex-direction:row; gap:16px; align-items:baseline; flex:1">
-      <p style="font-family:Figtree, Arial, sans-serif; font-size:84px; font-weight:800; letter-spacing:-2px; color:#1257b0">300+</p>
-      <p style="font-family:Figtree, Arial, sans-serif; font-size:32px; color:#475569">enrolled in a trial</p>
-    </div>
-    <div style="display:flex; flex-direction:row; gap:16px; align-items:baseline; flex:1">
-      <p style="font-family:Figtree, Arial, sans-serif; font-size:84px; font-weight:800; letter-spacing:-2px; color:#1257b0">4</p>
-      <p style="font-family:Figtree, Arial, sans-serif; font-size:32px; color:#475569">paying clinics</p>
-    </div>
-  </div>
-</section>
-</div>
-<div class="frame">
-<section id="vision" style="background:#f4f6fa">
-  <h2 style="position:absolute; top:96px; left:128px; width:1110px; font-family:Figtree, Arial, sans-serif; font-size:72px; font-weight:800; line-height:1.1; letter-spacing:-1px; color:#0e1b33">How We Grow</h2>
-  <div style="position:absolute; top:494px; left:128px; width:533px; height:490px; display:flex; flex-direction:column; background:#dce8f8; border-radius:28px; box-shadow:0 12px 32px #0e1b330f">
-    <div style="position:absolute; top:40px; left:40px; width:453px; display:flex; flex-direction:column; gap:8px">
-      <p style="font-family:Figtree, Arial, sans-serif; font-size:24px; font-weight:700; letter-spacing:3px; text-transform:uppercase; color:#3b4b66">Today</p>
-      <p style="font-family:Figtree, Arial, sans-serif; font-size:48px; font-weight:800; line-height:1.1; color:#0e1b33">Clinics</p>
-      <p style="font-family:Figtree, Arial, sans-serif; font-size:88px; font-weight:800; line-height:1; letter-spacing:-2px; color:#1257b0">1</p>
-      <p style="font-family:Figtree, Arial, sans-serif; font-size:30px; font-weight:700; color:#3b4b66">site per contract</p>
-    </div>
-  </div>
-  <div style="position:absolute; top:364px; left:693px; width:533px; height:620px; display:flex; flex-direction:column; background:#8ab4e6; border-radius:28px; box-shadow:0 12px 32px #0e1b330f">
-    <div style="position:absolute; top:40px; left:40px; width:453px; display:flex; flex-direction:column; gap:8px">
-      <p style="font-family:Figtree, Arial, sans-serif; font-size:24px; font-weight:700; letter-spacing:3px; text-transform:uppercase; color:#24344f">Next</p>
-      <p style="font-family:Figtree, Arial, sans-serif; font-size:48px; font-weight:800; line-height:1.1; color:#0e1b33">Clinic networks</p>
-      <p style="font-family:Figtree, Arial, sans-serif; font-size:88px; font-weight:800; line-height:1; letter-spacing:-2px; color:#0e3f80">10+</p>
-      <p style="font-family:Figtree, Arial, sans-serif; font-size:30px; font-weight:700; color:#24344f">of sites per contract</p>
-    </div>
-  </div>
-  <div style="position:absolute; top:214px; left:1258px; width:533px; height:770px; display:flex; flex-direction:column; background:#1257b0; border-radius:28px; box-shadow:0 12px 32px #0e1b330f">
-    <div style="position:absolute; top:40px; left:40px; width:453px; display:flex; flex-direction:column; gap:8px">
-      <p style="font-family:Figtree, Arial, sans-serif; font-size:24px; font-weight:700; letter-spacing:3px; text-transform:uppercase; color:#d6e4f7">Then</p>
-      <p style="font-family:Figtree, Arial, sans-serif; font-size:48px; font-weight:800; line-height:1.1; color:#f4f6fa">Drug companies</p>
-      <p style="font-family:Figtree, Arial, sans-serif; font-size:88px; font-weight:800; line-height:1; letter-spacing:-2px; color:#ffffff">1,000+</p>
-      <p style="font-family:Figtree, Arial, sans-serif; font-size:30px; font-weight:700; color:#d6e4f7">of sites per contract</p>
-    </div>
+  <p style="top:290px; left:1532px; font-size:64px; font-weight:800; color:#1257b0">1,100+</p>
+  <p style="top:366px; left:1532px; font-size:26px; color:#475569">patients applied</p>
+  <p style="top:420px; left:1532px; font-size:64px; font-weight:800; color:#d9822b">$1,140</p>
+  <p style="top:496px; left:1532px; font-size:26px; color:#475569">MRR in USD</p>
+  <p style="top:760px; left:138px; width:260px; font-size:26px; font-weight:700; text-align:center">Launched Aug 11</p>
+  <p style="top:760px; left:534px; width:120px; font-size:26px; text-align:center; color:#566174">Aug 31</p>
+  <p style="top:760px; left:1448px; width:120px; font-size:26px; font-weight:700; text-align:center">Today</p>
+  <div style="top:868px; left:128px; width:1664px; display:flex; gap:40px">
+    <div style="flex:1; display:flex; gap:16px; align-items:baseline"><p style="font-size:84px; font-weight:800; letter-spacing:-2px; color:#1257b0">300+</p><p style="font-size:32px; color:#475569">enrolled in a trial</p></div>
+    <div style="flex:1; display:flex; gap:16px; align-items:baseline"><p style="font-size:84px; font-weight:800; letter-spacing:-2px; color:#1257b0">4</p><p style="font-size:32px; color:#475569">clinics paying monthly</p></div>
+    <div style="flex:1; display:flex; gap:16px; align-items:baseline"><p style="font-size:84px; font-weight:800; letter-spacing:-2px; color:#1257b0">$0</p><p style="font-size:32px; color:#475569">spent on ads</p></div>
   </div>
 </section>
 </div>
+
 <div class="frame">
-<section id="founder" style="background:#f4f6fa">
-  <h2 style="position:absolute; top:128px; left:128px; width:1200px; font-family:Figtree, Arial, sans-serif; font-size:72px; font-weight:800; line-height:1.1; letter-spacing:-1px; color:#0e1b33">The right founder to build this</h2>
-  <img src="/static/deck/waterloo.png" alt="University of Waterloo" style="position:absolute; top:116px; left:1452px; width:340px; height:122px; object-fit:contain">
-  <img src="/static/deck/harshil.jpg" alt="Photo of Harshil Shah" style="position:absolute; top:248px; left:328px; width:300px; height:300px; background:#e6eaf1; border:6px solid #fcfdfe; border-radius:150px; box-shadow:0 16px 40px #0e1b332e">
-  <p style="position:absolute; top:566px; left:308px; width:340px; font-family:Figtree, Arial, sans-serif; font-size:44px; font-weight:800; text-align:center; color:#0e1b33">Harshil Shah</p>
-  <p style="position:absolute; top:624px; left:308px; width:340px; font-family:Figtree, Arial, sans-serif; font-size:28px; font-weight:700; text-align:center; color:#1257b0">Founder and CEO</p>
-  <div style="position:absolute; top:260px; left:900px; width:892px; height:400px; display:flex; flex-direction:column; gap:48px; justify-content:center">
-    <div style="display:flex; flex-direction:row; gap:24px; align-items:center">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:56px; height:56px; color:#1257b0; flex:none"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-      <p style="flex:1; font-family:Figtree, Arial, sans-serif; font-size:48px; font-weight:800; line-height:1.15; color:#0e1b33">Built Pilot to $100K a year</p>
+<section id="market" class="navy">
+  <h2 style="top:128px; width:1480px; font-size:80px">We start at the research site and grow into the whole trial.</h2>
+  <div class="pair" style="top:500px">
+    <div>
+      <p class="big">$70B</p>
+      <p class="cap">a year that drug companies pay outside firms to run trials</p>
     </div>
-    <div style="display:flex; flex-direction:row; gap:24px; align-items:center">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:56px; height:56px; color:#1257b0; flex:none"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-      <p style="flex:1; font-family:Figtree, Arial, sans-serif; font-size:48px; font-weight:800; line-height:1.15; color:#0e1b33">Family in clinical research</p>
+    <div>
+      <p class="big" style="color:#f4f6fa">$3.8B</p>
+      <p class="cap">a year for software at 80,000 research sites, where we start</p>
     </div>
   </div>
-  <div style="position:absolute; top:756px; left:128px; width:1664px; height:216px; display:flex; flex-direction:column; gap:28px; justify-content:center; padding:32px 56px; background:#fcfdfe; border:1px solid #dce3ee; border-radius:28px">
-    <p style="font-family:Figtree, Arial, sans-serif; font-size:26px; font-weight:700; letter-spacing:3px; text-transform:uppercase; color:#566174">Where I've worked</p>
-    <div style="display:flex; flex-direction:row; align-items:center; justify-content:space-between">
-      <img src="/static/deck/meta.png" alt="Meta" style="width:228px; height:46px; object-fit:contain">
-      <img src="/static/deck/databricks.png" alt="Databricks" style="width:229px; height:46px; object-fit:contain">
-      <img src="/static/deck/1password.png" alt="1Password" style="width:196px; height:46px; object-fit:contain">
-      <img src="/static/deck/heymilo.png" alt="HeyMilo" style="width:233px; height:46px; object-fit:contain">
+  <p class="src">Sources · Global Market Insights and IMARC, 2024 · ClinicalTrials.gov, October 2026 · $3.8B is 80,000 sites at $4,000 a month</p>
+</section>
+</div>
+
+<div class="frame">
+<section id="model">
+  <h2 style="top:96px">Sites pay more as our AI runs more of the trial</h2>
+  <p style="top:208px; left:128px; font-size:34px; font-weight:600; color:#475569">Price per research site, per month, in USD</p>
+  <svg xmlns="http://www.w3.org/2000/svg" aria-hidden="true" viewBox="0 0 1664 600" style="top:300px; left:128px; width:1664px; height:600px"><line x1="0" y1="80" x2="1664" y2="80" stroke="#9AA5B5" stroke-width="3" stroke-dasharray="12 10"/><rect x="116" y="551" width="300" height="29" rx="8" fill="#B8C4D9"/><rect x="682" y="366" width="300" height="214" rx="12" fill="#8AB4E6"/><rect x="1248" y="180" width="300" height="400" rx="12" fill="#1257B0"/><line x1="0" y1="580" x2="1664" y2="580" stroke="#B8C4D9" stroke-width="2"/></svg>
+  <p style="top:332px; left:128px; font-size:28px; font-weight:700; color:#566174">One full-time study coordinator, about $5,000 a month</p>
+  <p style="top:769px; left:128px; width:533px; font-size:60px; font-weight:800; text-align:center; color:#566174">$285</p>
+  <p style="top:586px; left:693px; width:533px; font-size:60px; font-weight:800; text-align:center; color:#1257b0">$2,140</p>
+  <p style="top:396px; left:1258px; width:533px; font-size:60px; font-weight:800; text-align:center; color:#0e3f80">$4,000</p>
+  <div style="top:904px; left:128px; width:1664px; display:flex; gap:32px; text-align:center">
+    <div style="flex:1"><p class="label" style="color:#566174">Today</p><p style="margin-top:10px; font-size:32px; font-weight:700; line-height:1.25">Find and screen patients</p></div>
+    <div style="flex:1"><p class="label" style="color:#1257b0">Signed by 2 clinics</p><p style="margin-top:10px; font-size:32px; font-weight:700; line-height:1.25">Add records, scheduling and patient payments</p></div>
+    <div style="flex:1"><p class="label" style="color:#0e3f80">Next</p><p style="margin-top:10px; font-size:32px; font-weight:700; line-height:1.25">Add study visits and trial data</p></div>
+  </div>
+</section>
+</div>
+
+<div class="frame">
+<section id="grow">
+  <h2 style="top:128px; width:1100px">1,000 sites is $26M a year, before drug companies</h2>
+  <div style="top:560px; left:128px; width:533px; height:392px; padding:44px; background:#dce8f8; border-radius:28px; box-shadow:0 12px 32px #0e1b330f">
+    <p class="label" style="color:#3b4b66">Now</p>
+    <p style="margin-top:10px; font-size:52px; font-weight:800; line-height:1.1">Clinics</p>
+    <p style="margin-top:10px; font-size:96px; font-weight:800; line-height:1; letter-spacing:-2px; color:#1257b0">1</p>
+    <p style="margin-top:10px; font-size:30px; font-weight:700; line-height:1.3; color:#3b4b66">site per contract</p>
+  </div>
+  <div style="top:440px; left:693px; width:533px; height:512px; padding:44px; background:#8ab4e6; border-radius:28px; box-shadow:0 12px 32px #0e1b330f">
+    <p class="label" style="color:#24344f">Next</p>
+    <p style="margin-top:10px; font-size:52px; font-weight:800; line-height:1.1">Clinic networks</p>
+    <p style="margin-top:10px; font-size:96px; font-weight:800; line-height:1; letter-spacing:-2px; color:#0e3f80">10+</p>
+    <p style="margin-top:10px; font-size:30px; font-weight:700; line-height:1.3; color:#24344f">sites per contract</p>
+  </div>
+  <div style="top:320px; left:1258px; width:534px; height:632px; padding:44px; background:#1257b0; border-radius:28px; box-shadow:0 12px 32px #0e1b330f; color:#f4f6fa">
+    <p class="label" style="color:#d6e4f7">Then</p>
+    <p style="margin-top:10px; font-size:52px; font-weight:800; line-height:1.1">Drug companies</p>
+    <p style="margin-top:10px; font-size:96px; font-weight:800; line-height:1; letter-spacing:-2px">1,000+</p>
+    <p style="margin-top:10px; font-size:30px; font-weight:700; line-height:1.3; color:#d6e4f7">sites per contract, paying us to fill and run their trials</p>
+  </div>
+  <p style="top:312px; left:128px; width:1080px; font-size:34px; font-weight:600; line-height:1.3; color:#475569">At the $2,140 a month that two clinics signed for.</p>
+</section>
+</div>
+
+<div class="frame">
+<section id="competition">
+  <h2 style="top:96px">Others do one part. We do all three.</h2>
+  <div style="top:260px; left:128px; width:1664px; height:720px; background:#fcfdfe; border:1px solid #dce3ee; border-radius:28px; overflow:hidden; display:flex; flex-direction:column">
+    <div style="flex:0 0 144px; display:flex; align-items:center; font-size:30px; font-weight:800; line-height:1.2; text-align:center; color:#3b4b66">
+      <div style="flex:0 0 704px"></div>
+      <div style="flex:1">Brings new patients</div>
+      <div style="flex:1">AI screens them</div>
+      <div style="flex:1">Runs the site's workflow</div>
+    </div>
+    <div style="flex:1; display:flex; align-items:center; border-top:1px solid #dce3ee">
+      <div style="flex:0 0 704px; padding-left:56px"><p style="font-size:44px; font-weight:800">Recruiting agencies</p><p style="margin-top:4px; font-size:26px; color:#566174">SubjectWell, Antidote</p></div>
+      <div style="flex:1; text-align:center"><svg viewBox="0 0 64 64" style="width:64px; height:64px"><circle cx="32" cy="32" r="32" fill="#1257B0"/><path d="M19 33 L28 42 L46 23" fill="none" stroke="#fff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      <div style="flex:1; text-align:center"><svg viewBox="0 0 64 64" style="width:64px; height:64px"><line x1="18" y1="32" x2="46" y2="32" stroke="#B8C4D9" stroke-width="6" stroke-linecap="round"/></svg></div>
+      <div style="flex:1; text-align:center"><svg viewBox="0 0 64 64" style="width:64px; height:64px"><line x1="18" y1="32" x2="46" y2="32" stroke="#B8C4D9" stroke-width="6" stroke-linecap="round"/></svg></div>
+    </div>
+    <div style="flex:1; display:flex; align-items:center; border-top:1px solid #dce3ee">
+      <div style="flex:0 0 704px; padding-left:56px"><p style="font-size:44px; font-weight:800">Hospital record AI</p><p style="margin-top:4px; font-size:26px; color:#566174">Deep 6, Paradigm</p></div>
+      <div style="flex:1; text-align:center"><svg viewBox="0 0 64 64" style="width:64px; height:64px"><line x1="18" y1="32" x2="46" y2="32" stroke="#B8C4D9" stroke-width="6" stroke-linecap="round"/></svg></div>
+      <div style="flex:1; text-align:center"><svg viewBox="0 0 64 64" style="width:64px; height:64px"><circle cx="32" cy="32" r="32" fill="#1257B0"/><path d="M19 33 L28 42 L46 23" fill="none" stroke="#fff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      <div style="flex:1; text-align:center"><svg viewBox="0 0 64 64" style="width:64px; height:64px"><line x1="18" y1="32" x2="46" y2="32" stroke="#B8C4D9" stroke-width="6" stroke-linecap="round"/></svg></div>
+    </div>
+    <div style="flex:1; display:flex; align-items:center; border-top:1px solid #dce3ee">
+      <div style="flex:0 0 704px; padding-left:56px"><p style="font-size:44px; font-weight:800">Site software</p><p style="margin-top:4px; font-size:26px; color:#566174">StudyTeam, CRIO</p></div>
+      <div style="flex:1; text-align:center"><svg viewBox="0 0 64 64" style="width:64px; height:64px"><line x1="18" y1="32" x2="46" y2="32" stroke="#B8C4D9" stroke-width="6" stroke-linecap="round"/></svg></div>
+      <div style="flex:1; text-align:center"><svg viewBox="0 0 64 64" style="width:64px; height:64px"><line x1="18" y1="32" x2="46" y2="32" stroke="#B8C4D9" stroke-width="6" stroke-linecap="round"/></svg></div>
+      <div style="flex:1; text-align:center"><svg viewBox="0 0 64 64" style="width:64px; height:64px"><circle cx="32" cy="32" r="32" fill="#1257B0"/><path d="M19 33 L28 42 L46 23" fill="none" stroke="#fff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+    </div>
+    <div style="flex:1; display:flex; align-items:center; background:#1257b0; color:#f4f6fa">
+      <div style="flex:0 0 704px; padding-left:56px"><p style="font-size:52px; font-weight:800">BridgeMD</p></div>
+      <div style="flex:1; text-align:center"><svg viewBox="0 0 64 64" style="width:64px; height:64px"><circle cx="32" cy="32" r="32" fill="#F4F6FA"/><path d="M19 33 L28 42 L46 23" fill="none" stroke="#1257B0" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      <div style="flex:1; text-align:center"><svg viewBox="0 0 64 64" style="width:64px; height:64px"><circle cx="32" cy="32" r="32" fill="#F4F6FA"/><path d="M19 33 L28 42 L46 23" fill="none" stroke="#1257B0" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      <div style="flex:1; text-align:center"><svg viewBox="0 0 64 64" style="width:64px; height:64px"><circle cx="32" cy="32" r="32" fill="#F4F6FA"/><path d="M19 33 L28 42 L46 23" fill="none" stroke="#1257B0" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
     </div>
   </div>
 </section>
 </div>
+
 <div class="frame">
-<section id="close" style="background:#f4f6fa">
-  <video src="/static/deck/close.mp4" poster="/static/deck/close-start.png" aria-label="300+ people enrolled in a trial through BridgeMD, with quotes arriving one at a time around it from patients Matthew C., Anika P., Jason M. and Rebecca W. and clinic staff Melissa C., Andrew M. and Nicole T. Then the BridgeMD logo halves slide together, then Helping the right people join the right trials, faster., and bridgemd.health appear" muted playsinline preload="auto" data-still="/static/deck/close-end.png" style="position:absolute; top:0; left:0; width:1920px; height:1080px; object-fit:cover"></video>
-  <p style="position:absolute; top:838px; left:792px; width:336px; height:72px; font-family:Figtree, Arial, sans-serif; font-size:40px; line-height:1.8; text-align:center; color:#00000000"><a href="https://bridgemd.health"><span style="color:#00000000">bridgemd.health</span></a></p>
+<section id="founder">
+  <h2 style="top:128px; width:1200px">The right founder to build this</h2>
+  <img src="/static/deck/waterloo.png" alt="University of Waterloo" style="top:116px; left:1432px; width:360px; height:120px; object-fit:contain">
+  <img src="/static/deck/harshil.jpg" alt="Photo of Harshil Shah" style="top:300px; left:128px; width:300px; height:300px; object-fit:cover; background:#e6eaf1; border:6px solid #fcfdfe; border-radius:150px; box-shadow:0 16px 40px #0e1b332e">
+  <div style="top:300px; left:500px; width:1292px; display:flex; flex-direction:column; gap:28px">
+    <div><p style="font-size:56px; font-weight:800; line-height:1.1">Harshil Shah</p><p style="margin-top:8px; font-size:32px; font-weight:700; color:#1257b0">Founder and CEO</p></div>
+    <div style="display:flex; flex-direction:column; gap:16px; font-size:36px; font-weight:700; line-height:1.2">
+      <div style="display:flex; gap:20px; align-items:center"><svg viewBox="0 0 24 24" fill="none" stroke="#1257b0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:44px; height:44px; flex:none"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>Built and launched BridgeMD in 5 weeks</div>
+      <div style="display:flex; gap:20px; align-items:center"><svg viewBox="0 0 24 24" fill="none" stroke="#1257b0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:44px; height:44px; flex:none"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>Signed all 4 paying clinics myself</div>
+      <div style="display:flex; gap:20px; align-items:center"><svg viewBox="0 0 24 24" fill="none" stroke="#1257b0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:44px; height:44px; flex:none"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>Last startup reached $100K ARR</div>
+    </div>
+  </div>
+  <div style="top:700px; left:128px; width:1664px; padding:40px 56px; background:#fcfdfe; border:1px solid #dce3ee; border-radius:28px">
+    <p class="label" style="color:#566174">Where I've worked</p>
+    <div style="margin-top:24px; display:flex; align-items:center; justify-content:space-between">
+      <img src="/static/deck/meta.png" alt="Meta" style="width:340px; height:96px; object-fit:contain">
+      <img src="/static/deck/databricks.png" alt="Databricks" style="width:340px; height:96px; object-fit:contain">
+      <img src="/static/deck/1password.png" alt="1Password" style="width:340px; height:96px; object-fit:contain">
+      <img src="/static/deck/heymilo.png" alt="HeyMilo" style="width:340px; height:96px; object-fit:contain">
+    </div>
+  </div>
 </section>
 </div>
+
+<div class="frame">
+<section id="close" class="navy">
+  <div style="top:240px; left:128px; width:1664px; display:flex; gap:48px; align-items:center; justify-content:center">
+    <svg xmlns="http://www.w3.org/2000/svg" aria-label="BridgeMD logo" viewBox="0 0 512 512" style="width:180px; height:180px; flex:0 0 auto"><rect width="512" height="512" rx="116" fill="#1257b0"/><g transform="translate(256 256) scale(0.84) translate(-256 -256)" fill-rule="evenodd"><path fill="#8ab4e6" d="M142 96 H254 A46 46 0 0 1 300 142 V254 A46 46 0 0 1 254 300 H142 A46 46 0 0 1 96 254 V142 A46 46 0 0 1 142 96 Z M258 212 H300 V254 A46 46 0 0 1 254 300 H212 V258 A46 46 0 0 1 258 212 Z"/><path fill="#f4f6fa" d="M258 212 H370 A46 46 0 0 1 416 258 V370 A46 46 0 0 1 370 416 H258 A46 46 0 0 1 212 370 V258 A46 46 0 0 1 258 212 Z M258 212 H300 V254 A46 46 0 0 1 254 300 H212 V258 A46 46 0 0 1 258 212 Z"/></g></svg>
+    <p style="font-size:132px; font-weight:800; line-height:1; letter-spacing:-3px">BridgeMD</p>
+  </div>
+  <p style="top:500px; left:128px; width:1664px; font-size:56px; font-weight:700; line-height:1.2; text-align:center; color:#8ab4e6">AI to accelerate clinical trials so life&#8209;saving<br>drugs reach patients faster.</p>
+  <div style="top:740px; left:128px; width:1664px; display:flex; justify-content:center">
+    <a href="https://cal.com/harshil-shah-7tkvs7/30min" style="padding:24px 48px; background:#1257b0; border-radius:999px; font-size:38px; font-weight:800; color:#f4f6fa">Book 30 minutes with Harshil</a>
+  </div>
+  <p style="top:900px; left:128px; width:1664px; font-size:32px; font-weight:600; text-align:center; color:#b8c4d9"><a href="mailto:hello@bridgemd.health">hello@bridgemd.health</a> · <a href="https://bridgemd.health">bridgemd.health</a></p>
+</section>
+</div>
+
 <script>
 const frames = [...document.querySelectorAll('.frame')];
 
@@ -188,11 +278,7 @@ fit();
 function start(v) {
   try { v.currentTime = 0; } catch (e) {}
   const p = v.play();
-  if (p) p.catch(() => {
-    // Autoplay blocked (e.g. iPhone Low Power Mode): let the viewer press play.
-    if (v.dataset.still) v.poster = v.dataset.still;
-    v.controls = true;
-  });
+  if (p) p.catch(() => { v.controls = true; });  // autoplay blocked: let the viewer press play
 }
 const io = new IntersectionObserver(entries => entries.forEach(e => {
   const v = e.target.querySelector('video');
