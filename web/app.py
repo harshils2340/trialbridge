@@ -1368,10 +1368,11 @@ SITE_NOTIFY_EMAIL = (
 ).strip()
 # Internal inbox(es) that get a heads-up on every new application, so the operator
 # can confirm the funnel is producing real, legit applications. De-identified.
-# Comma-separated; defaults to the brand inbox + your personal owner email so you
-# get it directly. Override with OWNER_NOTIFY_EMAIL.
+# Comma-separated; defaults to the brand inbox plus founding operators so each
+# of them gets it directly. Override with OWNER_NOTIFY_EMAIL.
 OWNER_NOTIFY_EMAIL = os.environ.get(
-    "OWNER_NOTIFY_EMAIL", f"hello@bridgemd.health, {OWNER_EMAIL}").strip()
+    "OWNER_NOTIFY_EMAIL",
+    f"hello@bridgemd.health, {OWNER_EMAIL}, dhruv0704@gmail.com").strip()
 # One canonical hostname for SEO + favicon consolidation. Requests to the
 # `app.` / `www.` subdomains 301-redirect here (see _canonical_host_redirect),
 # and absolute links (emails, SEO canonicals) are pinned to it below - so Google
